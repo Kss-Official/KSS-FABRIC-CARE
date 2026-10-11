@@ -5,7 +5,7 @@ import { useAdmin } from '../context/AdminContext';
 import {
   Package,
   Truck,
-  BarChart3,
+  BarChart2,
   TrendingUp,
   Eye,
   EyeOff,
@@ -166,7 +166,7 @@ export const LoginPage = () => {
                 </div>
 
                 <div className="login-benefit-item">
-                  <BarChart3 size={22} className="benefit-icon" strokeWidth={1.8} />
+                  <BarChart2 size={22} className="benefit-icon" strokeWidth={1.8} />
                   <div className="benefit-text-wrap">
                     <h4 className="benefit-title">Grow Your Business</h4>
                     <p className="benefit-desc">Serve more customers efficiently</p>
@@ -177,7 +177,7 @@ export const LoginPage = () => {
               {/* Folded Towels with Leaf Imagery */}
               <div className="login-visual-towels">
                 <img 
-                  src="/assets/folded_towels_transparent.png" 
+                  src="/assets/folded_towels_transparent.png?v=3" 
                   alt="Fresh laundered towels" 
                   className="login-towels-img"
                   loading="eager"
@@ -416,11 +416,11 @@ export const LoginPage = () => {
         }
 
         .login-brand-logo {
-          display: flex;
+          display: inline-flex;
           align-items: center;
           cursor: pointer;
           user-select: none;
-          margin-bottom: 24px;
+          margin-bottom: 32px;
         }
 
         .login-brand-logo .logo-text {
@@ -438,7 +438,7 @@ export const LoginPage = () => {
           font-size: 3.375rem;
           font-weight: 850;
           color: #0F172A;
-          line-height: 1.12;
+          line-height: 1.1;
           letter-spacing: -0.035em;
           margin: 0 0 16px;
         }
@@ -448,10 +448,10 @@ export const LoginPage = () => {
         }
 
         .login-subtext {
-          font-size: 1.0625rem;
+          font-size: 1rem;
           color: #475569;
-          margin-bottom: 28px;
-          max-width: 490px;
+          margin-bottom: 36px;
+          max-width: 480px;
           line-height: 1.55;
         }
 
@@ -459,28 +459,30 @@ export const LoginPage = () => {
           display: flex;
           align-items: flex-end;
           justify-content: space-between;
-          margin-top: 18px;
+          gap: 24px;
+          margin-top: 10px;
           position: relative;
+          width: 100%;
         }
 
         .login-benefits-list {
-          flex: 1;
+          flex: 0 0 240px;
           display: flex;
           flex-direction: column;
-          gap: 24px;
+          gap: 26px;
           z-index: 2;
         }
 
         .login-benefit-item {
           display: flex;
           align-items: flex-start;
-          gap: 15px;
+          gap: 14px;
         }
 
         .benefit-icon {
           color: #0D7A75;
           flex-shrink: 0;
-          margin-top: 1px;
+          margin-top: 2px;
         }
 
         .benefit-text-wrap {
@@ -492,7 +494,7 @@ export const LoginPage = () => {
           font-size: 0.9375rem;
           font-weight: 750;
           color: #0F172A;
-          margin: 0 0 2px;
+          margin: 0 0 3px;
           line-height: 1.25;
         }
 
@@ -504,22 +506,26 @@ export const LoginPage = () => {
         }
 
         .login-visual-towels {
-          width: 360px;
-          max-width: 50%;
-          flex-shrink: 0;
+          flex: 0 0 auto;
+          width: 275px;
+          max-width: 285px;
+          margin-left: auto;
           background: transparent;
           border: none;
           box-shadow: none;
           overflow: visible;
           pointer-events: none;
+          display: flex;
+          justify-content: flex-end;
         }
 
         .login-towels-img {
           width: 100%;
+          max-width: 275px;
           height: auto;
           display: block;
           object-fit: contain;
-          filter: drop-shadow(0 15px 25px rgba(13, 122, 117, 0.08));
+          filter: drop-shadow(0 10px 20px rgba(13, 122, 117, 0.08));
         }
 
         .login-right-col {
