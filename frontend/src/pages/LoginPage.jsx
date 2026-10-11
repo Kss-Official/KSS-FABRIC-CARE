@@ -128,91 +128,86 @@ export const LoginPage = () => {
 
   return (
     <div className="login-page-wrapper">
-      <div className="login-back-to-home">
-        <button 
-          onClick={() => navigateTo('home')} 
-          className="back-home-btn"
-          aria-label="Back to Homepage"
-        >
-          <ArrowLeft size={16} />
-          <span>Back to Homepage</span>
-        </button>
-      </div>
-
       <div className="login-page-container">
         {/* Left Presentation & Branding Column */}
         <div className="login-left-col">
           <div className="login-brand-logo" onClick={() => navigateTo('home')}>
             <span className="logo-text">Laund<span className="logo-accent">rix</span></span>
-            <span className="logo-dot" />
           </div>
 
           <div className="login-hero-text">
             <h1 className="login-main-headline">
               Manage Laundry <br />
-              <span className="text-teal">Operations</span> <br />
-              With Ease.
+              Operations <br />
+              <span className="text-teal">With Ease.</span>
             </h1>
 
             <p className="login-subtext">
-              Control orders, pickups, deliveries, services and customer accounts in one place with real-time operational workflows.
+              Control orders, pickups, deliveries, services and everything in one place.
             </p>
 
-            <div className="login-benefits-list">
-              <div className="login-benefit-item">
-                <div className="benefit-icon-wrap">
-                  <Package size={20} />
+            <div className="login-features-imagery-row">
+              <div className="login-benefits-list">
+                <div className="login-benefit-item">
+                  <div className="benefit-icon-wrap">
+                    <Package size={20} />
+                  </div>
+                  <div>
+                    <h4 className="benefit-title">Track Orders</h4>
+                    <p className="benefit-desc">From pickup to delivery</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="benefit-title">Track Orders</h4>
-                  <p className="benefit-desc">From pickup to delivery</p>
+
+                <div className="login-benefit-item">
+                  <div className="benefit-icon-wrap">
+                    <Truck size={20} />
+                  </div>
+                  <div>
+                    <h4 className="benefit-title">Manage Operations</h4>
+                    <p className="benefit-desc">Keep everything on schedule</p>
+                  </div>
+                </div>
+
+                <div className="login-benefit-item">
+                  <div className="benefit-icon-wrap">
+                    <TrendingUp size={20} />
+                  </div>
+                  <div>
+                    <h4 className="benefit-title">Grow Your Business</h4>
+                    <p className="benefit-desc">Serve more customers efficiently</p>
+                  </div>
                 </div>
               </div>
 
-              <div className="login-benefit-item">
-                <div className="benefit-icon-wrap">
-                  <Truck size={20} />
-                </div>
-                <div>
-                  <h4 className="benefit-title">Manage Operations</h4>
-                  <p className="benefit-desc">Keep everything on schedule</p>
-                </div>
-              </div>
-
-              <div className="login-benefit-item">
-                <div className="benefit-icon-wrap">
-                  <TrendingUp size={20} />
-                </div>
-                <div>
-                  <h4 className="benefit-title">Grow Your Business</h4>
-                  <p className="benefit-desc">Serve more customers efficiently</p>
-                </div>
+              {/* Folded Towels with Leaf Imagery */}
+              <div className="login-visual-towels">
+                <img 
+                  src="/assets/folded_towels_leaf_1791619103155.jpg" 
+                  alt="Fresh laundered towels" 
+                  className="login-towels-img"
+                  loading="eager"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = '/assets/folded-towels.jpg';
+                  }}
+                />
               </div>
             </div>
-          </div>
-
-          {/* Fresh Towels Illustration matching screenshot reference */}
-          <div className="login-visual-towels">
-            <img 
-              src="/assets/folded-towels.jpg" 
-              alt="Fresh laundered towels" 
-              className="login-towels-img"
-              loading="eager"
-            />
           </div>
         </div>
 
         {/* Right Authentication Card */}
         <div className="login-right-col">
           <div className="login-card-container animate-fade-in">
+            {/* Centered Top Brand & Role */}
             <div className="login-card-brand">
               <span className="card-logo">Laund<span className="card-logo-acc">rix</span></span>
-              <span className="secure-portal-tag">SECURE PORTAL</span>
+              <span className="card-role-label">ADMIN PORTAL</span>
             </div>
 
             <h2 className="login-card-title">Welcome Back!</h2>
             <p className="login-card-sub">
-              Sign in with your FabriCare account to access your portal.
+              Sign in to manage your laundry operations.
             </p>
 
             {(errorMessage || authError) && (
@@ -237,10 +232,11 @@ export const LoginPage = () => {
                   <div className="form-group">
                     <label className="form-label">Email Address</label>
                     <div className="login-input-wrap">
+                      <Mail size={17} className="input-field-icon" />
                       <input 
                         type="email"
                         required
-                        className="form-input"
+                        className="form-input with-icon"
                         value={resetEmail}
                         onChange={(e) => setResetEmail(e.target.value)}
                         placeholder="e.g. name@example.com"
@@ -265,6 +261,7 @@ export const LoginPage = () => {
                   <button 
                     type="button" 
                     className="btn btn-white w-full mt-2" 
+                    style={{ borderRadius: '999px', padding: '11px 0' }}
                     onClick={() => { setIsForgotPasswordOpen(false); setResetSent(false); setErrorMessage(null); }}
                   >
                     Back to Sign In
@@ -275,17 +272,18 @@ export const LoginPage = () => {
               <form onSubmit={handleSignIn} className="login-form">
                 <div className="form-group">
                   <label className="form-label" htmlFor="login-identifier">
-                    Email or Username
+                    Email Address
                   </label>
                   <div className="login-input-wrap">
+                    <Mail size={17} className="input-field-icon" />
                     <input 
                       id="login-identifier"
                       type="text"
                       required
-                      className="form-input"
+                      className="form-input with-icon"
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="e.g. rohan or admin@laundrix.com"
+                      placeholder="admin@laundrix.com"
                       autoComplete="username"
                     />
                   </div>
@@ -296,11 +294,12 @@ export const LoginPage = () => {
                     Password
                   </label>
                   <div className="login-input-wrap">
+                    <Lock size={17} className="input-field-icon" />
                     <input 
                       id="login-password"
                       type={showPassword ? 'text' : 'password'}
                       required
-                      className="form-input"
+                      className="form-input with-icon with-right-btn"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
@@ -312,7 +311,7 @@ export const LoginPage = () => {
                       onClick={() => setShowPassword(!showPassword)}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                     </button>
                   </div>
                 </div>
@@ -375,21 +374,13 @@ export const LoginPage = () => {
                 </button>
 
                 <div className="login-footer-text">
-                  Don't have an account?{' '}
-                  <button 
-                    type="button" 
-                    className="support-link inline-btn"
-                    onClick={() => navigateTo('home')}
-                  >
-                    Book a Pickup
-                  </button>
-                  <span className="dot-separator">•</span>
+                  Don't have an admin account?{' '}
                   <a 
                     href="#support" 
                     className="support-link"
                     onClick={(e) => {
                       e.preventDefault();
-                      alert('For customer assistance, contact support@fabricare.com or call +91 98765 43210');
+                      alert('For administrative assistance or account provisioning, contact support@fabricare.com or call +91 98765 43210');
                     }}
                   >
                     Contact Support
@@ -404,50 +395,27 @@ export const LoginPage = () => {
       <style>{`
         .login-page-wrapper {
           min-height: 100vh;
-          background: linear-gradient(135deg, #F0FDFB 0%, #E6F7F5 100%);
+          background: radial-gradient(circle at 15% 45%, #E5F6F3 0%, #EFFBF9 50%, #DCF4F0 100%);
           display: flex;
-          flex-direction: column;
           align-items: center;
           justify-content: center;
-          padding: 40px 24px;
+          padding: 48px 32px;
           position: relative;
-        }
-
-        .login-back-to-home {
-          width: 100%;
-          max-width: 1100px;
-          margin-bottom: 20px;
-        }
-
-        .back-home-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          background: #FFFFFF;
-          border: 1px solid #E2E8F0;
-          color: #475569;
-          font-size: 0.8125rem;
-          font-weight: 600;
-          padding: 8px 16px;
-          border-radius: 999px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-        }
-
-        .back-home-btn:hover {
-          color: #0D7A75;
-          border-color: #0D7A75;
-          background: #F0FDFB;
+          overflow-x: hidden;
         }
 
         .login-page-container {
           display: grid;
-          grid-template-columns: 1.2fr 1fr;
-          max-width: 1100px;
+          grid-template-columns: 1.15fr 0.85fr;
+          max-width: 1160px;
           width: 100%;
-          gap: 60px;
+          gap: 56px;
           align-items: center;
+        }
+
+        .login-left-col {
+          display: flex;
+          flex-direction: column;
         }
 
         .login-brand-logo {
@@ -455,35 +423,27 @@ export const LoginPage = () => {
           align-items: center;
           cursor: pointer;
           user-select: none;
+          margin-bottom: 24px;
         }
 
         .login-brand-logo .logo-text {
-          font-size: 2.25rem;
-          font-weight: 800;
-          color: #0D7A75;
+          font-size: 2.125rem;
+          font-weight: 850;
+          color: #0F172A;
           letter-spacing: -0.03em;
         }
 
         .login-brand-logo .logo-accent {
-          color: #0E4B56;
-        }
-
-        .login-brand-logo .logo-dot {
-          width: 8px;
-          height: 8px;
-          background: #FF6B50;
-          border-radius: 50%;
-          margin-left: 3px;
-          margin-top: 14px;
+          color: #0D7A75;
         }
 
         .login-main-headline {
-          font-size: 3.125rem;
-          font-weight: 800;
-          color: #111827;
-          line-height: 1.15;
-          letter-spacing: -0.03em;
-          margin: 24px 0 16px;
+          font-size: 3.375rem;
+          font-weight: 850;
+          color: #0F172A;
+          line-height: 1.12;
+          letter-spacing: -0.035em;
+          margin: 0 0 16px;
         }
 
         .text-teal {
@@ -491,59 +451,78 @@ export const LoginPage = () => {
         }
 
         .login-subtext {
-          font-size: 1rem;
-          color: #4B5563;
-          margin-bottom: 32px;
-          max-width: 460px;
-          line-height: 1.6;
+          font-size: 1.0625rem;
+          color: #475569;
+          margin-bottom: 28px;
+          max-width: 490px;
+          line-height: 1.55;
+        }
+
+        .login-features-imagery-row {
+          display: flex;
+          align-items: center;
+          gap: 24px;
+          margin-top: 8px;
+          position: relative;
         }
 
         .login-benefits-list {
+          flex: 1;
           display: flex;
           flex-direction: column;
-          gap: 18px;
+          gap: 20px;
         }
 
         .login-benefit-item {
           display: flex;
           align-items: center;
-          gap: 16px;
+          gap: 14px;
         }
 
         .benefit-icon-wrap {
-          width: 44px;
-          height: 44px;
-          border-radius: 12px;
-          background: #FFFFFF;
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          background: rgba(13, 122, 117, 0.08);
           color: #0D7A75;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 12px rgba(13, 122, 117, 0.08);
-          border: 1px solid #BCEAE6;
           flex-shrink: 0;
+          transition: transform 0.2s ease;
+        }
+
+        .login-benefit-item:hover .benefit-icon-wrap {
+          transform: scale(1.05);
+          background: rgba(13, 122, 117, 0.14);
         }
 
         .benefit-title {
           font-size: 0.9375rem;
           font-weight: 700;
-          color: #1E293B;
-          margin-bottom: 2px;
+          color: #0F172A;
+          margin: 0 0 2px;
         }
 
         .benefit-desc {
-          font-size: 0.75rem;
+          font-size: 0.8125rem;
           color: #64748B;
+          margin: 0;
         }
 
         .login-visual-towels {
-          margin-top: 32px;
-          width: 260px;
-          height: 150px;
+          width: 290px;
+          height: 195px;
           border-radius: 20px;
           overflow: hidden;
-          box-shadow: 0 12px 30px rgba(13, 122, 117, 0.12);
-          border: 2px solid #FFFFFF;
+          flex-shrink: 0;
+          box-shadow: 0 20px 40px rgba(13, 122, 117, 0.16);
+          border: 3px solid #FFFFFF;
+          transition: transform 0.3s ease;
+        }
+
+        .login-visual-towels:hover {
+          transform: translateY(-4px);
         }
 
         .login-towels-img {
@@ -553,52 +532,61 @@ export const LoginPage = () => {
           display: block;
         }
 
+        .login-right-col {
+          display: flex;
+          justify-content: center;
+          width: 100%;
+        }
+
         .login-card-container {
           background: #FFFFFF;
-          border: 1.5px solid #E2E8F0;
+          border: 1px solid rgba(226, 232, 240, 0.8);
           border-radius: 28px;
-          padding: 40px;
-          box-shadow: 0 20px 48px rgba(13, 122, 117, 0.08);
+          padding: 44px 38px;
+          box-shadow: 0 24px 60px rgba(13, 122, 117, 0.1), 0 4px 12px rgba(0, 0, 0, 0.03);
+          width: 100%;
+          max-width: 440px;
         }
 
         .login-card-brand {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 24px;
+          text-align: center;
+          margin-bottom: 6px;
         }
 
         .card-logo {
-          font-size: 1.5rem;
-          font-weight: 800;
-          color: #0D7A75;
+          font-size: 1.625rem;
+          font-weight: 850;
+          color: #0F172A;
+          letter-spacing: -0.02em;
         }
 
         .card-logo-acc {
-          color: #0E4B56;
+          color: #0D7A75;
         }
 
-        .secure-portal-tag {
+        .card-role-label {
+          display: block;
           font-size: 0.6875rem;
           font-weight: 800;
-          letter-spacing: 0.08em;
-          color: #0D7A75;
-          background: #EBF8F7;
-          border: 1px solid #BCEAE6;
-          padding: 4px 10px;
-          border-radius: 999px;
+          letter-spacing: 0.12em;
+          color: #64748B;
+          text-transform: uppercase;
+          margin-top: 4px;
         }
 
         .login-card-title {
-          font-size: 1.875rem;
-          font-weight: 800;
-          color: #111827;
-          margin-bottom: 4px;
+          font-size: 1.75rem;
+          font-weight: 850;
+          color: #0F172A;
+          text-align: center;
+          margin: 14px 0 4px;
+          letter-spacing: -0.02em;
         }
 
         .login-card-sub {
           font-size: 0.875rem;
           color: #64748B;
+          text-align: center;
           margin-bottom: 24px;
         }
 
@@ -606,7 +594,7 @@ export const LoginPage = () => {
           display: flex;
           align-items: flex-start;
           gap: 10px;
-          padding: 12px 16px;
+          padding: 12px 14px;
           border-radius: 12px;
           font-size: 0.8125rem;
           line-height: 1.4;
@@ -625,15 +613,65 @@ export const LoginPage = () => {
           border: 1px solid #86EFAC;
         }
 
+        .form-group {
+          margin-bottom: 16px;
+        }
+
+        .form-label {
+          display: block;
+          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #374151;
+          margin-bottom: 6px;
+        }
+
         .login-input-wrap {
           position: relative;
           display: flex;
           align-items: center;
+          width: 100%;
+        }
+
+        .input-field-icon {
+          position: absolute;
+          left: 14px;
+          color: #94A3B8;
+          pointer-events: none;
+        }
+
+        .form-input {
+          width: 100%;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 12px;
+          font-size: 0.875rem;
+          color: #0F172A;
+          background: #FFFFFF;
+          padding: 12px 14px;
+          transition: all 0.2s ease;
+          box-sizing: border-box;
+        }
+
+        .form-input.with-icon {
+          padding-left: 42px;
+        }
+
+        .form-input.with-right-btn {
+          padding-right: 44px;
+        }
+
+        .form-input:focus {
+          border-color: #0D7A75;
+          box-shadow: 0 0 0 3.5px rgba(13, 122, 117, 0.12);
+          outline: none;
+        }
+
+        .form-input::placeholder {
+          color: #94A3B8;
         }
 
         .pwd-toggle-btn {
           position: absolute;
-          right: 14px;
+          right: 12px;
           background: none;
           border: none;
           color: #94A3B8;
@@ -642,6 +680,7 @@ export const LoginPage = () => {
           align-items: center;
           justify-content: center;
           padding: 4px;
+          transition: color 0.15s ease;
         }
 
         .pwd-toggle-btn:hover {
@@ -652,7 +691,7 @@ export const LoginPage = () => {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin: 16px 0 24px;
+          margin: 16px 0 22px;
           font-size: 0.8125rem;
         }
 
@@ -663,6 +702,7 @@ export const LoginPage = () => {
           cursor: pointer;
           color: #475569;
           font-weight: 500;
+          user-select: none;
         }
 
         .custom-checkbox {
@@ -670,6 +710,7 @@ export const LoginPage = () => {
           width: 16px;
           height: 16px;
           cursor: pointer;
+          border-radius: 4px;
         }
 
         .forgot-pwd-btn-link {
@@ -680,6 +721,7 @@ export const LoginPage = () => {
           cursor: pointer;
           font-size: 0.8125rem;
           padding: 0;
+          transition: opacity 0.15s ease;
         }
 
         .forgot-pwd-btn-link:hover {
@@ -687,20 +729,32 @@ export const LoginPage = () => {
         }
 
         .sign-in-btn {
-          padding: 13px;
-          font-size: 1rem;
+          background: linear-gradient(135deg, #FF6447 0%, #FF5030 100%);
+          color: #FFFFFF;
+          border-radius: 999px;
+          padding: 13px 0;
+          font-size: 0.9375rem;
           font-weight: 700;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
+          border: none;
+          box-shadow: 0 8px 22px rgba(255, 100, 71, 0.38);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .sign-in-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 10px 26px rgba(255, 100, 71, 0.44);
         }
 
         .login-or-divider {
           display: flex;
           align-items: center;
           text-align: center;
-          margin: 20px 0;
+          margin: 18px 0;
           color: #94A3B8;
           font-size: 0.75rem;
         }
@@ -713,9 +767,8 @@ export const LoginPage = () => {
 
         .login-or-divider span {
           padding: 0 12px;
-          text-transform: uppercase;
-          font-weight: 600;
-          letter-spacing: 0.05em;
+          color: #94A3B8;
+          font-size: 0.75rem;
         }
 
         .google-signin-btn {
@@ -726,14 +779,16 @@ export const LoginPage = () => {
           border: 1.5px solid #E2E8F0;
           color: #1E293B;
           font-weight: 600;
+          font-size: 0.875rem;
           padding: 11px;
-          border-radius: 12px;
+          border-radius: 999px;
           background: #FFFFFF;
           cursor: pointer;
           transition: all 0.2s ease;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
         }
 
-        .google-signin-btn:hover {
+        .google-signin-btn:hover:not(:disabled) {
           background: #F8FAFC;
           border-color: #CBD5E1;
         }
@@ -742,12 +797,7 @@ export const LoginPage = () => {
           font-size: 0.8125rem;
           color: #64748B;
           text-align: center;
-          margin-top: 24px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          flex-wrap: wrap;
+          margin-top: 22px;
         }
 
         .support-link {
@@ -755,21 +805,11 @@ export const LoginPage = () => {
           font-weight: 700;
           text-decoration: none;
           cursor: pointer;
+          transition: opacity 0.15s ease;
         }
 
         .support-link:hover {
           text-decoration: underline;
-        }
-
-        .inline-btn {
-          background: none;
-          border: none;
-          padding: 0;
-          font-size: inherit;
-        }
-
-        .dot-separator {
-          color: #CBD5E1;
         }
 
         .reset-instruction-text {
@@ -779,36 +819,48 @@ export const LoginPage = () => {
           line-height: 1.5;
         }
 
-        @media (max-width: 900px) {
+        @media (max-width: 1024px) {
           .login-page-container {
             grid-template-columns: 1fr;
-            gap: 32px;
+            gap: 40px;
           }
           .login-left-col {
             text-align: center;
-            display: flex;
-            flex-direction: column;
             align-items: center;
           }
           .login-brand-logo {
             justify-content: center;
           }
           .login-main-headline {
-            font-size: 2.25rem;
-            margin: 16px 0 12px;
+            font-size: 2.75rem;
           }
           .login-subtext {
-            font-size: 0.9375rem;
-            margin-bottom: 24px;
+            max-width: 100%;
+          }
+          .login-features-imagery-row {
+            flex-direction: column;
+            gap: 24px;
+            align-items: center;
           }
           .login-benefits-list {
-            display: none;
+            align-items: center;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .login-page-wrapper {
+            padding: 32px 16px;
+          }
+          .login-main-headline {
+            font-size: 2.125rem;
           }
           .login-visual-towels {
-            display: none;
+            width: 100%;
+            max-width: 280px;
+            height: 170px;
           }
           .login-card-container {
-            padding: 28px 20px;
+            padding: 32px 20px;
             border-radius: 20px;
           }
         }
@@ -818,3 +870,4 @@ export const LoginPage = () => {
 };
 
 export default LoginPage;
+
