@@ -43,7 +43,23 @@ router.register('support', SupportTicketViewSet, basename='support')
 router.register('faqs', ContentFAQViewSet, basename='faq')
 router.register('policies', ContentPolicyViewSet, basename='policy')
 
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    return Response({
+        "status": "healthy",
+        "service": "FabriCare / Laundrix API",
+        "version": "1.0.0"
+    })
+
 api_urlpatterns = [
+    # Health check
+    path('health/', health_check, name='api-health'),
+
     # Auth endpoints
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
     path('auth/login/', LoginView.as_view(), name='auth-login'),
@@ -75,8 +91,12 @@ api_urlpatterns = [
 ]
 
 urlpatterns = [
+    path('', health_check, name='root-health'),
     path('admin/', admin.site.urls),
     path('api/', include(api_urlpatterns)),
+    path('auth/login/', LoginView.as_view(), name='direct-auth-login'),
+    path('auth/register/', RegisterView.as_view(), name='direct-auth-register'),
+    path('auth/me/', MeView.as_view(), name='direct-auth-me'),
 ]
 
 if settings.DEBUG:
