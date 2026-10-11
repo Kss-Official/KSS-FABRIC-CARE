@@ -1,0 +1,256 @@
+import React, { lazy, Suspense } from 'react';
+import { AuthProvider } from './context/AuthContext';
+import { BookingProvider, useBooking } from './context/BookingContext';
+import { AdminProvider } from './context/AdminContext';
+import { Navbar } from './components/layout/Navbar';
+import { Footer } from './components/layout/Footer';
+import { HomePage } from './pages/HomePage';
+import { BookingPage } from './pages/BookingPage';
+import { OrderConfirmedPage } from './pages/OrderConfirmedPage';
+import { ServiceDetailPage } from './pages/ServiceDetailPage';
+import { AdminPortal } from './pages/admin/AdminPortal';
+import { CustomerAuthModal } from './components/common/CustomerAuthModal';
+
+import { LoginPage } from './pages/LoginPage';
+import { useAuth, getPortalForRole } from './context/AuthContext';
+import { Loader2 } from 'lucide-react';
+
+// Customer Portal Pages
+import { CustomerDashboard } from './customer/CustomerDashboard';
+import { MyOrders } from './customer/MyOrders';
+import { TrackOrder } from './customer/TrackOrder';
+import { PaymentsInvoices } from './customer/PaymentsInvoices';
+import { SavedAddresses } from './customer/SavedAddresses';
+import { HelpSupport } from './customer/HelpSupport';
+import { Profile } from './customer/Profile';
+import { Notifications as CustomerNotifications } from './customer/Notifications';
+
+// Delivery & Laundry Staff Portals
+import { DeliveryPortal } from './delivery/DeliveryPortal';
+import { LaundryPortal } from './laundry-staff/LaundryPortal';
+
+// Portal wrapper (no navbar/footer - self-contained)
+const FULL_SCREEN_PAGES = [
+  'admin', 'delivery-portal', 'laundry-portal', 'login'
+];
+
+// Customer portal pages (with sidebar layout)
+const CUSTOMER_PORTAL_PAGES = [
+  'customer-dashboard', 'customer-orders', 'customer-track',
+  'customer-invoices', 'customer-addresses', 'customer-support',
+  'customer-profile', 'customer-notifications'
+];
+
+const CustomerAccountLayout = ({ children }) => {
+  const { navigateTo, currentPage, startBooking } = useBooking();
+  const { userProfile, currentUser } = useAuth();
+  const accountTabs = [
+    { id: 'customer-orders', label: 'My Orders', icon: '📦' },
+    { id: 'customer-track', label: 'Track Order', icon: '🚚' },
+    { id: 'customer-invoices', label: 'Invoices & Bills', icon: '🧾' },
+    { id: 'customer-addresses', label: 'Saved Addresses', icon: '📍' },
+    { id: 'customer-notifications', label: 'Notifications', icon: '🔔' },
+    { id: 'customer-profile', label: 'My Profile', icon: '👤' },
+    { id: 'customer-support', label: 'Help & Support', icon: '💬' },
+  ];
+
+  const displayName = userProfile?.displayName || currentUser?.displayName || currentUser?.full_name || currentUser?.first_name || 'Customer';
+
+  return (
+    <div className="customer-account-wrapper" style={{ background: '#F8FAFC', minHeight: 'calc(100vh - 160px)', paddingBottom: '60px' }}>
+      {/* Account Header Banner */}
+      <div style={{ background: 'linear-gradient(135deg, #0D7A75 0%, #0E4B56 100%)', color: '#fff', padding: '36px 0 24px' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+            <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#34D399' }} />
+                Customer Account
+              </div>
+              <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '4px 0 2px', letterSpacing: '-0.02em' }}>
+                Welcome back, {displayName}
+              </h1>
+              <p style={{ margin: 0, fontSize: '0.875rem', color: '#E2E8F0', opacity: 0.9 }}>
+                Manage your laundry bookings, track live orders, and update preferences
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => startBooking()}
+                style={{
+                  background: '#FF6B50', color: '#fff', border: 'none', padding: '10px 20px',
+                  borderRadius: 12, fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  boxShadow: '0 4px 14px rgba(255, 107, 80, 0.35)', transition: 'transform 0.15s ease'
+                }}
+              >
+                <span>+</span> Book a Pickup
+              </button>
+              <button
+                onClick={() => navigateTo('home')}
+                style={{
+                  background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)',
+                  padding: '10px 16px', borderRadius: 12, fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer'
+                }}
+              >
+                ← Back to Home
+              </button>
+            </div>
+          </div>
+
+          {/* Account Sub-Navigation Tabs */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 28, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }}>
+            {accountTabs.map(tab => {
+              const isActive = currentPage === tab.id || (tab.id === 'customer-orders' && currentPage === 'customer-dashboard');
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => navigateTo(tab.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px',
+                    borderRadius: 10, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+                    fontWeight: isActive ? 700 : 500, fontSize: '0.875rem',
+                    background: isActive ? '#fff' : 'rgba(255,255,255,0.12)',
+                    color: isActive ? '#0D7A75' : '#fff',
+                    boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Account Content Container */}
+      <div style={{ maxWidth: 1200, margin: '28px auto 0', padding: '0 20px' }}>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+const AppContent = () => {
+  const { currentPage, navigateTo } = useBooking();
+  const { isAuthenticated, userRole, loading } = useAuth();
+
+  // Show subtle loader while session is being verified from storage
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0D7A75', marginBottom: 16 }}>
+            Laund<span style={{ color: '#0E4B56' }}>rix</span>
+          </div>
+          <Loader2 className="animate-spin" size={32} style={{ color: '#0D7A75', margin: '0 auto' }} />
+          <p style={{ marginTop: 12, fontSize: '0.875rem', color: '#64748B', fontWeight: 500 }}>
+            Verifying secure session...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Route 1: Dedicated Login Page
+  if (currentPage === 'login') {
+    return <LoginPage />;
+  }
+
+  // Route 2: Admin Portal (Strictly Protected: role === 'admin')
+  if (currentPage === 'admin') {
+    if (!isAuthenticated) {
+      navigateTo('login');
+      return null;
+    }
+    if (userRole !== 'admin') {
+      navigateTo(getPortalForRole(userRole));
+      return null;
+    }
+    return <AdminPortal />;
+  }
+
+  // Route 3: Delivery Portal (Strictly Protected: role === 'delivery_agent' or 'admin')
+  if (currentPage === 'delivery-portal') {
+    if (!isAuthenticated) {
+      navigateTo('login');
+      return null;
+    }
+    if (userRole !== 'delivery_agent' && userRole !== 'admin') {
+      navigateTo(getPortalForRole(userRole));
+      return null;
+    }
+    return <DeliveryPortal />;
+  }
+
+  // Route 4: Laundry Hub Portal (Strictly Protected: role === 'laundry_staff' or 'admin')
+  if (currentPage === 'laundry-portal') {
+    if (!isAuthenticated) {
+      navigateTo('login');
+      return null;
+    }
+    if (userRole !== 'laundry_staff' && userRole !== 'admin') {
+      navigateTo(getPortalForRole(userRole));
+      return null;
+    }
+    return <LaundryPortal />;
+  }
+
+  // Route 5: Customer Account Pages (Protected: requires customer/user authentication)
+  if (CUSTOMER_PORTAL_PAGES.includes(currentPage)) {
+    if (!isAuthenticated) {
+      navigateTo('login');
+      return null;
+    }
+    return (
+      <div className="app-layout">
+        <Navbar />
+        <main className="main-content">
+          <CustomerAccountLayout>
+            {currentPage === 'customer-dashboard' && <CustomerDashboard />}
+            {currentPage === 'customer-orders' && <MyOrders />}
+            {currentPage === 'customer-track' && <TrackOrder />}
+            {currentPage === 'customer-invoices' && <PaymentsInvoices />}
+            {currentPage === 'customer-addresses' && <SavedAddresses />}
+            {currentPage === 'customer-support' && <HelpSupport />}
+            {currentPage === 'customer-profile' && <Profile />}
+            {currentPage === 'customer-notifications' && <CustomerNotifications />}
+          </CustomerAccountLayout>
+        </main>
+        <Footer />
+        <CustomerAuthModal />
+      </div>
+    );
+  }
+
+  // Route 6: Public Main Site (Home, Services, Booking, Confirmed)
+  return (
+    <div className="app-layout">
+      <Navbar />
+      <main className="main-content">
+        {currentPage === 'home' && <HomePage />}
+        {currentPage === 'services' && <ServiceDetailPage />}
+        {currentPage === 'booking' && <BookingPage />}
+        {currentPage === 'confirmed' && <OrderConfirmedPage />}
+      </main>
+      <Footer />
+      <CustomerAuthModal />
+    </div>
+  );
+};
+
+export const App = () => {
+  return (
+    <AuthProvider>
+      <BookingProvider>
+        <AdminProvider>
+          <AppContent />
+        </AdminProvider>
+      </BookingProvider>
+    </AuthProvider>
+  );
+};
+
+export default App;

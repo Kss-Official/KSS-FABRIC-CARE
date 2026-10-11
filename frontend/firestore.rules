@@ -1,0 +1,179 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserRole() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : 'guest';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        getUserRole() == 'admin' || 
+        getUserRole() == 'super_admin' ||
+        (request.auth.token.email != null && request.auth.token.email.matches(".*admin.*@.*"))
+      );
+    }
+
+    function isStaff() {
+      return isAuthenticated() && (isAdmin() || getUserRole() == 'staff');
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function validStringLength(str, minLen, maxLen) {
+      return str is string && str.size() >= minLen && str.size() <= maxLen;
+    }
+
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() >= minLen && data[field].size() <= maxLen);
+    }
+
+    // Domain Validators
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role']) &&
+             data.uid is string &&
+             data.email is string && isValidEmail(data.email) &&
+             validStringLength(data.displayName, 1, 100) &&
+             data.role in ['customer', 'admin', 'staff', 'driver'] &&
+             isValidOptionalString(data, 'phoneNumber', 0, 30) &&
+             isValidOptionalString(data, 'avatar', 0, 10);
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'phone', 'status']) &&
+             validStringLength(data.id, 1, 50) &&
+             validStringLength(data.name, 1, 100) &&
+             validStringLength(data.phone, 1, 30) &&
+             isValidEmail(data.email) &&
+             data.status in ['Active', 'Inactive'];
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['id', 'customerId', 'customer', 'services', 'pickupTime', 'amount', 'status', 'payment', 'type']) &&
+             validStringLength(data.id, 1, 50) &&
+             data.amount is number && data.amount > 0 &&
+             data.status in ['Pending Pickup', 'In Cleaning', 'Ready for Delivery', 'Completed', 'Cancelled'] &&
+             data.payment in ['Paid', 'Unpaid', 'COD'] &&
+             data.type in ['Pickup', 'Delivery'] &&
+             data.services is list && data.services.size() > 0 && data.services.size() <= 50 &&
+             data.customer is map && data.customer.keys().hasAll(['name', 'phone']);
+    }
+
+    function isValidService(data) {
+      return data.keys().hasAll(['name', 'category', 'price', 'status']) &&
+             validStringLength(data.name, 1, 100) &&
+             validStringLength(data.category, 1, 50) &&
+             data.price is number && data.price > 0 &&
+             data.status in ['Active', 'Inactive'];
+    }
+
+    function isValidDriver(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'status']) &&
+             validStringLength(data.name, 1, 100) &&
+             validStringLength(data.phone, 1, 30) &&
+             data.status in ['Available', 'On Delivery', 'Inactive'];
+    }
+
+    function isValidFaq(data) {
+      return data.keys().hasAll(['question', 'answer', 'status']) &&
+             validStringLength(data.question, 1, 300) &&
+             validStringLength(data.answer, 1, 2000) &&
+             data.status in ['Active', 'Inactive'];
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isStaff();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
+        (isOwner(userId) && request.resource.data.role == 'customer') || isAdmin()
+      );
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (
+        (isOwner(userId) && request.resource.data.role == resource.data.role && request.resource.data.uid == resource.data.uid) || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 2. Customers Directory
+    match /customers/{customerId} {
+      allow read: if isAuthenticated() && (
+        resource.data.uid == request.auth.uid || isStaff()
+      );
+      allow create: if isAuthenticated() && isValidCustomer(request.resource.data) && (
+        request.resource.data.uid == request.auth.uid || isStaff()
+      );
+      allow update: if isAuthenticated() && isValidCustomer(request.resource.data) && (
+        resource.data.uid == request.auth.uid || isStaff()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 3. Orders Collection
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (
+        resource.data.customerId == request.auth.uid || isStaff()
+      );
+      allow create: if isValidOrder(request.resource.data) && (
+        !isAuthenticated() || request.resource.data.customerId == request.auth.uid || isStaff()
+      );
+      allow update: if isAuthenticated() && isValidOrder(request.resource.data) && (
+        isStaff() || (
+          resource.data.customerId == request.auth.uid &&
+          request.resource.data.customerId == resource.data.customerId &&
+          request.resource.data.amount == resource.data.amount
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 4. Services Catalog
+    match /services/{serviceId} {
+      allow read: if true;
+      allow create, update: if isStaff() && isValidService(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // 5. Drivers Management
+    match /drivers/{driverId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff() && isValidDriver(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // 6. FAQs
+    match /faqs/{faqId} {
+      allow read: if true;
+      allow create, update: if isStaff() && isValidFaq(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // 7. Settings Document
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 8. Content / Terms Document
+    match /content/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
