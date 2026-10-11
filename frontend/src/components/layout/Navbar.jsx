@@ -8,22 +8,71 @@ export const Navbar = () => {
   const { currentUser, userProfile, userRole, isAuthenticated, logout, openAuthModal } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-  const [portalsDropdownOpen, setPortalsDropdownOpen] = useState(false);
 
   const isDeliveryAgent = userRole === 'delivery_agent' || userRole === 'delivery';
   const isLaundryStaff = userRole === 'laundry_staff' || userRole === 'laundry';
   const isCustomer = !isDeliveryAgent && !isLaundryStaff && userRole !== 'admin' && userRole !== 'super_admin';
 
   const navItems = [
-    { label: 'Home', id: 'home', action: () => navigateTo('home') },
-    { label: 'Our Services', id: 'services', action: () => navigateTo('services', 'dry-cleaning') },
-    ...(isAuthenticated && isCustomer ? [
-      { label: 'My Orders', id: 'customer-orders', action: () => navigateTo('customer-orders') },
-      { label: 'Track Order', id: 'customer-track', action: () => navigateTo('customer-track') }
-    ] : []),
-    { label: 'How It Works', id: 'how-it-works', action: () => { navigateTo('home'); setTimeout(() => { document.getElementById('process-section')?.scrollIntoView({ behavior: 'smooth' }); }, 100); } },
-    { label: 'Pricing', id: 'pricing', action: () => { navigateTo('home'); setTimeout(() => { document.getElementById('pricing-section')?.scrollIntoView({ behavior: 'smooth' }); }, 100); } },
-    { label: 'About Us', id: 'about', action: () => { navigateTo('home'); setTimeout(() => { document.getElementById('about-section')?.scrollIntoView({ behavior: 'smooth' }); }, 100); } },
+    { 
+      label: 'Home', 
+      id: 'home', 
+      action: () => { 
+        navigateTo('home'); 
+        window.scrollTo({ top: 0, behavior: 'smooth' }); 
+      } 
+    },
+    { 
+      label: 'About Us', 
+      id: 'about', 
+      action: () => { 
+        navigateTo('home'); 
+        setTimeout(() => { 
+          document.getElementById('about-section')?.scrollIntoView({ behavior: 'smooth' }); 
+        }, 80); 
+      } 
+    },
+    { 
+      label: 'Our Services', 
+      id: 'services', 
+      action: () => { 
+        if (currentPage === 'home') {
+          document.getElementById('services-section')?.scrollIntoView({ behavior: 'smooth' }); 
+        } else {
+          navigateTo('services', 'dry-cleaning'); 
+        }
+      } 
+    },
+    { 
+      label: 'Why Us', 
+      id: 'why-us', 
+      action: () => { 
+        navigateTo('home'); 
+        setTimeout(() => { 
+          document.getElementById('why-us-section')?.scrollIntoView({ behavior: 'smooth' }); 
+        }, 80); 
+      } 
+    },
+    { 
+      label: 'Pricing', 
+      id: 'pricing', 
+      action: () => { 
+        navigateTo('home'); 
+        setTimeout(() => { 
+          document.getElementById('pricing-section')?.scrollIntoView({ behavior: 'smooth' }); 
+        }, 80); 
+      } 
+    },
+    { 
+      label: 'How It Works', 
+      id: 'how-it-works', 
+      action: () => { 
+        navigateTo('home'); 
+        setTimeout(() => { 
+          document.getElementById('process-section')?.scrollIntoView({ behavior: 'smooth' }); 
+        }, 80); 
+      } 
+    },
   ];
 
   const handleLogout = async () => {
@@ -38,7 +87,6 @@ export const Navbar = () => {
         {/* Brand Logo */}
         <div className="brand-logo" onClick={() => navigateTo('home')}>
           <span className="logo-text">Laund<span className="logo-accent">rix</span></span>
-          <span className="logo-dot"></span>
         </div>
 
         {/* Desktop Navigation Links */}
@@ -62,7 +110,7 @@ export const Navbar = () => {
 
         {/* Header Action Button */}
         <div className="nav-actions">
-          {isAuthenticated ? (
+          {isAuthenticated && (
             <div className="user-profile-menu-wrap">
               <button 
                 className="user-profile-btn"
@@ -137,103 +185,7 @@ export const Navbar = () => {
                 </div>
               )}
             </div>
-          ) : (
-            <button 
-              id="nav-login-btn"
-              className="customer-signin-btn"
-              onClick={() => navigateTo('login')}
-              style={{
-                background: '#0D7A75',
-                color: '#FFFFFF',
-                borderColor: '#0D7A75',
-                padding: '8px 18px',
-                fontWeight: 700
-              }}
-            >
-              <User size={15} />
-              <span>Login</span>
-            </button>
           )}
-
-          {/* Portals Switcher Menu */}
-          <div className="portals-menu-wrapper" style={{ position: 'relative' }}>
-            <button 
-              className="admin-portal-link-btn"
-              onClick={() => setPortalsDropdownOpen(!portalsDropdownOpen)}
-              title="Switch between Portals"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <span>Portals</span>
-              <ChevronDown size={14} style={{ transform: portalsDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-            </button>
-
-            {portalsDropdownOpen && (
-              <div 
-                className="nav-dropdown-card animate-fade-in"
-                style={{ 
-                  position: 'absolute', 
-                  right: 0, 
-                  top: 'calc(100% + 8px)', 
-                  minWidth: '220px', 
-                  zIndex: 1000,
-                  background: '#ffffff',
-                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
-                  borderRadius: '12px',
-                  border: '1px solid #E2E8F0',
-                  padding: '8px'
-                }}
-              >
-                <div style={{ padding: '6px 12px 8px', fontSize: '0.6875rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Quick Portal Switcher
-                </div>
-                <button 
-                  className="dropdown-action-item" 
-                  style={{ color: '#0D7A75', width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '8px', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                  onClick={() => { setPortalsDropdownOpen(false); navigateTo('customer-dashboard'); }}
-                >
-                  <LayoutDashboard size={16} />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Customer Portal</div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>Dashboard & Orders</div>
-                  </div>
-                </button>
-                <button 
-                  className="dropdown-action-item" 
-                  style={{ color: '#1D4ED8', width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '8px', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                  onClick={() => { setPortalsDropdownOpen(false); navigateTo('delivery-portal'); }}
-                >
-                  <Truck size={16} />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Delivery Portal</div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>Field agent pickups</div>
-                  </div>
-                </button>
-                <button 
-                  className="dropdown-action-item" 
-                  style={{ color: '#7C3AED', width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '8px', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                  onClick={() => { setPortalsDropdownOpen(false); navigateTo('laundry-portal'); }}
-                >
-                  <Layers size={16} />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Laundry Hub Portal</div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>Wash, QC & dispatch</div>
-                  </div>
-                </button>
-                <div style={{ height: '1px', background: '#E2E8F0', margin: '6px 0' }} />
-                <button 
-                  className="dropdown-action-item" 
-                  style={{ color: '#0E4B56', width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '8px', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                  onClick={() => { setPortalsDropdownOpen(false); navigateTo('admin'); }}
-                >
-                  <Sparkles size={16} />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Admin Portal</div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>Management suite</div>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
 
           <button
             id="nav-book-pickup-btn"
@@ -343,21 +295,12 @@ export const Navbar = () => {
         .logo-text {
           font-size: 1.625rem;
           font-weight: 800;
-          color: #0D7A75;
-          letter-spacing: -0.03em;
+          color: #0F172A;
+          letter-spacing: -0.02em;
         }
 
         .logo-accent {
-          color: #0E4B56;
-        }
-
-        .logo-dot {
-          width: 6px;
-          height: 6px;
-          background: #FF6B50;
-          border-radius: 50%;
-          margin-left: 2px;
-          margin-top: 10px;
+          color: #0D7A75;
         }
 
         .desktop-nav {
