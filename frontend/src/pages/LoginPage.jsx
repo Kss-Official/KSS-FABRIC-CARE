@@ -5,6 +5,7 @@ import { useAdmin } from '../context/AdminContext';
 import {
   Package,
   Truck,
+  BarChart3,
   TrendingUp,
   Eye,
   EyeOff,
@@ -149,30 +150,24 @@ export const LoginPage = () => {
             <div className="login-features-imagery-row">
               <div className="login-benefits-list">
                 <div className="login-benefit-item">
-                  <div className="benefit-icon-wrap">
-                    <Package size={20} />
-                  </div>
-                  <div>
+                  <Package size={22} className="benefit-icon" strokeWidth={1.8} />
+                  <div className="benefit-text-wrap">
                     <h4 className="benefit-title">Track Orders</h4>
                     <p className="benefit-desc">From pickup to delivery</p>
                   </div>
                 </div>
 
                 <div className="login-benefit-item">
-                  <div className="benefit-icon-wrap">
-                    <Truck size={20} />
-                  </div>
-                  <div>
+                  <Truck size={22} className="benefit-icon" strokeWidth={1.8} />
+                  <div className="benefit-text-wrap">
                     <h4 className="benefit-title">Manage Operations</h4>
                     <p className="benefit-desc">Keep everything on schedule</p>
                   </div>
                 </div>
 
                 <div className="login-benefit-item">
-                  <div className="benefit-icon-wrap">
-                    <TrendingUp size={20} />
-                  </div>
-                  <div>
+                  <BarChart3 size={22} className="benefit-icon" strokeWidth={1.8} />
+                  <div className="benefit-text-wrap">
                     <h4 className="benefit-title">Grow Your Business</h4>
                     <p className="benefit-desc">Serve more customers efficiently</p>
                   </div>
@@ -182,13 +177,13 @@ export const LoginPage = () => {
               {/* Folded Towels with Leaf Imagery */}
               <div className="login-visual-towels">
                 <img 
-                  src="/assets/folded_towels_leaf_1791619103155.jpg" 
+                  src="/assets/folded_towels_transparent.png" 
                   alt="Fresh laundered towels" 
                   className="login-towels-img"
                   loading="eager"
                   onError={(e) => {
                     e.target.onerror = null;
-                    e.target.src = '/assets/folded-towels.jpg';
+                    e.target.src = '/assets/folded_towels_mint.jpg';
                   }}
                 />
               </div>
@@ -395,21 +390,23 @@ export const LoginPage = () => {
       <style>{`
         .login-page-wrapper {
           min-height: 100vh;
-          background: radial-gradient(circle at 15% 45%, #E5F6F3 0%, #EFFBF9 50%, #DCF4F0 100%);
+          background-color: #EDFAF8;
+          background-image: radial-gradient(circle at 18% 45%, #F4FEFD 0%, #EBF8F6 50%, #DFF4F0 100%);
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 48px 32px;
+          padding: 48px 36px;
           position: relative;
           overflow-x: hidden;
+          font-family: inherit;
         }
 
         .login-page-container {
           display: grid;
-          grid-template-columns: 1.15fr 0.85fr;
-          max-width: 1160px;
+          grid-template-columns: 1.18fr 0.82fr;
+          max-width: 1180px;
           width: 100%;
-          gap: 56px;
+          gap: 52px;
           align-items: center;
         }
 
@@ -460,9 +457,9 @@ export const LoginPage = () => {
 
         .login-features-imagery-row {
           display: flex;
-          align-items: center;
-          gap: 24px;
-          margin-top: 8px;
+          align-items: flex-end;
+          justify-content: space-between;
+          margin-top: 18px;
           position: relative;
         }
 
@@ -470,66 +467,59 @@ export const LoginPage = () => {
           flex: 1;
           display: flex;
           flex-direction: column;
-          gap: 20px;
+          gap: 24px;
+          z-index: 2;
         }
 
         .login-benefit-item {
           display: flex;
-          align-items: center;
-          gap: 14px;
+          align-items: flex-start;
+          gap: 15px;
         }
 
-        .benefit-icon-wrap {
-          width: 40px;
-          height: 40px;
-          border-radius: 10px;
-          background: rgba(13, 122, 117, 0.08);
+        .benefit-icon {
           color: #0D7A75;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           flex-shrink: 0;
-          transition: transform 0.2s ease;
+          margin-top: 1px;
         }
 
-        .login-benefit-item:hover .benefit-icon-wrap {
-          transform: scale(1.05);
-          background: rgba(13, 122, 117, 0.14);
+        .benefit-text-wrap {
+          display: flex;
+          flex-direction: column;
         }
 
         .benefit-title {
           font-size: 0.9375rem;
-          font-weight: 700;
+          font-weight: 750;
           color: #0F172A;
           margin: 0 0 2px;
+          line-height: 1.25;
         }
 
         .benefit-desc {
           font-size: 0.8125rem;
           color: #64748B;
           margin: 0;
+          line-height: 1.35;
         }
 
         .login-visual-towels {
-          width: 290px;
-          height: 195px;
-          border-radius: 20px;
-          overflow: hidden;
+          width: 360px;
+          max-width: 50%;
           flex-shrink: 0;
-          box-shadow: 0 20px 40px rgba(13, 122, 117, 0.16);
-          border: 3px solid #FFFFFF;
-          transition: transform 0.3s ease;
-        }
-
-        .login-visual-towels:hover {
-          transform: translateY(-4px);
+          background: transparent;
+          border: none;
+          box-shadow: none;
+          overflow: visible;
+          pointer-events: none;
         }
 
         .login-towels-img {
           width: 100%;
-          height: 100%;
-          object-fit: cover;
+          height: auto;
           display: block;
+          object-fit: contain;
+          filter: drop-shadow(0 15px 25px rgba(13, 122, 117, 0.08));
         }
 
         .login-right-col {
@@ -641,14 +631,22 @@ export const LoginPage = () => {
 
         .form-input {
           width: 100%;
-          border: 1.5px solid #E2E8F0;
+          border: 1.5px solid #E2E8F0 !important;
           border-radius: 12px;
           font-size: 0.875rem;
           color: #0F172A;
-          background: #FFFFFF;
+          background: #FFFFFF !important;
           padding: 12px 14px;
           transition: all 0.2s ease;
           box-sizing: border-box;
+        }
+
+        .form-input:-webkit-autofill,
+        .form-input:-webkit-autofill:hover, 
+        .form-input:-webkit-autofill:focus {
+          -webkit-box-shadow: 0 0 0px 1000px #FFFFFF inset !important;
+          -webkit-text-fill-color: #0F172A !important;
+          transition: background-color 5000s ease-in-out 0s;
         }
 
         .form-input.with-icon {
@@ -660,8 +658,8 @@ export const LoginPage = () => {
         }
 
         .form-input:focus {
-          border-color: #0D7A75;
-          box-shadow: 0 0 0 3.5px rgba(13, 122, 117, 0.12);
+          border-color: #0D7A75 !important;
+          box-shadow: 0 0 0 3.5px rgba(13, 122, 117, 0.12) !important;
           outline: none;
         }
 
@@ -857,7 +855,7 @@ export const LoginPage = () => {
           .login-visual-towels {
             width: 100%;
             max-width: 280px;
-            height: 170px;
+            height: auto;
           }
           .login-card-container {
             padding: 32px 20px;
