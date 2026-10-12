@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { ordersApi } from '../api/apiClient';
@@ -27,6 +27,7 @@ export const PaymentsInvoices = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const modalScrollRef = useRef(null);
 
   // Helper date formatters
   const formatInvoiceDate = (dateStr) => {
@@ -105,21 +106,42 @@ export const PaymentsInvoices = () => {
     fetchOrdersAndInvoices();
   }, [activeTrackingOrderId]);
 
-  // Lock background page scroll while invoice modal is open
+  // Lock background page scroll while invoice modal is open, and reset modal scroll to top every time
   useEffect(() => {
     if (isModalOpen) {
       const prevOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
+
+      // Always reset modal content scroll position to the very top (0)
+      if (modalScrollRef.current) {
+        modalScrollRef.current.scrollTop = 0;
+      }
+      const animFrame = requestAnimationFrame(() => {
+        if (modalScrollRef.current) {
+          modalScrollRef.current.scrollTop = 0;
+        }
+      });
+      const timer = setTimeout(() => {
+        if (modalScrollRef.current) {
+          modalScrollRef.current.scrollTop = 0;
+        }
+      }, 40);
+
       return () => {
         document.body.style.overflow = prevOverflow || '';
+        cancelAnimationFrame(animFrame);
+        clearTimeout(timer);
       };
     }
-  }, [isModalOpen]);
+  }, [isModalOpen, selectedOrder]);
 
   // Click handler for "View Invoice/Bill": opens the exact reference invoice modal
   const handleViewInvoiceClick = (order) => {
     setSelectedOrder(order);
     setIsModalOpen(true);
+    if (modalScrollRef.current) {
+      modalScrollRef.current.scrollTop = 0;
+    }
   };
 
   const getActiveOrderNumber = (ord = selectedOrder) => {
@@ -709,11 +731,11 @@ export const PaymentsInvoices = () => {
                 </span>
               </div>
               <div className="invoice-modal-actions">
-                {/* Download PDF & Print shown clearly inside modal */}
+                {/* Download PDF & Print options clearly visible and matching reference Image 1 */}
                 <button 
                   type="button"
                   onClick={handleDownload}
-                  className="modal-action-btn btn-download-pdf"
+                  className="modal-action-pill btn-download-pdf-pill"
                   disabled={isDownloadingPdf}
                   title="Download Official Tax Invoice PDF"
                 >
@@ -723,7 +745,7 @@ export const PaymentsInvoices = () => {
                 <button 
                   type="button"
                   onClick={handlePrint}
-                  className="modal-action-btn btn-print-invoice"
+                  className="modal-action-pill btn-print-pill"
                   title="Print Official Tax Invoice"
                 >
                   <Printer size={14} />
@@ -741,7 +763,11 @@ export const PaymentsInvoices = () => {
               </div>
             </div>
 
-            <div className="invoice-modal-content-scroll">
+            <div 
+              ref={modalScrollRef} 
+              key={selectedOrder?.id || getActiveOrderNumber(selectedOrder)}
+              className="invoice-modal-content-scroll"
+            >
               {renderTaxInvoiceCard(selectedOrder)}
             </div>
           </div>
@@ -1398,10 +1424,10 @@ export const PaymentsInvoices = () => {
           -webkit-backdrop-filter: blur(8px);
           z-index: 9999;
           display: flex;
-          align-items: flex-start;
+          align-items: center;
           justify-content: center;
-          padding: 24px 16px;
-          overflow-y: auto;
+          padding: 20px 16px;
+          overflow: hidden !important; /* CRITICAL: Overlay NEVER scrolls */
           overscroll-behavior: contain;
         }
 
@@ -1410,19 +1436,19 @@ export const PaymentsInvoices = () => {
           border-radius: 20px;
           max-width: 900px;
           width: 100%;
-          max-height: calc(100vh - 48px);
-          overflow: hidden;
-          box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08);
+          max-height: calc(100vh - 40px);
+          overflow: hidden !important; /* Clips container corners, anchors header */
+          box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.08);
           display: flex;
           flex-direction: column;
-          margin: auto 0;
+          margin: 0 auto;
           position: relative;
           animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .invoice-modal-top-bar {
           flex-shrink: 0;
-          min-height: 62px;
+          min-height: 60px;
           background: #ffffff;
           border-bottom: 1.5px solid #E2E8F0;
           padding: 12px 24px;
@@ -1431,9 +1457,8 @@ export const PaymentsInvoices = () => {
           justify-content: space-between;
           gap: 16px;
           z-index: 50;
-          position: sticky;
-          top: 0;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+          position: relative;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
         }
 
         .modal-header-title-wrap {
@@ -1455,48 +1480,33 @@ export const PaymentsInvoices = () => {
           gap: 10px;
         }
 
-        .modal-action-btn {
+        .modal-action-pill {
           display: inline-flex;
           align-items: center;
-          gap: 7px;
-          padding: 8px 16px;
+          gap: 6px;
+          padding: 7px 15px;
           border-radius: 999px;
           font-size: 0.8125rem;
           font-weight: 700;
           cursor: pointer;
-          transition: all 0.18s ease;
+          transition: all 0.15s ease;
           white-space: nowrap;
           text-decoration: none;
+          border: 1.5px solid #0D7A75;
+          background: #ffffff;
+          color: #0D7A75;
         }
 
-        .btn-download-pdf {
-          background: #0D7A75 !important;
-          color: #ffffff !important;
-          border: 1.5px solid #0D7A75 !important;
-          box-shadow: 0 2px 8px rgba(13, 122, 117, 0.28);
+        .modal-action-pill:hover {
+          background: #0D7A75;
+          color: #ffffff;
+          transform: translateY(-1px);
         }
 
-        .btn-download-pdf:hover {
-          background: #095955 !important;
-          border-color: #095955 !important;
-          box-shadow: 0 4px 12px rgba(13, 122, 117, 0.38);
-        }
-
-        .btn-download-pdf:disabled {
-          opacity: 0.7;
+        .modal-action-pill:disabled {
+          opacity: 0.65;
           cursor: not-allowed;
-        }
-
-        .btn-print-invoice {
-          background: #ffffff !important;
-          color: #0D7A75 !important;
-          border: 1.5px solid #0D7A75 !important;
-        }
-
-        .btn-print-invoice:hover {
-          background: #E8FAF6 !important;
-          color: #095955 !important;
-          border-color: #095955 !important;
+          transform: none;
         }
 
         .modal-close-circle-btn {
@@ -1515,18 +1525,18 @@ export const PaymentsInvoices = () => {
         }
 
         .modal-close-circle-btn:hover {
-          background: #F1F5F9;
+          background: #E2E8F0;
           color: #0F172A;
           border-color: #CBD5E1;
         }
 
         .invoice-modal-content-scroll {
           flex: 1 1 auto;
-          min-height: 0;
-          overflow-y: auto;
+          min-height: 0 !important;
+          overflow-y: auto !important;
           overflow-x: hidden;
           overscroll-behavior: contain;
-          padding: 24px 28px 32px;
+          padding: 24px 28px 48px;
           scrollbar-width: thin;
           scrollbar-color: #CBD5E1 #F8FAFC;
         }
@@ -1574,11 +1584,11 @@ export const PaymentsInvoices = () => {
 
         @media (max-width: 680px) {
           .invoice-modal-overlay {
-            padding: 12px 8px;
+            padding: 10px 8px;
           }
 
           .invoice-modal-container {
-            max-height: calc(100vh - 24px);
+            max-height: calc(100vh - 20px);
             border-radius: 14px;
           }
 
@@ -1592,13 +1602,13 @@ export const PaymentsInvoices = () => {
             font-size: 0.85rem;
           }
 
-          .modal-action-btn {
-            padding: 6px 12px;
+          .modal-action-pill {
+            padding: 5px 12px;
             font-size: 0.75rem;
           }
 
           .invoice-modal-content-scroll {
-            padding: 16px 12px;
+            padding: 16px 12px 36px;
           }
 
           .tax-invoice-document-card {
