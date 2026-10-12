@@ -371,7 +371,6 @@ export const PaymentsInvoices = () => {
                     <Check size={11} strokeWidth={3} />
                   </div>
                   <span className="node-title">Order Placed</span>
-                  <span className="node-time">12 Oct, 08:45 AM</span>
                 </div>
 
                 <div className="stepper-bar-line completed"></div>
@@ -382,7 +381,6 @@ export const PaymentsInvoices = () => {
                     <Check size={11} strokeWidth={3} />
                   </div>
                   <span className="node-title">Picked Up</span>
-                  <span className="node-time">12 Oct, 10:15 AM</span>
                 </div>
 
                 <div className="stepper-bar-line completed"></div>
