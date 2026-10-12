@@ -7,14 +7,33 @@ export const OrderConfirmedPage = () => {
   const { lastOrder, navigateTo, startBooking } = useBooking();
 
   useEffect(() => {
-    // Trigger celebratory confetti
+    // Trigger celebratory confetti animation
     try {
       confetti({
-        particleCount: 80,
-        spread: 70,
+        particleCount: 90,
+        spread: 75,
         origin: { y: 0.6 },
         colors: ['#0D7A75', '#FF6B50', '#64DFDF', '#FFD166']
       });
+
+      const timer = setTimeout(() => {
+        confetti({
+          particleCount: 50,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.65 },
+          colors: ['#0D7A75', '#64DFDF', '#FFD166']
+        });
+        confetti({
+          particleCount: 50,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.65 },
+          colors: ['#0D7A75', '#FF6B50', '#FFD166']
+        });
+      }, 300);
+
+      return () => clearTimeout(timer);
     } catch (e) {
       console.log('Confetti effect');
     }
@@ -24,11 +43,11 @@ export const OrderConfirmedPage = () => {
     <div className="confirmed-page-wrapper">
       <div className="container">
         <div className="confirmed-card animate-fade-in">
-          {/* Mascot 3D Illustration */}
+          {/* Pickup Confirmed Illustration */}
           <div className="mascot-illustration-wrapper">
             <img
-              src="/assets/pickup-confirmed-mascot.jpg"
-              alt="Pickup Confirmed Mascot Courier"
+              src="/assets/pickup-confirmed.png"
+              alt="Pickup Confirmed"
               className="mascot-img"
             />
           </div>
@@ -133,18 +152,31 @@ export const OrderConfirmedPage = () => {
         }
 
         .mascot-illustration-wrapper {
-          width: 320px;
-          height: 240px;
+          width: 380px;
+          max-width: 100%;
           margin: 0 auto 16px;
           display: flex;
           align-items: center;
           justify-content: center;
+          animation: floatCourier 3.2s ease-in-out infinite;
+          filter: drop-shadow(0 14px 28px rgba(13, 122, 117, 0.1));
+        }
+
+        @keyframes floatCourier {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-8px);
+          }
         }
 
         .mascot-img {
-          max-width: 100%;
-          max-height: 100%;
+          width: 100%;
+          height: auto;
+          max-height: 260px;
           object-fit: contain;
+          display: block;
         }
 
         .confirmed-title {

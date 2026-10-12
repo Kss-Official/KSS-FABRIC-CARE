@@ -28,7 +28,7 @@ export const Footer = () => {
   };
 
   return (
-    <footer className="footer-root">
+    <footer className="footer-root no-print">
       <div className="footer-inner-container">
         {/* Main 4-Column Section with Vertical Dividers */}
         <div className="footer-main-grid">

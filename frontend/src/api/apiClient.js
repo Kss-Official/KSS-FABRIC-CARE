@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001/api';
 
 /**
  * Universal fetch client with automatic JWT token injection and JSON parsing
@@ -34,7 +34,14 @@ async function request(endpoint, options = {}) {
     : await response.text();
 
   if (!response.ok) {
-    const error = new Error(data?.error || data?.detail || `HTTP Error ${response.status}`);
+    let errorMsg = data?.error || data?.detail;
+    if (!errorMsg && typeof data === 'object' && data !== null) {
+      const messages = Object.entries(data)
+        .map(([k, v]) => Array.isArray(v) ? `${k}: ${v.join(', ')}` : `${k}: ${v}`)
+        .join('; ');
+      if (messages) errorMsg = messages;
+    }
+    const error = new Error(errorMsg || `HTTP Error ${response.status}`);
     error.response = { data, status: response.status };
     throw error;
   }

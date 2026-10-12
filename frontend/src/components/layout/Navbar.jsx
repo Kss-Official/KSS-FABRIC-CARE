@@ -65,7 +65,7 @@ export const Navbar = () => {
   };
 
   return (
-    <header className="navbar-wrapper">
+    <header className="navbar-wrapper no-print">
       <div className="container nav-container">
         {/* Brand Logo */}
         <div className="brand-logo" onClick={() => navigateTo('home')}>
@@ -127,10 +127,6 @@ export const Navbar = () => {
                       <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-invoices'); }}>
                         <FileText size={15} />
                         <span>Invoices & Bills</span>
-                      </button>
-                      <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-addresses'); }}>
-                        <MapPin size={15} />
-                        <span>Saved Addresses</span>
                       </button>
                       <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-notifications'); }}>
                         <Bell size={15} />
