@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { ordersApi } from '../api/apiClient';
@@ -106,31 +107,36 @@ export const PaymentsInvoices = () => {
     fetchOrdersAndInvoices();
   }, [activeTrackingOrderId]);
 
+  // Synchronously reset modal scroll to top before browser paint
+  useLayoutEffect(() => {
+    if (isModalOpen && modalScrollRef.current) {
+      modalScrollRef.current.scrollTop = 0;
+    }
+  }, [isModalOpen, selectedOrder]);
+
   // Lock background page scroll while invoice modal is open, and reset modal scroll to top every time
   useEffect(() => {
     if (isModalOpen) {
       const prevOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
 
-      // Always reset modal content scroll position to the very top (0)
-      if (modalScrollRef.current) {
-        modalScrollRef.current.scrollTop = 0;
-      }
-      const animFrame = requestAnimationFrame(() => {
+      const resetScrollToTop = () => {
         if (modalScrollRef.current) {
           modalScrollRef.current.scrollTop = 0;
         }
-      });
-      const timer = setTimeout(() => {
-        if (modalScrollRef.current) {
-          modalScrollRef.current.scrollTop = 0;
-        }
-      }, 40);
+      };
+
+      // Reset immediately, and after layout/render frames
+      resetScrollToTop();
+      const animFrame = requestAnimationFrame(resetScrollToTop);
+      const timer1 = setTimeout(resetScrollToTop, 25);
+      const timer2 = setTimeout(resetScrollToTop, 80);
 
       return () => {
         document.body.style.overflow = prevOverflow || '';
         cancelAnimationFrame(animFrame);
-        clearTimeout(timer);
+        clearTimeout(timer1);
+        clearTimeout(timer2);
       };
     }
   }, [isModalOpen, selectedOrder]);
@@ -719,8 +725,8 @@ export const PaymentsInvoices = () => {
         )}
       </div>
 
-      {/* 3. Modal Dialog for "View Invoice" (Displays Selected Order's Individual Invoice) */}
-      {isModalOpen && (
+      {/* 3. Modal Dialog for "View Invoice" (Rendered via React Portal directly into document.body to guarantee overlay covers entire viewport including sticky navbar) */}
+      {isModalOpen && typeof document !== 'undefined' && createPortal(
         <div className="invoice-modal-overlay" onClick={() => setIsModalOpen(false)}>
           <div className="invoice-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="invoice-modal-top-bar no-print">
@@ -771,7 +777,8 @@ export const PaymentsInvoices = () => {
               {renderTaxInvoiceCard(selectedOrder)}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <style>{`
@@ -1419,16 +1426,20 @@ export const PaymentsInvoices = () => {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(15, 23, 42, 0.55);
+          width: 100vw;
+          height: 100vh;
+          background: rgba(15, 23, 42, 0.65);
           backdrop-filter: blur(8px);
           -webkit-backdrop-filter: blur(8px);
-          z-index: 9999;
+          z-index: 999999 !important; /* CRITICAL: High z-index to sit above site-wide sticky navbar (1000) */
           display: flex;
+          flex-direction: column;
           align-items: center;
-          justify-content: center;
-          padding: 20px 16px;
-          overflow: hidden !important; /* CRITICAL: Overlay NEVER scrolls */
+          justify-content: flex-start; /* CRITICAL: Anchors modal to top padding, top header is NEVER pushed off-screen */
+          padding: 24px 16px;
+          overflow: hidden !important; /* Overlay never scrolls, page never scrolls */
           overscroll-behavior: contain;
+          box-sizing: border-box;
         }
 
         .invoice-modal-container {
@@ -1436,19 +1447,21 @@ export const PaymentsInvoices = () => {
           border-radius: 20px;
           max-width: 900px;
           width: 100%;
-          max-height: calc(100vh - 40px);
-          overflow: hidden !important; /* Clips container corners, anchors header */
-          box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.08);
+          height: calc(100vh - 48px); /* CRITICAL: Definite height so flex child knows exact height to fill and scroll */
+          max-height: calc(100vh - 48px);
+          overflow: hidden !important; /* Clips container corners, anchors fixed top-bar */
+          box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.08);
           display: flex;
           flex-direction: column;
           margin: 0 auto;
           position: relative;
+          box-sizing: border-box;
           animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .invoice-modal-top-bar {
-          flex-shrink: 0;
-          min-height: 60px;
+          flex: 0 0 auto; /* CRITICAL: Fixed header, never grows or shrinks */
+          min-height: 62px;
           background: #ffffff;
           border-bottom: 1.5px solid #E2E8F0;
           padding: 12px 24px;
@@ -1456,8 +1469,9 @@ export const PaymentsInvoices = () => {
           align-items: center;
           justify-content: space-between;
           gap: 16px;
-          z-index: 50;
+          z-index: 20;
           position: relative;
+          box-sizing: border-box;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
         }
 
@@ -1531,14 +1545,16 @@ export const PaymentsInvoices = () => {
         }
 
         .invoice-modal-content-scroll {
-          flex: 1 1 auto;
-          min-height: 0 !important;
-          overflow-y: auto !important;
+          flex: 1 1 0% !important; /* CRITICAL: Fills remainder of modal container */
+          min-height: 0 !important; /* CRITICAL: Allows flex child to shrink below its content height */
+          overflow-y: auto !important; /* CRITICAL: Dedicated vertical scrollbar */
           overflow-x: hidden;
           overscroll-behavior: contain;
           padding: 24px 28px 48px;
           scrollbar-width: thin;
           scrollbar-color: #CBD5E1 #F8FAFC;
+          box-sizing: border-box;
+          scroll-behavior: auto !important; /* Instant reset to 0, no smooth scrolling lag */
         }
 
         .invoice-modal-content-scroll::-webkit-scrollbar {
@@ -1588,12 +1604,14 @@ export const PaymentsInvoices = () => {
           }
 
           .invoice-modal-container {
+            height: calc(100vh - 20px);
             max-height: calc(100vh - 20px);
             border-radius: 14px;
           }
 
           .invoice-modal-top-bar {
             padding: 10px 14px;
+            min-height: 54px;
             flex-wrap: wrap;
             gap: 10px;
           }
@@ -1640,6 +1658,7 @@ export const PaymentsInvoices = () => {
           }
 
           /* Hide all site-wide elements, navigation, banners, headers, buttons */
+          body > *:not(.invoice-modal-overlay),
           header,
           footer,
           nav,
