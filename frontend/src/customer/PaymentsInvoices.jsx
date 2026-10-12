@@ -254,6 +254,8 @@ export const PaymentsInvoices = () => {
     };
   };
 
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
   const handlePrint = () => {
     const data = getOrderInvoiceData(selectedOrder);
     const orderNum = (data.orderNum || '').replace(/^#/, '');
@@ -265,15 +267,46 @@ export const PaymentsInvoices = () => {
     }, 1500);
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     const data = getOrderInvoiceData(selectedOrder);
     const orderNum = (data.orderNum || '').replace(/^#/, '');
-    const prevTitle = document.title;
-    document.title = `FabriCare_Invoice_${orderNum}`;
-    window.print();
-    setTimeout(() => {
-      document.title = prevTitle;
-    }, 1500);
+    const element = document.getElementById('tax-invoice-document-card');
+    if (!element) return;
+
+    setIsDownloadingPdf(true);
+    try {
+      const html2pdfModule = await import('html2pdf.js');
+      const html2pdf = html2pdfModule.default || html2pdfModule;
+
+      const opt = {
+        margin: [6, 8, 6, 8],
+        filename: `FabriCare_Invoice_${orderNum}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          scrollY: 0
+        },
+        jsPDF: {
+          unit: 'mm',
+          format: 'a4',
+          orientation: 'portrait'
+        }
+      };
+
+      await html2pdf().set(opt).from(element).save();
+    } catch (err) {
+      console.error('PDF download notice, running print fallback:', err);
+      const prevTitle = document.title;
+      document.title = `FabriCare_Invoice_${orderNum}`;
+      window.print();
+      setTimeout(() => {
+        document.title = prevTitle;
+      }, 1500);
+    } finally {
+      setIsDownloadingPdf(false);
+    }
   };
 
   // Reusable Tax Invoice Card Component matching Reference Image UI design
@@ -636,10 +669,11 @@ export const PaymentsInvoices = () => {
                 <button 
                   onClick={handleDownload}
                   className="modal-action-pill"
+                  disabled={isDownloadingPdf}
                   title="Download PDF"
                 >
-                  <Download size={14} />
-                  <span>Download PDF</span>
+                  <Download size={14} className={isDownloadingPdf ? 'animate-bounce' : ''} />
+                  <span>{isDownloadingPdf ? 'Downloading...' : 'Download PDF'}</span>
                 </button>
                 <button 
                   onClick={handlePrint}
@@ -1234,32 +1268,68 @@ export const PaymentsInvoices = () => {
           letter-spacing: -0.02em;
         }
 
-        /* 4. Modal Styles */
+        /* 4. Modal Styles with visible blurred background & scrollable content */
         .invoice-modal-overlay {
           position: fixed;
           top: 0;
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(15, 23, 42, 0.65);
-          backdrop-filter: blur(4px);
+          background: rgba(15, 23, 42, 0.45);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
           z-index: 9999;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
+          padding: 24px 16px;
         }
 
         .invoice-modal-container {
           background: #ffffff;
           border-radius: 20px;
-          max-width: 890px;
+          max-width: 900px;
           width: 100%;
+          max-height: 90vh;
           overflow: hidden;
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+          box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08);
           display: flex;
           flex-direction: column;
-          animation: modalFadeIn 0.2s ease-out;
+          animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .invoice-modal-top-bar {
+          flex-shrink: 0;
+          background: #ffffff;
+          border-bottom: 1px solid #F1F5F9;
+          z-index: 10;
+        }
+
+        .invoice-modal-content-scroll {
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: hidden;
+          max-height: calc(90vh - 65px);
+          padding: 24px;
+          scrollbar-width: thin;
+          scrollbar-color: #CBD5E1 #F8FAFC;
+        }
+
+        .invoice-modal-content-scroll::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .invoice-modal-content-scroll::-webkit-scrollbar-track {
+          background: #F8FAFC;
+        }
+
+        .invoice-modal-content-scroll::-webkit-scrollbar-thumb {
+          background-color: #CBD5E1;
+          border-radius: 999px;
+        }
+
+        .invoice-modal-content-scroll::-webkit-scrollbar-thumb:hover {
+          background-color: #94A3B8;
         }
 
         @keyframes modalFadeIn {
