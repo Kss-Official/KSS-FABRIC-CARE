@@ -352,63 +352,96 @@ export const PaymentsInvoices = () => {
           </div>
         </div>
 
-        {/* Bill To & Invoice Meta Data Row */}
+        {/* Bill To & Invoice Meta Data Section - Headings Above Data in Rows & Columns */}
         <div className="bill-to-meta-grid">
-          {/* Left: Bill To */}
+          {/* Left: Bill To (Customer Details) */}
           <div className="bill-to-section">
             <div className="bill-to-title-row">
               <User size={16} className="text-teal" />
-              <span className="bill-to-title">Bill To</span>
+              <span className="bill-to-title">Bill To (Customer Details)</span>
             </div>
-            <div className="bill-customer-info">
-              <div className="customer-name-bold">{data.customerName}</div>
-              <div className="customer-detail-text">{data.customerPhone}</div>
-              <div className="customer-detail-text">{data.customerEmail}</div>
-              <div className="customer-detail-text">{data.customerAddress}</div>
-              <div className="customer-detail-text">{data.customerCityState}</div>
+            <div className="bill-customer-info-grid">
+              <div className="bill-info-cell">
+                <span className="cell-heading-label">Customer Name</span>
+                <span className="cell-data-value font-bold text-navy">{data.customerName}</span>
+              </div>
+              <div className="bill-info-cell">
+                <span className="cell-heading-label">Contact Details</span>
+                <span className="cell-data-value">{data.customerPhone} &bull; {data.customerEmail}</span>
+              </div>
+              <div className="bill-info-cell">
+                <span className="cell-heading-label">Service &amp; Delivery Address</span>
+                <span className="cell-data-value">{data.customerAddress}, {data.customerCityState}</span>
+              </div>
             </div>
           </div>
 
-          {/* Right: Invoice Key-Values */}
-          <div className="invoice-meta-fields-list">
-            <div className="meta-field-row">
-              <div className="meta-label-wrap">
-                <FileText size={15} className="text-teal" />
-                <span>Invoice Date</span>
-              </div>
-              <span className="meta-val-text">{data.invoiceDate}</span>
+          {/* Right: Invoice & Order Details Grid (Rows & Columns, Headings Above Data) */}
+          <div className="invoice-meta-section">
+            <div className="invoice-meta-title-row">
+              <Receipt size={16} className="text-teal" />
+              <span className="invoice-meta-title">Invoice &amp; Order Details</span>
             </div>
 
-            <div className="meta-field-row">
-              <div className="meta-label-wrap">
-                <Receipt size={15} className="text-teal" />
-                <span>Order ID</span>
+            <div className="invoice-details-grid">
+              {/* Row 1, Col 1: Invoice Date */}
+              <div className="meta-field-cell">
+                <div className="meta-label-wrap">
+                  <FileText size={13} className="text-teal" />
+                  <span>Invoice Date</span>
+                </div>
+                <div className="meta-val-text">{data.invoiceDate}</div>
               </div>
-              <span className="meta-val-text font-bold">{data.orderNum}</span>
-            </div>
 
-            <div className="meta-field-row">
-              <div className="meta-label-wrap">
-                <Calendar size={15} className="text-teal" />
-                <span>Pickup Date</span>
+              {/* Row 1, Col 2: Order ID */}
+              <div className="meta-field-cell">
+                <div className="meta-label-wrap">
+                  <Receipt size={13} className="text-teal" />
+                  <span>Order ID</span>
+                </div>
+                <div className="meta-val-text font-mono font-bold">{data.orderNum}</div>
               </div>
-              <span className="meta-val-text">{data.pickupDisplay}</span>
-            </div>
 
-            <div className="meta-field-row">
-              <div className="meta-label-wrap">
-                <CreditCard size={15} className="text-teal" />
-                <span>Payment Method</span>
+              {/* Row 2, Col 1: Pickup Slot */}
+              <div className="meta-field-cell">
+                <div className="meta-label-wrap">
+                  <Calendar size={13} className="text-teal" />
+                  <span>Pickup Slot</span>
+                </div>
+                <div className="meta-val-text">{data.pickupDisplay}</div>
               </div>
-              <span className="meta-val-text font-semibold">{data.paymentMethod}</span>
-            </div>
 
-            <div className="meta-field-row">
-              <div className="meta-label-wrap">
-                <CheckCircle2 size={15} className="text-teal" />
-                <span>Transaction ID</span>
+              {/* Row 2, Col 2: Payment Method */}
+              <div className="meta-field-cell">
+                <div className="meta-label-wrap">
+                  <CreditCard size={13} className="text-teal" />
+                  <span>Payment Method</span>
+                </div>
+                <div className="meta-val-text font-semibold">{data.paymentMethod}</div>
               </div>
-              <span className="meta-val-text font-mono font-bold">{data.transactionId}</span>
+
+              {/* Row 3, Col 1: Transaction ID */}
+              <div className="meta-field-cell">
+                <div className="meta-label-wrap">
+                  <CheckCircle2 size={13} className="text-teal" />
+                  <span>Transaction ID</span>
+                </div>
+                <div className="meta-val-text font-mono font-bold">{data.transactionId}</div>
+              </div>
+
+              {/* Row 3, Col 2: Payment Status */}
+              <div className="meta-field-cell">
+                <div className="meta-label-wrap">
+                  <Check size={13} className="text-teal" />
+                  <span>Payment Status</span>
+                </div>
+                <div className="meta-val-text">
+                  <span className="paid-pill-badge">
+                    <Check size={11} strokeWidth={3} />
+                    <span>Paid</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -825,7 +858,26 @@ export const PaymentsInvoices = () => {
         }
 
         .orders-table {
-          border-collapse: collapse;
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+        }
+
+        .orders-table th {
+          padding: 12px 14px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #8FA0B5;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          border-bottom: 1.5px solid #E2E8F0;
+          white-space: nowrap;
+        }
+
+        .orders-table td {
+          padding: 13px 14px;
+          vertical-align: middle;
+          border-bottom: 1px solid #F1F5F9;
         }
 
         .order-status-pill {
@@ -946,64 +998,111 @@ export const PaymentsInvoices = () => {
           border-radius: 999px;
         }
 
-        /* Bill To & Meta Grid */
+        /* Bill To & Invoice Meta Data Section (Headings Above Data in Rows & Columns) */
         .bill-to-meta-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 24px;
-          padding: 24px 0;
+          grid-template-columns: 1fr 1.25fr;
+          gap: 20px;
+          padding: 22px 0;
+          align-items: stretch;
         }
 
-        .bill-to-title-row {
+        .bill-to-section,
+        .invoice-meta-section {
+          background: #F8FAFC;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 14px;
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .bill-to-title-row,
+        .invoice-meta-title-row {
           display: flex;
           align-items: center;
           gap: 7px;
-          margin-bottom: 10px;
+          margin-bottom: 12px;
+          padding-bottom: 8px;
+          border-bottom: 1.5px solid #E2E8F0;
         }
 
-        .bill-to-title {
-          font-size: 0.9375rem;
-          font-weight: 700;
+        .bill-to-title,
+        .invoice-meta-title {
+          font-size: 0.8125rem;
+          font-weight: 800;
           color: #0F172A;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
-        .customer-name-bold {
-          font-size: 1rem;
-          font-weight: 700;
-          color: #0F172A;
-          margin-bottom: 3px;
-        }
-
-        .customer-detail-text {
-          font-size: 0.875rem;
-          color: #64748B;
-          line-height: 1.45;
-        }
-
-        .invoice-meta-fields-list {
+        .bill-customer-info-grid {
           display: flex;
           flex-direction: column;
           gap: 10px;
+          flex: 1;
         }
 
-        .meta-field-row {
+        .bill-info-cell {
           display: flex;
-          align-items: center;
-          justify-content: space-between;
+          flex-direction: column;
+          gap: 3px;
+          background: #ffffff;
+          border: 1px solid #E2E8F0;
+          border-radius: 10px;
+          padding: 9px 12px;
+        }
+
+        .cell-heading-label {
+          font-size: 0.6875rem;
+          font-weight: 700;
+          color: #64748B;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .cell-data-value {
           font-size: 0.875rem;
+          color: #0F172A;
+          line-height: 1.35;
+        }
+
+        /* Invoice Meta Details Grid (Rows & Columns, Headings ABOVE Data) */
+        .invoice-details-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+          flex: 1;
+        }
+
+        .meta-field-cell {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          justify-content: center;
+          gap: 4px;
+          background: #ffffff;
+          border: 1px solid #E2E8F0;
+          border-radius: 10px;
+          padding: 9px 12px;
         }
 
         .meta-label-wrap {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
+          font-size: 0.6875rem;
+          font-weight: 700;
           color: #64748B;
-          font-weight: 500;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
         .meta-val-text {
+          font-size: 0.875rem;
+          font-weight: 600;
           color: #0F172A;
-          font-weight: 500;
+          line-height: 1.3;
         }
 
         /* Mint Thank You Banner */
@@ -1400,12 +1499,19 @@ export const PaymentsInvoices = () => {
         @media (max-width: 900px) {
           .bill-to-meta-grid {
             grid-template-columns: 1fr;
+            gap: 16px;
           }
           .invoice-bottom-split-grid {
             grid-template-columns: 1fr;
           }
           .tax-invoice-document-card {
             padding: 24px 20px;
+          }
+        }
+
+        @media (max-width: 580px) {
+          .invoice-details-grid {
+            grid-template-columns: 1fr;
           }
         }
 
@@ -1534,35 +1640,60 @@ export const PaymentsInvoices = () => {
           /* Compact Bill To & Meta Section */
           .bill-to-meta-grid {
             margin-bottom: 8px !important;
-            gap: 14px !important;
-            grid-template-columns: 1fr 1fr !important;
+            gap: 10px !important;
+            grid-template-columns: 1fr 1.25fr !important;
+            padding: 8px 0 !important;
           }
 
-          .bill-to-title-row {
-            margin-bottom: 4px !important;
+          .bill-to-section,
+          .invoice-meta-section {
+            padding: 8px 10px !important;
+            border-radius: 8px !important;
+            border: 1px solid #E2E8F0 !important;
+            background: #F8FAFC !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
 
-          .bill-to-title {
-            font-size: 0.8rem !important;
+          .bill-to-title-row,
+          .invoice-meta-title-row {
+            margin-bottom: 6px !important;
+            padding-bottom: 4px !important;
           }
 
-          .customer-name-bold {
-            font-size: 0.88rem !important;
-            margin-bottom: 2px !important;
-          }
-
-          .customer-detail-text {
+          .bill-to-title,
+          .invoice-meta-title {
             font-size: 0.72rem !important;
-            line-height: 1.3 !important;
           }
 
-          .invoice-meta-fields-list {
-            gap: 3px !important;
+          .bill-customer-info-grid {
+            gap: 6px !important;
           }
 
-          .meta-field-row {
-            padding: 2px 0 !important;
-            font-size: 0.75rem !important;
+          .invoice-details-grid {
+            gap: 6px !important;
+          }
+
+          .bill-info-cell,
+          .meta-field-cell {
+            padding: 5px 8px !important;
+            border-radius: 6px !important;
+            gap: 2px !important;
+            background: #ffffff !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .cell-heading-label,
+          .meta-label-wrap {
+            font-size: 0.62rem !important;
+            gap: 4px !important;
+          }
+
+          .cell-data-value,
+          .meta-val-text {
+            font-size: 0.74rem !important;
+            line-height: 1.25 !important;
           }
 
           /* Compact Mint Banner */
