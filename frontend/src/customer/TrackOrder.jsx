@@ -533,36 +533,49 @@ export const TrackOrder = () => {
 
         {/* Right 1 Col: Need help? Card */}
         <div className="content-card need-help-card">
-          <div className="card-section-header">
-            <Headphones size={18} className="text-teal" />
-            <h3 className="card-section-title">Need help?</h3>
+          <div className="help-card-header-group">
+            <div className="card-section-header">
+              <Headphones size={18} className="text-teal" />
+              <h3 className="card-section-title">Need help?</h3>
+            </div>
+
+            <p className="help-sub-desc">
+              Our support team is here to assist you with any questions or concerns.
+            </p>
           </div>
 
-          <p className="help-sub-desc">
-            Our support team is here to assist you with any questions or concerns.
-          </p>
-
-          <div className="help-actions-stack">
-            <button 
-              onClick={() => navigateTo('customer-support')}
-              className="btn-help-contact-support"
-            >
-              <MessageSquare size={16} />
-              <span>Contact support</span>
-            </button>
-
-            <button 
-              onClick={() => navigateTo('customer-invoices')}
-              className="btn-help-view-invoice"
-            >
-              <FileText size={16} />
-              <span>View invoice</span>
-            </button>
+          {/* Reference Image 2: Fresh Folded Towels with Green Leaves filling the empty space */}
+          <div className="help-illustration-wrapper">
+            <img 
+              src="/assets/folded-towels.png" 
+              alt="FabriCare Fresh Clean Laundry & Towels" 
+              className="help-towels-img"
+            />
           </div>
 
-          <div className="help-secure-note">
-            <ShieldCheck size={14} className="text-teal" />
-            <span>Your order is safe and secure with us.</span>
+          <div className="help-card-footer-group">
+            <div className="help-actions-stack">
+              <button 
+                onClick={() => navigateTo('customer-support')}
+                className="btn-help-contact-support"
+              >
+                <MessageSquare size={16} />
+                <span>Contact support</span>
+              </button>
+
+              <button 
+                onClick={() => navigateTo('customer-invoices')}
+                className="btn-help-view-invoice"
+              >
+                <FileText size={16} />
+                <span>View invoice</span>
+              </button>
+            </div>
+
+            <div className="help-secure-note">
+              <ShieldCheck size={14} className="text-teal" />
+              <span>Your order is safe and secure with us.</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1257,24 +1270,65 @@ export const TrackOrder = () => {
 
         /* Need Help Card */
         .need-help-card {
+          background: #ffffff;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 20px;
+          padding: 24px;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .help-card-header-group {
+          display: flex;
+          flex-direction: column;
         }
 
         .help-sub-desc {
           font-size: 0.8125rem;
           color: #64748B;
-          line-height: 1.45;
+          line-height: 1.5;
           margin-top: -6px;
-          margin-bottom: 20px;
+          margin-bottom: 0;
+        }
+
+        /* Second Reference Image: Fresh Folded Towels with Green Leaves */
+        .help-illustration-wrapper {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 12px 6px;
+          margin: auto 0;
+          flex: 1;
+        }
+
+        .help-towels-img {
+          width: 100%;
+          max-width: 250px;
+          height: auto;
+          max-height: 155px;
+          object-fit: contain;
+          filter: drop-shadow(0 10px 22px rgba(13, 122, 117, 0.14));
+          transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .help-towels-img:hover {
+          transform: translateY(-2px) scale(1.02);
+        }
+
+        .help-card-footer-group {
+          display: flex;
+          flex-direction: column;
+          margin-top: auto;
         }
 
         .help-actions-stack {
           display: flex;
           flex-direction: column;
-          gap: 12px;
-          margin-bottom: 18px;
+          gap: 10px;
+          margin-bottom: 16px;
         }
 
         .btn-help-contact-support {
@@ -1282,7 +1336,7 @@ export const TrackOrder = () => {
           padding: 12px 18px;
           background: #0D7A75;
           color: #ffffff;
-          font-weight: 600;
+          font-weight: 700;
           font-size: 0.875rem;
           border-radius: 999px;
           border: none;
@@ -1291,12 +1345,14 @@ export const TrackOrder = () => {
           justify-content: center;
           gap: 8px;
           cursor: pointer;
-          box-shadow: 0 4px 12px rgba(13, 122, 117, 0.18);
-          transition: background 0.15s;
+          box-shadow: 0 4px 14px rgba(13, 122, 117, 0.22);
+          transition: all 0.15s ease;
         }
 
         .btn-help-contact-support:hover {
           background: #095F5B;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 18px rgba(13, 122, 117, 0.28);
         }
 
         .btn-help-view-invoice {
@@ -1305,7 +1361,7 @@ export const TrackOrder = () => {
           background: #ffffff;
           color: #0D7A75;
           border: 1.5px solid #0D7A75;
-          font-weight: 600;
+          font-weight: 700;
           font-size: 0.875rem;
           border-radius: 999px;
           display: flex;
@@ -1313,11 +1369,12 @@ export const TrackOrder = () => {
           justify-content: center;
           gap: 8px;
           cursor: pointer;
-          transition: all 0.15s;
+          transition: all 0.15s ease;
         }
 
         .btn-help-view-invoice:hover {
           background: #F4FBFA;
+          transform: translateY(-1px);
         }
 
         .help-secure-note {
@@ -1325,28 +1382,81 @@ export const TrackOrder = () => {
           align-items: center;
           justify-content: center;
           gap: 6px;
-          font-size: 0.75rem;
+          font-size: 0.78rem;
           color: #64748B;
+          font-weight: 500;
           text-align: center;
+        }
+
+        /* Responsive Layout Improvements */
+        @media (max-width: 1024px) {
+          .tracking-summary-card {
+            padding: 18px 20px;
+          }
+          .tracking-progress-card {
+            padding: 24px 20px;
+          }
         }
 
         @media (max-width: 960px) {
           .tracking-summary-card {
             flex-direction: column;
             align-items: flex-start;
+            gap: 16px;
           }
           .summary-metric-divider {
             display: none;
           }
           .horizontal-stepper {
             flex-direction: column;
+            align-items: stretch;
+            gap: 18px;
+          }
+          .horizontal-step-item {
+            flex-direction: row;
+            align-items: center;
+            text-align: left;
+            gap: 16px;
+            width: 100%;
+          }
+          .step-circle-badge {
+            margin-bottom: 0;
+            flex-shrink: 0;
+          }
+          .step-label-group {
             align-items: flex-start;
-            gap: 20px;
+            text-align: left;
+          }
+          .step-active-desc {
+            max-width: 100%;
           }
           .stepper-connecting-line {
-            width: 3px;
-            height: 24px;
+            width: 2px;
+            height: 18px;
             margin: 0 0 0 24px;
+            align-self: flex-start;
+          }
+          .help-towels-img {
+            max-width: 220px;
+            max-height: 140px;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .track-header-row {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .header-right-illustration {
+            width: 100%;
+            justify-content: center;
+          }
+          .tracking-items-table {
+            font-size: 0.8125rem;
+          }
+          .help-towels-img {
+            max-width: 190px;
+            max-height: 120px;
           }
         }
       `}</style>
