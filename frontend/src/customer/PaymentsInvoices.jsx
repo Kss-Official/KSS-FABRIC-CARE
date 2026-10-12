@@ -701,43 +701,47 @@ export const PaymentsInvoices = () => {
       {isModalOpen && (
         <div className="invoice-modal-overlay" onClick={() => setIsModalOpen(false)}>
           <div className="invoice-modal-container" onClick={(e) => e.stopPropagation()}>
-            <div className="invoice-modal-top-bar flex items-center justify-between p-4 border-b border-slate-100 bg-white no-print">
-              <div className="flex items-center gap-2">
+            <div className="invoice-modal-top-bar no-print">
+              <div className="modal-header-title-wrap">
                 <Receipt size={18} className="text-teal" />
-                <span className="font-bold text-navy text-sm">
-                  Official Tax Invoice - {getOrderInvoiceData(selectedOrder).orderNum}
+                <span className="modal-header-title">
+                  Official Tax Invoice &bull; {getOrderInvoiceData(selectedOrder).orderNum}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                {/* Download PDF & Print shown ONLY inside modal after clicking View Invoice */}
+              <div className="invoice-modal-actions">
+                {/* Download PDF & Print shown clearly inside modal */}
                 <button 
+                  type="button"
                   onClick={handleDownload}
-                  className="modal-action-pill"
+                  className="modal-action-btn btn-download-pdf"
                   disabled={isDownloadingPdf}
-                  title="Download PDF"
+                  title="Download Official Tax Invoice PDF"
                 >
                   <Download size={14} className={isDownloadingPdf ? 'animate-bounce' : ''} />
-                  <span>{isDownloadingPdf ? 'Downloading...' : 'Download PDF'}</span>
+                  <span>{isDownloadingPdf ? 'Downloading PDF...' : 'Download PDF'}</span>
                 </button>
                 <button 
+                  type="button"
                   onClick={handlePrint}
-                  className="modal-action-pill"
-                  title="Print Invoice"
+                  className="modal-action-btn btn-print-invoice"
+                  title="Print Official Tax Invoice"
                 >
                   <Printer size={14} />
                   <span>Print</span>
                 </button>
                 <button 
+                  type="button"
                   onClick={() => setIsModalOpen(false)}
                   className="modal-close-circle-btn"
                   title="Close Invoice"
+                  aria-label="Close Invoice"
                 >
                   <X size={18} />
                 </button>
               </div>
             </div>
 
-            <div className="invoice-modal-content-scroll p-6 overflow-y-auto max-h-[85vh]">
+            <div className="invoice-modal-content-scroll">
               {renderTaxInvoiceCard(selectedOrder)}
             </div>
           </div>
@@ -749,7 +753,7 @@ export const PaymentsInvoices = () => {
           width: 100%;
           min-height: auto !important;
           margin: 0 !important;
-          padding: 0 0 16px 0 !important;
+          padding: 18px 0 24px 0 !important;
         }
 
         .text-teal {
@@ -763,6 +767,7 @@ export const PaymentsInvoices = () => {
           justify-content: space-between;
           flex-wrap: wrap;
           gap: 16px;
+          margin-bottom: 24px;
         }
 
         .breadcrumbs-nav {
@@ -1388,14 +1393,15 @@ export const PaymentsInvoices = () => {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(15, 23, 42, 0.45);
+          background: rgba(15, 23, 42, 0.55);
           backdrop-filter: blur(8px);
           -webkit-backdrop-filter: blur(8px);
           z-index: 9999;
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: center;
           padding: 24px 16px;
+          overflow-y: auto;
           overscroll-behavior: contain;
         }
 
@@ -1404,28 +1410,123 @@ export const PaymentsInvoices = () => {
           border-radius: 20px;
           max-width: 900px;
           width: 100%;
-          max-height: 90vh;
+          max-height: calc(100vh - 48px);
           overflow: hidden;
           box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08);
           display: flex;
           flex-direction: column;
+          margin: auto 0;
+          position: relative;
           animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .invoice-modal-top-bar {
           flex-shrink: 0;
+          min-height: 62px;
           background: #ffffff;
-          border-bottom: 1px solid #F1F5F9;
-          z-index: 10;
+          border-bottom: 1.5px solid #E2E8F0;
+          padding: 12px 24px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          z-index: 50;
+          position: sticky;
+          top: 0;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        }
+
+        .modal-header-title-wrap {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .modal-header-title {
+          font-size: 0.9375rem;
+          font-weight: 800;
+          color: #0F172A;
+          letter-spacing: -0.01em;
+        }
+
+        .invoice-modal-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .modal-action-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 8px 16px;
+          border-radius: 999px;
+          font-size: 0.8125rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          white-space: nowrap;
+          text-decoration: none;
+        }
+
+        .btn-download-pdf {
+          background: #0D7A75 !important;
+          color: #ffffff !important;
+          border: 1.5px solid #0D7A75 !important;
+          box-shadow: 0 2px 8px rgba(13, 122, 117, 0.28);
+        }
+
+        .btn-download-pdf:hover {
+          background: #095955 !important;
+          border-color: #095955 !important;
+          box-shadow: 0 4px 12px rgba(13, 122, 117, 0.38);
+        }
+
+        .btn-download-pdf:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .btn-print-invoice {
+          background: #ffffff !important;
+          color: #0D7A75 !important;
+          border: 1.5px solid #0D7A75 !important;
+        }
+
+        .btn-print-invoice:hover {
+          background: #E8FAF6 !important;
+          color: #095955 !important;
+          border-color: #095955 !important;
+        }
+
+        .modal-close-circle-btn {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          border: 1.5px solid #E2E8F0;
+          background: #F8FAFC;
+          color: #64748B;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          flex-shrink: 0;
+        }
+
+        .modal-close-circle-btn:hover {
+          background: #F1F5F9;
+          color: #0F172A;
+          border-color: #CBD5E1;
         }
 
         .invoice-modal-content-scroll {
-          flex: 1;
+          flex: 1 1 auto;
+          min-height: 0;
           overflow-y: auto;
           overflow-x: hidden;
           overscroll-behavior: contain;
-          max-height: calc(90vh - 65px);
-          padding: 24px;
+          padding: 24px 28px 32px;
           scrollbar-width: thin;
           scrollbar-color: #CBD5E1 #F8FAFC;
         }
@@ -1458,44 +1559,6 @@ export const PaymentsInvoices = () => {
           }
         }
 
-        .modal-action-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 14px;
-          border-radius: 999px;
-          border: 1.5px solid #0D7A75;
-          background: #ffffff;
-          color: #0D7A75;
-          font-size: 0.8rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-
-        .modal-action-pill:hover {
-          background: #E8FAF6;
-        }
-
-        .modal-close-circle-btn {
-          width: 34px;
-          height: 34px;
-          border-radius: 50%;
-          border: none;
-          background: #F1F5F9;
-          color: #64748B;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-
-        .modal-close-circle-btn:hover {
-          background: #E2E8F0;
-          color: #0F172A;
-        }
-
         @media (max-width: 900px) {
           .bill-to-meta-grid {
             grid-template-columns: 1fr;
@@ -1509,7 +1572,39 @@ export const PaymentsInvoices = () => {
           }
         }
 
-        @media (max-width: 580px) {
+        @media (max-width: 680px) {
+          .invoice-modal-overlay {
+            padding: 12px 8px;
+          }
+
+          .invoice-modal-container {
+            max-height: calc(100vh - 24px);
+            border-radius: 14px;
+          }
+
+          .invoice-modal-top-bar {
+            padding: 10px 14px;
+            flex-wrap: wrap;
+            gap: 10px;
+          }
+
+          .modal-header-title {
+            font-size: 0.85rem;
+          }
+
+          .modal-action-btn {
+            padding: 6px 12px;
+            font-size: 0.75rem;
+          }
+
+          .invoice-modal-content-scroll {
+            padding: 16px 12px;
+          }
+
+          .tax-invoice-document-card {
+            padding: 20px 14px;
+          }
+
           .invoice-details-grid {
             grid-template-columns: 1fr;
           }
