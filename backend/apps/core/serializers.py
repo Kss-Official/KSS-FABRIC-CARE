@@ -1,3 +1,6 @@
+import datetime
+import re
+from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     ServiceCategory, Service, Order, OrderItem,
@@ -5,6 +8,35 @@ from .models import (
     Invoice, Notification, SupportTicket, ContentFAQ, ContentPolicy
 )
 from apps.users.serializers import UserSerializer
+
+def parse_flexible_date(val):
+    if not val:
+        return timezone.localdate()
+    if isinstance(val, datetime.date):
+        return val
+    s = str(val).strip()
+    try:
+        return datetime.datetime.strptime(s, '%Y-%m-%d').date()
+    except Exception:
+        pass
+    lower = s.lower()
+    if 'today' in lower:
+        return timezone.localdate()
+    if 'tomorrow' in lower:
+        return timezone.localdate() + datetime.timedelta(days=1)
+    months = {'jan':1, 'feb':2, 'mar':3, 'apr':4, 'may':5, 'jun':6, 'jul':7, 'aug':8, 'sep':9, 'oct':10, 'nov':11, 'dec':12}
+    m = re.search(r'(\d{1,2})[\s-]+([A-Za-z]{3,9})(?:[\s-]+(\d{4}))?', s)
+    if m:
+        day = int(m.group(1))
+        mon_str = m.group(2)[:3].lower()
+        month = months.get(mon_str, timezone.localdate().month)
+        year = int(m.group(3)) if m.group(3) else timezone.localdate().year
+        try:
+            return datetime.date(year, month, day)
+        except ValueError:
+            pass
+    return timezone.localdate()
+
 
 class ServiceCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -117,6 +149,16 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     pickup_address = serializers.CharField(required=False, allow_blank=True)
     pickup_city = serializers.CharField(required=False, allow_blank=True, default='Bengaluru')
     pickup_pincode = serializers.CharField(required=False, allow_blank=True, default='560043')
+    pickup_date = serializers.CharField(required=False, allow_blank=True)
+    delivery_date = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate_pickup_date(self, value):
+        return parse_flexible_date(value)
+
+    def validate_delivery_date(self, value):
+        if not value:
+            return None
+        return parse_flexible_date(value)
 
     class Meta:
         model = Order
@@ -132,6 +174,9 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         services_list = validated_data.pop('services_list', [])
         items_payload = validated_data.pop('items', [])
         user = self.context['request'].user
+        
+        if not validated_data.get('pickup_date'):
+            validated_data['pickup_date'] = parse_flexible_date(None)
         
         # Populate defaults from user if missing
         if not validated_data.get('pickup_full_name'):

@@ -34,7 +34,14 @@ async function request(endpoint, options = {}) {
     : await response.text();
 
   if (!response.ok) {
-    const error = new Error(data?.error || data?.detail || `HTTP Error ${response.status}`);
+    let errorMsg = data?.error || data?.detail;
+    if (!errorMsg && typeof data === 'object' && data !== null) {
+      const messages = Object.entries(data)
+        .map(([k, v]) => Array.isArray(v) ? `${k}: ${v.join(', ')}` : `${k}: ${v}`)
+        .join('; ');
+      if (messages) errorMsg = messages;
+    }
+    const error = new Error(errorMsg || `HTTP Error ${response.status}`);
     error.response = { data, status: response.status };
     throw error;
   }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useBooking } from '../../context/BookingContext';
 import { 
   Calendar, 
@@ -19,13 +19,29 @@ export const Step3ChooseTime = () => {
     setCurrentStep 
   } = useBooking();
 
-  const dateOptions = [
-    { label: 'Today', date: '22 Sep', full: 'Today, 22 Sep 2024' },
-    { label: 'Tomorrow', date: '23 Sep', full: 'Tomorrow, 23 Sep 2024' },
-    { label: 'Wed', date: '24 Sep', full: 'Wednesday, 24 Sep 2024' },
-    { label: 'Thu', date: '25 Sep', full: 'Thursday, 25 Sep 2024' },
-    { label: 'Fri', date: '26 Sep', full: 'Friday, 26 Sep 2024' }
-  ];
+  const dateInputRef = useRef(null);
+
+  const dateOptions = useMemo(() => {
+    const options = [];
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    for (let i = 0; i < 5; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      const dayName = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : days[d.getDay()];
+      const dateStr = `${d.getDate()} ${months[d.getMonth()]}`;
+      const isoDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const full = `${dayName}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+      options.push({
+        label: dayName,
+        date: dateStr,
+        full: full,
+        isoDate: isoDate
+      });
+    }
+    return options;
+  }, []);
 
   const timeSlots = [
     { slot: '9:00 AM – 11:00 AM', subtitle: "We'll be at your door" },
@@ -102,13 +118,13 @@ export const Step3ChooseTime = () => {
             {/* Date Selector Row */}
             <div className="date-pills-row">
               {dateOptions.map((opt) => {
-                const isSelected = pickupSchedule.dateLabel === opt.full;
+                const isSelected = pickupSchedule.dateLabel === opt.full || pickupSchedule.dateValue === opt.isoDate;
                 return (
                   <button
-                    key={opt.date}
+                    key={opt.isoDate}
                     type="button"
                     className={`date-pill-btn ${isSelected ? 'selected' : ''}`}
-                    onClick={() => setPickupSchedule(prev => ({ ...prev, dateLabel: opt.full, dateValue: opt.date }))}
+                    onClick={() => setPickupSchedule(prev => ({ ...prev, dateLabel: opt.full, dateValue: opt.isoDate }))}
                   >
                     <span className="date-day-label">{opt.label}</span>
                     <span className="date-day-val">{opt.date}</span>
@@ -118,13 +134,41 @@ export const Step3ChooseTime = () => {
 
               <button 
                 type="button" 
-                className="date-pill-btn calendar-custom-pill"
-                onClick={() => setPickupSchedule(prev => ({ ...prev, dateLabel: 'Saturday, 27 Sep 2024', dateValue: '27-sep' }))}
+                className={`date-pill-btn calendar-custom-pill ${pickupSchedule.dateValue && !dateOptions.some(o => o.isoDate === pickupSchedule.dateValue) ? 'selected' : ''}`}
+                onClick={() => {
+                  if (dateInputRef.current) {
+                    if (typeof dateInputRef.current.showPicker === 'function') {
+                      dateInputRef.current.showPicker();
+                    } else {
+                      dateInputRef.current.click();
+                    }
+                  }
+                }}
               >
                 <div className="pick-date-inner">
                   <Calendar size={16} className="calendar-icon" />
-                  <span className="date-day-val pick-text">Pick a date</span>
+                  <span className="date-day-val pick-text">
+                    {pickupSchedule.dateValue && !dateOptions.some(o => o.isoDate === pickupSchedule.dateValue)
+                      ? pickupSchedule.dateValue
+                      : 'Pick a date'}
+                  </span>
                 </div>
+                <input
+                  ref={dateInputRef}
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val) {
+                      const d = new Date(val + 'T00:00:00');
+                      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                      const label = `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+                      setPickupSchedule(prev => ({ ...prev, dateLabel: label, dateValue: val }));
+                    }
+                  }}
+                />
               </button>
             </div>
 

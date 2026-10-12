@@ -128,10 +128,17 @@ export const BookingProvider = ({ children }) => {
   });
 
   // Step 3 Time Slot
-  const [pickupSchedule, setPickupSchedule] = useState({
-    dateLabel: 'Tomorrow, 23 Sep 2024',
-    dateValue: '2026-10-12',
-    timeSlot: '9:00 AM – 11:00 AM'
+  const [pickupSchedule, setPickupSchedule] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const iso = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+    const label = `Tomorrow, ${tomorrow.getDate()} ${months[tomorrow.getMonth()]} ${tomorrow.getFullYear()}`;
+    return {
+      dateLabel: label,
+      dateValue: iso,
+      timeSlot: '9:00 AM – 11:00 AM'
+    };
   });
 
   // Step 4 Instructions & Estimation
@@ -284,6 +291,21 @@ export const BookingProvider = ({ children }) => {
 
       const total = calculateTotal() || 300;
 
+      // Ensure valid YYYY-MM-DD date format
+      let formattedPickupDate = pickupSchedule.dateValue;
+      if (!formattedPickupDate || !/^\d{4}-\d{2}-\d{2}$/.test(formattedPickupDate)) {
+        try {
+          const parsed = new Date(pickupSchedule.dateValue || pickupSchedule.dateLabel);
+          if (!isNaN(parsed.getTime())) {
+            formattedPickupDate = parsed.toISOString().split('T')[0];
+          } else {
+            formattedPickupDate = new Date().toISOString().split('T')[0];
+          }
+        } catch {
+          formattedPickupDate = new Date().toISOString().split('T')[0];
+        }
+      }
+
       // Real Django REST API order payload
       const orderPayload = {
         pickup_full_name: currentUser?.displayName || currentUser?.full_name || pickupDetails.name || 'Valued Customer',
@@ -291,7 +313,7 @@ export const BookingProvider = ({ children }) => {
         pickup_address: pickupDetails.address || 'Banaswadi, Bengaluru - 560043',
         pickup_city: pickupDetails.city || 'Bengaluru',
         pickup_pincode: pickupDetails.pincode || '560043',
-        pickup_date: pickupSchedule.dateValue || new Date().toISOString().split('T')[0],
+        pickup_date: formattedPickupDate,
         pickup_time_slot: pickupSchedule.timeSlot || '9:00 AM – 11:00 AM',
         special_instructions: specialInstructions || '',
         delivery_address: pickupDetails.sameAddressDelivery ? pickupDetails.address : (pickupDetails.deliveryAddress || pickupDetails.address),
