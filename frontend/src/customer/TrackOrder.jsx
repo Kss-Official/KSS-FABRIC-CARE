@@ -244,7 +244,7 @@ export const TrackOrder = () => {
             </div>
             <div className="step-label-group">
               <h4 className="step-label-title">Order Placed</h4>
-              <span className="step-label-time">{orderPlacedTime}</span>
+              <span className="step-label-completed">Completed</span>
             </div>
           </div>
 
@@ -262,7 +262,7 @@ export const TrackOrder = () => {
             </div>
             <div className="step-label-group">
               <h4 className="step-label-title">Picked Up</h4>
-              <span className="step-label-time">{pickedUpTime}</span>
+              <span className="step-label-completed">Completed</span>
             </div>
           </div>
 
@@ -290,11 +290,26 @@ export const TrackOrder = () => {
           <div className="horizontal-step-item pending">
             <div className="step-circle-badge pending-circle">
               <div className="circle-icon-inner">
-                <Truck size={20} />
+                <Package size={20} />
               </div>
             </div>
             <div className="step-label-group">
               <h4 className="step-label-title pending-title">Ready for Delivery</h4>
+              <span className="step-label-pending">Pending</span>
+            </div>
+          </div>
+
+          <div className="stepper-connecting-line pending"></div>
+
+          {/* Step 5: Delivery */}
+          <div className="horizontal-step-item pending">
+            <div className="step-circle-badge pending-circle">
+              <div className="circle-icon-inner">
+                <Truck size={20} />
+              </div>
+            </div>
+            <div className="step-label-group">
+              <h4 className="step-label-title pending-title">Delivery</h4>
               <span className="step-label-pending">Pending</span>
             </div>
           </div>
@@ -322,7 +337,7 @@ export const TrackOrder = () => {
               <div className="event-info-col">
                 <div className="event-title-time">
                   <h5 className="event-title">Order placed</h5>
-                  <span className="event-time">{orderPlacedTime}</span>
+                  <span className="event-status-tag completed">Completed</span>
                 </div>
                 <p className="event-desc">We received your order</p>
               </div>
@@ -339,7 +354,7 @@ export const TrackOrder = () => {
               <div className="event-info-col">
                 <div className="event-title-time">
                   <h5 className="event-title">Picked up</h5>
-                  <span className="event-time">{pickedUpTime}</span>
+                  <span className="event-status-tag completed">Completed</span>
                 </div>
                 <p className="event-desc">Collected by your delivery partner</p>
               </div>
@@ -348,15 +363,15 @@ export const TrackOrder = () => {
             {/* Event 3 */}
             <div className="journey-event-item">
               <div className="event-node-col">
-                <div className="event-node-bubble active-icon-node">
-                  <WashingMachine size={13} />
+                <div className="event-node-bubble checked">
+                  <Check size={11} strokeWidth={3} />
                 </div>
                 <div className="event-timeline-line"></div>
               </div>
               <div className="event-info-col">
                 <div className="event-title-time">
-                  <h5 className="event-title active-teal">At the facility</h5>
-                  <span className="event-time">{facilityTime}</span>
+                  <h5 className="event-title">At the facility</h5>
+                  <span className="event-status-tag completed">Completed</span>
                 </div>
                 <p className="event-desc">Items weighed and quality checked</p>
               </div>
@@ -365,16 +380,33 @@ export const TrackOrder = () => {
             {/* Event 4 */}
             <div className="journey-event-item">
               <div className="event-node-col">
+                <div className="event-node-bubble active-icon-node">
+                  <WashingMachine size={12} />
+                </div>
+                <div className="event-timeline-line pending-timeline-line"></div>
+              </div>
+              <div className="event-info-col">
+                <div className="event-title-time">
+                  <h5 className="event-title active-teal">Cleaning in progress</h5>
+                  <span className="event-status-tag in-progress">In Progress</span>
+                </div>
+                <p className="event-desc">Washing, drying and ironing</p>
+              </div>
+            </div>
+
+            {/* Event 5: Delivery */}
+            <div className="journey-event-item">
+              <div className="event-node-col">
                 <div className="event-node-bubble concentric-node">
                   <span className="concentric-dot"></span>
                 </div>
               </div>
               <div className="event-info-col">
                 <div className="event-title-time">
-                  <h5 className="event-title">Cleaning in progress</h5>
-                  <span className="event-time">{cleaningEstTime}</span>
+                  <h5 className="event-title pending-title">Delivery</h5>
+                  <span className="event-status-tag pending">Pending</span>
                 </div>
-                <p className="event-desc">Washing, drying and ironing</p>
+                <p className="event-desc">Delivered safely to your doorstep</p>
               </div>
             </div>
           </div>
@@ -835,6 +867,13 @@ export const TrackOrder = () => {
           margin-top: 3px;
         }
 
+        .step-label-completed {
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #0D7A75;
+          margin-top: 3px;
+        }
+
         .step-label-title.active-title {
           color: #0D7A75;
           font-size: 1rem;
@@ -982,9 +1021,42 @@ export const TrackOrder = () => {
           color: #0D7A75;
         }
 
+        .event-title.pending-title {
+          color: #64748B;
+        }
+
         .event-time {
           font-size: 0.75rem;
           color: #64748B;
+        }
+
+        .pending-timeline-line {
+          background: #E2E8F0 !important;
+        }
+
+        .event-status-tag {
+          font-size: 0.6875rem;
+          font-weight: 700;
+          padding: 1px 8px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          line-height: 1.3;
+        }
+
+        .event-status-tag.completed {
+          background: #E8FAF6;
+          color: #0D7A75;
+        }
+
+        .event-status-tag.in-progress {
+          background: #FEF3C7;
+          color: #92400E;
+        }
+
+        .event-status-tag.pending {
+          background: #F1F5F9;
+          color: #94A3B8;
         }
 
         .event-desc {
