@@ -105,6 +105,17 @@ export const PaymentsInvoices = () => {
     fetchOrdersAndInvoices();
   }, [activeTrackingOrderId]);
 
+  // Lock background page scroll while invoice modal is open
+  useEffect(() => {
+    if (isModalOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow || '';
+      };
+    }
+  }, [isModalOpen]);
+
   // Click handler for "View Invoice/Bill": opens the exact reference invoice modal
   const handleViewInvoiceClick = (order) => {
     setSelectedOrder(order);
@@ -528,7 +539,7 @@ export const PaymentsInvoices = () => {
   };
 
   return (
-    <div className="portal-container invoice-page-portal animate-fade-in">
+    <div className="invoice-page-portal animate-fade-in">
       {/* 1. Breadcrumb and Header - Download and Print buttons removed from main listing */}
       <div className="invoice-header-row mb-6 no-print">
         <div className="header-breadcrumbs-col">
@@ -551,7 +562,7 @@ export const PaymentsInvoices = () => {
       </div>
 
       {/* 2. Customer Orders Table Card */}
-      <div className="content-card customer-orders-invoices-card mb-8 no-print">
+      <div className="content-card customer-orders-invoices-card mb-3 no-print">
         <div className="orders-card-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="orders-icon-circle">
@@ -703,6 +714,9 @@ export const PaymentsInvoices = () => {
       <style>{`
         .invoice-page-portal {
           width: 100%;
+          min-height: auto !important;
+          margin: 0 !important;
+          padding: 0 0 16px 0 !important;
         }
 
         .text-teal {
@@ -1283,6 +1297,7 @@ export const PaymentsInvoices = () => {
           align-items: center;
           justify-content: center;
           padding: 24px 16px;
+          overscroll-behavior: contain;
         }
 
         .invoice-modal-container {
@@ -1309,6 +1324,7 @@ export const PaymentsInvoices = () => {
           flex: 1;
           overflow-y: auto;
           overflow-x: hidden;
+          overscroll-behavior: contain;
           max-height: calc(90vh - 65px);
           padding: 24px;
           scrollbar-width: thin;
