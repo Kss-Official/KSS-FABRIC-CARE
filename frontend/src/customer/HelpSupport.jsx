@@ -304,36 +304,32 @@ export const HelpSupport = () => {
                 </svg>
                 <h3 className="tickets-header-title">My Support Tickets</h3>
               </div>
-              <button 
-                type="button" 
-                onClick={focusTicketForm}
-                className="view-all-link"
-              >
-                <span>View All</span>
-                <span>&rarr;</span>
-              </button>
             </div>
 
             <div className="tickets-list">
               {displayTickets.map((t) => (
-                <div key={t.id} className="ticket-item-box">
-                  <div className="ticket-item-left">
-                    <div className="ticket-avatar-circle">
-                      <Headphones size={20} />
-                    </div>
-                    <div className="ticket-text-stack">
-                      <h4 className="ticket-subject-title">{t.subject}</h4>
-                      <span className="ticket-meta-subtitle">Ticket #{t.ticket_number}</span>
-                      <span className="ticket-updated-time">{t.updatedText}</span>
-                    </div>
+                <div key={t.id} className="ticket-item-box" onClick={focusTicketForm} title="Click to view ticket details">
+                  <div className="ticket-avatar-circle">
+                    <Headphones size={18} />
                   </div>
 
-                  <div className="ticket-item-right">
-                    <span className={`ticket-status-pill ${t.statusColor || 'yellow'}`}>
-                      <Clock size={12} strokeWidth={2.5} />
-                      <span>{t.status}</span>
-                    </span>
-                    <ChevronRight size={18} className="text-slate-400" />
+                  <div className="ticket-text-stack">
+                    <div className="ticket-top-row">
+                      <h4 className="ticket-subject-title">{t.subject}</h4>
+                      <span className={`ticket-status-pill ${t.statusColor || 'yellow'}`}>
+                        <Clock size={11} strokeWidth={2.5} />
+                        <span>{t.status}</span>
+                      </span>
+                    </div>
+
+                    <div className="ticket-bottom-row">
+                      <div className="ticket-meta-info">
+                        <span className="ticket-meta-subtitle">Ticket #{t.ticket_number}</span>
+                        <span className="ticket-meta-dot">•</span>
+                        <span className="ticket-updated-time">{t.updatedText}</span>
+                      </div>
+                      <ChevronRight size={15} className="ticket-chevron-icon" />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -717,19 +713,18 @@ export const HelpSupport = () => {
           background: #E8FAF6;
         }
 
-        /* Bottom Right Card: My Support Tickets (Matches Image 2) */
+        /* Bottom Right Card: My Support Tickets */
         .support-tickets-card {
           background: #ffffff;
           border: 1.5px solid #E2E8F0;
           border-radius: 20px;
-          padding: 24px 28px;
+          padding: 22px 22px;
         }
 
         .tickets-card-header {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          margin-bottom: 18px;
+          margin-bottom: 16px;
         }
 
         .tickets-title-left {
@@ -745,24 +740,6 @@ export const HelpSupport = () => {
           margin: 0;
         }
 
-        .view-all-link {
-          font-size: 0.875rem;
-          font-weight: 700;
-          color: #0D7A75;
-          background: none;
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          transition: opacity 0.15s;
-        }
-
-        .view-all-link:hover {
-          opacity: 0.8;
-          text-decoration: underline;
-        }
-
         .tickets-list {
           display: flex;
           flex-direction: column;
@@ -773,29 +750,26 @@ export const HelpSupport = () => {
           background: #F8FAFC;
           border: 1.5px solid #E2E8F0;
           border-radius: 16px;
-          padding: 16px 20px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 16px;
-          transition: all 0.15s ease;
-        }
-
-        .ticket-item-box:hover {
-          background: #F1F5F9;
-          border-color: #CBD5E1;
-        }
-
-        .ticket-item-left {
+          padding: 14px 16px;
           display: flex;
           align-items: center;
           gap: 14px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .ticket-item-box:hover {
+          background: #FFFFFF;
+          border-color: #0D7A75;
+          box-shadow: 0 4px 14px rgba(13, 122, 117, 0.08);
+          transform: translateY(-1px);
         }
 
         .ticket-avatar-circle {
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          min-width: 40px;
+          border-radius: 12px;
           background: #E8FAF6;
           color: #0D7A75;
           display: flex;
@@ -807,52 +781,94 @@ export const HelpSupport = () => {
         .ticket-text-stack {
           display: flex;
           flex-direction: column;
+          gap: 6px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .ticket-top-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
         }
 
         .ticket-subject-title {
-          font-size: 0.95rem;
+          font-size: 0.9375rem;
           font-weight: 800;
           color: #0F172A;
-          margin: 0 0 2px 0;
+          margin: 0;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .ticket-bottom-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .ticket-meta-info {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.78rem;
+          color: #64748B;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .ticket-meta-subtitle {
-          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #475569;
+        }
+
+        .ticket-meta-dot {
+          color: #94A3B8;
+          font-size: 0.7rem;
+        }
+
+        .ticket-updated-time {
           color: #64748B;
           font-weight: 500;
         }
 
-        .ticket-updated-time {
-          font-size: 0.75rem;
-          color: #64748B;
-          margin-top: 2px;
+        .ticket-chevron-icon {
+          color: #94A3B8;
+          flex-shrink: 0;
+          transition: transform 0.2s ease, color 0.2s ease;
         }
 
-        .ticket-item-right {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          flex-shrink: 0;
+        .ticket-item-box:hover .ticket-chevron-icon {
+          color: #0D7A75;
+          transform: translateX(2px);
         }
 
         .ticket-status-pill {
           display: inline-flex;
           align-items: center;
-          gap: 5px;
-          padding: 4px 12px;
+          gap: 4.5px;
+          padding: 3.5px 9px;
           border-radius: 999px;
-          font-size: 0.75rem;
+          font-size: 0.72rem;
           font-weight: 700;
+          white-space: nowrap;
+          flex-shrink: 0;
         }
 
         .ticket-status-pill.yellow {
           background: #FEF9C3;
           color: #A16207;
+          border: 1px solid #FEF08A;
         }
 
         .ticket-status-pill.green {
           background: #DCFCE7;
           color: #15803D;
+          border: 1px solid #BBF7D0;
         }
       `}</style>
     </div>
