@@ -527,7 +527,7 @@ export const Step2PickupDetails = () => {
         .folded-map-illustration {
           width: 100%;
           max-width: 310px;
-          margin: 0 auto 16px;
+          margin: 0 auto 8px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -544,7 +544,7 @@ export const Step2PickupDetails = () => {
 
         .trust-card-body {
           width: 100%;
-          padding-top: 10px;
+          transform: translateY(-24px);
         }
 
         .trust-card-title {
