@@ -1323,92 +1323,277 @@ export const PaymentsInvoices = () => {
           }
         }
 
-        /* 5. Precision Print Styles for Download PDF & Print */
+        /* 5. Precision Print Styles for Download PDF & Print (Single Clean Page Guarantee) */
         @media print {
           @page {
-            size: portrait;
-            margin: 8mm 12mm;
+            size: A4 portrait;
+            margin: 8mm 10mm;
           }
 
-          body {
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
 
-          /* Hide everything not part of the modal invoice card */
+          /* Hide all site-wide elements, navigation, banners, headers, buttons */
           header,
           footer,
           nav,
-          .navbar,
+          .navbar-wrapper,
+          .footer-wrapper,
+          .app-layout > header,
+          .app-layout > footer,
+          .customer-account-banner,
+          .customer-account-wrapper > div:first-child,
           .no-print,
           .invoice-header-row,
           .customer-orders-invoices-card,
           .invoice-modal-top-bar,
-          .btn,
-          button {
+          .modal-close-circle-btn,
+          button,
+          .btn {
             display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            width: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
           }
 
+          /* Neutralize wrappers and overlays */
+          .app-layout,
+          .main-content,
+          .customer-account-wrapper,
           .portal-container,
           .invoice-page-portal,
           .invoice-modal-overlay,
           .invoice-modal-container,
           .invoice-modal-content-scroll {
+            position: static !important;
             display: block !important;
             padding: 0 !important;
             margin: 0 !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            position: static !important;
-            overflow: visible !important;
-            max-height: none !important;
-          }
-
-          .tax-invoice-document-card {
-            width: 100% !important;
-            max-width: 100% !important;
-            border: 1.5px solid #CBD5E1 !important;
-            border-radius: 16px !important;
-            box-shadow: none !important;
-            padding: 24px !important;
-            margin: 0 auto !important;
-            page-break-inside: avoid !important;
+            border: none !important;
             background: #ffffff !important;
+            box-shadow: none !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 0 !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            inset: auto !important;
           }
 
+          /* Single Page Precision Document Card */
+          .tax-invoice-document-card {
+            position: relative !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            border: 1px solid #CBD5E1 !important;
+            border-radius: 12px !important;
+            box-shadow: none !important;
+            padding: 16px 20px !important;
+            margin: 0 auto !important;
+            background: #ffffff !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-before: avoid !important;
+            break-before: avoid !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+          }
+
+          /* Compact Header */
+          .invoice-doc-header {
+            padding-bottom: 8px !important;
+            margin-bottom: 8px !important;
+            border-bottom: 1px solid #E2E8F0 !important;
+          }
+
+          .brand-circle-logo {
+            width: 32px !important;
+            height: 32px !important;
+            background: #0D7A75 !important;
+            color: #ffffff !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .brand-name {
+            font-size: 1.125rem !important;
+          }
+
+          .brand-sub {
+            font-size: 0.68rem !important;
+          }
+
+          .tax-invoice-heading {
+            font-size: 0.95rem !important;
+          }
+
+          .tax-order-number {
+            font-size: 0.95rem !important;
+          }
+
+          /* Compact Bill To & Meta Section */
+          .bill-to-meta-grid {
+            margin-bottom: 8px !important;
+            gap: 14px !important;
+            grid-template-columns: 1fr 1fr !important;
+          }
+
+          .bill-to-title-row {
+            margin-bottom: 4px !important;
+          }
+
+          .bill-to-title {
+            font-size: 0.8rem !important;
+          }
+
+          .customer-name-bold {
+            font-size: 0.88rem !important;
+            margin-bottom: 2px !important;
+          }
+
+          .customer-detail-text {
+            font-size: 0.72rem !important;
+            line-height: 1.3 !important;
+          }
+
+          .invoice-meta-fields-list {
+            gap: 3px !important;
+          }
+
+          .meta-field-row {
+            padding: 2px 0 !important;
+            font-size: 0.75rem !important;
+          }
+
+          /* Compact Mint Banner */
           .thank-you-mint-banner {
+            padding: 6px 12px !important;
+            margin-bottom: 8px !important;
+            border-radius: 8px !important;
             background: #E8FAF6 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
 
-          .total-grand-highlight-box {
-            background: #E8FAF6 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
+          .banner-shirt-icon {
+            width: 26px !important;
+            height: 26px !important;
           }
 
-          .paid-pill-badge {
-            background: #E6FBF2 !important;
-            color: #059669 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
+          .banner-title {
+            font-size: 0.78rem !important;
+            margin-bottom: 1px !important;
+          }
+
+          .banner-desc {
+            font-size: 0.68rem !important;
+          }
+
+          .banner-script-text {
+            font-size: 0.75rem !important;
+          }
+
+          /* Compact Items Table */
+          .invoice-items-section {
+            margin-bottom: 8px !important;
+          }
+
+          .section-title-row {
+            margin-bottom: 4px !important;
+          }
+
+          .section-heading-text {
+            font-size: 0.8rem !important;
+          }
+
+          .invoice-doc-table th {
+            padding: 5px 8px !important;
+            font-size: 0.7rem !important;
+          }
+
+          .invoice-doc-table td {
+            padding: 5px 8px !important;
+            font-size: 0.74rem !important;
           }
 
           .item-icon-square {
+            width: 24px !important;
+            height: 24px !important;
             background: #E8FAF6 !important;
             color: #0D7A75 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
 
-          .brand-circle-logo {
-            background: #0D7A75 !important;
-            color: #ffffff !important;
+          .item-title-bold {
+            font-size: 0.76rem !important;
+          }
+
+          .item-subtitle-sub {
+            font-size: 0.66rem !important;
+          }
+
+          /* Compact Bottom Split Grid */
+          .invoice-bottom-split-grid {
+            gap: 14px !important;
+            margin-top: 6px !important;
+            grid-template-columns: 1fr 1fr !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+
+          .care-instructions-card,
+          .totals-breakdown-card {
+            padding: 8px 12px !important;
+            border-radius: 8px !important;
+          }
+
+          .care-card-header {
+            margin-bottom: 4px !important;
+            font-size: 0.78rem !important;
+          }
+
+          .care-points-list {
+            gap: 2px !important;
+            font-size: 0.7rem !important;
+          }
+
+          .totals-row {
+            margin-bottom: 2px !important;
+            font-size: 0.72rem !important;
+          }
+
+          .total-grand-highlight-box {
+            padding: 6px 10px !important;
+            margin-top: 5px !important;
+            border-radius: 6px !important;
+            background: #E8FAF6 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .grand-label,
+          .grand-val {
+            font-size: 0.88rem !important;
+          }
+
+          .paid-pill-badge {
+            background: #E6FBF2 !important;
+            color: #059669 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }

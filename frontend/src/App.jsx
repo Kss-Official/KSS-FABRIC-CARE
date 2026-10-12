@@ -58,7 +58,7 @@ const CustomerAccountLayout = ({ children }) => {
   return (
     <div className="customer-account-wrapper" style={{ background: '#F8FAFC', minHeight: 'calc(100vh - 160px)', paddingBottom: '60px' }}>
       {/* Account Header Banner */}
-      <div style={{ background: 'linear-gradient(135deg, #0D7A75 0%, #0E4B56 100%)', color: '#fff', padding: '36px 0 24px' }}>
+      <div className="customer-account-banner no-print" style={{ background: 'linear-gradient(135deg, #0D7A75 0%, #0E4B56 100%)', color: '#fff', padding: '36px 0 24px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <div>

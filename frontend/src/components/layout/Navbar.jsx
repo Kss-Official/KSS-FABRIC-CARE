@@ -82,7 +82,7 @@ export const Navbar = () => {
   };
 
   return (
-    <header className="navbar-wrapper">
+    <header className="navbar-wrapper no-print">
       <div className="container nav-container">
         {/* Brand Logo */}
         <div className="brand-logo" onClick={() => navigateTo('home')}>

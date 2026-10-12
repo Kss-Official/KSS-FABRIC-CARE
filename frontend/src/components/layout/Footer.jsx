@@ -2,7 +2,7 @@ import React from 'react';
 
 export const Footer = () => {
   return (
-    <footer className="footer-wrapper">
+    <footer className="footer-wrapper no-print">
       <div className="container footer-container">
         <div className="footer-copyright">
           © 2026 Laundrix LLC. All rights reserved. Professional laundry service & dry cleaning.
