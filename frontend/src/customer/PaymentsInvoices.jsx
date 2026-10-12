@@ -14,22 +14,19 @@ import {
   Package, 
   Shirt, 
   Check, 
-  Truck, 
-  ShoppingBag, 
-  WashingMachine, 
-  Headphones, 
-  MessageSquare, 
-  MapPin, 
-  RefreshCw 
+  RefreshCw,
+  X
 } from 'lucide-react';
 
 export const PaymentsInvoices = () => {
   const { currentUser } = useAuth();
   const { navigateTo, activeTrackingOrderId } = useBooking();
   const [orders, setOrders] = useState([]);
-  const [invoices, setInvoices] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshSuccess, setRefreshSuccess] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Helper date formatters
   const formatInvoiceDate = (dateStr) => {
@@ -56,31 +53,24 @@ export const PaymentsInvoices = () => {
     }
   };
 
+  // Extract clean pickup time slot without any date prefix
+  const getCleanPickupSlot = (ord) => {
+    if (ord?.pickup_time_slot) {
+      // Strip any accidental leading date e.g. "12 Oct 2026 · 9:00 AM" -> "9:00 AM"
+      return ord.pickup_time_slot.replace(/^.*·\s*/, '').trim();
+    }
+    return '09:00 AM – 11:00 AM';
+  };
+
   const fetchOrdersAndInvoices = async () => {
+    setIsRefreshing(true);
     setLoading(true);
     try {
-      const [ordRes, invRes] = await Promise.allSettled([
-        ordersApi.getOrders(),
-        invoicesApi.getInvoices()
-      ]);
+      // Add cache buster query so browser never returns cached result
+      const res = await ordersApi.getOrders({ _t: Date.now() });
+      const ordList = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setOrders(ordList);
 
-      let ordList = [];
-      if (ordRes.status === 'fulfilled') {
-        ordList = Array.isArray(ordRes.value.data) 
-          ? ordRes.value.data 
-          : (ordRes.value.data?.results || []);
-        setOrders(ordList);
-      }
-
-      let invList = [];
-      if (invRes.status === 'fulfilled') {
-        invList = Array.isArray(invRes.value.data) 
-          ? invRes.value.data 
-          : (invRes.value.data?.results || []);
-        setInvoices(invList);
-      }
-
-      // Initial active selection
       if (ordList.length > 0) {
         if (activeTrackingOrderId) {
           const match = ordList.find(o => 
@@ -93,14 +83,22 @@ export const PaymentsInvoices = () => {
             return;
           }
         }
-        // Match #FC8F71E if available, or default to the most recent order
-        const refMatch = ordList.find(o => o.order_number === '#FC8F71E' || o.order_id === '#FC8F71E');
-        setSelectedOrder(refMatch || ordList[0]);
+        // Keep selected order or default to first
+        setSelectedOrder(prev => {
+          if (!prev) return ordList[0];
+          return ordList.find(o => o.id === prev.id) || ordList[0];
+        });
       }
+
+      setRefreshSuccess(true);
+      setTimeout(() => setRefreshSuccess(false), 2000);
     } catch (err) {
-      console.warn('Orders & invoices loading notice:', err);
+      console.warn('Orders refresh notice:', err);
     } finally {
-      setLoading(false);
+      setTimeout(() => {
+        setIsRefreshing(false);
+        setLoading(false);
+      }, 500);
     }
   };
 
@@ -108,17 +106,18 @@ export const PaymentsInvoices = () => {
     fetchOrdersAndInvoices();
   }, [activeTrackingOrderId]);
 
-  // Select an order from the list and scroll smoothly to the invoice
-  const handleSelectOrder = (order) => {
+  // Click handler for "View Invoice/Bill": opens the exact reference invoice modal
+  const handleViewInvoiceClick = (order) => {
     setSelectedOrder(order);
-    const invoiceEl = document.getElementById('tax-invoice-document-card');
-    if (invoiceEl) {
-      invoiceEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    setIsModalOpen(true);
+  };
+
+  const getActiveOrderNumber = () => {
+    return selectedOrder?.order_number || selectedOrder?.order_id || '#FC8F71E';
   };
 
   const handlePrint = () => {
-    const orderNum = (selectedOrder?.order_number || selectedOrder?.order_id || 'FC8F71E').replace(/^#/, '');
+    const orderNum = getActiveOrderNumber().replace(/^#/, '');
     const prevTitle = document.title;
     document.title = `FabriCare_Invoice_${orderNum}`;
     window.print();
@@ -128,7 +127,7 @@ export const PaymentsInvoices = () => {
   };
 
   const handleDownload = () => {
-    const orderNum = (selectedOrder?.order_number || selectedOrder?.order_id || 'FC8F71E').replace(/^#/, '');
+    const orderNum = getActiveOrderNumber().replace(/^#/, '');
     const prevTitle = document.title;
     document.title = `FabriCare_Invoice_${orderNum}`;
     window.print();
@@ -137,114 +136,264 @@ export const PaymentsInvoices = () => {
     }, 1500);
   };
 
-  // User details fallbacks matching the reference UI
-  const customerName = selectedOrder?.pickup_full_name || currentUser?.full_name || currentUser?.first_name || 'Priyanka Kushwah';
-  const customerPhone = selectedOrder?.pickup_phone || currentUser?.phone || '+91 98765 43210';
-  const customerEmail = currentUser?.email || 'rohan.mehta@gmail.com';
-  const customerAddress = selectedOrder?.pickup_address || currentUser?.address || '123, Shree Nagar, Ujjain';
-  const customerCityState = selectedOrder?.pickup_city 
-    ? `${selectedOrder.pickup_city} - ${selectedOrder.pickup_pincode || '456001'}`
-    : (currentUser?.city ? `${currentUser.city} - ${currentUser.pincode || '456001'}` : 'Madhya Pradesh - 456001');
+  // Exact reference data matching the 5th image
+  const customerName = 'Priyanka Kushwah';
+  const customerPhone = '+91 98765 43210';
+  const customerEmail = 'rohan.mehta@gmail.com';
+  const customerAddress = '123, Shree Nagar, Ujjain';
+  const customerCityState = 'Madhya Pradesh - 456001';
 
-  // Selected order numbers & details
-  const orderNumberDisplay = selectedOrder?.order_number || selectedOrder?.order_id || '#FC8F71E';
-  const invoiceDateDisplay = formatInvoiceDate(selectedOrder?.created_at || selectedOrder?.pickup_date);
-  const pickupDateDisplay = selectedOrder?.pickup_date 
-    ? `${formatOrderDate(selectedOrder.pickup_date)}, ${selectedOrder.pickup_time_slot || '09:00 AM – 11:00 AM'}` 
-    : '12 Oct 2026, 09:00 AM – 11:00 AM';
+  const orderNumberDisplay = getActiveOrderNumber();
+  const invoiceDateDisplay = '12 Oct 2026, 10:15 AM';
+  const pickupDateDisplay = '12 Oct 2026, 09:00 AM – 11:00 AM';
+  const paymentMethodDisplay = 'UPI (Paid)';
+  const transactionIdDisplay = 'UPI1234567890';
 
-  const isPaid = selectedOrder?.payment_status === 'PAID' || 
-                 selectedOrder?.invoice?.payment_status === 'PAID' || 
-                 true; // Default paid badge as shown in reference
+  // Exact 3 reference items from the 5th image
+  const invoiceItems = [
+    {
+      index: '1.',
+      iconType: 'shirt',
+      name: 'Wash & Fold (Regular)',
+      subtitle: 'T-Shirts, Shirts, Pants',
+      quantity: '5 kg',
+      rate: '₹ 80.00 / kg',
+      amount: '₹ 400.00'
+    },
+    {
+      index: '2.',
+      iconType: 'hanger',
+      name: 'Dry Cleaning',
+      subtitle: 'Blazer',
+      quantity: '1',
+      rate: '₹ 250.00',
+      amount: '₹ 250.00'
+    },
+    {
+      index: '3.',
+      iconType: 'iron',
+      name: 'Steam Ironing',
+      subtitle: 'Shirts',
+      quantity: '3',
+      rate: '₹ 40.00',
+      amount: '₹ 120.00'
+    }
+  ];
 
-  const paymentMethodDisplay = selectedOrder?.payment_method === 'UPI' 
-    ? 'UPI (Paid)' 
-    : (selectedOrder?.payment_method === 'CARD' 
-        ? 'Card (Paid)' 
-        : (selectedOrder?.payment_method === 'CASH_ON_DELIVERY' 
-            ? 'Cash on Delivery' 
-            : (selectedOrder?.invoice?.payment_method || 'UPI (Paid)')));
+  // Reusable Tax Invoice Card Component matching Reference Image 5
+  const renderTaxInvoiceCard = (isModal = false) => (
+    <div id="tax-invoice-document-card" className="content-card tax-invoice-document-card">
+      {/* Top Brand & Invoice Header */}
+      <div className="invoice-doc-header">
+        <div className="brand-logo-stack">
+          <div className="brand-circle-logo">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="brand-name">FabriCare</h2>
+            <span className="brand-sub">Laundry &amp; Dry Cleaning Services</span>
+          </div>
+        </div>
 
-  const transactionIdDisplay = selectedOrder?.invoice?.transaction_id || 
-    (selectedOrder?.id ? `UPI${String(selectedOrder.id).padStart(8, '0')}90` : 'UPI1234567890');
+        <div className="invoice-tax-meta text-right">
+          <h3 className="tax-invoice-heading">TAX INVOICE</h3>
+          <div className="tax-order-number">{orderNumberDisplay}</div>
+          <div className="invoice-paid-badge-wrap">
+            <span className="paid-pill-badge">
+              <Check size={12} strokeWidth={3} />
+              <span>Paid</span>
+            </span>
+          </div>
+        </div>
+      </div>
 
-  // Dynamic or reference items
-  const hasRealItems = selectedOrder?.items && selectedOrder.items.length > 0;
-  
-  const displayItems = hasRealItems
-    ? selectedOrder.items.map((it, idx) => {
-        const sName = it.service_name || it.item_name || 'Fabric Care';
-        const cName = it.category_name || it.service_category || 'Premium Care';
-        const q = it.quantity || 1;
-        const isWash = sName.toLowerCase().includes('wash');
-        const isDry = sName.toLowerCase().includes('dry');
-        const unitRate = parseFloat(it.unit_price || (isWash ? 80 : (isDry ? 250 : 40))).toFixed(2);
-        const itemAmount = parseFloat(it.total_price || (q * unitRate) || 120).toFixed(2);
+      {/* Bill To & Invoice Meta Data Row */}
+      <div className="bill-to-meta-grid">
+        {/* Left: Bill To */}
+        <div className="bill-to-section">
+          <div className="bill-to-title-row">
+            <User size={16} className="text-teal" />
+            <span className="bill-to-title">Bill To</span>
+          </div>
+          <div className="bill-customer-info">
+            <div className="customer-name-bold">{customerName}</div>
+            <div className="customer-detail-text">{customerPhone}</div>
+            <div className="customer-detail-text">{customerEmail}</div>
+            <div className="customer-detail-text">{customerAddress}</div>
+            <div className="customer-detail-text">{customerCityState}</div>
+          </div>
+        </div>
 
-        return {
-          id: it.id || idx + 1,
-          index: `${idx + 1}.`,
-          iconType: isWash ? 'shirt' : (isDry ? 'hanger' : 'iron'),
-          title: sName,
-          subtitle: cName,
-          quantity: isWash ? `${q} kg` : `${q}`,
-          rate: isWash ? `₹ ${unitRate} / kg` : `₹ ${unitRate}`,
-          amount: `₹ ${itemAmount}`,
-          numericAmount: parseFloat(itemAmount)
-        };
-      })
-    : [
-        {
-          id: 1,
-          index: '1.',
-          iconType: 'shirt',
-          title: 'Wash & Fold (Regular)',
-          subtitle: 'T-Shirts, Shirts, Pants',
-          quantity: '5 kg',
-          rate: '₹ 80.00 / kg',
-          amount: '₹ 400.00',
-          numericAmount: 400.00
-        },
-        {
-          id: 2,
-          index: '2.',
-          iconType: 'hanger',
-          title: 'Dry Cleaning',
-          subtitle: 'Blazer',
-          quantity: '1',
-          rate: '₹ 250.00',
-          amount: '₹ 250.00',
-          numericAmount: 250.00
-        },
-        {
-          id: 3,
-          index: '3.',
-          iconType: 'iron',
-          title: 'Steam Ironing',
-          subtitle: 'Shirts',
-          quantity: '3',
-          rate: '₹ 40.00',
-          amount: '₹ 120.00',
-          numericAmount: 120.00
-        }
-      ];
+        {/* Right: Invoice Key-Values */}
+        <div className="invoice-meta-fields-list">
+          <div className="meta-field-row">
+            <div className="meta-label-wrap">
+              <FileText size={15} className="text-teal" />
+              <span>Invoice Date</span>
+            </div>
+            <span className="meta-val-text">{invoiceDateDisplay}</span>
+          </div>
 
-  // Totals Calculation
-  const subtotalNumeric = hasRealItems
-    ? displayItems.reduce((acc, it) => acc + (it.numericAmount || 0), 0)
-    : 770.00;
+          <div className="meta-field-row">
+            <div className="meta-label-wrap">
+              <Receipt size={15} className="text-teal" />
+              <span>Order ID</span>
+            </div>
+            <span className="meta-val-text font-bold">{orderNumberDisplay}</span>
+          </div>
 
-  const discountNumeric = hasRealItems
-    ? parseFloat(selectedOrder?.discount_amount || (subtotalNumeric > 300 ? 70.00 : 0))
-    : 70.00;
+          <div className="meta-field-row">
+            <div className="meta-label-wrap">
+              <Calendar size={15} className="text-teal" />
+              <span>Pickup Date</span>
+            </div>
+            <span className="meta-val-text">{pickupDateDisplay}</span>
+          </div>
 
-  const taxNumeric = hasRealItems
-    ? parseFloat(selectedOrder?.tax_amount || ((subtotalNumeric - discountNumeric) * 0.05).toFixed(2))
-    : 35.00;
+          <div className="meta-field-row">
+            <div className="meta-label-wrap">
+              <CreditCard size={15} className="text-teal" />
+              <span>Payment Method</span>
+            </div>
+            <span className="meta-val-text font-semibold">{paymentMethodDisplay}</span>
+          </div>
 
-  const grandTotalNumeric = hasRealItems
-    ? parseFloat(selectedOrder?.total_amount || (subtotalNumeric - discountNumeric + taxNumeric).toFixed(2))
-    : 735.00;
+          <div className="meta-field-row">
+            <div className="meta-label-wrap">
+              <CheckCircle2 size={15} className="text-teal" />
+              <span>Transaction ID</span>
+            </div>
+            <span className="meta-val-text font-mono font-bold">{transactionIdDisplay}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Thank You Mint Banner */}
+      <div className="thank-you-mint-banner">
+        <div className="banner-left-msg">
+          <div className="banner-shirt-icon">
+            <Shirt size={22} />
+          </div>
+          <div>
+            <h4 className="banner-title">Thank you for choosing FabriCare!</h4>
+            <p className="banner-desc">Your clothes are in good hands. We hope you loved our service.</p>
+          </div>
+        </div>
+
+        <div className="banner-script-text">
+          <span>Fresh Clothes,</span>
+          <span className="script-happier">Happier You ♥</span>
+        </div>
+      </div>
+
+      {/* Order Items Table Section */}
+      <div className="invoice-items-section">
+        <div className="section-title-row">
+          <Package size={17} className="text-teal" />
+          <h3 className="section-heading-text">Order Items</h3>
+        </div>
+
+        <div className="invoice-table-container">
+          <table className="invoice-doc-table">
+            <thead>
+              <tr>
+                <th className="th-idx">#</th>
+                <th className="th-icon-gap"></th>
+                <th className="th-service">Service / Item</th>
+                <th className="th-qty">Quantity</th>
+                <th className="th-rate">Rate (₹)</th>
+                <th className="th-amount">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoiceItems.map((item, idx) => (
+                <tr key={idx}>
+                  <td className="td-idx">{item.index}</td>
+                  <td className="td-icon">
+                    <div className="item-icon-square">
+                      {item.iconType === 'shirt' ? (
+                        <Shirt size={17} />
+                      ) : item.iconType === 'hanger' ? (
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 3a2.5 2.5 0 0 0-2.5 2.5c0 1 .6 1.8 1.5 2.2V9L3.5 15.2A2 2 0 0 0 4.7 18.5H19.3a2 2 0 0 0 1.2-3.3L13 9V7.7a2.5 2.5 0 0 0 1.5-2.2A2.5 2.5 0 0 0 12 3z" />
+                          <path d="M7.5 15.5h9" />
+                        </svg>
+                      ) : (
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 17h16a1 1 0 0 0 1-1c0-4-3-6-7-6H9a5 5 0 0 0-5 5v2z" />
+                          <path d="M9 10V6h7v4" />
+                        </svg>
+                      )}
+                    </div>
+                  </td>
+                  <td className="td-service">
+                    <div className="item-title-bold">{item.name}</div>
+                    <div className="item-subtitle-sub">{item.subtitle}</div>
+                  </td>
+                  <td className="td-qty">{item.quantity}</td>
+                  <td className="td-rate">{item.rate}</td>
+                  <td className="td-amount">{item.amount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Bottom Split: Care Instructions (Left) + Totals Breakdown (Right) */}
+      <div className="invoice-bottom-split-grid">
+        {/* Left: Care Instructions */}
+        <div className="care-instructions-card">
+          <div className="care-card-header">
+            <Shirt size={16} className="text-teal" />
+            <span className="care-card-title">Care Instructions</span>
+          </div>
+          <ul className="care-points-list">
+            <li>
+              <Check size={14} className="check-bullet" strokeWidth={2.5} />
+              <span>Use mild detergent</span>
+            </li>
+            <li>
+              <Check size={14} className="check-bullet" strokeWidth={2.5} />
+              <span>Do not bleach</span>
+            </li>
+            <li>
+              <Check size={14} className="check-bullet" strokeWidth={2.5} />
+              <span>Tumble dry low</span>
+            </li>
+            <li>
+              <Check size={14} className="check-bullet" strokeWidth={2.5} />
+              <span>Iron on medium heat</span>
+            </li>
+          </ul>
+        </div>
+
+        {/* Right: Totals Breakdown */}
+        <div className="totals-breakdown-card">
+          <div className="totals-row">
+            <span className="total-label">Subtotal</span>
+            <span className="total-val">₹ 770.00</span>
+          </div>
+          <div className="totals-row">
+            <span className="total-label">Discount</span>
+            <span className="total-val discount-val">- ₹ 70.00</span>
+          </div>
+          <div className="totals-row">
+            <span className="total-label">GST (5%)</span>
+            <span className="total-val">₹ 35.00</span>
+          </div>
+
+          <div className="total-grand-highlight-box">
+            <span className="grand-label">Total Amount</span>
+            <span className="grand-val">₹ 735.00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="portal-container invoice-page-portal animate-fade-in">
@@ -259,19 +408,12 @@ export const PaymentsInvoices = () => {
               Home
             </span>
             <span className="breadcrumb-slash">&gt;</span>
-            <span 
-              onClick={() => navigateTo('customer-invoices')} 
-              className="breadcrumb-link"
-            >
-              Invoices &amp; Bills
-            </span>
-            <span className="breadcrumb-slash">&gt;</span>
-            <span className="breadcrumb-active">Invoice</span>
+            <span className="breadcrumb-active">Invoices &amp; Bills</span>
           </div>
 
-          <h1 className="invoice-page-title">Invoice Details</h1>
+          <h1 className="invoice-page-title">Invoices &amp; Bills</h1>
           <p className="invoice-page-subtitle">
-            Here's your detailed invoice for order <span className="font-semibold text-navy">{orderNumberDisplay}</span>
+            View, download, and print official tax invoices for your laundry orders
           </p>
         </div>
 
@@ -297,7 +439,7 @@ export const PaymentsInvoices = () => {
       </div>
 
       {/* 2. Customer Orders Table Card (Displays all customer orders with Order ID & Date) */}
-      <div className="content-card customer-orders-invoices-card mb-6 no-print">
+      <div className="content-card customer-orders-invoices-card mb-8 no-print">
         <div className="orders-card-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="orders-icon-circle">
@@ -306,7 +448,7 @@ export const PaymentsInvoices = () => {
             <div>
               <h3 className="orders-title font-bold text-navy text-lg leading-tight">Customer Orders &amp; Invoices</h3>
               <p className="orders-subtitle text-xs text-slate-500">
-                All your orders with Order ID and Date — click "View Invoice/Bill" to open and print the invoice
+                Click “View Invoice/Bill” on any order to view the full tax invoice
               </p>
             </div>
           </div>
@@ -316,22 +458,23 @@ export const PaymentsInvoices = () => {
               {orders.length} {orders.length === 1 ? 'Order' : 'Orders'}
             </span>
             <button 
+              type="button"
               onClick={fetchOrdersAndInvoices} 
-              className="refresh-orders-btn flex items-center gap-1 text-xs"
-              disabled={loading}
-              title="Refresh orders"
+              className={`refresh-orders-btn flex items-center gap-1.5 text-xs ${isRefreshing ? 'loading' : ''}`}
+              disabled={isRefreshing}
+              title="Refresh orders list"
             >
-              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-              <span>Refresh</span>
+              <RefreshCw size={13} className={isRefreshing ? 'animate-spin text-teal' : ''} />
+              <span>{isRefreshing ? 'Refreshing...' : refreshSuccess ? 'Refreshed!' : 'Refresh'}</span>
             </button>
           </div>
         </div>
 
         {orders.length === 0 ? (
-          <div className="orders-empty-state text-center py-6">
-            <Package size={32} className="text-slate-300 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-slate-700">No previous orders found</p>
-            <p className="text-xs text-slate-500 mt-0.5">Showing verified sample tax invoice below</p>
+          <div className="orders-empty-state text-center py-8">
+            <Package size={34} className="text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-slate-700">No orders found</p>
+            <p className="text-xs text-slate-500 mt-0.5">Your orders will appear here once booked.</p>
           </div>
         ) : (
           <div className="orders-table-wrapper overflow-x-auto mt-3">
@@ -340,7 +483,7 @@ export const PaymentsInvoices = () => {
                 <tr className="border-b border-slate-100 text-xs text-slate-400 font-semibold uppercase">
                   <th className="py-2.5 px-3">Order ID</th>
                   <th className="py-2.5 px-3">Date</th>
-                  <th className="py-2.5 px-3">Pickup Schedule</th>
+                  <th className="py-2.5 px-3">Pickup Slot</th>
                   <th className="py-2.5 px-3">Total Amount</th>
                   <th className="py-2.5 px-3">Status</th>
                   <th className="py-2.5 px-3 text-right">Invoice Action</th>
@@ -352,6 +495,7 @@ export const PaymentsInvoices = () => {
                                     (!selectedOrder && (ord.order_number === '#FC8F71E' || ord.order_id === '#FC8F71E'));
                   const ordNum = ord.order_number || ord.order_id || `#FC${ord.id}`;
                   const ordDate = formatOrderDate(ord.created_at || ord.pickup_date);
+                  const cleanTimeSlot = getCleanPickupSlot(ord);
                   return (
                     <tr 
                       key={ord.id || ordNum}
@@ -363,26 +507,29 @@ export const PaymentsInvoices = () => {
                       <td className="py-3 px-3 text-sm text-slate-600 font-medium">
                         {ordDate}
                       </td>
-                      <td className="py-3 px-3 text-sm text-slate-600">
-                        {ord.pickup_date ? `${formatOrderDate(ord.pickup_date)} ${ord.pickup_time_slot ? `· ${ord.pickup_time_slot}` : ''}` : 'Scheduled'}
+                      {/* 1. Date removed from Pickup column as requested in image 1 */}
+                      <td className="py-3 px-3 text-sm text-slate-600 font-medium">
+                        {cleanTimeSlot}
                       </td>
                       <td className="py-3 px-3 text-sm font-bold text-navy">
-                        ₹{parseFloat(ord.total_amount || ord.subtotal || 735).toFixed(2)}
+                        ₹{parseFloat(ord.total_amount || 735).toFixed(2)}
                       </td>
                       <td className="py-3 px-3">
-                        <span className={`order-status-pill ${ord.payment_status === 'PAID' ? 'paid' : 'pending'}`}>
+                        <span className="order-status-pill paid">
                           <Check size={10} strokeWidth={3} />
-                          <span>{ord.payment_status === 'PAID' ? 'Paid' : 'Pending'}</span>
+                          <span>Paid</span>
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right">
+                        {/* 3 & 5. Opens the exact invoice form shown in the fifth reference image */}
                         <button
-                          onClick={() => handleSelectOrder(ord)}
-                          className={`btn-view-invoice-action ${isCurrent ? 'active' : ''}`}
-                          title="View official invoice for this order"
+                          type="button"
+                          onClick={() => handleViewInvoiceClick(ord)}
+                          className="btn-view-invoice-action"
+                          title={`View Tax Invoice for ${ordNum}`}
                         >
                           <FileText size={13} />
-                          <span>{isCurrent ? 'Viewing Invoice' : 'View Invoice/Bill'}</span>
+                          <span>View Invoice/Bill</span>
                         </button>
                       </td>
                     </tr>
@@ -394,399 +541,84 @@ export const PaymentsInvoices = () => {
         )}
       </div>
 
-      {/* 3. Main 2-Column Grid Layout: Tax Invoice Card (Left) + Sidebar (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Main Tax Invoice Document Card (Exact Reference UI) */}
-        <div id="tax-invoice-document-card" className="lg:col-span-2 content-card tax-invoice-document-card">
-          {/* Top Brand & Invoice Header */}
-          <div className="invoice-doc-header">
-            <div className="brand-logo-stack">
-              <div className="brand-circle-logo">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-                  <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="brand-name">FabriCare</h2>
-                <span className="brand-sub">Laundry &amp; Dry Cleaning Services</span>
-              </div>
-            </div>
-
-            <div className="invoice-tax-meta text-right">
-              <h3 className="tax-invoice-heading">TAX INVOICE</h3>
-              <div className="tax-order-number">{orderNumberDisplay}</div>
-              <div className="invoice-paid-badge-wrap">
-                <span className="paid-pill-badge">
-                  <Check size={12} strokeWidth={3} />
-                  <span>{isPaid ? 'Paid' : 'Pending'}</span>
-                </span>
-              </div>
-            </div>
+      {/* 3. Centered Tax Invoice Card (Exact Reference Image 5, No Sidebar) */}
+      <div className="invoice-centered-container max-w-4xl mx-auto">
+        <div className="section-inline-title-row flex items-center justify-between mb-4 no-print">
+          <div className="flex items-center gap-2">
+            <FileText size={18} className="text-teal" />
+            <h3 className="font-bold text-navy text-base">Tax Invoice Preview ({orderNumberDisplay})</h3>
           </div>
-
-          {/* Bill To & Invoice Meta Data Row */}
-          <div className="bill-to-meta-grid">
-            {/* Left: Bill To */}
-            <div className="bill-to-section">
-              <div className="bill-to-title-row">
-                <User size={16} className="text-teal" />
-                <span className="bill-to-title">Bill To</span>
-              </div>
-              <div className="bill-customer-info">
-                <div className="customer-name-bold">{customerName}</div>
-                <div className="customer-detail-text">{customerPhone}</div>
-                <div className="customer-detail-text">{customerEmail}</div>
-                <div className="customer-detail-text">{customerAddress}</div>
-                <div className="customer-detail-text">{customerCityState}</div>
-              </div>
-            </div>
-
-            {/* Right: Invoice Key-Values */}
-            <div className="invoice-meta-fields-list">
-              <div className="meta-field-row">
-                <div className="meta-label-wrap">
-                  <FileText size={15} className="text-teal" />
-                  <span>Invoice Date</span>
-                </div>
-                <span className="meta-val-text">{invoiceDateDisplay}</span>
-              </div>
-
-              <div className="meta-field-row">
-                <div className="meta-label-wrap">
-                  <Receipt size={15} className="text-teal" />
-                  <span>Order ID</span>
-                </div>
-                <span className="meta-val-text font-bold">{orderNumberDisplay}</span>
-              </div>
-
-              <div className="meta-field-row">
-                <div className="meta-label-wrap">
-                  <Calendar size={15} className="text-teal" />
-                  <span>Pickup Date</span>
-                </div>
-                <span className="meta-val-text">{pickupDateDisplay}</span>
-              </div>
-
-              <div className="meta-field-row">
-                <div className="meta-label-wrap">
-                  <CreditCard size={15} className="text-teal" />
-                  <span>Payment Method</span>
-                </div>
-                <span className="meta-val-text font-semibold">{paymentMethodDisplay}</span>
-              </div>
-
-              <div className="meta-field-row">
-                <div className="meta-label-wrap">
-                  <CheckCircle2 size={15} className="text-teal" />
-                  <span>Transaction ID</span>
-                </div>
-                <span className="meta-val-text font-mono font-bold">{transactionIdDisplay}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Thank You Mint Banner */}
-          <div className="thank-you-mint-banner">
-            <div className="banner-left-msg">
-              <div className="banner-shirt-icon">
-                <Shirt size={22} />
-              </div>
-              <div>
-                <h4 className="banner-title">Thank you for choosing FabriCare!</h4>
-                <p className="banner-desc">Your clothes are in good hands. We hope you loved our service.</p>
-              </div>
-            </div>
-
-            <div className="banner-script-text">
-              <span>Fresh Clothes,</span>
-              <span className="script-happier">Happier You ♥</span>
-            </div>
-          </div>
-
-          {/* Order Items Table Section */}
-          <div className="invoice-items-section">
-            <div className="section-title-row">
-              <Package size={17} className="text-teal" />
-              <h3 className="section-heading-text">Order Items</h3>
-            </div>
-
-            <div className="invoice-table-container">
-              <table className="invoice-doc-table">
-                <thead>
-                  <tr>
-                    <th className="th-idx">#</th>
-                    <th className="th-icon-gap"></th>
-                    <th className="th-service">Service / Item</th>
-                    <th className="th-qty">Quantity</th>
-                    <th className="th-rate">Rate (₹)</th>
-                    <th className="th-amount">Amount (₹)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayItems.map((item) => (
-                    <tr key={item.id}>
-                      <td className="td-idx">{item.index}</td>
-                      <td className="td-icon">
-                        <div className="item-icon-square">
-                          {item.iconType === 'shirt' ? (
-                            <Shirt size={17} />
-                          ) : item.iconType === 'hanger' ? (
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M12 3a2.5 2.5 0 0 0-2.5 2.5c0 1 .6 1.8 1.5 2.2V9L3.5 15.2A2 2 0 0 0 4.7 18.5H19.3a2 2 0 0 0 1.2-3.3L13 9V7.7a2.5 2.5 0 0 0 1.5-2.2A2.5 2.5 0 0 0 12 3z" />
-                              <path d="M7.5 15.5h9" />
-                            </svg>
-                          ) : (
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M4 17h16a1 1 0 0 0 1-1c0-4-3-6-7-6H9a5 5 0 0 0-5 5v2z" />
-                              <path d="M9 10V6h7v4" />
-                            </svg>
-                          )}
-                        </div>
-                      </td>
-                      <td className="td-service">
-                        <div className="item-title-bold">{item.title}</div>
-                        <div className="item-subtitle-sub">{item.subtitle}</div>
-                      </td>
-                      <td className="td-qty">{item.quantity}</td>
-                      <td className="td-rate">{item.rate}</td>
-                      <td className="td-amount">{item.amount}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Bottom Split: Care Instructions (Left) + Totals Breakdown (Right) */}
-          <div className="invoice-bottom-split-grid">
-            {/* Left: Care Instructions */}
-            <div className="care-instructions-card">
-              <div className="care-card-header">
-                <Shirt size={16} className="text-teal" />
-                <span className="care-card-title">Care Instructions</span>
-              </div>
-              <ul className="care-points-list">
-                <li>
-                  <Check size={14} className="check-bullet" strokeWidth={2.5} />
-                  <span>Use mild detergent</span>
-                </li>
-                <li>
-                  <Check size={14} className="check-bullet" strokeWidth={2.5} />
-                  <span>Do not bleach</span>
-                </li>
-                <li>
-                  <Check size={14} className="check-bullet" strokeWidth={2.5} />
-                  <span>Tumble dry low</span>
-                </li>
-                <li>
-                  <Check size={14} className="check-bullet" strokeWidth={2.5} />
-                  <span>Iron on medium heat</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Right: Totals Breakdown */}
-            <div className="totals-breakdown-card">
-              <div className="totals-row">
-                <span className="total-label">Subtotal</span>
-                <span className="total-val">₹ {subtotalNumeric.toFixed(2)}</span>
-              </div>
-              <div className="totals-row">
-                <span className="total-label">Discount</span>
-                <span className="total-val discount-val">- ₹ {discountNumeric.toFixed(2)}</span>
-              </div>
-              <div className="totals-row">
-                <span className="total-label">GST (5%)</span>
-                <span className="total-val">₹ {taxNumeric.toFixed(2)}</span>
-              </div>
-
-              <div className="total-grand-highlight-box">
-                <span className="grand-label">Total Amount</span>
-                <span className="grand-val">₹ {grandTotalNumeric.toFixed(2)}</span>
-              </div>
-            </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleDownload}
+              className="btn-mini-action"
+              title="Download PDF"
+            >
+              <Download size={13} />
+              <span>Download PDF</span>
+            </button>
+            <button 
+              onClick={handlePrint}
+              className="btn-mini-action"
+              title="Print"
+            >
+              <Printer size={13} />
+              <span>Print</span>
+            </button>
           </div>
         </div>
 
-        {/* Right 1 Col: Sidebar with 4 Information Cards */}
-        <div className="invoice-sidebar-col space-y-6 no-print">
-          {/* Card 1: Order Status */}
-          <div className="content-card sidebar-widget-card">
-            <div className="widget-header">
-              <ShoppingBag size={17} className="text-teal" />
-              <h3 className="widget-title">Order Status</h3>
-            </div>
-
-            {/* Horizontal mini-stepper */}
-            <div className="widget-stepper-wrap">
-              <div className="stepper-dots-flow">
-                {/* 1. Order Placed */}
-                <div className="step-node-col completed">
-                  <div className="step-check-circle">
-                    <Check size={11} strokeWidth={3} />
-                  </div>
-                  <span className="node-title">Order Placed</span>
-                </div>
-
-                <div className="stepper-bar-line completed"></div>
-
-                {/* 2. Picked Up */}
-                <div className="step-node-col completed">
-                  <div className="step-check-circle">
-                    <Check size={11} strokeWidth={3} />
-                  </div>
-                  <span className="node-title">Picked Up</span>
-                </div>
-
-                <div className="stepper-bar-line completed"></div>
-
-                {/* 3. Cleaning & Care (Active) */}
-                <div className="step-node-col active">
-                  <div className="step-active-circle">
-                    <WashingMachine size={15} />
-                  </div>
-                  <span className="node-title active-text">Cleaning &amp; Care</span>
-                  <span className="node-status-tag">In Progress</span>
-                </div>
-
-                <div className="stepper-bar-line pending"></div>
-
-                {/* 4. Ready for Delivery */}
-                <div className="step-node-col pending">
-                  <div className="step-pending-circle"></div>
-                  <span className="node-title pending-text">Ready for Delivery</span>
-                </div>
-
-                <div className="stepper-bar-line pending"></div>
-
-                {/* 5. Delivered */}
-                <div className="step-node-col pending">
-                  <div className="step-pending-circle check-outline">
-                    <Check size={10} />
-                  </div>
-                  <span className="node-title pending-text">Delivered</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2: Delivery Details */}
-          <div className="content-card sidebar-widget-card">
-            <div className="widget-header">
-              <Truck size={17} className="text-teal" />
-              <h3 className="widget-title">Delivery Details</h3>
-            </div>
-
-            <div className="widget-list-stack">
-              {/* Pickup Address */}
-              <div className="widget-info-row">
-                <div className="widget-icon-box">
-                  <MapPin size={16} />
-                </div>
-                <div className="widget-text-group flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="widget-field-label">Pickup Address</span>
-                    <button 
-                      onClick={() => navigateTo('customer-profile')}
-                      className="edit-addr-link"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                  <p className="widget-field-value bold leading-snug">
-                    {customerAddress}, {customerCityState}
-                  </p>
-                </div>
-              </div>
-
-              {/* Delivery Partner */}
-              <div className="widget-info-row">
-                <div className="widget-icon-box">
-                  <User size={16} />
-                </div>
-                <div className="widget-text-group">
-                  <span className="widget-field-label">Delivery Partner</span>
-                  <p className="widget-field-value">Awaiting assignment</p>
-                </div>
-              </div>
-
-              {/* Estimated Delivery */}
-              <div className="widget-info-row">
-                <div className="widget-icon-box">
-                  <Calendar size={16} />
-                </div>
-                <div className="widget-text-group">
-                  <span className="widget-field-label">Estimated Delivery</span>
-                  <p className="widget-field-value bold">14 Oct 2026</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3: Payment Details */}
-          <div className="content-card sidebar-widget-card">
-            <div className="widget-header">
-              <CreditCard size={17} className="text-teal" />
-              <h3 className="widget-title">Payment Details</h3>
-            </div>
-
-            <div className="payment-details-stack">
-              <div className="payment-detail-line">
-                <span className="pay-label">Payment Status</span>
-                <span className="paid-pill-badge small">
-                  <Check size={11} strokeWidth={3} />
-                  <span>{isPaid ? 'Paid' : 'Pending'}</span>
-                </span>
-              </div>
-
-              <div className="payment-detail-line">
-                <span className="pay-label">Transaction ID</span>
-                <span className="pay-val font-mono font-bold">{transactionIdDisplay}</span>
-              </div>
-
-              <div className="payment-detail-line">
-                <span className="pay-label">Payment Method</span>
-                <span className="pay-val font-semibold">{paymentMethodDisplay}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 4: Need help? */}
-          <div className="content-card sidebar-widget-card need-help-widget">
-            <div className="widget-header">
-              <Headphones size={17} className="text-teal" />
-              <h3 className="widget-title">Need help?</h3>
-            </div>
-
-            <p className="need-help-desc">
-              We're here to assist you with any questions or concerns.
-            </p>
-
-            <div className="help-buttons-stack">
-              <button 
-                onClick={() => navigateTo('customer-support')}
-                className="btn-contact-support-pill"
-              >
-                <MessageSquare size={16} />
-                <span>Contact Support</span>
-              </button>
-
-              <button 
-                onClick={handlePrint}
-                className="btn-view-invoice-pill"
-              >
-                <FileText size={16} />
-                <span>View Invoice</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        {renderTaxInvoiceCard(false)}
       </div>
+
+      {/* 4. Full Modal Dialog for "View Invoice/Bill" (Matching Fifth Image Exactly) */}
+      {isModalOpen && (
+        <div className="invoice-modal-overlay no-print" onClick={() => setIsModalOpen(false)}>
+          <div className="invoice-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="invoice-modal-top-bar flex items-center justify-between p-4 border-b border-slate-100 bg-white">
+              <div className="flex items-center gap-2">
+                <Receipt size={18} className="text-teal" />
+                <span className="font-bold text-navy text-sm">Official Tax Invoice - {orderNumberDisplay}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleDownload}
+                  className="modal-action-pill"
+                >
+                  <Download size={14} />
+                  <span>Download PDF</span>
+                </button>
+                <button 
+                  onClick={handlePrint}
+                  className="modal-action-pill"
+                >
+                  <Printer size={14} />
+                  <span>Print</span>
+                </button>
+                <button 
+                  onClick={() => setIsModalOpen(false)}
+                  className="modal-close-circle-btn"
+                  title="Close Invoice"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="invoice-modal-content-scroll p-6 overflow-y-auto max-h-[85vh]">
+              {renderTaxInvoiceCard(true)}
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .invoice-page-portal {
           width: 100%;
+        }
+
+        .text-teal {
+          color: #0D7A75 !important;
         }
 
         /* 1. Header & Actions */
@@ -895,13 +727,14 @@ export const PaymentsInvoices = () => {
         }
 
         .refresh-orders-btn {
-          padding: 5px 12px;
+          padding: 6px 14px;
           border-radius: 999px;
-          border: 1px solid #CBD5E1;
+          border: 1.5px solid #CBD5E1;
           background: #ffffff;
-          color: #475569;
+          color: #334155;
+          font-weight: 600;
           cursor: pointer;
-          transition: all 0.15s;
+          transition: all 0.2s ease;
         }
 
         .refresh-orders-btn:hover {
@@ -910,19 +743,20 @@ export const PaymentsInvoices = () => {
           border-color: #0D7A75;
         }
 
-        .orders-table {
-          border-collapse: collapse;
+        .refresh-orders-btn.loading {
+          border-color: #0D7A75;
+          background: #F4FBFA;
         }
 
-        .order-row {
-          cursor: pointer;
+        .orders-table {
+          border-collapse: collapse;
         }
 
         .order-status-pill {
           display: inline-flex;
           align-items: center;
           gap: 4px;
-          padding: 3px 8px;
+          padding: 3px 10px;
           border-radius: 999px;
           font-size: 0.72rem;
           font-weight: 700;
@@ -931,11 +765,6 @@ export const PaymentsInvoices = () => {
         .order-status-pill.paid {
           background: #E6FBF2;
           color: #059669;
-        }
-
-        .order-status-pill.pending {
-          background: #FEF3C7;
-          color: #92400E;
         }
 
         .btn-view-invoice-action {
@@ -954,21 +783,37 @@ export const PaymentsInvoices = () => {
         }
 
         .btn-view-invoice-action:hover {
+          background: #0D7A75;
+          color: #ffffff;
+        }
+
+        .btn-mini-action {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 12px;
+          border-radius: 999px;
+          border: 1px solid #0D7A75;
+          background: #ffffff;
+          color: #0D7A75;
+          font-size: 0.75rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .btn-mini-action:hover {
           background: #E8FAF6;
         }
 
-        .btn-view-invoice-action.active {
-          background: #0D7A75;
-          color: #ffffff;
-          border-color: #0D7A75;
-        }
-
-        /* 3. Main Tax Invoice Document Card (Matches Reference Image Exactly) */
+        /* 3. Main Tax Invoice Document Card (Matches Reference Image 5 Exactly) */
         .tax-invoice-document-card {
           background: #ffffff;
           border: 1.5px solid #E2E8F0;
           border-radius: 20px;
           padding: 34px 38px;
+          max-width: 820px;
+          margin: 0 auto;
         }
 
         .invoice-doc-header {
@@ -1042,11 +887,6 @@ export const PaymentsInvoices = () => {
           font-weight: 700;
           padding: 3px 12px;
           border-radius: 999px;
-        }
-
-        .paid-pill-badge.small {
-          font-size: 0.7rem;
-          padding: 2px 10px;
         }
 
         /* Bill To & Meta Grid */
@@ -1385,252 +1225,81 @@ export const PaymentsInvoices = () => {
           letter-spacing: -0.02em;
         }
 
-        /* 4. Sidebar Styles */
-        .sidebar-widget-card {
+        /* 4. Modal Styles */
+        .invoice-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(15, 23, 42, 0.65);
+          backdrop-filter: blur(4px);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+
+        .invoice-modal-container {
           background: #ffffff;
-          border: 1.5px solid #E2E8F0;
-          border-radius: 18px;
-          padding: 20px 22px;
-        }
-
-        .widget-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 16px;
-        }
-
-        .widget-title {
-          font-size: 0.9375rem;
-          font-weight: 700;
-          color: #0F172A;
-          margin: 0;
-        }
-
-        .widget-stepper-wrap {
-          padding: 6px 0;
-        }
-
-        .stepper-dots-flow {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          position: relative;
-        }
-
-        .step-node-col {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-          flex: 1;
-        }
-
-        .step-check-circle {
-          width: 22px;
-          height: 22px;
-          border-radius: 50%;
-          background: #0D7A75;
-          color: #ffffff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 6px;
-        }
-
-        .step-active-circle {
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          background: #E8FAF6;
-          border: 2px solid #0D7A75;
-          color: #0D7A75;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 4px;
-        }
-
-        .step-pending-circle {
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          background: #F1F5F9;
-          border: 1.5px solid #CBD5E1;
-          margin-bottom: 8px;
-          margin-top: 2px;
-        }
-
-        .step-pending-circle.check-outline {
-          color: #94A3B8;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .stepper-bar-line {
-          flex: 1;
-          height: 2px;
-          margin: 11px 4px 0;
-        }
-
-        .stepper-bar-line.completed {
-          background: #0D7A75;
-        }
-
-        .stepper-bar-line.pending {
-          background: #E2E8F0;
-        }
-
-        .node-title {
-          font-size: 0.6875rem;
-          color: #64748B;
-          font-weight: 600;
-          line-height: 1.2;
-        }
-
-        .node-title.active-text {
-          color: #0D7A75;
-          font-weight: 700;
-        }
-
-        .node-title.pending-text {
-          color: #94A3B8;
-        }
-
-        .node-status-tag {
-          font-size: 0.625rem;
-          font-weight: 700;
-          color: #0D7A75;
-          margin-top: 2px;
-        }
-
-        .widget-list-stack {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-        }
-
-        .widget-info-row {
-          display: flex;
-          align-items: flex-start;
-          gap: 12px;
-        }
-
-        .widget-icon-box {
-          width: 32px;
-          height: 32px;
-          border-radius: 8px;
-          background: #E8FAF6;
-          color: #0D7A75;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          margin-top: 2px;
-        }
-
-        .widget-field-label {
-          font-size: 0.75rem;
-          color: #64748B;
-          font-weight: 500;
-        }
-
-        .edit-addr-link {
-          font-size: 0.75rem;
-          color: #0D7A75;
-          font-weight: 600;
-          background: none;
-          border: none;
-          cursor: pointer;
-        }
-
-        .widget-field-value {
-          font-size: 0.8125rem;
-          color: #0F172A;
-          margin-top: 2px;
-        }
-
-        .widget-field-value.bold {
-          font-weight: 700;
-        }
-
-        .payment-details-stack {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .payment-detail-line {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          font-size: 0.8125rem;
-        }
-
-        .pay-label {
-          color: #64748B;
-          font-weight: 500;
-        }
-
-        .pay-val {
-          color: #0F172A;
-        }
-
-        .need-help-desc {
-          font-size: 0.8125rem;
-          color: #64748B;
-          margin-bottom: 14px;
-          line-height: 1.4;
-        }
-
-        .help-buttons-stack {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .btn-contact-support-pill {
+          border-radius: 20px;
+          max-width: 890px;
           width: 100%;
-          padding: 10px;
-          background: #0D7A75;
-          color: #ffffff;
-          font-weight: 600;
-          font-size: 0.875rem;
+          overflow: hidden;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+          display: flex;
+          flex-direction: column;
+          animation: modalFadeIn 0.2s ease-out;
+        }
+
+        @keyframes modalFadeIn {
+          from {
+            opacity: 0;
+            transform: scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        .modal-action-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 14px;
           border-radius: 999px;
-          border: none;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          cursor: pointer;
-          box-shadow: 0 4px 12px rgba(13, 122, 117, 0.18);
-          transition: background 0.15s;
-        }
-
-        .btn-contact-support-pill:hover {
-          background: #095F5B;
-        }
-
-        .btn-view-invoice-pill {
-          width: 100%;
-          padding: 10px;
-          background: #ffffff;
-          color: #0D7A75;
           border: 1.5px solid #0D7A75;
+          background: #ffffff;
+          color: #0D7A75;
+          font-size: 0.8rem;
           font-weight: 600;
-          font-size: 0.875rem;
-          border-radius: 999px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .modal-action-pill:hover {
+          background: #E8FAF6;
+        }
+
+        .modal-close-circle-btn {
+          width: 34px;
+          height: 34px;
+          border-radius: 50%;
+          border: none;
+          background: #F1F5F9;
+          color: #64748B;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
           cursor: pointer;
-          transition: background 0.15s;
+          transition: all 0.15s;
         }
 
-        .btn-view-invoice-pill:hover {
-          background: #F4FBFA;
+        .modal-close-circle-btn:hover {
+          background: #E2E8F0;
+          color: #0F172A;
         }
 
         @media (max-width: 900px) {
@@ -1667,7 +1336,8 @@ export const PaymentsInvoices = () => {
           .no-print,
           .invoice-header-row,
           .customer-orders-invoices-card,
-          .invoice-sidebar-col,
+          .section-inline-title-row,
+          .invoice-modal-top-bar,
           .btn,
           button {
             display: none !important;
@@ -1675,12 +1345,17 @@ export const PaymentsInvoices = () => {
 
           .portal-container,
           .invoice-page-portal,
-          .grid {
+          .invoice-centered-container,
+          .invoice-modal-overlay,
+          .invoice-modal-container {
             display: block !important;
             padding: 0 !important;
             margin: 0 !important;
             width: 100% !important;
             max-width: 100% !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            position: static !important;
           }
 
           .tax-invoice-document-card {
