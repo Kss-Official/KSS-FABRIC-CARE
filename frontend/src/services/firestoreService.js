@@ -472,16 +472,16 @@ export const seedInitialFirestoreData = async () => {
     if (!settingsSnap.exists()) {
       await setDoc(doc(db, 'settings', 'general'), {
         name: 'Admin',
-        email: 'admin@laundrix.com',
+        email: 'admin@fabricare.com',
         phone: '+91 98765 43210',
         role: 'Administrator',
-        supportEmail: 'support@laundrix.com',
+        supportEmail: 'support@fabricare.com',
         supportPhone: '+91 98765 43210',
-        websiteUrl: 'https://www.laundrix.com',
-        instagram: 'https://instagram.com/laundrix',
-        facebook: 'https://facebook.com/laundrix',
-        twitter: 'https://x.com/laundrix',
-        linkedin: 'https://linkedin.com/company/laundrix',
+        websiteUrl: 'https://www.fabricare.com',
+        instagram: 'https://instagram.com/fabricare',
+        facebook: 'https://facebook.com/fabricare',
+        twitter: 'https://x.com/fabricare',
+        linkedin: 'https://linkedin.com/company/fabricare',
         notifications: {
           newOrders: true,
           customerMessages: true,

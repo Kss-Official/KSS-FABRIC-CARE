@@ -167,7 +167,7 @@ export const AdminLoginPage = () => {
                       className="form-input"
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
-                      placeholder="admin@laundrix.com"
+                      placeholder="admin@fabricare.com"
                     />
                   </div>
                 )}
@@ -198,7 +198,7 @@ export const AdminLoginPage = () => {
                       className="form-input"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@laundrix.com"
+                      placeholder="admin@fabricare.com"
                     />
                   </div>
                 </div>

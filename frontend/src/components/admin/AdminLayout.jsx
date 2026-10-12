@@ -152,7 +152,7 @@ export const AdminLayout = ({ children }) => {
                 </div>
                 <div className="admin-user-info">
                   <span className="admin-name">{userProfile?.displayName || currentUser?.displayName || 'Admin'}</span>
-                  <span className="admin-org">Laundrix</span>
+                  <span className="admin-org">FabriCare</span>
                 </div>
                 <ChevronDown size={14} className="profile-chevron" />
               </div>
@@ -161,7 +161,7 @@ export const AdminLayout = ({ children }) => {
                 <div className="profile-dropdown-menu animate-fade-in">
                   <div className="dropdown-header">
                     <strong>{userProfile?.displayName || currentUser?.displayName || 'Admin User'}</strong>
-                    <span>{currentUser?.email || 'admin@laundrix.com'}</span>
+                    <span>{currentUser?.email || 'admin@fabricare.com'}</span>
                   </div>
                   <div className="dropdown-divider" />
                   <button 

@@ -5,6 +5,11 @@ import { AdminProvider } from './context/AdminContext';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { HomePage } from './pages/HomePage';
+import { AboutPage } from './pages/AboutPage';
+import { ServicesPage } from './pages/ServicesPage';
+import { WhyUsPage } from './pages/WhyUsPage';
+import { PricingPage } from './pages/PricingPage';
+import { HowItWorksPage } from './pages/HowItWorksPage';
 import { BookingPage } from './pages/BookingPage';
 import { OrderConfirmedPage } from './pages/OrderConfirmedPage';
 import { ServiceDetailPage } from './pages/ServiceDetailPage';
@@ -141,8 +146,8 @@ const AppContent = () => {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0D7A75', marginBottom: 16 }}>
-            Laund<span style={{ color: '#0E4B56' }}>rix</span>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#000000', marginBottom: 16 }}>
+            Fabri<span style={{ color: '#162832' }}>Care</span>
           </div>
           <Loader2 className="animate-spin" size={32} style={{ color: '#0D7A75', margin: '0 auto' }} />
           <p style={{ marginTop: 12, fontSize: '0.875rem', color: '#64748B', fontWeight: 500 }}>
@@ -224,13 +229,18 @@ const AppContent = () => {
     );
   }
 
-  // Route 6: Public Main Site (Home, Services, Booking, Confirmed)
+  // Route 6: Public Main Site (Home, Dedicated Pages, Booking, Confirmed)
   return (
     <div className="app-layout">
       <Navbar />
       <main className="main-content">
         {currentPage === 'home' && <HomePage />}
-        {currentPage === 'services' && <ServiceDetailPage />}
+        {currentPage === 'about' && <AboutPage />}
+        {currentPage === 'services' && <ServicesPage />}
+        {currentPage === 'why-us' && <WhyUsPage />}
+        {currentPage === 'pricing' && <PricingPage />}
+        {currentPage === 'how-it-works' && <HowItWorksPage />}
+        {currentPage === 'service-detail' && <ServiceDetailPage />}
         {currentPage === 'booking' && <BookingPage />}
         {currentPage === 'confirmed' && <OrderConfirmedPage />}
       </main>

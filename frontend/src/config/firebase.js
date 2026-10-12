@@ -32,15 +32,22 @@ export const auth = getAuth(app);
 // Initialize Cloud Firestore Database
 export const db = getFirestore(app);
 
-// Initialize Analytics conditionally only when supported in current browser environment
+// Initialize Analytics conditionally only when supported and a valid non-placeholder key is configured
+const isRealApiKey = Boolean(
+  firebaseConfig.apiKey &&
+  !firebaseConfig.apiKey.includes('placeholder') &&
+  !firebaseConfig.apiKey.includes('demo') &&
+  !firebaseConfig.apiKey.includes('your_api_key')
+);
+
 let analytics = null;
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && isRealApiKey) {
   isSupported().then((supported) => {
     if (supported) {
       analytics = getAnalytics(app);
     }
   }).catch(() => {
-    // Analytics is optional and suppressed in non-browser/unsupported environments
+    // Analytics is optional and suppressed in development/unsupported environments
   });
 }
 

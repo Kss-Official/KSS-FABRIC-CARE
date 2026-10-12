@@ -19,58 +19,41 @@ export const Navbar = () => {
       id: 'home', 
       action: () => { 
         navigateTo('home'); 
-        window.scrollTo({ top: 0, behavior: 'smooth' }); 
       } 
     },
     { 
       label: 'About Us', 
       id: 'about', 
       action: () => { 
-        navigateTo('home'); 
-        setTimeout(() => { 
-          document.getElementById('about-section')?.scrollIntoView({ behavior: 'smooth' }); 
-        }, 80); 
+        navigateTo('about'); 
       } 
     },
     { 
       label: 'Our Services', 
       id: 'services', 
       action: () => { 
-        if (currentPage === 'home') {
-          document.getElementById('services-section')?.scrollIntoView({ behavior: 'smooth' }); 
-        } else {
-          navigateTo('services', 'dry-cleaning'); 
-        }
+        navigateTo('services'); 
       } 
     },
     { 
       label: 'Why Us', 
       id: 'why-us', 
       action: () => { 
-        navigateTo('home'); 
-        setTimeout(() => { 
-          document.getElementById('why-us-section')?.scrollIntoView({ behavior: 'smooth' }); 
-        }, 80); 
+        navigateTo('why-us'); 
       } 
     },
     { 
       label: 'Pricing', 
       id: 'pricing', 
       action: () => { 
-        navigateTo('home'); 
-        setTimeout(() => { 
-          document.getElementById('pricing-section')?.scrollIntoView({ behavior: 'smooth' }); 
-        }, 80); 
+        navigateTo('pricing'); 
       } 
     },
     { 
       label: 'How It Works', 
       id: 'how-it-works', 
       action: () => { 
-        navigateTo('home'); 
-        setTimeout(() => { 
-          document.getElementById('process-section')?.scrollIntoView({ behavior: 'smooth' }); 
-        }, 80); 
+        navigateTo('how-it-works'); 
       } 
     },
   ];
@@ -86,15 +69,13 @@ export const Navbar = () => {
       <div className="container nav-container">
         {/* Brand Logo */}
         <div className="brand-logo" onClick={() => navigateTo('home')}>
-          <span className="logo-text">Laund<span className="logo-accent">rix</span></span>
+          <span className="logo-text">Fabri<span className="logo-accent">Care</span></span>
         </div>
 
         {/* Desktop Navigation Links */}
         <nav className="desktop-nav">
           {navItems.map((item) => {
-            const isActive = (item.id === 'home' && currentPage === 'home') || 
-                             (item.id === 'services' && currentPage === 'services') ||
-                             (item.id === currentPage);
+            const isActive = item.id === currentPage || (item.id === 'services' && currentPage === 'service-detail');
             return (
               <button
                 key={item.id}
@@ -214,7 +195,7 @@ export const Navbar = () => {
                   item.action();
                   setMobileMenuOpen(false);
                 }}
-                className={`mobile-nav-link ${currentPage === item.id ? 'active' : ''}`}
+                className={`mobile-nav-link ${currentPage === item.id || (item.id === 'services' && currentPage === 'service-detail') ? 'active' : ''}`}
               >
                 {item.label}
               </button>
@@ -289,14 +270,15 @@ export const Navbar = () => {
         }
 
         .logo-text {
+          font-family: 'Poppins', sans-serif;
           font-size: 1.625rem;
           font-weight: 800;
-          color: #0F172A;
+          color: #000000;
           letter-spacing: -0.02em;
         }
 
         .logo-accent {
-          color: #0D7A75;
+          color: #087F8C;
         }
 
         .desktop-nav {
