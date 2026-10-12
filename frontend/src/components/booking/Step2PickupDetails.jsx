@@ -522,7 +522,7 @@ export const Step2PickupDetails = () => {
           display: flex;
           flex-direction: column;
           justify-content: flex-start;
-          gap: 14px;
+          gap: 24px;
         }
 
         .folded-map-illustration {
@@ -537,7 +537,7 @@ export const Step2PickupDetails = () => {
         .folded-map-img {
           width: 100%;
           height: auto;
-          max-height: 250px;
+          max-height: 240px;
           object-fit: contain;
           display: block;
           filter: drop-shadow(0 12px 24px rgba(13, 122, 117, 0.1));
@@ -545,7 +545,7 @@ export const Step2PickupDetails = () => {
 
         .trust-card-body {
           width: 100%;
-          margin-top: 0;
+          margin-top: 8px;
           padding-top: 0;
         }
 
