@@ -9,7 +9,7 @@ export const INITIAL_SERVICES = [
   {
     id: 'wash-fold',
     name: 'Wash & Fold',
-    subtitle: 'Everyday casuals, sheets & towels fresh and clean.',
+    subtitle: 'Everyday essentials fresh and clean.',
     pricePerKg: 60,
     unit: 'kg',
     price: 120,
@@ -21,7 +21,7 @@ export const INITIAL_SERVICES = [
   {
     id: 'wash-iron',
     name: 'Wash & Iron',
-    subtitle: 'Clean clothes, washed & steam pressed, ready to wear.',
+    subtitle: 'Clean clothes, ready to wear.',
     pricePerKg: 90,
     unit: 'kg',
     price: 180,
@@ -32,7 +32,7 @@ export const INITIAL_SERVICES = [
   {
     id: 'dry-cleaning',
     name: 'Dry Cleaning',
-    subtitle: 'Expert care for suits, silk sarees, and delicate wear.',
+    subtitle: 'For your delicate and premium wear.',
     pricePerPiece: 120,
     unit: 'pc',
     price: 220,
@@ -43,8 +43,8 @@ export const INITIAL_SERVICES = [
   },
   {
     id: 'steam-iron',
-    name: 'Steam Ironing',
-    subtitle: 'Crisp, wrinkle-free finish with temperature control.',
+    name: 'Steam Iron',
+    subtitle: 'Crisp and perfectly pressed.',
     pricePerPiece: 20,
     unit: 'pc',
     price: 60,
@@ -55,7 +55,7 @@ export const INITIAL_SERVICES = [
   {
     id: 'shoe-laundry',
     name: 'Shoe Laundry',
-    subtitle: 'Deep cleaning and deodorization for sneakers & leather.',
+    subtitle: 'Clean shoes, step brighter.',
     pricePerPair: 250,
     unit: 'pair',
     price: 250,
@@ -65,8 +65,8 @@ export const INITIAL_SERVICES = [
   },
   {
     id: 'home-care',
-    name: 'Home & Curtains',
-    subtitle: 'Dust mite removal & steam press for drapes & linen.',
+    name: 'Home Care',
+    subtitle: 'Curtains, bed sheets and more.',
     pricePerItem: 150,
     unit: 'item',
     price: 200,
@@ -188,50 +188,14 @@ export const BookingProvider = ({ children }) => {
         if (srvRes.status === 'fulfilled' && srvRes.value?.data) {
           const srvs = Array.isArray(srvRes.value.data) ? srvRes.value.data : (srvRes.value.data?.results || []);
           if (srvs.length > 0) {
-            // Group services by category to provide clean category-level cards with real pricing
-            const mapped = [];
-            const seenCats = new Set();
-
-            srvs.forEach(s => {
-              const catName = s.category?.name || 'General Care';
-              const catSlug = s.category?.slug || s.category?.name?.toLowerCase().replace(/\s+/g, '-') || 'general';
-              if (!seenCats.has(catName)) {
-                seenCats.add(catName);
-                // Choose representative image & icon
-                let img = '/assets/service-wash.jpg';
-                let iconName = 'Shirt';
-                if (catName.toLowerCase().includes('dry')) {
-                  img = '/assets/service-dryclean.jpg';
-                  iconName = 'Sparkles';
-                } else if (catName.toLowerCase().includes('iron')) {
-                  img = '/assets/service-iron.jpg';
-                  iconName = 'Flame';
-                } else if (catName.toLowerCase().includes('shoe')) {
-                  img = '/assets/service-shoe.jpg';
-                  iconName = 'Footprints';
-                } else if (catName.toLowerCase().includes('home') || catName.toLowerCase().includes('special')) {
-                  img = '/assets/service-curtain.jpg';
-                  iconName = 'BedDouble';
-                }
-
-                mapped.push({
-                  id: catSlug,
-                  name: catName,
-                  subtitle: s.category?.description || `${catName} starting at ₹${Math.round(s.price)}`,
-                  price: parseFloat(s.price) || 120,
-                  pricePerKg: parseFloat(s.price),
-                  unit: s.unit || 'pc',
-                  icon: iconName,
-                  image: img,
-                  checked: false,
-                  popular: catSlug === 'wash-and-fold' || catSlug === 'dry-cleaning'
-                });
-              }
-            });
-
-            if (mapped.length > 0) {
-              setServicesList(mapped);
-            }
+            // Update prices on the 6 canonical services if matching items exist in backend
+            setServicesList(prev => prev.map(item => {
+              const match = srvs.find(s => 
+                (s.name && s.name.toLowerCase().includes(item.name.toLowerCase())) ||
+                (s.category_name && s.category_name.toLowerCase().includes(item.name.toLowerCase()))
+              );
+              return match ? { ...item, price: parseFloat(match.price) || item.price } : item;
+            }));
           }
         }
       } catch (err) {
