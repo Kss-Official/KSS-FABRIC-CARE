@@ -111,12 +111,152 @@ export const PaymentsInvoices = () => {
     setIsModalOpen(true);
   };
 
-  const getActiveOrderNumber = () => {
-    return selectedOrder?.order_number || selectedOrder?.order_id || '#FC8F71E';
+  const getActiveOrderNumber = (ord = selectedOrder) => {
+    return ord?.order_number || ord?.order_id || '#FC8F71E';
+  };
+
+  // Helper to dynamically extract complete individual order invoice details
+  const getOrderInvoiceData = (ord = selectedOrder) => {
+    const orderNum = getActiveOrderNumber(ord);
+
+    // Customer info (Rohan Mehta as explicitly required)
+    const name = 'Rohan Mehta';
+    const phone = ord?.pickup_phone || '+91 98765 43210';
+    const email = 'rohan.mehta@gmail.com';
+    const address = ord?.pickup_address || '123, Shree Nagar, Ujjain';
+    const cityState = (ord?.pickup_city && ord?.pickup_pincode) 
+      ? `${ord.pickup_city} - ${ord.pickup_pincode}` 
+      : 'Madhya Pradesh - 456001';
+
+    // Dates
+    const invDate = formatInvoiceDate(ord?.invoice?.created_at || ord?.created_at || ord?.pickup_date);
+    const pickupSlot = getCleanPickupSlot(ord);
+    const pickupDateStr = ord?.pickup_date ? formatOrderDate(ord.pickup_date) : '12 Oct 2026';
+    const pickupDisplay = `${pickupDateStr}, ${pickupSlot}`;
+
+    // Payment details
+    const paymentMethod = ord?.payment_method === 'UPI' 
+      ? 'UPI (Paid)' 
+      : ord?.payment_method === 'CARD' 
+        ? 'Card (Paid)' 
+        : ord?.payment_method === 'NET_BANKING' 
+          ? 'Net Banking (Paid)' 
+          : ord?.payment_method === 'CASH_ON_DELIVERY' 
+            ? (ord?.payment_status === 'PAID' ? 'Cash on Delivery (Paid)' : 'Cash on Delivery') 
+            : 'UPI (Paid)';
+
+    const txnId = ord?.invoice?.transaction_id || 
+      `UPI${orderNum.replace(/[^0-9A-Z]/g, '')}1234567890`.slice(0, 14);
+
+    // Dynamic Items for this individual order
+    let items = [];
+    if (ord?.items && Array.isArray(ord.items) && ord.items.length > 0) {
+      items = ord.items.map((it, idx) => {
+        const itemName = it.service_name || it.item_name || 'Laundry Service';
+        const isKg = itemName.toLowerCase().includes('kg');
+        const qty = it.quantity || 1;
+        const rateVal = parseFloat(it.unit_price || 0);
+        const amountVal = parseFloat(it.total_price || (qty * rateVal));
+
+        let iconType = 'shirt';
+        if (itemName.toLowerCase().includes('iron') || itemName.toLowerCase().includes('press')) {
+          iconType = 'iron';
+        } else if (itemName.toLowerCase().includes('dry') || itemName.toLowerCase().includes('suit') || itemName.toLowerCase().includes('blazer') || itemName.toLowerCase().includes('coat')) {
+          iconType = 'hanger';
+        }
+
+        let subtitle = it.category_name && it.category_name !== 'General' ? it.category_name : '';
+        if (!subtitle) {
+          if (itemName.toLowerCase().includes('wash')) subtitle = 'T-Shirts, Shirts, Pants';
+          else if (itemName.toLowerCase().includes('dry')) subtitle = 'Blazer';
+          else if (itemName.toLowerCase().includes('iron')) subtitle = 'Shirts';
+          else subtitle = 'Care & Cleaning';
+        }
+
+        return {
+          index: `${idx + 1}.`,
+          iconType,
+          name: itemName,
+          subtitle,
+          quantity: isKg ? `${qty} kg` : `${qty}`,
+          rate: isKg ? `₹ ${rateVal.toFixed(2)} / kg` : `₹ ${rateVal.toFixed(2)}`,
+          amount: `₹ ${amountVal.toFixed(2)}`,
+          amountVal
+        };
+      });
+    } else {
+      // Default reference items fallback if order has no item records
+      items = [
+        {
+          index: '1.',
+          iconType: 'shirt',
+          name: 'Wash & Fold (Regular)',
+          subtitle: 'T-Shirts, Shirts, Pants',
+          quantity: '5 kg',
+          rate: '₹ 80.00 / kg',
+          amount: '₹ 400.00',
+          amountVal: 400.00
+        },
+        {
+          index: '2.',
+          iconType: 'hanger',
+          name: 'Dry Cleaning',
+          subtitle: 'Blazer',
+          quantity: '1',
+          rate: '₹ 250.00',
+          amount: '₹ 250.00',
+          amountVal: 250.00
+        },
+        {
+          index: '3.',
+          iconType: 'iron',
+          name: 'Steam Ironing',
+          subtitle: 'Shirts',
+          quantity: '3',
+          rate: '₹ 40.00',
+          amount: '₹ 120.00',
+          amountVal: 120.00
+        }
+      ];
+    }
+
+    // Totals for this individual order
+    const totalVal = parseFloat(ord?.total_amount || (ord?.subtotal ? ord.subtotal : 735));
+    let subtotalVal = parseFloat(ord?.subtotal || 0);
+    let discountVal = parseFloat(ord?.discount_amount || 0);
+    let taxVal = parseFloat(ord?.tax_amount || 0);
+
+    if (subtotalVal <= 0) {
+      const sumItems = items.reduce((sum, item) => sum + (item.amountVal || 0), 0);
+      subtotalVal = sumItems > 0 ? sumItems : totalVal;
+    }
+
+    if (discountVal === 0 && taxVal === 0 && subtotalVal > totalVal) {
+      discountVal = subtotalVal - totalVal;
+    }
+
+    return {
+      orderNum,
+      customerName: name,
+      customerPhone: phone,
+      customerEmail: email,
+      customerAddress: address,
+      customerCityState: cityState,
+      invoiceDate: invDate,
+      pickupDisplay,
+      paymentMethod,
+      transactionId: txnId,
+      items,
+      subtotal: `₹ ${subtotalVal.toFixed(2)}`,
+      discount: discountVal > 0 ? `- ₹ ${discountVal.toFixed(2)}` : `- ₹ 0.00`,
+      tax: taxVal > 0 ? `₹ ${taxVal.toFixed(2)}` : `₹ 0.00`,
+      total: `₹ ${totalVal.toFixed(2)}`
+    };
   };
 
   const handlePrint = () => {
-    const orderNum = getActiveOrderNumber().replace(/^#/, '');
+    const data = getOrderInvoiceData(selectedOrder);
+    const orderNum = (data.orderNum || '').replace(/^#/, '');
     const prevTitle = document.title;
     document.title = `FabriCare_Invoice_${orderNum}`;
     window.print();
@@ -126,7 +266,8 @@ export const PaymentsInvoices = () => {
   };
 
   const handleDownload = () => {
-    const orderNum = getActiveOrderNumber().replace(/^#/, '');
+    const data = getOrderInvoiceData(selectedOrder);
+    const orderNum = (data.orderNum || '').replace(/^#/, '');
     const prevTitle = document.title;
     document.title = `FabriCare_Invoice_${orderNum}`;
     window.print();
@@ -135,264 +276,223 @@ export const PaymentsInvoices = () => {
     }, 1500);
   };
 
-  // 1. Customer Name displayed as Rohan Mehta as requested
-  const customerName = 'Rohan Mehta';
-  const customerPhone = '+91 98765 43210';
-  const customerEmail = 'rohan.mehta@gmail.com';
-  const customerAddress = '123, Shree Nagar, Ujjain';
-  const customerCityState = 'Madhya Pradesh - 456001';
-
-  const orderNumberDisplay = getActiveOrderNumber();
-  const invoiceDateDisplay = '12 Oct 2026, 10:15 AM';
-  const pickupDateDisplay = '12 Oct 2026, 09:00 AM – 11:00 AM';
-  const paymentMethodDisplay = 'UPI (Paid)';
-  const transactionIdDisplay = 'UPI1234567890';
-
-  // Exact 3 reference items from the reference image
-  const invoiceItems = [
-    {
-      index: '1.',
-      iconType: 'shirt',
-      name: 'Wash & Fold (Regular)',
-      subtitle: 'T-Shirts, Shirts, Pants',
-      quantity: '5 kg',
-      rate: '₹ 80.00 / kg',
-      amount: '₹ 400.00'
-    },
-    {
-      index: '2.',
-      iconType: 'hanger',
-      name: 'Dry Cleaning',
-      subtitle: 'Blazer',
-      quantity: '1',
-      rate: '₹ 250.00',
-      amount: '₹ 250.00'
-    },
-    {
-      index: '3.',
-      iconType: 'iron',
-      name: 'Steam Ironing',
-      subtitle: 'Shirts',
-      quantity: '3',
-      rate: '₹ 40.00',
-      amount: '₹ 120.00'
-    }
-  ];
-
-  // Reusable Tax Invoice Card Component matching Reference Image
-  const renderTaxInvoiceCard = () => (
-    <div id="tax-invoice-document-card" className="content-card tax-invoice-document-card">
-      {/* Top Brand & Invoice Header */}
-      <div className="invoice-doc-header">
-        <div className="brand-logo-stack">
-          <div className="brand-circle-logo">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="brand-name">FabriCare</h2>
-            <span className="brand-sub">Laundry &amp; Dry Cleaning Services</span>
-          </div>
-        </div>
-
-        <div className="invoice-tax-meta text-right">
-          <h3 className="tax-invoice-heading">TAX INVOICE</h3>
-          <div className="tax-order-number">{orderNumberDisplay}</div>
-          <div className="invoice-paid-badge-wrap">
-            <span className="paid-pill-badge">
-              <Check size={12} strokeWidth={3} />
-              <span>Paid</span>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Bill To & Invoice Meta Data Row */}
-      <div className="bill-to-meta-grid">
-        {/* Left: Bill To */}
-        <div className="bill-to-section">
-          <div className="bill-to-title-row">
-            <User size={16} className="text-teal" />
-            <span className="bill-to-title">Bill To</span>
-          </div>
-          <div className="bill-customer-info">
-            <div className="customer-name-bold">{customerName}</div>
-            <div className="customer-detail-text">{customerPhone}</div>
-            <div className="customer-detail-text">{customerEmail}</div>
-            <div className="customer-detail-text">{customerAddress}</div>
-            <div className="customer-detail-text">{customerCityState}</div>
-          </div>
-        </div>
-
-        {/* Right: Invoice Key-Values */}
-        <div className="invoice-meta-fields-list">
-          <div className="meta-field-row">
-            <div className="meta-label-wrap">
-              <FileText size={15} className="text-teal" />
-              <span>Invoice Date</span>
+  // Reusable Tax Invoice Card Component matching Reference Image UI design
+  const renderTaxInvoiceCard = (ord = selectedOrder) => {
+    const data = getOrderInvoiceData(ord);
+    return (
+      <div id="tax-invoice-document-card" className="content-card tax-invoice-document-card">
+        {/* Top Brand & Invoice Header */}
+        <div className="invoice-doc-header">
+          <div className="brand-logo-stack">
+            <div className="brand-circle-logo">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+                <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+              </svg>
             </div>
-            <span className="meta-val-text">{invoiceDateDisplay}</span>
-          </div>
-
-          <div className="meta-field-row">
-            <div className="meta-label-wrap">
-              <Receipt size={15} className="text-teal" />
-              <span>Order ID</span>
+            <div>
+              <h2 className="brand-name">FabriCare</h2>
+              <span className="brand-sub">Laundry &amp; Dry Cleaning Services</span>
             </div>
-            <span className="meta-val-text font-bold">{orderNumberDisplay}</span>
           </div>
 
-          <div className="meta-field-row">
-            <div className="meta-label-wrap">
-              <Calendar size={15} className="text-teal" />
-              <span>Pickup Date</span>
+          <div className="invoice-tax-meta text-right">
+            <h3 className="tax-invoice-heading">TAX INVOICE</h3>
+            <div className="tax-order-number">{data.orderNum}</div>
+            <div className="invoice-paid-badge-wrap">
+              <span className="paid-pill-badge">
+                <Check size={12} strokeWidth={3} />
+                <span>Paid</span>
+              </span>
             </div>
-            <span className="meta-val-text">{pickupDateDisplay}</span>
-          </div>
-
-          <div className="meta-field-row">
-            <div className="meta-label-wrap">
-              <CreditCard size={15} className="text-teal" />
-              <span>Payment Method</span>
-            </div>
-            <span className="meta-val-text font-semibold">{paymentMethodDisplay}</span>
-          </div>
-
-          <div className="meta-field-row">
-            <div className="meta-label-wrap">
-              <CheckCircle2 size={15} className="text-teal" />
-              <span>Transaction ID</span>
-            </div>
-            <span className="meta-val-text font-mono font-bold">{transactionIdDisplay}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Thank You Mint Banner */}
-      <div className="thank-you-mint-banner">
-        <div className="banner-left-msg">
-          <div className="banner-shirt-icon">
-            <Shirt size={22} />
-          </div>
-          <div>
-            <h4 className="banner-title">Thank you for choosing FabriCare!</h4>
-            <p className="banner-desc">Your clothes are in good hands. We hope you loved our service.</p>
           </div>
         </div>
 
-        <div className="banner-script-text">
-          <span>Fresh Clothes,</span>
-          <span className="script-happier">Happier You ♥</span>
-        </div>
-      </div>
+        {/* Bill To & Invoice Meta Data Row */}
+        <div className="bill-to-meta-grid">
+          {/* Left: Bill To */}
+          <div className="bill-to-section">
+            <div className="bill-to-title-row">
+              <User size={16} className="text-teal" />
+              <span className="bill-to-title">Bill To</span>
+            </div>
+            <div className="bill-customer-info">
+              <div className="customer-name-bold">{data.customerName}</div>
+              <div className="customer-detail-text">{data.customerPhone}</div>
+              <div className="customer-detail-text">{data.customerEmail}</div>
+              <div className="customer-detail-text">{data.customerAddress}</div>
+              <div className="customer-detail-text">{data.customerCityState}</div>
+            </div>
+          </div>
 
-      {/* Order Items Table Section */}
-      <div className="invoice-items-section">
-        <div className="section-title-row">
-          <Package size={17} className="text-teal" />
-          <h3 className="section-heading-text">Order Items</h3>
+          {/* Right: Invoice Key-Values */}
+          <div className="invoice-meta-fields-list">
+            <div className="meta-field-row">
+              <div className="meta-label-wrap">
+                <FileText size={15} className="text-teal" />
+                <span>Invoice Date</span>
+              </div>
+              <span className="meta-val-text">{data.invoiceDate}</span>
+            </div>
+
+            <div className="meta-field-row">
+              <div className="meta-label-wrap">
+                <Receipt size={15} className="text-teal" />
+                <span>Order ID</span>
+              </div>
+              <span className="meta-val-text font-bold">{data.orderNum}</span>
+            </div>
+
+            <div className="meta-field-row">
+              <div className="meta-label-wrap">
+                <Calendar size={15} className="text-teal" />
+                <span>Pickup Date</span>
+              </div>
+              <span className="meta-val-text">{data.pickupDisplay}</span>
+            </div>
+
+            <div className="meta-field-row">
+              <div className="meta-label-wrap">
+                <CreditCard size={15} className="text-teal" />
+                <span>Payment Method</span>
+              </div>
+              <span className="meta-val-text font-semibold">{data.paymentMethod}</span>
+            </div>
+
+            <div className="meta-field-row">
+              <div className="meta-label-wrap">
+                <CheckCircle2 size={15} className="text-teal" />
+                <span>Transaction ID</span>
+              </div>
+              <span className="meta-val-text font-mono font-bold">{data.transactionId}</span>
+            </div>
+          </div>
         </div>
 
-        <div className="invoice-table-container">
-          <table className="invoice-doc-table">
-            <thead>
-              <tr>
-                <th className="th-idx">#</th>
-                <th className="th-icon-gap"></th>
-                <th className="th-service">Service / Item</th>
-                <th className="th-qty">Quantity</th>
-                <th className="th-rate">Rate (₹)</th>
-                <th className="th-amount">Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoiceItems.map((item, idx) => (
-                <tr key={idx}>
-                  <td className="td-idx">{item.index}</td>
-                  <td className="td-icon">
-                    <div className="item-icon-square">
-                      {item.iconType === 'shirt' ? (
-                        <Shirt size={17} />
-                      ) : item.iconType === 'hanger' ? (
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 3a2.5 2.5 0 0 0-2.5 2.5c0 1 .6 1.8 1.5 2.2V9L3.5 15.2A2 2 0 0 0 4.7 18.5H19.3a2 2 0 0 0 1.2-3.3L13 9V7.7a2.5 2.5 0 0 0 1.5-2.2A2.5 2.5 0 0 0 12 3z" />
-                          <path d="M7.5 15.5h9" />
-                        </svg>
-                      ) : (
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M4 17h16a1 1 0 0 0 1-1c0-4-3-6-7-6H9a5 5 0 0 0-5 5v2z" />
-                          <path d="M9 10V6h7v4" />
-                        </svg>
-                      )}
-                    </div>
-                  </td>
-                  <td className="td-service">
-                    <div className="item-title-bold">{item.name}</div>
-                    <div className="item-subtitle-sub">{item.subtitle}</div>
-                  </td>
-                  <td className="td-qty">{item.quantity}</td>
-                  <td className="td-rate">{item.rate}</td>
-                  <td className="td-amount">{item.amount}</td>
+        {/* Thank You Mint Banner */}
+        <div className="thank-you-mint-banner">
+          <div className="banner-left-msg">
+            <div className="banner-shirt-icon">
+              <Shirt size={22} />
+            </div>
+            <div>
+              <h4 className="banner-title">Thank you for choosing FabriCare!</h4>
+              <p className="banner-desc">Your clothes are in good hands. We hope you loved our service.</p>
+            </div>
+          </div>
+
+          <div className="banner-script-text">
+            <span>Fresh Clothes,</span>
+            <span className="script-happier">Happier You ♥</span>
+          </div>
+        </div>
+
+        {/* Order Items Table Section */}
+        <div className="invoice-items-section">
+          <div className="section-title-row">
+            <Package size={17} className="text-teal" />
+            <h3 className="section-heading-text">Order Items</h3>
+          </div>
+
+          <div className="invoice-table-container">
+            <table className="invoice-doc-table">
+              <thead>
+                <tr>
+                  <th className="th-idx">#</th>
+                  <th className="th-icon-gap"></th>
+                  <th className="th-service">Service / Item</th>
+                  <th className="th-qty">Quantity</th>
+                  <th className="th-rate">Rate (₹)</th>
+                  <th className="th-amount">Amount (₹)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.items.map((item, idx) => (
+                  <tr key={idx}>
+                    <td className="td-idx">{item.index}</td>
+                    <td className="td-icon">
+                      <div className="item-icon-square">
+                        {item.iconType === 'shirt' ? (
+                          <Shirt size={17} />
+                        ) : item.iconType === 'hanger' ? (
+                          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 3a2.5 2.5 0 0 0-2.5 2.5c0 1 .6 1.8 1.5 2.2V9L3.5 15.2A2 2 0 0 0 4.7 18.5H19.3a2 2 0 0 0 1.2-3.3L13 9V7.7a2.5 2.5 0 0 0 1.5-2.2A2.5 2.5 0 0 0 12 3z" />
+                            <path d="M7.5 15.5h9" />
+                          </svg>
+                        ) : (
+                          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 17h16a1 1 0 0 0 1-1c0-4-3-6-7-6H9a5 5 0 0 0-5 5v2z" />
+                            <path d="M9 10V6h7v4" />
+                          </svg>
+                        )}
+                      </div>
+                    </td>
+                    <td className="td-service">
+                      <div className="item-title-bold">{item.name}</div>
+                      <div className="item-subtitle-sub">{item.subtitle}</div>
+                    </td>
+                    <td className="td-qty">{item.quantity}</td>
+                    <td className="td-rate">{item.rate}</td>
+                    <td className="td-amount">{item.amount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Bottom Split: Care Instructions (Left) + Totals Breakdown (Right) */}
+        <div className="invoice-bottom-split-grid">
+          {/* Left: Care Instructions */}
+          <div className="care-instructions-card">
+            <div className="care-card-header">
+              <Shirt size={16} className="text-teal" />
+              <span className="care-card-title">Care Instructions</span>
+            </div>
+            <ul className="care-points-list">
+              <li>
+                <Check size={14} className="check-bullet" strokeWidth={2.5} />
+                <span>Use mild detergent</span>
+              </li>
+              <li>
+                <Check size={14} className="check-bullet" strokeWidth={2.5} />
+                <span>Do not bleach</span>
+              </li>
+              <li>
+                <Check size={14} className="check-bullet" strokeWidth={2.5} />
+                <span>Tumble dry low</span>
+              </li>
+              <li>
+                <Check size={14} className="check-bullet" strokeWidth={2.5} />
+                <span>Iron on medium heat</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Right: Totals Breakdown */}
+          <div className="totals-breakdown-card">
+            <div className="totals-row">
+              <span className="total-label">Subtotal</span>
+              <span className="total-val">{data.subtotal}</span>
+            </div>
+            <div className="totals-row">
+              <span className="total-label">Discount</span>
+              <span className="total-val discount-val">{data.discount}</span>
+            </div>
+            <div className="totals-row">
+              <span className="total-label">GST (5%)</span>
+              <span className="total-val">{data.tax}</span>
+            </div>
+
+            <div className="total-grand-highlight-box">
+              <span className="grand-label">Total Amount</span>
+              <span className="grand-val">{data.total}</span>
+            </div>
+          </div>
         </div>
       </div>
-
-      {/* Bottom Split: Care Instructions (Left) + Totals Breakdown (Right) */}
-      <div className="invoice-bottom-split-grid">
-        {/* Left: Care Instructions */}
-        <div className="care-instructions-card">
-          <div className="care-card-header">
-            <Shirt size={16} className="text-teal" />
-            <span className="care-card-title">Care Instructions</span>
-          </div>
-          <ul className="care-points-list">
-            <li>
-              <Check size={14} className="check-bullet" strokeWidth={2.5} />
-              <span>Use mild detergent</span>
-            </li>
-            <li>
-              <Check size={14} className="check-bullet" strokeWidth={2.5} />
-              <span>Do not bleach</span>
-            </li>
-            <li>
-              <Check size={14} className="check-bullet" strokeWidth={2.5} />
-              <span>Tumble dry low</span>
-            </li>
-            <li>
-              <Check size={14} className="check-bullet" strokeWidth={2.5} />
-              <span>Iron on medium heat</span>
-            </li>
-          </ul>
-        </div>
-
-        {/* Right: Totals Breakdown */}
-        <div className="totals-breakdown-card">
-          <div className="totals-row">
-            <span className="total-label">Subtotal</span>
-            <span className="total-val">₹ 770.00</span>
-          </div>
-          <div className="totals-row">
-            <span className="total-label">Discount</span>
-            <span className="total-val discount-val">- ₹ 70.00</span>
-          </div>
-          <div className="totals-row">
-            <span className="total-label">GST (5%)</span>
-            <span className="total-val">₹ 35.00</span>
-          </div>
-
-          <div className="total-grand-highlight-box">
-            <span className="grand-label">Total Amount</span>
-            <span className="grand-val">₹ 735.00</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="portal-container invoice-page-portal animate-fade-in">
@@ -427,7 +527,7 @@ export const PaymentsInvoices = () => {
             <div>
               <h3 className="orders-title font-bold text-navy text-lg leading-tight">Customer Orders &amp; Invoices</h3>
               <p className="orders-subtitle text-xs text-slate-500">
-                Click “View Invoice/Bill” on any order to view the full tax invoice
+                Click “View Invoice” on any order to view its individual tax invoice
               </p>
             </div>
           </div>
@@ -500,7 +600,7 @@ export const PaymentsInvoices = () => {
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right">
-                        {/* 4 & 5. Clicking "View Invoice/Bill" opens the modal dialog with download and print options */}
+                        {/* Each order has its own View Invoice button */}
                         <button
                           type="button"
                           onClick={() => handleViewInvoiceClick(ord)}
@@ -508,7 +608,7 @@ export const PaymentsInvoices = () => {
                           title={`View Tax Invoice for ${ordNum}`}
                         >
                           <FileText size={13} />
-                          <span>View Invoice/Bill</span>
+                          <span>View Invoice</span>
                         </button>
                       </td>
                     </tr>
@@ -520,14 +620,16 @@ export const PaymentsInvoices = () => {
         )}
       </div>
 
-      {/* 3. Modal Dialog for "View Invoice" (Exact Reference Form, Single Instance for Clean Print/PDF) */}
+      {/* 3. Modal Dialog for "View Invoice" (Displays Selected Order's Individual Invoice) */}
       {isModalOpen && (
         <div className="invoice-modal-overlay" onClick={() => setIsModalOpen(false)}>
           <div className="invoice-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="invoice-modal-top-bar flex items-center justify-between p-4 border-b border-slate-100 bg-white no-print">
               <div className="flex items-center gap-2">
                 <Receipt size={18} className="text-teal" />
-                <span className="font-bold text-navy text-sm">Official Tax Invoice - {orderNumberDisplay}</span>
+                <span className="font-bold text-navy text-sm">
+                  Official Tax Invoice - {getOrderInvoiceData(selectedOrder).orderNum}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 {/* Download PDF & Print shown ONLY inside modal after clicking View Invoice */}
@@ -558,7 +660,7 @@ export const PaymentsInvoices = () => {
             </div>
 
             <div className="invoice-modal-content-scroll p-6 overflow-y-auto max-h-[85vh]">
-              {renderTaxInvoiceCard()}
+              {renderTaxInvoiceCard(selectedOrder)}
             </div>
           </div>
         </div>
