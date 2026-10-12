@@ -518,16 +518,17 @@ export const Step2PickupDetails = () => {
           background: #F0FDF9;
           border: 1.5px solid #E2E8F0;
           border-radius: 20px;
-          padding: 28px 24px;
+          padding: 24px 22px;
           display: flex;
           flex-direction: column;
-          justify-content: space-between;
+          justify-content: flex-start;
+          gap: 14px;
         }
 
         .folded-map-illustration {
           width: 100%;
-          max-width: 310px;
-          margin: 0 auto 8px;
+          max-width: 320px;
+          margin: 0 auto;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -536,7 +537,7 @@ export const Step2PickupDetails = () => {
         .folded-map-img {
           width: 100%;
           height: auto;
-          max-height: 235px;
+          max-height: 250px;
           object-fit: contain;
           display: block;
           filter: drop-shadow(0 12px 24px rgba(13, 122, 117, 0.1));
@@ -544,14 +545,15 @@ export const Step2PickupDetails = () => {
 
         .trust-card-body {
           width: 100%;
-          transform: translateY(-24px);
+          margin-top: 0;
+          padding-top: 0;
         }
 
         .trust-card-title {
           font-size: 1.125rem;
           font-weight: 800;
           color: #0F172A;
-          margin-bottom: 18px;
+          margin-bottom: 16px;
         }
 
         .trust-items-list {
