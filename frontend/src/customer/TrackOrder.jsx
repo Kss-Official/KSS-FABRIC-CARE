@@ -542,18 +542,8 @@ export const TrackOrder = () => {
             <p className="help-sub-desc">
               Our support team is here to assist you with any questions or concerns.
             </p>
-          </div>
 
-          {/* Reference Image 2: Fresh Folded Towels with Green Leaves filling the empty space */}
-          <div className="help-illustration-wrapper">
-            <img 
-              src="/assets/folded-towels.png" 
-              alt="FabriCare Fresh Clean Laundry & Towels" 
-              className="help-towels-img"
-            />
-          </div>
-
-          <div className="help-card-footer-group">
+            {/* Action buttons moved to the top below header text */}
             <div className="help-actions-stack">
               <button 
                 onClick={() => navigateTo('customer-support')}
@@ -571,11 +561,20 @@ export const TrackOrder = () => {
                 <span>View invoice</span>
               </button>
             </div>
+          </div>
 
-            <div className="help-secure-note">
-              <ShieldCheck size={14} className="text-teal" />
-              <span>Your order is safe and secure with us.</span>
-            </div>
+          {/* Reference Image 2: Fresh Folded Towels with Green Leaves placed below buttons with larger size */}
+          <div className="help-illustration-wrapper">
+            <img 
+              src="/assets/folded-towels.png" 
+              alt="FabriCare Fresh Clean Laundry & Towels" 
+              className="help-towels-img"
+            />
+          </div>
+
+          <div className="help-secure-note">
+            <ShieldCheck size={14} className="text-teal" />
+            <span>Your order is safe and secure with us.</span>
           </div>
         </div>
       </div>
@@ -1291,44 +1290,14 @@ export const TrackOrder = () => {
           color: #64748B;
           line-height: 1.5;
           margin-top: -6px;
-          margin-bottom: 0;
-        }
-
-        /* Second Reference Image: Fresh Folded Towels with Green Leaves */
-        .help-illustration-wrapper {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 12px 6px;
-          margin: auto 0;
-          flex: 1;
-        }
-
-        .help-towels-img {
-          width: 100%;
-          max-width: 250px;
-          height: auto;
-          max-height: 155px;
-          object-fit: contain;
-          filter: drop-shadow(0 10px 22px rgba(13, 122, 117, 0.14));
-          transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        .help-towels-img:hover {
-          transform: translateY(-2px) scale(1.02);
-        }
-
-        .help-card-footer-group {
-          display: flex;
-          flex-direction: column;
-          margin-top: auto;
+          margin-bottom: 16px;
         }
 
         .help-actions-stack {
           display: flex;
           flex-direction: column;
           gap: 10px;
-          margin-bottom: 16px;
+          margin-bottom: 8px;
         }
 
         .btn-help-contact-support {
@@ -1377,6 +1346,30 @@ export const TrackOrder = () => {
           transform: translateY(-1px);
         }
 
+        /* Second Reference Image: Fresh Folded Towels with Green Leaves (Increased size below buttons) */
+        .help-illustration-wrapper {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 12px 0 6px;
+          margin: auto 0;
+          flex: 1;
+        }
+
+        .help-towels-img {
+          width: 100%;
+          max-width: 320px;
+          height: auto;
+          max-height: 220px;
+          object-fit: contain;
+          filter: drop-shadow(0 14px 28px rgba(13, 122, 117, 0.16));
+          transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .help-towels-img:hover {
+          transform: translateY(-3px) scale(1.03);
+        }
+
         .help-secure-note {
           display: flex;
           align-items: center;
@@ -1386,6 +1379,7 @@ export const TrackOrder = () => {
           color: #64748B;
           font-weight: 500;
           text-align: center;
+          margin-top: 10px;
         }
 
         /* Responsive Layout Improvements */
@@ -1437,8 +1431,8 @@ export const TrackOrder = () => {
             align-self: flex-start;
           }
           .help-towels-img {
-            max-width: 220px;
-            max-height: 140px;
+            max-width: 275px;
+            max-height: 185px;
           }
         }
 
@@ -1455,8 +1449,8 @@ export const TrackOrder = () => {
             font-size: 0.8125rem;
           }
           .help-towels-img {
-            max-width: 190px;
-            max-height: 120px;
+            max-width: 230px;
+            max-height: 160px;
           }
         }
       `}</style>
