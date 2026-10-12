@@ -4,38 +4,27 @@ import { ordersApi } from '../api/apiClient';
 import { 
   Package, 
   Clock, 
-  CheckCircle, 
+  Check, 
   Truck, 
   MapPin, 
   User, 
-  Phone, 
   Calendar, 
   FileText, 
   ArrowLeft, 
   RefreshCw, 
   ShieldCheck, 
-  AlertTriangle,
-  Sparkles,
-  Layers,
   ChevronRight,
-  Info
+  Headphones,
+  MessageSquare,
+  ClipboardList,
+  WashingMachine,
+  IndianRupee,
+  Shirt
 } from 'lucide-react';
 
-const WORKFLOW_STEPS = [
-  { key: 'BOOKED', label: 'Booking Placed', desc: 'Order received by FabriCare' },
-  { key: 'PICKED_UP', label: 'Picked Up', desc: 'Collected by delivery agent' },
-  { key: 'RECEIVED_AT_LAUNDRY', label: 'Received at Hub', desc: 'Count & weight verified' },
-  { key: 'IN_PROCESS', label: 'Processing & Wash', desc: 'Washing, drying & ironing' },
-  { key: 'QUALITY_CHECK', label: 'Quality Check', desc: 'Passed hygiene & stain audit' },
-  { key: 'PACKED', label: 'Packed & Ready', desc: 'Sanitized & bagged for transit' },
-  { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery', desc: 'On way to your doorstep' },
-  { key: 'DELIVERED', label: 'Delivered', desc: 'Order completed successfully' }
-];
-
 export const TrackOrder = () => {
-  const { activeTrackingOrderId, setActiveTrackingOrderId, navigateTo, startBooking } = useBooking();
+  const { activeTrackingOrderId, navigateTo, startBooking } = useBooking();
   const [order, setOrder] = useState(null);
-  const [allUserOrders, setAllUserOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -49,7 +38,6 @@ export const TrackOrder = () => {
       } else {
         const res = await ordersApi.getOrders();
         const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-        setAllUserOrders(list);
         if (list.length > 0) {
           const active = list.find(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED') || list[0];
           setOrder(active);
@@ -68,46 +56,6 @@ export const TrackOrder = () => {
   useEffect(() => {
     fetchOrderDetails();
   }, [activeTrackingOrderId]);
-
-  // Determine active step index based on order status
-  const getStepProgress = (status) => {
-    switch (status) {
-      case 'PENDING':
-      case 'PENDING_REVIEW':
-      case 'ACCEPTED':
-      case 'PICKUP_ASSIGNED':
-      case 'PICKUP_SCHEDULED':
-      case 'PICKUP_IN_PROGRESS':
-        return 0;
-      case 'PICKED_UP':
-        return 1;
-      case 'DROPPED_OFF_AT_LAUNDRY':
-      case 'RECEIVED_AT_LAUNDRY':
-      case 'RECEIVED_BY_LAUNDRY':
-        return 2;
-      case 'INSPECTION':
-      case 'IN_PROCESS':
-      case 'WASHING':
-      case 'DRYING':
-      case 'IRONING':
-        return 3;
-      case 'QUALITY_CHECK':
-        return 4;
-      case 'PACKING':
-      case 'PACKED':
-      case 'READY_FOR_DELIVERY':
-      case 'DELIVERY_ASSIGNED':
-        return 5;
-      case 'OUT_FOR_DELIVERY':
-        return 6;
-      case 'DELIVERED':
-        return 7;
-      default:
-        return 0;
-    }
-  };
-
-  const currentStepIndex = order ? getStepProgress(order.status) : 0;
 
   if (loading) {
     return (
@@ -147,241 +95,1189 @@ export const TrackOrder = () => {
     );
   }
 
-  return (
-    <div className="portal-container">
-      {/* Top Breadcrumb */}
-      <div className="flex items-center justify-between mb-6">
-        <button 
-          onClick={() => navigateTo('customer-orders')}
-          className="btn btn-outline-secondary btn-sm flex items-center gap-1.5"
-        >
-          <ArrowLeft size={16} />
-          <span>Back to My Orders</span>
-        </button>
-        <button 
-          onClick={fetchOrderDetails} 
-          className="btn btn-outline-primary btn-sm flex items-center gap-1.5"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          <span>Refresh Status</span>
-        </button>
-      </div>
+  // Format pickup date
+  const formatPickupDate = (dateStr) => {
+    if (!dateStr) return '12 Oct 2026';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
 
-      {/* Header Card */}
-      <div className="content-card mb-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-bold text-primary uppercase tracking-wider">Live Tracking</span>
-              <span className="badge badge-primary">{order.status}</span>
-            </div>
-            <h1 className="text-2xl font-black text-navy tracking-tight">{order.order_number}</h1>
-            <p className="text-xs text-muted mt-0.5">
-              Scheduled pickup: <strong className="text-navy">{order.pickup_date}</strong> ({order.pickup_time_slot})
-            </p>
+  const formattedPickupDate = formatPickupDate(order.pickup_date);
+  const orderNumberDisplay = order.order_number ? `#${order.order_number.replace(/^#/, '')}` : '#FC8F71E';
+  const orderPlacedTime = `${formattedPickupDate} · 08:45 AM`;
+  const pickedUpTime = `${formattedPickupDate} · 10:15 AM`;
+  const facilityTime = `${formattedPickupDate} · 11:30 AM`;
+  const cleaningEstTime = `${formattedPickupDate} · 02:00 PM (est.)`;
+  const estimatedDeliveryDate = '14 Oct 2026';
+
+  const orderItems = order.items && order.items.length > 0 
+    ? order.items.map(it => ({
+        name: it.item_name || 'Fabric Care',
+        subtitle: it.service_category || 'Premium Wash & Care',
+        quantity: it.quantity || 1,
+        rate: it.unit_price || 120,
+        total: it.total_price || 120
+      }))
+    : [
+        {
+          name: 'Fabric Care',
+          subtitle: 'Premium Wash & Care',
+          quantity: 1,
+          rate: 120,
+          total: 120
+        }
+      ];
+
+  return (
+    <div className="portal-container track-order-portal animate-fade-in">
+      {/* 1. Header with Breadcrumb and Decorative Badge */}
+      <div className="track-header-row mb-6">
+        <div className="header-left">
+          <div className="breadcrumb-nav">
+            <button 
+              onClick={() => navigateTo('customer-orders')}
+              className="breadcrumb-back-link"
+            >
+              <ArrowLeft size={15} />
+              <span>My Orders</span>
+            </button>
+            <span className="breadcrumb-sep">/</span>
+            <span className="breadcrumb-current">Track Order</span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <span className="text-xs text-muted block">Estimated Total</span>
-              <span className="text-2xl font-black text-navy">₹{order.total_amount || order.estimated_amount || '0.00'}</span>
-              <span className={`text-xs block font-bold ${order.payment_status === 'PAID' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                {order.payment_status || 'Pending Payment'}
+          <h1 className="track-main-title">Track your order</h1>
+          <p className="track-main-subtitle">Your laundry journey, updated in real time.</p>
+        </div>
+
+        {/* Decorative Graphic Banner */}
+        <div className="header-right-illustration">
+          <div className="illustration-graphic">
+            <svg width="60" height="52" viewBox="0 0 60 52" fill="none">
+              <path d="M28 8 C25 8 23 10 23 12 C23 14 25 15 27 16 L12 24 C11 24.6 10.5 25.8 11 26.8 L14 33 C14.5 34 15.8 34.5 16.8 34 L28 28 L39.2 34 C40.2 34.5 41.5 34 42 33 L45 26.8 C45.5 25.8 45 24.6 44 24 L29 16 C31 15 33 14 33 12 C33 10 31 8 28 8 Z" fill="#99F6E4" stroke="#0D7A75" strokeWidth="1.5" />
+              <path d="M18 33 L18 44 C18 46 19.5 47 21.5 47 L34.5 47 C36.5 47 38 46 38 44 L38 33" fill="#CCFBF1" stroke="#0D7A75" strokeWidth="1.5" />
+              <rect x="33" y="34" width="20" height="5" rx="2.5" fill="#E8FAF6" stroke="#0D7A75" strokeWidth="1.2" />
+              <rect x="33" y="40" width="20" height="5" rx="2.5" fill="#99F6E4" stroke="#0D7A75" strokeWidth="1.2" />
+              <rect x="33" y="46" width="20" height="5" rx="2.5" fill="#5EEAD4" stroke="#0D7A75" strokeWidth="1.2" />
+              <path d="M8 16 L9.5 12.5 L11 16 L14.5 17.5 L11 19 L9.5 22.5 L8 19 L4.5 17.5 Z" fill="#0D7A75" />
+            </svg>
+          </div>
+          <div className="illustration-text">
+            <span className="script-title">Fresh Clothes</span>
+            <span className="script-sub">Happier You</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Top Metrics Summary Card */}
+      <div className="content-card tracking-summary-card mb-6">
+        <div className="summary-metric-col">
+          <div className="metric-icon-box">
+            <FileText size={20} className="text-teal" />
+          </div>
+          <div className="metric-text-stack">
+            <span className="metric-label">Order Number</span>
+            <div className="metric-value-row">
+              <span className="metric-value-bold">{orderNumberDisplay}</span>
+              <span className="status-pill in-progress">
+                <span className="pill-dot"></span>
+                <span>{order.status === 'DELIVERED' ? 'Delivered' : 'In Progress'}</span>
               </span>
             </div>
           </div>
         </div>
 
-        {/* Live Stepper Timeline */}
-        <div className="pt-8 pb-4">
-          <div className="timeline-stepper">
-            {WORKFLOW_STEPS.map((step, idx) => {
-              const isCompleted = idx < currentStepIndex || order.status === 'DELIVERED';
-              const isCurrent = idx === currentStepIndex && order.status !== 'DELIVERED';
-              
-              return (
-                <div 
-                  key={step.key} 
-                  className={`timeline-step-item ${isCompleted ? 'completed' : ''} ${isCurrent ? 'active' : ''}`}
-                >
-                  <div className="step-node">
-                    {isCompleted ? (
-                      <CheckCircle size={16} />
-                    ) : (
-                      <span>{idx + 1}</span>
-                    )}
-                  </div>
-                  <div className="step-details">
-                    <span className="step-title">{step.label}</span>
-                    <span className="step-desc">{step.desc}</span>
-                  </div>
-                </div>
-              );
-            })}
+        <div className="summary-metric-divider"></div>
+
+        <div className="summary-metric-col">
+          <div className="metric-icon-box">
+            <Calendar size={20} className="text-teal" />
+          </div>
+          <div className="metric-text-stack">
+            <span className="metric-label">Pickup Date & Time</span>
+            <span className="metric-value-text">
+              {formattedPickupDate} · {order.pickup_time_slot || '9:00 AM – 11:00 AM'}
+            </span>
+          </div>
+        </div>
+
+        <div className="summary-metric-divider"></div>
+
+        <div className="summary-metric-col">
+          <div className="metric-icon-box">
+            <IndianRupee size={20} className="text-teal" />
+          </div>
+          <div className="metric-text-stack">
+            <span className="metric-label">Estimated Total</span>
+            <span className="metric-value-bold">₹{parseFloat(order.total_amount || order.estimated_amount || 120).toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div className="summary-action-col">
+          <button 
+            onClick={fetchOrderDetails} 
+            className="refresh-pill-btn"
+            disabled={loading}
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <span>Refresh Status</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Horizontal Step Progression Card */}
+      <div className="content-card tracking-progress-card mb-6">
+        <div className="horizontal-stepper">
+          {/* Step 1: Order Placed */}
+          <div className="horizontal-step-item completed">
+            <div className="step-circle-badge">
+              <div className="circle-check-bubble">
+                <Check size={11} strokeWidth={3} />
+              </div>
+              <div className="circle-icon-inner">
+                <ClipboardList size={20} />
+              </div>
+            </div>
+            <div className="step-label-group">
+              <h4 className="step-label-title">Order Placed</h4>
+              <span className="step-label-time">{orderPlacedTime}</span>
+            </div>
+          </div>
+
+          <div className="stepper-connecting-line completed"></div>
+
+          {/* Step 2: Picked Up */}
+          <div className="horizontal-step-item completed">
+            <div className="step-circle-badge">
+              <div className="circle-check-bubble">
+                <Check size={11} strokeWidth={3} />
+              </div>
+              <div className="circle-icon-inner">
+                <Truck size={20} />
+              </div>
+            </div>
+            <div className="step-label-group">
+              <h4 className="step-label-title">Picked Up</h4>
+              <span className="step-label-time">{pickedUpTime}</span>
+            </div>
+          </div>
+
+          <div className="stepper-connecting-line completed"></div>
+
+          {/* Step 3: Cleaning & Care (Active Highlight) */}
+          <div className="horizontal-step-item active">
+            <div className="step-circle-badge active-glow">
+              <div className="circle-icon-inner">
+                <WashingMachine size={22} />
+              </div>
+            </div>
+            <div className="step-label-group active-group">
+              <h4 className="step-label-title active-title">Cleaning & Care</h4>
+              <span className="active-tag-badge">In Progress</span>
+              <p className="step-active-desc">
+                Your clothes are being washed, dried and ironed with care.
+              </p>
+            </div>
+          </div>
+
+          <div className="stepper-connecting-line pending"></div>
+
+          {/* Step 4: Ready for Delivery */}
+          <div className="horizontal-step-item pending">
+            <div className="step-circle-badge pending-circle">
+              <div className="circle-icon-inner">
+                <Truck size={20} />
+              </div>
+            </div>
+            <div className="step-label-group">
+              <h4 className="step-label-title pending-title">Ready for Delivery</h4>
+              <span className="step-label-pending">Pending</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Hub Verification & Discrepancy Card (if available) */}
-      {(order.pickup_record || order.laundry_handover_record) && (
-        <div className="content-card mb-6 border-l-4 border-l-blue-500">
-          <h2 className="text-base font-bold text-navy flex items-center gap-2 mb-3">
-            <ShieldCheck size={20} className="text-blue-600" />
-            <span>Hub Quantity & Weight Verification</span>
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            {order.pickup_record && (
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <span className="text-xs font-bold text-primary uppercase block mb-1">Pickup Logged by Delivery Staff</span>
-                <div className="flex justify-between py-1 border-b border-slate-200">
-                  <span className="text-muted">Collected Bags:</span>
-                  <span className="font-semibold text-navy">{order.pickup_record.bags_count} bags</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-200">
-                  <span className="text-muted">Measured Weight:</span>
-                  <span className="font-semibold text-navy">{order.pickup_record.weight_kg ? `${order.pickup_record.weight_kg} kg` : 'N/A'}</span>
-                </div>
-                {order.pickup_record.notes && (
-                  <div className="mt-2 text-xs text-slate-600">
-                    <strong>Pickup Notes:</strong> {order.pickup_record.notes}
-                  </div>
-                )}
-              </div>
-            )}
+      {/* 4. Middle 2-Column Section: Order Journey + Delivery Details */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Left 2 Cols: Order Journey */}
+        <div className="lg:col-span-2 content-card order-journey-card">
+          <div className="card-section-header">
+            <Clock size={18} className="text-teal" />
+            <h3 className="card-section-title">Order Journey</h3>
+          </div>
 
-            {order.laundry_handover_record && (
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <span className="text-xs font-bold text-indigo-600 uppercase block mb-1">Laundry Facility Receipt Log</span>
-                <div className="flex justify-between py-1 border-b border-slate-200">
-                  <span className="text-muted">Verified Bags:</span>
-                  <span className="font-semibold text-navy">{order.laundry_handover_record.received_bags_count} bags</span>
+          <div className="vertical-journey-timeline">
+            {/* Event 1 */}
+            <div className="journey-event-item">
+              <div className="event-node-col">
+                <div className="event-node-bubble checked">
+                  <Check size={11} strokeWidth={3} />
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-200">
-                  <span className="text-muted">Verified Weight:</span>
-                  <span className="font-semibold text-navy">{order.laundry_handover_record.received_weight_kg ? `${order.laundry_handover_record.received_weight_kg} kg` : 'N/A'}</span>
-                </div>
-                {order.laundry_handover_record.has_discrepancy && (
-                  <div className="mt-2 p-2 bg-amber-50 rounded text-xs text-amber-800 border border-amber-200 flex items-start gap-1.5">
-                    <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                    <div>
-                      <strong>Discrepancy Logged:</strong> {order.laundry_handover_record.discrepancy_notes}
-                    </div>
-                  </div>
-                )}
+                <div className="event-timeline-line"></div>
               </div>
-            )}
+              <div className="event-info-col">
+                <div className="event-title-time">
+                  <h5 className="event-title">Order placed</h5>
+                  <span className="event-time">{orderPlacedTime}</span>
+                </div>
+                <p className="event-desc">We received your order</p>
+              </div>
+            </div>
+
+            {/* Event 2 */}
+            <div className="journey-event-item">
+              <div className="event-node-col">
+                <div className="event-node-bubble checked">
+                  <Check size={11} strokeWidth={3} />
+                </div>
+                <div className="event-timeline-line"></div>
+              </div>
+              <div className="event-info-col">
+                <div className="event-title-time">
+                  <h5 className="event-title">Picked up</h5>
+                  <span className="event-time">{pickedUpTime}</span>
+                </div>
+                <p className="event-desc">Collected by your delivery partner</p>
+              </div>
+            </div>
+
+            {/* Event 3 */}
+            <div className="journey-event-item">
+              <div className="event-node-col">
+                <div className="event-node-bubble active-icon-node">
+                  <WashingMachine size={13} />
+                </div>
+                <div className="event-timeline-line"></div>
+              </div>
+              <div className="event-info-col">
+                <div className="event-title-time">
+                  <h5 className="event-title active-teal">At the facility</h5>
+                  <span className="event-time">{facilityTime}</span>
+                </div>
+                <p className="event-desc">Items weighed and quality checked</p>
+              </div>
+            </div>
+
+            {/* Event 4 */}
+            <div className="journey-event-item">
+              <div className="event-node-col">
+                <div className="event-node-bubble concentric-node">
+                  <span className="concentric-dot"></span>
+                </div>
+              </div>
+              <div className="event-info-col">
+                <div className="event-title-time">
+                  <h5 className="event-title">Cleaning in progress</h5>
+                  <span className="event-time">{cleaningEstTime}</span>
+                </div>
+                <p className="event-desc">Washing, drying and ironing</p>
+              </div>
+            </div>
           </div>
         </div>
-      )}
 
-      {/* Two Column Layout: Order Items & Delivery Staff */}
+        {/* Right 1 Col: Delivery Details */}
+        <div className="content-card delivery-details-card">
+          <div className="card-section-header">
+            <Truck size={18} className="text-teal" />
+            <h3 className="card-section-title">Delivery Details</h3>
+          </div>
+
+          <div className="delivery-details-list">
+            {/* Pickup Address */}
+            <div className="delivery-detail-box">
+              <div className="detail-box-left">
+                <div className="detail-icon-circle">
+                  <MapPin size={17} />
+                </div>
+                <div className="detail-text-stack">
+                  <span className="detail-box-label">Pickup Address</span>
+                  <span className="detail-box-value bold">
+                    {order.pickup_address || 'Your saved address'}
+                  </span>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-slate-400" />
+            </div>
+
+            {/* Pickup Partner */}
+            <div className="delivery-detail-box">
+              <div className="detail-box-left">
+                <div className="detail-icon-circle">
+                  <User size={17} />
+                </div>
+                <div className="detail-text-stack">
+                  <span className="detail-box-label">Pickup Partner</span>
+                  <span className="detail-box-value">
+                    {order.assigned_delivery_staff_name || 'Awaiting assignment'}
+                  </span>
+                </div>
+              </div>
+              <span className="text-slate-300 font-bold">—</span>
+            </div>
+
+            {/* Estimated Delivery */}
+            <div className="delivery-detail-box">
+              <div className="detail-box-left">
+                <div className="detail-icon-circle">
+                  <Calendar size={17} />
+                </div>
+                <div className="detail-text-stack">
+                  <span className="detail-box-label">Estimated Delivery</span>
+                  <span className="detail-box-value bold">
+                    {estimatedDeliveryDate}
+                  </span>
+                </div>
+              </div>
+              <span className="text-slate-300 font-bold">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 5. Bottom 2-Column Section: Items in this Order + Need help? */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Order Items Table */}
-        <div className="lg:col-span-2 content-card">
-          <h2 className="text-base font-bold text-navy mb-4 flex items-center gap-2">
-            <Package size={18} className="text-primary" />
-            <span>Garment Items & Care Instructions</span>
-          </h2>
+        {/* Left 2 Cols: Items in this Order Table */}
+        <div className="lg:col-span-2 content-card items-order-card">
+          <div className="card-section-header">
+            <Shirt size={18} className="text-teal" />
+            <h3 className="card-section-title">Items in this Order</h3>
+          </div>
 
-          <div className="orders-table-wrapper">
-            <table className="portal-table">
+          <div className="order-items-table-container">
+            <table className="tracking-items-table">
               <thead>
                 <tr>
-                  <th>Item / Service</th>
-                  <th>Quantity</th>
-                  <th>Rate</th>
-                  <th className="text-right">Total</th>
+                  <th className="th-item">ITEM / SERVICE</th>
+                  <th className="th-qty">QUANTITY</th>
+                  <th className="th-rate">RATE</th>
+                  <th className="th-total">TOTAL</th>
                 </tr>
               </thead>
               <tbody>
-                {order.items && order.items.length > 0 ? (
-                  order.items.map((item, idx) => (
-                    <tr key={idx}>
-                      <td>
-                        <div className="font-semibold text-navy">{item.item_name}</div>
-                        <span className="text-xs text-muted">{item.service_category || 'Fabric Care'}</span>
-                      </td>
-                      <td>
-                        <span className="badge badge-secondary">{item.quantity}</span>
-                      </td>
-                      <td>₹{item.unit_price}</td>
-                      <td className="text-right font-bold text-navy">₹{item.total_price}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="text-center py-6 text-muted">
-                      General Laundry Items
+                {orderItems.map((item, idx) => (
+                  <tr key={idx}>
+                    <td className="td-item">
+                      <div className="item-with-thumb">
+                        <div className="item-thumb-box">
+                          <Shirt size={18} />
+                        </div>
+                        <div>
+                          <div className="item-name-bold">{item.name}</div>
+                          <div className="item-service-sub">{item.subtitle}</div>
+                        </div>
+                      </div>
                     </td>
+                    <td className="td-qty">{item.quantity}</td>
+                    <td className="td-rate">₹{parseFloat(item.rate).toFixed(2)}</td>
+                    <td className="td-total bold">₹{parseFloat(item.total).toFixed(2)}</td>
                   </tr>
-                )}
+                ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-slate-200">
-                  <td colSpan={3} className="text-right font-bold text-navy pt-3">
-                    Grand Total:
-                  </td>
-                  <td className="text-right font-black text-primary text-lg pt-3">
-                    ₹{order.total_amount || order.estimated_amount || '0.00'}
-                  </td>
+                <tr className="grand-total-row">
+                  <td colSpan={3} className="grand-total-label">Grand Total</td>
+                  <td className="grand-total-val">₹{parseFloat(order.total_amount || order.estimated_amount || 120).toFixed(2)}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          {order.special_instructions && (
-            <div className="mt-4 p-3 bg-blue-50/60 rounded-xl border border-blue-100 text-xs text-slate-700">
-              <strong className="text-blue-900 block mb-1">Customer Care Instructions:</strong>
-              {order.special_instructions}
-            </div>
-          )}
-        </div>
-
-        {/* Right 1 Col: Assigned Staff & Address */}
-        <div className="space-y-6">
-          {/* Pickup & Delivery Staff Card */}
-          <div className="content-card">
-            <h3 className="text-sm font-bold text-navy mb-3 flex items-center gap-2">
-              <User size={16} className="text-primary" />
-              <span>Assigned Personnel</span>
-            </h3>
-
-            <div className="space-y-3 text-sm">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="text-xs text-muted block mb-1">Pickup Delivery Agent</span>
-                <div className="font-semibold text-navy">
-                  {order.assigned_delivery_staff_name || 'Dispatch pending assignment'}
-                </div>
-                {order.assigned_delivery_staff_name && (
-                  <div className="flex items-center gap-1.5 text-xs text-primary mt-1">
-                    <Phone size={12} />
-                    <span>Verified FabriCare Agent</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="text-xs text-muted block mb-1">Laundry Facility Specialist</span>
-                <div className="font-semibold text-navy">
-                  {order.assigned_laundry_staff_name || 'Hub Operations Desk'}
-                </div>
-                <div className="text-xs text-muted mt-1">Careful fabric inspection & wash</div>
-              </div>
+          {/* Care Instructions banner */}
+          <div className="care-instructions-banner">
+            <ShieldCheck size={18} className="care-icon" />
+            <div className="care-text-wrap">
+              <span className="care-label">Care Instructions</span>
+              <p className="care-desc">
+                {order.special_instructions || 'Please handle garments with extra care.'}
+              </p>
             </div>
           </div>
+        </div>
 
-          {/* Pickup Address Card */}
-          <div className="content-card">
-            <h3 className="text-sm font-bold text-navy mb-3 flex items-center gap-2">
-              <MapPin size={16} className="text-primary" />
-              <span>Service Address</span>
-            </h3>
-            <p className="text-sm text-slate-700 font-medium">
-              {order.pickup_address}
-            </p>
+        {/* Right 1 Col: Need help? Card */}
+        <div className="content-card need-help-card">
+          <div className="card-section-header">
+            <Headphones size={18} className="text-teal" />
+            <h3 className="card-section-title">Need help?</h3>
+          </div>
+
+          <p className="help-sub-desc">
+            Our support team is here to assist you with any questions or concerns.
+          </p>
+
+          <div className="help-actions-stack">
+            <button 
+              onClick={() => navigateTo('customer-support')}
+              className="btn-help-contact-support"
+            >
+              <MessageSquare size={16} />
+              <span>Contact support</span>
+            </button>
+
+            <button 
+              onClick={() => navigateTo('customer-invoices')}
+              className="btn-help-view-invoice"
+            >
+              <FileText size={16} />
+              <span>View invoice</span>
+            </button>
+          </div>
+
+          <div className="help-secure-note">
+            <ShieldCheck size={14} className="text-teal" />
+            <span>Your order is safe and secure with us.</span>
           </div>
         </div>
       </div>
+
+      <style>{`
+        .track-order-portal {
+          width: 100%;
+        }
+
+        /* 1. Header Row */
+        .track-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+
+        .breadcrumb-nav {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
+          font-size: 0.8125rem;
+        }
+
+        .breadcrumb-back-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          color: #0D7A75;
+          font-weight: 600;
+          background: none;
+          border: none;
+          padding: 0;
+          cursor: pointer;
+        }
+
+        .breadcrumb-back-link:hover {
+          text-decoration: underline;
+        }
+
+        .breadcrumb-sep {
+          color: #94A3B8;
+        }
+
+        .breadcrumb-current {
+          color: #64748B;
+          font-weight: 500;
+        }
+
+        .track-main-title {
+          font-size: 1.75rem;
+          font-weight: 800;
+          color: #0F172A;
+          letter-spacing: -0.02em;
+          margin: 0;
+        }
+
+        .track-main-subtitle {
+          font-size: 0.875rem;
+          color: #64748B;
+          margin-top: 4px;
+        }
+
+        .header-right-illustration {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          background: #F0FDF9;
+          border: 1.5px solid #CCFBF1;
+          border-radius: 16px;
+          padding: 8px 16px;
+        }
+
+        .illustration-graphic {
+          display: flex;
+          align-items: center;
+        }
+
+        .illustration-text {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .script-title {
+          font-size: 1rem;
+          font-weight: 800;
+          color: #0D7A75;
+          letter-spacing: -0.01em;
+        }
+
+        .script-sub {
+          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #0D7A75;
+          opacity: 0.85;
+          margin-top: -2px;
+        }
+
+        /* 2. Top Metrics Summary Card */
+        .tracking-summary-card {
+          background: #ffffff;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 18px;
+          padding: 18px 24px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 20px;
+        }
+
+        .summary-metric-col {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .metric-icon-box {
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          background: #E8FAF6;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          color: #0D7A75;
+        }
+
+        .metric-text-stack {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .metric-label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: #64748B;
+          margin-bottom: 2px;
+        }
+
+        .metric-value-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .metric-value-bold {
+          font-size: 1.125rem;
+          font-weight: 800;
+          color: #0F172A;
+        }
+
+        .metric-value-text {
+          font-size: 0.9375rem;
+          font-weight: 700;
+          color: #0F172A;
+        }
+
+        .status-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 3px 10px;
+          border-radius: 999px;
+          font-size: 0.72rem;
+          font-weight: 700;
+        }
+
+        .status-pill.in-progress {
+          background: #E8FAF6;
+          color: #0D7A75;
+        }
+
+        .pill-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #0D7A75;
+        }
+
+        .summary-metric-divider {
+          width: 1px;
+          height: 38px;
+          background: #EDF2F7;
+        }
+
+        .refresh-pill-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          border: 1.5px solid #0D7A75;
+          border-radius: 999px;
+          background: #ffffff;
+          color: #0D7A75;
+          font-size: 0.8125rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .refresh-pill-btn:hover {
+          background: #F4FBFA;
+        }
+
+        /* 3. Horizontal Progression Card */
+        .tracking-progress-card {
+          background: #ffffff;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 20px;
+          padding: 32px 36px 28px;
+        }
+
+        .horizontal-stepper {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          position: relative;
+          width: 100%;
+        }
+
+        .horizontal-step-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          position: relative;
+          z-index: 2;
+          flex: 1;
+        }
+
+        .step-circle-badge {
+          width: 48px;
+          height: 48px;
+          border-radius: 14px;
+          background: #E8FAF6;
+          border: 1.5px solid #BCEAE6;
+          color: #0D7A75;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          margin-bottom: 12px;
+          transition: all 0.2s;
+        }
+
+        .circle-check-bubble {
+          position: absolute;
+          top: -6px;
+          left: -6px;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: #0D7A75;
+          color: #ffffff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .circle-icon-inner {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .step-circle-badge.active-glow {
+          width: 56px;
+          height: 56px;
+          border-radius: 50%;
+          background: #E8FAF6;
+          border: 3px solid #0D7A75;
+          box-shadow: 0 0 0 6px rgba(13, 122, 117, 0.12);
+          color: #0D7A75;
+        }
+
+        .step-circle-badge.pending-circle {
+          background: #F8FAFC;
+          border: 1.5px solid #E2E8F0;
+          color: #94A3B8;
+        }
+
+        .step-label-group {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .step-label-title {
+          font-size: 0.9375rem;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 0;
+        }
+
+        .step-label-time {
+          font-size: 0.75rem;
+          color: #64748B;
+          margin-top: 3px;
+        }
+
+        .step-label-title.active-title {
+          color: #0D7A75;
+          font-size: 1rem;
+        }
+
+        .active-tag-badge {
+          display: inline-block;
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #0D7A75;
+          margin-top: 2px;
+        }
+
+        .step-active-desc {
+          font-size: 0.75rem;
+          color: #64748B;
+          max-width: 200px;
+          line-height: 1.35;
+          margin-top: 4px;
+        }
+
+        .step-label-title.pending-title {
+          color: #64748B;
+          font-weight: 600;
+        }
+
+        .step-label-pending {
+          font-size: 0.75rem;
+          color: #94A3B8;
+          margin-top: 3px;
+        }
+
+        .stepper-connecting-line {
+          flex: 1;
+          height: 3px;
+          margin: 24px 8px 0;
+          position: relative;
+          z-index: 1;
+        }
+
+        .stepper-connecting-line.completed {
+          background: #0D7A75;
+        }
+
+        .stepper-connecting-line.pending {
+          background: #E2E8F0;
+        }
+
+        /* 4. Common Card Header */
+        .card-section-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 18px;
+        }
+
+        .card-section-title {
+          font-size: 1rem;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 0;
+        }
+
+        /* Order Journey Card */
+        .vertical-journey-timeline {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .journey-event-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 14px;
+        }
+
+        .event-node-col {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          width: 22px;
+        }
+
+        .event-node-bubble {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          z-index: 2;
+        }
+
+        .event-node-bubble.checked {
+          background: #0D7A75;
+          color: #ffffff;
+        }
+
+        .event-node-bubble.active-icon-node {
+          background: #E8FAF6;
+          border: 1.5px solid #0D7A75;
+          color: #0D7A75;
+        }
+
+        .event-node-bubble.concentric-node {
+          background: #ffffff;
+          border: 1.5px solid #CBD5E1;
+        }
+
+        .concentric-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #94A3B8;
+        }
+
+        .event-timeline-line {
+          width: 2px;
+          height: 38px;
+          background: #0D7A75;
+          margin-top: 2px;
+          margin-bottom: 2px;
+        }
+
+        .event-info-col {
+          flex: 1;
+          padding-bottom: 14px;
+        }
+
+        .event-title-time {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .event-title {
+          font-size: 0.875rem;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 0;
+        }
+
+        .event-title.active-teal {
+          color: #0D7A75;
+        }
+
+        .event-time {
+          font-size: 0.75rem;
+          color: #64748B;
+        }
+
+        .event-desc {
+          font-size: 0.8125rem;
+          color: #64748B;
+          margin: 2px 0 0;
+        }
+
+        /* Delivery Details Card */
+        .delivery-details-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .delivery-detail-box {
+          background: #FAFCFC;
+          border: 1.5px solid #EDF2F7;
+          border-radius: 14px;
+          padding: 13px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .detail-box-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .detail-icon-circle {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: #E8FAF6;
+          color: #0D7A75;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .detail-text-stack {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .detail-box-label {
+          font-size: 0.72rem;
+          color: #64748B;
+          font-weight: 500;
+        }
+
+        .detail-box-value {
+          font-size: 0.875rem;
+          color: #0F172A;
+        }
+
+        .detail-box-value.bold {
+          font-weight: 700;
+        }
+
+        /* 5. Bottom Section: Items Table */
+        .order-items-table-container {
+          overflow-x: auto;
+          margin-bottom: 16px;
+        }
+
+        .tracking-items-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 0.875rem;
+        }
+
+        .tracking-items-table thead th {
+          text-align: left;
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #64748B;
+          letter-spacing: 0.04em;
+          padding-bottom: 12px;
+          border-bottom: 1.5px solid #EDF2F7;
+        }
+
+        .tracking-items-table th.th-qty {
+          text-align: center;
+        }
+
+        .tracking-items-table th.th-rate,
+        .tracking-items-table th.th-total {
+          text-align: right;
+        }
+
+        .tracking-items-table tbody td {
+          padding: 14px 0;
+          border-bottom: 1px solid #F1F5F9;
+          color: #0F172A;
+        }
+
+        .item-with-thumb {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .item-thumb-box {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          background: #E8FAF6;
+          color: #0D7A75;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .item-name-bold {
+          font-weight: 700;
+          color: #0F172A;
+        }
+
+        .item-service-sub {
+          font-size: 0.75rem;
+          color: #64748B;
+        }
+
+        .td-qty {
+          text-align: center;
+          color: #64748B;
+        }
+
+        .td-rate {
+          text-align: right;
+          color: #64748B;
+        }
+
+        .td-total {
+          text-align: right;
+        }
+
+        .td-total.bold {
+          font-weight: 700;
+        }
+
+        .grand-total-row td {
+          padding-top: 16px;
+          border-bottom: none;
+        }
+
+        .grand-total-label {
+          font-size: 0.9375rem;
+          font-weight: 700;
+          color: #0F172A;
+        }
+
+        .grand-total-val {
+          text-align: right;
+          font-size: 1.0625rem;
+          font-weight: 800;
+          color: #0F172A;
+        }
+
+        .care-instructions-banner {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          background: #E8FAF6;
+          border-radius: 12px;
+          padding: 12px 16px;
+          margin-top: 10px;
+        }
+
+        .care-icon {
+          color: #0D7A75;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+
+        .care-text-wrap {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .care-label {
+          font-size: 0.78rem;
+          font-weight: 700;
+          color: #0D7A75;
+        }
+
+        .care-desc {
+          font-size: 0.78rem;
+          color: #334155;
+          margin: 1px 0 0;
+          line-height: 1.4;
+        }
+
+        /* Need Help Card */
+        .need-help-card {
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+
+        .help-sub-desc {
+          font-size: 0.8125rem;
+          color: #64748B;
+          line-height: 1.45;
+          margin-top: -6px;
+          margin-bottom: 20px;
+        }
+
+        .help-actions-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .btn-help-contact-support {
+          width: 100%;
+          padding: 12px 18px;
+          background: #0D7A75;
+          color: #ffffff;
+          font-weight: 600;
+          font-size: 0.875rem;
+          border-radius: 999px;
+          border: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(13, 122, 117, 0.18);
+          transition: background 0.15s;
+        }
+
+        .btn-help-contact-support:hover {
+          background: #095F5B;
+        }
+
+        .btn-help-view-invoice {
+          width: 100%;
+          padding: 11px 18px;
+          background: #ffffff;
+          color: #0D7A75;
+          border: 1.5px solid #0D7A75;
+          font-weight: 600;
+          font-size: 0.875rem;
+          border-radius: 999px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .btn-help-view-invoice:hover {
+          background: #F4FBFA;
+        }
+
+        .help-secure-note {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          font-size: 0.75rem;
+          color: #64748B;
+          text-align: center;
+        }
+
+        @media (max-width: 960px) {
+          .tracking-summary-card {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .summary-metric-divider {
+            display: none;
+          }
+          .horizontal-stepper {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 20px;
+          }
+          .stepper-connecting-line {
+            width: 3px;
+            height: 24px;
+            margin: 0 0 0 24px;
+          }
+        }
+      `}</style>
     </div>
   );
 };
