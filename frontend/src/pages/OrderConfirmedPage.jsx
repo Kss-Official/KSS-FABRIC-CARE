@@ -1,14 +1,48 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useBooking } from '../context/BookingContext';
+import confetti from 'canvas-confetti';
 import { Calendar, MapPin, ArrowRight, Home, RefreshCw, Truck } from 'lucide-react';
 
 export const OrderConfirmedPage = () => {
   const { lastOrder, navigateTo, startBooking } = useBooking();
 
+  useEffect(() => {
+    // Trigger celebratory confetti animation
+    try {
+      confetti({
+        particleCount: 90,
+        spread: 75,
+        origin: { y: 0.6 },
+        colors: ['#0D7A75', '#FF6B50', '#64DFDF', '#FFD166']
+      });
+
+      const timer = setTimeout(() => {
+        confetti({
+          particleCount: 50,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.65 },
+          colors: ['#0D7A75', '#64DFDF', '#FFD166']
+        });
+        confetti({
+          particleCount: 50,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.65 },
+          colors: ['#0D7A75', '#FF6B50', '#FFD166']
+        });
+      }, 300);
+
+      return () => clearTimeout(timer);
+    } catch (e) {
+      console.log('Confetti effect');
+    }
+  }, []);
+
   return (
     <div className="confirmed-page-wrapper">
       <div className="container">
-        <div className="confirmed-card">
+        <div className="confirmed-card animate-fade-in">
           {/* Pickup Confirmed Illustration */}
           <div className="mascot-illustration-wrapper">
             <img
@@ -124,6 +158,17 @@ export const OrderConfirmedPage = () => {
           display: flex;
           align-items: center;
           justify-content: center;
+          animation: floatCourier 3.2s ease-in-out infinite;
+          filter: drop-shadow(0 14px 28px rgba(13, 122, 117, 0.1));
+        }
+
+        @keyframes floatCourier {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-8px);
+          }
         }
 
         .mascot-img {
