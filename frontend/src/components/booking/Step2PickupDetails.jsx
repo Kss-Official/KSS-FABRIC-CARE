@@ -174,42 +174,11 @@ export const Step2PickupDetails = () => {
         {/* Right: Map Graphic & Trust Assurance Card */}
         <div className="trust-side-card">
           <div className="folded-map-illustration">
-            <svg viewBox="0 0 220 150" className="folded-map-svg" fill="none">
-              {/* Map folds in perspective */}
-              <g filter="drop-shadow(0 10px 18px rgba(13, 122, 117, 0.12))">
-                <path d="M28 48 L68 36 L68 114 L28 124 Z" fill="#D2F6F0" stroke="#A7F0E3" strokeWidth="1.8" strokeLinejoin="round" />
-                <path d="M68 36 L120 48 L120 124 L68 114 Z" fill="#E8FAF6" stroke="#A7F0E3" strokeWidth="1.8" strokeLinejoin="round" />
-                <path d="M120 48 L166 36 L166 114 L120 124 Z" fill="#D2F6F0" stroke="#A7F0E3" strokeWidth="1.8" strokeLinejoin="round" />
-                <path d="M166 36 L188 44 L188 120 L166 114 Z" fill="#E8FAF6" stroke="#A7F0E3" strokeWidth="1.8" strokeLinejoin="round" />
-              </g>
-
-              {/* Grid / Street lines on map folds */}
-              <path d="M34 68 L64 59 M34 88 L64 79 M34 108 L64 99" stroke="#72DEC9" strokeWidth="1.6" strokeDasharray="3 3" opacity="0.75" />
-              <path d="M74 60 L114 69 M74 80 L114 89 M74 100 L114 109" stroke="#72DEC9" strokeWidth="1.6" opacity="0.75" />
-              <path d="M126 69 L160 60 M126 89 L160 80 M126 109 L160 100" stroke="#72DEC9" strokeWidth="1.6" strokeDasharray="3 3" opacity="0.75" />
-
-              {/* Secondary Teal Pin on Left Fold */}
-              <g transform="translate(48, 62)">
-                <path d="M0 16 C-4 9 -6 6 -6 0 C-6 -4 -3 -7 0 -7 C3 -7 6 -4 6 0 C6 6 4 9 0 16 Z" fill="#0D7A75" />
-                <circle cx="0" cy="-1" r="2.2" fill="#FFFFFF" />
-              </g>
-
-              {/* Plus marker on right fold */}
-              <path d="M148 84 h6 M151 81 v6" stroke="#0D7A75" strokeWidth="2" strokeLinecap="round" />
-
-              {/* Primary Large 3D Teal Map Pin hovering on center fold */}
-              <g transform="translate(108, 38)">
-                {/* Pin shadow */}
-                <ellipse cx="0" cy="50" rx="9" ry="3.5" fill="#0D7A75" opacity="0.25" />
-                {/* Pin shape */}
-                <path 
-                  d="M0 48 C-14 28 -19 18 -19 0 C-19 -13 -10 -22 0 -22 C10 -22 19 -13 19 0 C19 18 14 28 0 48 Z" 
-                  fill="#0D7A75" 
-                />
-                {/* White inner cutout */}
-                <circle cx="0" cy="-2" r="7" fill="#FFFFFF" />
-              </g>
-            </svg>
+            <img 
+              src="/assets/folded-map.png" 
+              alt="Pickup Location Map" 
+              className="folded-map-img" 
+            />
           </div>
 
           <div className="trust-card-body">
@@ -557,17 +526,20 @@ export const Step2PickupDetails = () => {
 
         .folded-map-illustration {
           width: 100%;
-          max-width: 230px;
-          margin: 10px auto 14px;
+          max-width: 260px;
+          margin: 4px auto 14px;
           display: flex;
           align-items: center;
           justify-content: center;
         }
 
-        .folded-map-svg {
+        .folded-map-img {
           width: 100%;
           height: auto;
+          max-height: 195px;
+          object-fit: contain;
           display: block;
+          filter: drop-shadow(0 10px 20px rgba(13, 122, 117, 0.08));
         }
 
         .trust-card-body {
