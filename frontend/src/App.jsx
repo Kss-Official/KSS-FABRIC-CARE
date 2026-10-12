@@ -48,7 +48,6 @@ const CustomerAccountLayout = ({ children }) => {
     { id: 'customer-orders', label: 'My Orders', icon: '📦' },
     { id: 'customer-track', label: 'Track Order', icon: '🚚' },
     { id: 'customer-invoices', label: 'Invoices & Bills', icon: '🧾' },
-    { id: 'customer-addresses', label: 'Saved Addresses', icon: '📍' },
     { id: 'customer-notifications', label: 'Notifications', icon: '🔔' },
     { id: 'customer-profile', label: 'My Profile', icon: '👤' },
     { id: 'customer-support', label: 'Help & Support', icon: '💬' },
@@ -213,7 +212,7 @@ const AppContent = () => {
             {currentPage === 'customer-orders' && <MyOrders />}
             {currentPage === 'customer-track' && <TrackOrder />}
             {currentPage === 'customer-invoices' && <PaymentsInvoices />}
-            {currentPage === 'customer-addresses' && <SavedAddresses />}
+            {currentPage === 'customer-addresses' && <Profile />}
             {currentPage === 'customer-support' && <HelpSupport />}
             {currentPage === 'customer-profile' && <Profile />}
             {currentPage === 'customer-notifications' && <CustomerNotifications />}

@@ -147,10 +147,6 @@ export const Navbar = () => {
                         <FileText size={15} />
                         <span>Invoices & Bills</span>
                       </button>
-                      <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-addresses'); }}>
-                        <MapPin size={15} />
-                        <span>Saved Addresses</span>
-                      </button>
                       <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-notifications'); }}>
                         <Bell size={15} />
                         <span>Notifications</span>
