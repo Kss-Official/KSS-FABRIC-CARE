@@ -391,7 +391,7 @@ export const INITIAL_DRIVERS = [
 export const INITIAL_FAQS_ADMIN = [
   {
     id: 1,
-    question: 'How does Laundrix pickup and delivery work?',
+    question: 'How does FabriCare pickup and delivery work?',
     answer: 'Schedule a pickup through our app or website. Our executive will arrive with specialized laundry bags and deliver clean clothes within 24-48 hours.',
     status: 'Active',
     displayOrder: 1
@@ -468,22 +468,22 @@ export const AdminProvider = ({ children }) => {
   const [faqs, setFaqs] = useState(INITIAL_FAQS_ADMIN);
   const [termsContent, setTermsContent] = useState({
     title: 'Terms & Conditions',
-    body: `1. Introduction\nWelcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nLaundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.\n\n3. Orders & Pickup\nOrders can be placed through our website, mobile app or by phone. Pickup and delivery timings are subject to availability. Please ensure clothes are securely packed and handed over in clean condition.\n\n4. Pricing & Payment\nPrices are based on the type of garment, fabric and service selected. All charges are transparent with no hidden fees.`
+    body: `1. Introduction\nWelcome to FabriCare. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nFabriCare provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.\n\n3. Orders & Pickup\nOrders can be placed through our website, mobile app or by phone. Pickup and delivery timings are subject to availability. Please ensure clothes are securely packed and handed over in clean condition.\n\n4. Pricing & Payment\nPrices are based on the type of garment, fabric and service selected. All charges are transparent with no hidden fees.`
   });
 
   // Settings
   const [settings, setSettings] = useState({
     name: 'Admin',
-    email: 'admin@laundrix.com',
+    email: 'admin@fabricare.com',
     phone: '+91 98765 43210',
     role: 'Administrator',
-    supportEmail: 'support@laundrix.com',
+    supportEmail: 'support@fabricare.com',
     supportPhone: '+91 98765 43210',
-    websiteUrl: 'https://www.laundrix.com',
-    instagram: 'https://instagram.com/laundrix',
-    facebook: 'https://facebook.com/laundrix',
-    twitter: 'https://x.com/laundrix',
-    linkedin: 'https://linkedin.com/company/laundrix',
+    websiteUrl: 'https://www.fabricare.com',
+    instagram: 'https://instagram.com/fabricare',
+    facebook: 'https://facebook.com/fabricare',
+    twitter: 'https://x.com/fabricare',
+    linkedin: 'https://linkedin.com/company/fabricare',
     notifications: {
       newOrders: true,
       customerMessages: true,

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Laundrix - Fresh Clothes, Brighter Days | Premium Laundry & Dry Cleaning</title>
+  
+  <!-- Google Fonts: Poppins (600, 700, 800) & Inter (400, 500, 600, 700) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Tailwind Configuration -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              teal: '#0E7C86',
+              tealLight: '#E6F7F7',
+              navy: '#12263A',
+              navyMuted: '#2D3E50',
+              coral: '#FF6B54',
+              coralDark: '#E8553F',
+              muted: '#64748B',
+            }
+          },
+          fontFamily: {
+            poppins: ['Poppins', 'sans-serif'],
+            inter: ['Inter', 'sans-serif'],
+          },
+          boxShadow: {
+            'coral-glow': '0 10px 28px -4px rgba(255, 107, 84, 0.42)',
+            'coral-glow-hover': '0 14px 34px -4px rgba(255, 107, 84, 0.52)',
+            'nav-subtle': '0 2px 14px rgba(18, 38, 58, 0.05)',
+            'card-glass': '0 8px 32px 0 rgba(14, 124, 134, 0.12)',
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* Custom Smooth Utilities */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.22);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .glass-card:hover {
+      background: rgba(255, 255, 255, 0.34);
+      border-color: rgba(255, 255, 255, 0.65);
+      transform: translateY(-2px);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
+    }
+
+    /* Active Nav Link Underline */
+    .nav-link-active {
+      color: #0E7C86 !important;
+      position: relative;
+    }
+    .nav-link-active::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -10px;
+      height: 3px;
+      background-color: #0E7C86;
+      border-radius: 9999px;
+    }
+
+    /* Readability Gradient Layer over photo without whitened corners */
+    .hero-readability-overlay {
+      background: linear-gradient(
+        90deg, 
+        rgba(255, 255, 255, 0.40) 0%, 
+        rgba(255, 255, 255, 0.20) 35%, 
+        rgba(255, 255, 255, 0.05) 65%, 
+        rgba(255, 255, 255, 0.00) 100%
+      );
+    }
+
+    @media (max-width: 1024px) {
+      .hero-readability-overlay {
+        background: linear-gradient(
+          180deg, 
+          rgba(255, 255, 255, 0.88) 0%, 
+          rgba(255, 255, 255, 0.75) 55%, 
+          rgba(255, 255, 255, 0.45) 100%
+        );
+      }
+    }
+  </style>
+</head>
+<body class="font-inter bg-[#F8FAFC] text-brand-navy antialiased min-h-screen flex flex-col selection:bg-brand-teal selection:text-white">
+
+  <!-- =========================================================================
+       1. NAVBAR (Sticky, 80px, Horizontal padding ~45px, White with subtle shadow)
+       ========================================================================= -->
+  <header class="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-nav-subtle transition-all duration-200">
+    <div class="h-[80px] px-6 sm:px-8 lg:px-[45px] max-w-[1720px] mx-auto flex items-center justify-between">
+      
+      <!-- Brand Logo: "FabriCare" (Fabri- black, Care- #087F8C, Poppins ExtraBold ~36px) -->
+      <a href="#" class="group flex items-center gap-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded-lg select-none" aria-label="FabriCare Home">
+        <span class="font-poppins font-extrabold text-[32px] sm:text-[36px] tracking-[-0.03em] leading-none text-black">
+          Fabri<span class="text-[#087F8C]">Care</span>
+        </span>
+      </a>
+
+      <!-- Desktop Nav Links (Inter medium ~20px, Muted gray-blue, Active Home teal with 3px bar) -->
+      <nav class="hidden lg:flex items-center gap-8 xl:gap-10" aria-label="Main Navigation">
+        <a href="#home" class="nav-link-active font-inter font-medium text-[19px] xl:text-[20px] tracking-tight transition-colors duration-150 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded">
+          Home
+        </a>
+        <a href="#about" class="text-brand-muted hover:text-brand-teal font-inter font-medium text-[19px] xl:text-[20px] tracking-tight transition-colors duration-150 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded">
+          About Us
+        </a>
+        <a href="#services" class="text-brand-muted hover:text-brand-teal font-inter font-medium text-[19px] xl:text-[20px] tracking-tight transition-colors duration-150 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded">
+          Our Services
+        </a>
+        <a href="#why-us" class="text-brand-muted hover:text-brand-teal font-inter font-medium text-[19px] xl:text-[20px] tracking-tight transition-colors duration-150 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded">
+          Why Us
+        </a>
+        <a href="#pricing" class="text-brand-muted hover:text-brand-teal font-inter font-medium text-[19px] xl:text-[20px] tracking-tight transition-colors duration-150 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded">
+          Pricing
+        </a>
+        <a href="#how-it-works" class="text-brand-muted hover:text-brand-teal font-inter font-medium text-[19px] xl:text-[20px] tracking-tight transition-colors duration-150 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded">
+          How It Works
+        </a>
+      </nav>
+
+      <!-- Desktop Right: Coral Pill CTA Button (~60px tall, Coral glow shadow, Lifts 1px on hover) -->
+      <div class="hidden lg:flex items-center">
+        <a 
+          href="#book" 
+          class="group h-[58px] xl:h-[60px] px-8 rounded-full bg-brand-coral hover:bg-brand-coralDark text-white font-inter font-semibold text-[17px] flex items-center justify-center gap-3 shadow-coral-glow hover:shadow-coral-glow-hover hover:-translate-y-[1px] active:translate-y-0 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-coral focus-visible:ring-offset-2"
+        >
+          <span>Book a Pickup</span>
+          <i data-lucide="arrow-right" class="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200"></i>
+        </a>
+      </div>
+
+      <!-- Mobile Hamburger Button (<1024px) -->
+      <button 
+        id="mobile-menu-toggle"
+        type="button"
+        aria-label="Toggle navigation menu" 
+        aria-expanded="false" 
+        class="lg:hidden p-2.5 rounded-xl text-brand-navy hover:text-brand-teal hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal"
+      >
+        <i id="hamburger-icon" data-lucide="menu" class="w-7 h-7"></i>
+        <i id="close-icon" data-lucide="x" class="w-7 h-7 hidden"></i>
+      </button>
+
+    </div>
+
+    <!-- Mobile Slide-Down Panel -->
+    <div 
+      id="mobile-menu" 
+      class="hidden lg:hidden border-t border-slate-100 bg-white/98 backdrop-blur-xl px-6 py-6 shadow-xl transition-all duration-300"
+    >
+      <nav class="flex flex-col gap-4">
+        <a href="#home" class="text-brand-teal font-poppins font-semibold text-[20px] py-2 border-b border-slate-50">Home</a>
+        <a href="#about" class="text-brand-muted hover:text-brand-teal font-inter font-medium text-[19px] py-2 border-b border-slate-50">About Us</a>
+        <a href="#services" class="text-brand-muted hover:text-brand-teal font-inter font-medium text-[19px] py-2 border-b border-slate-50">Our Services</a>
+        <a href="#why-us" class="text-brand-muted hover:text-brand-teal font-inter font-medium text-[19px] py-2 border-b border-slate-50">Why Us</a>
+        <a href="#pricing" class="text-brand-muted hover:text-brand-teal font-inter font-medium text-[19px] py-2 border-b border-slate-50">Pricing</a>
+        <a href="#how-it-works" class="text-brand-muted hover:text-brand-teal font-inter font-medium text-[19px] py-2 border-b border-slate-50">How It Works</a>
+        
+        <div class="pt-3">
+          <a 
+            href="#book" 
+            class="w-full h-[54px] rounded-full bg-brand-coral hover:bg-brand-coralDark text-white font-inter font-semibold text-[17px] flex items-center justify-center gap-2 shadow-coral-glow"
+          >
+            <span>Book a Pickup</span>
+            <i data-lucide="arrow-right" class="w-5 h-5"></i>
+          </a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+
+  <!-- =========================================================================
+       2. HERO SECTION (Full width, Min-height ~ calc(100vh - 80px))
+       ========================================================================= -->
+  <main class="flex-1 relative">
+    <section class="relative w-full min-h-[calc(100vh-80px)] flex items-center overflow-hidden py-12 lg:py-16">
+      
+      <!-- =======================================================================
+           Background Layer Wrapper: Image or Placeholder
+           ======================================================================= -->
+      <div id="hero-bg-wrapper" class="absolute inset-0 w-full h-full pointer-events-none select-none z-0">
+        
+        <!-- Dual Background Images for Crossfading (One after another) -->
+        <img 
+          id="hero-bg-1" 
+          src="frontend/public/assets/hero-slide-1.jpg" 
+          alt="Warm laundry room with folded towels" 
+          class="absolute inset-0 w-full h-full object-cover object-center transition-opacity duration-1000 opacity-100 z-0"
+        />
+        <img 
+          id="hero-bg-2" 
+          src="frontend/public/assets/hero-slide-2.png" 
+          alt="Bright laundry room with towel basket" 
+          class="absolute inset-0 w-full h-full object-cover object-center transition-opacity duration-1000 opacity-0 z-0"
+        />
+
+        <!-- Fallback Placeholder: soft gradient #E6F6F6 to #F6EBDD with dashed teal-tinted box -->
+        <div 
+          id="hero-bg-placeholder" 
+          class="w-full h-full flex items-center justify-center p-6 bg-gradient-to-br from-[#E6F6F6] via-[#EDF7F6] to-[#F6EBDD]"
+        >
+          <div class="max-w-[720px] w-full border-2 border-dashed border-[#0E7C86]/35 rounded-3xl p-8 sm:p-12 text-center bg-white/40 backdrop-blur-md shadow-sm">
+            <div class="w-16 h-16 rounded-2xl bg-[#E6F7F7] text-brand-teal flex items-center justify-center mx-auto mb-4 border border-[#0E7C86]/20">
+              <i data-lucide="image" class="w-8 h-8 stroke-[1.75]"></i>
+            </div>
+            <h4 class="font-poppins font-bold text-brand-navy text-lg sm:text-xl mb-1">
+              Hero background image placeholder
+            </h4>
+            <p class="font-inter text-brand-muted text-sm sm:text-base">
+              Recommended: 2560 × 1190 (JPG / WebP) • Set <code class="bg-white/80 px-2 py-0.5 rounded text-brand-teal font-mono text-xs">HERO_BG</code> path
+            </p>
+          </div>
+        </div>
+
+        <!-- Readability Overlay: LTR gradient from rgba(255,255,255,0.75) to transparent at ~60% -->
+        <div class="hero-readability-overlay absolute inset-0 w-full h-full pointer-events-none z-10"></div>
+      </div>
+
+
+      <!-- =======================================================================
+           Main Hero Content Container (~80px horizontal padding, 2-column layout)
+           ======================================================================= -->
+      <div class="relative z-20 w-full max-w-[1720px] mx-auto px-6 sm:px-10 md:px-14 lg:px-[80px]">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 xl:gap-14 items-center">
+          
+          <!-- ===================================================================
+               LEFT COLUMN: Headline, Subtext, Button Row, Trust Badges
+               =================================================================== -->
+          <div class="lg:col-span-7 xl:col-span-7 flex flex-col justify-center">
+            
+            <!-- Headline: Poppins ExtraBold 800, ~120px desktop, ~48px mobile, line-height 1.0, tight letter-spacing -->
+            <h1 class="font-poppins font-extrabold tracking-[-0.04em] leading-[0.98] text-[46px] sm:text-[68px] md:text-[88px] xl:text-[112px] 2xl:text-[120px] mb-6 sm:mb-8">
+              <span class="block text-brand-navy">Fresh Clothes.</span>
+              <span class="block text-brand-teal">Brighter Days.</span>
+            </h1>
+
+            <!-- Subtext: Inter medium ~30px (scales gracefully), dark navy-gray, max-width ~950px -->
+            <p class="font-inter font-medium text-brand-navyMuted text-[19px] sm:text-[23px] md:text-[27px] xl:text-[30px] leading-[1.38] max-w-[950px] mb-8 sm:mb-10 text-balance">
+              Laundry, dry cleaning and home care services with convenient doorstep pickup &amp; delivery.
+            </p>
+
+            <!-- Button Row (Gap ~32px, Stacked on <640px) -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:gap-8 mb-12 sm:mb-16">
+              
+              <!-- Primary CTA: Coral Pill "Book a Pickup →" (~52px tall, white semibold, coral glow shadow) -->
+              <a 
+                href="#book" 
+                class="group h-[54px] sm:h-[56px] px-8 sm:px-9 rounded-full bg-brand-coral hover:bg-brand-coralDark text-white font-inter font-semibold text-[17px] sm:text-[18px] flex items-center justify-center gap-3 shadow-coral-glow hover:shadow-coral-glow-hover hover:-translate-y-[1px] active:translate-y-0 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-coral focus-visible:ring-offset-2"
+              >
+                <span>Book a Pickup</span>
+                <i data-lucide="arrow-right" class="w-5 h-5 group-hover:translate-x-1.5 transition-transform duration-200"></i>
+              </a>
+
+              <!-- Secondary CTA: White Pill "Explore Services" (navy semibold, subtle light border & shadow) -->
+              <a 
+                href="#services" 
+                class="h-[54px] sm:h-[56px] px-8 sm:px-9 rounded-full bg-white hover:bg-slate-50 text-brand-navy font-inter font-semibold text-[17px] sm:text-[18px] border border-slate-200/90 shadow-sm hover:shadow transition-all duration-200 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal"
+              >
+                <span>Explore Services</span>
+              </a>
+
+            </div>
+
+            <!-- Trust Badges Row (4 Items, 2-line semibold navy text, circular ~40px icon, 2x2 grid on <1024px) -->
+            <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-6 pt-2 border-t border-slate-200/60 lg:border-t-0">
+              
+              <!-- Badge 1: Free Pickup & Delivery -->
+              <div class="flex items-center gap-3.5 group">
+                <div class="w-10 h-10 rounded-full bg-[#E6F7F7] flex items-center justify-center flex-shrink-0 text-brand-teal group-hover:scale-105 transition-transform duration-200">
+                  <i data-lucide="truck" class="w-5 h-5 stroke-[2]"></i>
+                </div>
+                <span class="font-inter font-semibold text-brand-navy text-[14px] sm:text-[15px] leading-tight">
+                  Free Pickup<br />&amp; Delivery
+                </span>
+              </div>
+
+              <!-- Badge 2: Trusted & Safe -->
+              <div class="flex items-center gap-3.5 group">
+                <div class="w-10 h-10 rounded-full bg-[#E6F7F7] flex items-center justify-center flex-shrink-0 text-brand-teal group-hover:scale-105 transition-transform duration-200">
+                  <i data-lucide="shield-check" class="w-5 h-5 stroke-[2]"></i>
+                </div>
+                <span class="font-inter font-semibold text-brand-navy text-[14px] sm:text-[15px] leading-tight">
+                  Trusted &amp;<br />Safe Care
+                </span>
+              </div>
+
+              <!-- Badge 3: Eco-Friendly Cleaning -->
+              <div class="flex items-center gap-3.5 group">
+                <div class="w-10 h-10 rounded-full bg-[#E6F7F7] flex items-center justify-center flex-shrink-0 text-brand-teal group-hover:scale-105 transition-transform duration-200">
+                  <i data-lucide="leaf" class="w-5 h-5 stroke-[2]"></i>
+                </div>
+                <span class="font-inter font-semibold text-brand-navy text-[14px] sm:text-[15px] leading-tight">
+                  Eco-Friendly<br />Cleaning
+                </span>
+              </div>
+
+              <!-- Badge 4: On-Time Delivery -->
+              <div class="flex items-center gap-3.5 group">
+                <div class="w-10 h-10 rounded-full bg-[#E6F7F7] flex items-center justify-center flex-shrink-0 text-brand-teal group-hover:scale-105 transition-transform duration-200">
+                  <i data-lucide="clock" class="w-5 h-5 stroke-[2]"></i>
+                </div>
+                <span class="font-inter font-semibold text-brand-navy text-[14px] sm:text-[15px] leading-tight">
+                  On-Time<br />Delivery
+                </span>
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <!-- ===================================================================
+               RIGHT COLUMN: Stack of 4 Glassmorphism Service Cards
+               (Width ~480px at 1x, gap ~20px, vertically centered)
+               =================================================================== -->
+          <div class="lg:col-span-5 xl:col-span-5 flex justify-center lg:justify-end">
+            
+            <!-- Cards Container with subtle dark protective backdrop for maximum contrast over bright photos -->
+            <div class="w-full max-w-[480px] flex flex-col gap-5 p-2 sm:p-3 rounded-[32px] bg-black/[0.04] backdrop-blur-[2px]">
+              
+              <!-- Card 1: Wash & Fold (Mint-Teal Icon #5EDCC0 at ~70%) -->
+              <a 
+                href="#service-wash-fold" 
+                class="glass-card group flex items-center justify-between p-5 rounded-[24px] text-white no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal"
+              >
+                <div class="flex items-center gap-4">
+                  <!-- Icon Tile -->
+                  <div class="w-12 h-12 rounded-2xl bg-[#5EDCC0]/75 flex items-center justify-center flex-shrink-0 text-[#0E4B56] shadow-sm">
+                    <i data-lucide="shirt" class="w-6 h-6 stroke-[2]"></i>
+                  </div>
+                  <!-- Texts -->
+                  <div>
+                    <h3 class="font-poppins font-semibold text-[21px] sm:text-[22px] leading-tight text-white drop-shadow-sm">
+                      Wash &amp; Fold
+                    </h3>
+                    <p class="font-inter text-[15px] sm:text-[16px] text-white/85 mt-0.5 drop-shadow-sm">
+                      From ₹149 / lb
+                    </p>
+                  </div>
+                </div>
+                <!-- Right Arrow -->
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-white/90 group-hover:text-white transition-colors">
+                  <i data-lucide="arrow-right" class="w-5 h-5 group-hover:translate-x-1.5 transition-transform duration-200"></i>
+                </div>
+              </a>
+
+              <!-- Card 2: Dry Cleaning (Coral-Red Icon #F2705C at ~70%) -->
+              <a 
+                href="#service-dry-cleaning" 
+                class="glass-card group flex items-center justify-between p-5 rounded-[24px] text-white no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal"
+              >
+                <div class="flex items-center gap-4">
+                  <!-- Icon Tile -->
+                  <div class="w-12 h-12 rounded-2xl bg-[#F2705C]/75 flex items-center justify-center flex-shrink-0 text-white shadow-sm">
+                    <i data-lucide="sparkles" class="w-6 h-6 stroke-[2]"></i>
+                  </div>
+                  <!-- Texts -->
+                  <div>
+                    <h3 class="font-poppins font-semibold text-[21px] sm:text-[22px] leading-tight text-white drop-shadow-sm">
+                      Dry Cleaning
+                    </h3>
+                    <p class="font-inter text-[15px] sm:text-[16px] text-white/85 mt-0.5 drop-shadow-sm">
+                      From ₹69 / item
+                    </p>
+                  </div>
+                </div>
+                <!-- Right Arrow -->
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-white/90 group-hover:text-white transition-colors">
+                  <i data-lucide="arrow-right" class="w-5 h-5 group-hover:translate-x-1.5 transition-transform duration-200"></i>
+                </div>
+              </a>
+
+              <!-- Card 3: Steam Ironing (Neutral Frosted White Icon) -->
+              <a 
+                href="#service-steam-ironing" 
+                class="glass-card group flex items-center justify-between p-5 rounded-[24px] text-white no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal"
+              >
+                <div class="flex items-center gap-4">
+                  <!-- Icon Tile -->
+                  <div class="w-12 h-12 rounded-2xl bg-white/75 flex items-center justify-center flex-shrink-0 text-[#12263A] shadow-sm">
+                    <i data-lucide="wind" class="w-6 h-6 stroke-[2]"></i>
+                  </div>
+                  <!-- Texts -->
+                  <div>
+                    <h3 class="font-poppins font-semibold text-[21px] sm:text-[22px] leading-tight text-white drop-shadow-sm">
+                      Steam Ironing
+                    </h3>
+                    <p class="font-inter text-[15px] sm:text-[16px] text-white/85 mt-0.5 drop-shadow-sm">
+                      From ₹249 / item
+                    </p>
+                  </div>
+                </div>
+                <!-- Right Arrow -->
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-white/90 group-hover:text-white transition-colors">
+                  <i data-lucide="arrow-right" class="w-5 h-5 group-hover:translate-x-1.5 transition-transform duration-200"></i>
+                </div>
+              </a>
+
+              <!-- Card 4: Home Bedding & Care (Mint-Teal Icon #5EDCC0 at ~70%) -->
+              <a 
+                href="#service-bedding-care" 
+                class="glass-card group flex items-center justify-between p-5 rounded-[24px] text-white no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal"
+              >
+                <div class="flex items-center gap-4">
+                  <!-- Icon Tile -->
+                  <div class="w-12 h-12 rounded-2xl bg-[#5EDCC0]/75 flex items-center justify-center flex-shrink-0 text-[#0E4B56] shadow-sm">
+                    <i data-lucide="bed-double" class="w-6 h-6 stroke-[2]"></i>
+                  </div>
+                  <!-- Texts -->
+                  <div>
+                    <h3 class="font-poppins font-semibold text-[21px] sm:text-[22px] leading-tight text-white drop-shadow-sm">
+                      Home Bedding &amp; Care
+                    </h3>
+                    <p class="font-inter text-[15px] sm:text-[16px] text-white/85 mt-0.5 drop-shadow-sm">
+                      From ₹189 / piece
+                    </p>
+                  </div>
+                </div>
+                <!-- Right Arrow -->
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-white/90 group-hover:text-white transition-colors">
+                  <i data-lucide="arrow-right" class="w-5 h-5 group-hover:translate-x-1.5 transition-transform duration-200"></i>
+                </div>
+              </a>
+
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+
+  <!-- =========================================================================
+       LOGIC: HERO_BG path configuration, image fallback, mobile navigation
+       ========================================================================= -->
+  <script>
+    /**
+     * Set the path to your background image here.
+     * Examples: 
+     *   const HERO_BG = "frontend/public/assets/hero-bg.jpg"; 
+     *   const HERO_BG = "./frontend/public/assets/hero-laundry-towels.png";
+     * Leave as "" to see the dashed placeholder box in action.
+     */
+    const HERO_BG = "frontend/public/assets/hero-bg.jpg";
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1. Initialize Lucide Icons
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+
+      // 2. Dual Background Crossfade (One after another)
+      const bg1 = document.getElementById('hero-bg-1');
+      const bg2 = document.getElementById('hero-bg-2');
+      let currentSlide = 1;
+
+      setInterval(() => {
+        if (!bg1 || !bg2) return;
+        if (currentSlide === 1) {
+          bg1.classList.remove('opacity-100');
+          bg1.classList.add('opacity-0');
+          bg2.classList.remove('opacity-0');
+          bg2.classList.add('opacity-100');
+          currentSlide = 2;
+        } else {
+          bg2.classList.remove('opacity-100');
+          bg2.classList.add('opacity-0');
+          bg1.classList.remove('opacity-0');
+          bg1.classList.add('opacity-100');
+          currentSlide = 1;
+        }
+      }, 5500);
+
+      // 3. Mobile Navigation Menu Toggle
+      const toggleBtn = document.getElementById('mobile-menu-toggle');
+      const mobileMenu = document.getElementById('mobile-menu');
+      const hamburgerIcon = document.getElementById('hamburger-icon');
+      const closeIcon = document.getElementById('close-icon');
+
+      if (toggleBtn && mobileMenu) {
+        toggleBtn.addEventListener('click', () => {
+          const isExpanded = toggleBtn.getAttribute('aria-expanded') === 'true';
+          toggleBtn.setAttribute('aria-expanded', !isExpanded);
+          
+          mobileMenu.classList.toggle('hidden');
+          hamburgerIcon.classList.toggle('hidden');
+          closeIcon.classList.toggle('hidden');
+        });
+
+        // Close mobile menu when clicking nav links
+        mobileMenu.querySelectorAll('a').forEach(link => {
+          link.addEventListener('click', () => {
+            mobileMenu.classList.add('hidden');
+            toggleBtn.setAttribute('aria-expanded', 'false');
+            hamburgerIcon.classList.remove('hidden');
+            closeIcon.classList.add('hidden');
+          });
+        });
+      }
+    });
+  </script>
+</body>
+</html>

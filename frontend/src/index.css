@@ -1,5 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap');
+
 /* ==========================================================================
-   FABRICARE / LAUNDRIX DESIGN SYSTEM & TOKENS
+   FABRICARE DESIGN SYSTEM & TOKENS
    ========================================================================== */
 
 :root {
@@ -78,12 +80,18 @@ html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
 }
 
 body {
   min-height: 100vh;
   line-height: 1.5;
-  overflow-x: hidden;
+  overflow-x: clip;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 a {
@@ -93,6 +101,34 @@ a {
 
 button, input, select, textarea {
   font-family: inherit;
+}
+
+/* ==========================================================================
+   ZOOM STABILITY & PREVENT UNINTENDED AUTO-ZOOM ON CLICK / FOCUS
+   ========================================================================== */
+
+/* Disable double-tap zoom delay and unwanted auto-zoom on interactive controls */
+button,
+a,
+input,
+select,
+textarea,
+label,
+summary,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* Enforce minimum 16px font-size on all form elements to prevent iOS Safari & Android mobile zoom-in on focus/click */
+@media screen and (max-width: 868px) {
+  input,
+  select,
+  textarea,
+  .form-input,
+  .contact-field-input,
+  .contact-field-textarea {
+    font-size: 16px !important;
+  }
 }
 
 img {
@@ -116,6 +152,10 @@ img {
 }
 
 /* Typography Utilities */
+.text-center {
+  text-align: center;
+}
+
 .section-tag {
   display: inline-flex;
   align-items: center;
@@ -240,6 +280,19 @@ img {
   padding: 4px 12px; border-radius: 999px;
   font-size: 0.72rem; font-weight: 700;
   background: #EBF8F7; color: #0D7A75;
+}
+
+/* Screen reader accessibility utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ============================================================

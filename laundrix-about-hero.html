@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Laundrix - About Us Hero Banner</title>
+
+  <!-- Google Fonts: Playfair Display (600, 700) and Inter (400, 500, 600) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            playfair: ['"Playfair Display"', 'serif'],
+            inter: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            forest: {
+              title: '#0B5A45',
+              sub: '#1F4D40',
+              body: '#3D5F54',
+            },
+            coral: {
+              DEFAULT: '#FF6B54',
+              hover: '#E8553F',
+            },
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    /* Desktop dual-gradient overlay */
+    .white-fade-overlay {
+      background:
+        linear-gradient(to right,
+          rgba(255,255,255,0) 0%,
+          rgba(255,255,255,0) 45%,
+          rgba(255,255,255,0.55) 70%,
+          rgba(255,255,255,0.85) 88%,
+          rgba(255,255,255,0.95) 100%),
+        linear-gradient(to top,
+          rgba(255,255,255,0.35) 0%,
+          rgba(255,255,255,0) 30%);
+    }
+
+    /* Soft backdrop-blur masked on rightmost 25% */
+    .blur-mask-overlay {
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      mask-image: linear-gradient(to right, transparent 60%, black 100%);
+      -webkit-mask-image: linear-gradient(to right, transparent 60%, black 100%);
+    }
+
+    /* Mobile vertical gradient below 640px */
+    @media (max-width: 639px) {
+      .white-fade-overlay {
+        background: linear-gradient(to top,
+          rgba(255,255,255,0.95) 0%,
+          rgba(255,255,255,0.85) 45%,
+          rgba(255,255,255,0) 70%);
+      }
+      .blur-mask-overlay {
+        mask-image: linear-gradient(to top, black 50%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to top, black 50%, transparent 100%);
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-[#FAFCFC] text-[#1F4D40] antialiased m-0 p-0 font-inter">
+
+  <!-- =========================================================================
+       ABOUT US HERO BANNER COMPONENT
+       ========================================================================= -->
+  <section
+    aria-labelledby="about-heading"
+    class="relative w-full overflow-hidden aspect-[2576/1250] min-h-[320px] bg-[#F7FAF5]"
+  >
+    <!-- 1. Background Image -->
+    <img
+      id="about-hero-bg"
+      src=""
+      alt="Laundry staff member steaming clothes"
+      class="absolute inset-0 w-full h-full object-cover object-left opacity-0 transition-opacity duration-700 ease-out"
+    />
+
+    <!-- 2. Placeholder (Visible while image is empty or loading) -->
+    <div
+      id="about-hero-placeholder"
+      class="absolute inset-0 flex items-center justify-start pl-8 md:pl-16 bg-gradient-to-r from-[#E8F5D8] via-[#F4FBEB] to-[#FFFFFF] transition-opacity duration-500 z-0"
+    >
+      <div
+        class="border-2 border-dashed border-[#8EBE82]/70 rounded-2xl bg-white/50 backdrop-blur-sm px-6 py-8 md:px-10 md:py-10 max-w-[420px] text-center flex flex-col items-center justify-center gap-3 shadow-sm"
+      >
+        <svg
+          class="w-10 h-10 text-[#0B5A45]/70"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <rect width="18" height="18" x="3" y="3" rx="3" ry="3" />
+          <circle cx="9" cy="9" r="2" />
+          <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+        </svg>
+        <p class="text-sm md:text-base font-medium text-[#1F4D40]">
+          About hero image placeholder
+        </p>
+        <span class="text-xs text-[#3D5F54]/80 font-mono">
+          2576 &times; 1250 (JPG / WebP)
+        </span>
+      </div>
+    </div>
+
+    <!-- 3. Key White Fade Overlay Layers -->
+    <div class="absolute inset-0 pointer-events-none white-fade-overlay z-10"></div>
+    <div class="absolute inset-0 pointer-events-none blur-mask-overlay z-10 hidden sm:block"></div>
+
+    <!-- 4. Text Block (Right side on desktop, stacked on mobile) -->
+    <div
+      class="absolute z-20 transition-all duration-300
+             max-sm:bottom-6 max-sm:top-auto max-sm:translate-y-0 max-sm:left-1/2 max-sm:-translate-x-1/2 max-sm:w-[92%] max-sm:text-center max-sm:items-center max-sm:flex max-sm:flex-col
+             sm:right-[6%] sm:top-1/2 sm:-translate-y-1/2 sm:text-left
+             max-lg:max-w-[55%] lg:max-w-[46%]"
+    >
+      <!-- Heading -->
+      <h1
+        id="about-heading"
+        class="font-playfair font-semibold text-[#0B5A45] tracking-[-0.02em] leading-[1.05]"
+        style="font-size: clamp(40px, 6.5vw, 120px);"
+      >
+        About Us
+      </h1>
+
+      <!-- Subtitle -->
+      <p
+        class="font-inter font-medium text-[#1F4D40] mt-4"
+        style="font-size: clamp(14px, 1.8vw, 32px); line-height: 1.25;"
+      >
+        Trusted Laundry &amp; Dry Cleaning Care, Delivered to Your Door
+      </p>
+
+      <!-- Short Paragraph -->
+      <p
+        class="font-inter font-normal text-[#3D5F54] mt-3 sm:mt-4 max-w-[520px] leading-[1.6]"
+        style="font-size: clamp(13px, 1.2vw, 20px);"
+      >
+        At Laundrix, we make fabric care effortless. From everyday wash &amp; fold
+        to expert dry cleaning, our eco-friendly process and on-time doorstep pickup &amp;
+        delivery keep your clothes fresh and your days brighter.
+      </p>
+
+      <!-- Coral Pill CTA Button -->
+      <div class="mt-5 sm:mt-6">
+        <a
+          href="#book"
+          class="inline-flex items-center gap-2 bg-[#FF6B54] hover:bg-[#E8553F] text-white font-semibold rounded-full px-6 py-3 text-sm md:text-base shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 active:translate-y-0"
+        >
+          <span>Book a Pickup</span>
+          <span aria-hidden="true">&rarr;</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       HERO IMAGE CONFIGURATION SCRIPT
+       ========================================================================= -->
+  <script>
+    /**
+     * Set the path to your hero image here.
+     * Example: const ABOUT_HERO_BG = "/assets/services-hero.jpg";
+     * Leave as "" to view the placeholder state.
+     */
+    const ABOUT_HERO_BG = "/assets/services-hero.jpg";
+
+    const heroImg = document.getElementById('about-hero-bg');
+    const placeholder = document.getElementById('about-hero-placeholder');
+
+    if (ABOUT_HERO_BG && ABOUT_HERO_BG.trim() !== '') {
+      heroImg.src = ABOUT_HERO_BG;
+
+      heroImg.onload = function () {
+        // Hide placeholder and smoothly fade in image
+        placeholder.style.opacity = '0';
+        heroImg.classList.remove('opacity-0');
+        heroImg.classList.add('opacity-100');
+        setTimeout(() => {
+          placeholder.style.display = 'none';
+        }, 500);
+      };
+
+      heroImg.onerror = function () {
+        // Fallback to placeholder if file path is missing or fails
+        console.warn('Hero image failed to load, displaying placeholder.');
+        placeholder.style.opacity = '1';
+        placeholder.style.display = 'flex';
+        heroImg.classList.add('opacity-0');
+      };
+    } else {
+      // Default placeholder visible
+      placeholder.style.opacity = '1';
+      placeholder.style.display = 'flex';
+    }
+  </script>
+
+</body>
+</html>

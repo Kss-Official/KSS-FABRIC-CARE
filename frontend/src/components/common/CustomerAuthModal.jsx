@@ -70,7 +70,7 @@ export const CustomerAuthModal = () => {
           </h3>
           <p className="auth-modal-sub">
             {authModalMode === 'login' && 'Sign in to track orders and schedule laundry pickups.'}
-            {authModalMode === 'register' && 'Join Laundrix for express fabric care and doorstep delivery.'}
+            {authModalMode === 'register' && 'Join FabriCare for express fabric care and doorstep delivery.'}
             {authModalMode === 'forgot' && 'Enter your email to receive a password reset link.'}
           </p>
         </div>

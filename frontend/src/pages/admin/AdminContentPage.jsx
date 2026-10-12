@@ -65,7 +65,7 @@ export const AdminContentPage = () => {
   const handleReset = () => {
     setEditingTitle('Terms & Conditions');
     setEditingBody(
-      `1. Introduction\nWelcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nLaundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.\n\n3. Orders & Pickup\nOrders can be placed through our website, mobile app or by phone. Pickup and delivery timings are subject to availability. Please ensure clothes are securely packed and handed over in clean condition.\n\n4. Pricing & Payment\nPrices are based on the type of garment, fabric and service selected.`
+      `1. Introduction\nWelcome to FabriCare. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nFabriCare provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.\n\n3. Orders & Pickup\nOrders can be placed through our website, mobile app or by phone. Pickup and delivery timings are subject to availability. Please ensure clothes are securely packed and handed over in clean condition.\n\n4. Pricing & Payment\nPrices are based on the type of garment, fabric and service selected.`
     );
   };
 
@@ -315,7 +315,7 @@ export const AdminContentPage = () => {
                 <div className="preview-hero-text">
                   <span className="preview-tag">TERMS & CONDITIONS</span>
                   <h3 className="preview-title">{editingTitle || 'Our Terms & Conditions'}</h3>
-                  <p className="preview-sub">Please read these terms carefully before using Laundrix services.</p>
+                  <p className="preview-sub">Please read these terms carefully before using FabriCare services.</p>
                 </div>
                 <div className="preview-hero-thumb">
                   <img src="/assets/folded-towels.jpg" alt="Towels" />

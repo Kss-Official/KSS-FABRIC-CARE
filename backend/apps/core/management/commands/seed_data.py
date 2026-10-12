@@ -216,7 +216,7 @@ class Command(BaseCommand):
 
         # 5. FAQs & Policies
         ContentFAQ.objects.get_or_create(
-            question='How does Laundrix / FabriCare pickup and delivery work?',
+            question='How does FabriCare pickup and delivery work?',
             defaults={'answer': 'Schedule a pickup online. Our delivery agent collects your clothes at your scheduled time and delivers them freshly cleaned within 24-48 hours.', 'display_order': 1}
         )
         ContentFAQ.objects.get_or_create(

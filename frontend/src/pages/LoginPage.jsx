@@ -6,6 +6,7 @@ import {
   Package,
   Truck,
   BarChart2,
+  BarChart3,
   TrendingUp,
   Eye,
   EyeOff,
@@ -129,13 +130,14 @@ export const LoginPage = () => {
 
   return (
     <div className="login-page-wrapper">
+      {/* Top Left Global Brand Logo matching reference Image 2 */}
+      <div className="login-top-logo" onClick={() => navigateTo('home')}>
+        <span className="logo-text">Fabri<span className="logo-accent">Care</span></span>
+      </div>
+
       <div className="login-page-container">
         {/* Left Presentation & Branding Column */}
         <div className="login-left-col">
-          <div className="login-brand-logo" onClick={() => navigateTo('home')}>
-            <span className="logo-text">Laund<span className="logo-accent">rix</span></span>
-          </div>
-
           <div className="login-hero-text">
             <h1 className="login-main-headline">
               Manage Laundry <br />
@@ -147,56 +149,55 @@ export const LoginPage = () => {
               Control orders, pickups, deliveries, services and everything in one place.
             </p>
 
-            <div className="login-features-imagery-row">
-              <div className="login-benefits-list">
-                <div className="login-benefit-item">
-                  <Package size={22} className="benefit-icon" strokeWidth={1.8} />
-                  <div className="benefit-text-wrap">
-                    <h4 className="benefit-title">Track Orders</h4>
-                    <p className="benefit-desc">From pickup to delivery</p>
-                  </div>
-                </div>
-
-                <div className="login-benefit-item">
-                  <Truck size={22} className="benefit-icon" strokeWidth={1.8} />
-                  <div className="benefit-text-wrap">
-                    <h4 className="benefit-title">Manage Operations</h4>
-                    <p className="benefit-desc">Keep everything on schedule</p>
-                  </div>
-                </div>
-
-                <div className="login-benefit-item">
-                  <BarChart2 size={22} className="benefit-icon" strokeWidth={1.8} />
-                  <div className="benefit-text-wrap">
-                    <h4 className="benefit-title">Grow Your Business</h4>
-                    <p className="benefit-desc">Serve more customers efficiently</p>
-                  </div>
+            <div className="login-features-list">
+              <div className="login-benefit-item">
+                <Package size={22} className="benefit-icon" strokeWidth={1.8} />
+                <div className="benefit-text-wrap">
+                  <h4 className="benefit-title">Track Orders</h4>
+                  <p className="benefit-desc">From pickup to delivery</p>
                 </div>
               </div>
 
-              {/* Folded Towels with Leaf Imagery */}
-              <div className="login-visual-towels">
-                <img 
-                  src="/assets/folded_towels_transparent.png?v=3" 
-                  alt="Fresh laundered towels" 
-                  className="login-towels-img"
-                  loading="eager"
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = '/assets/folded_towels_mint.jpg';
-                  }}
-                />
+              <div className="login-benefit-item">
+                <Truck size={22} className="benefit-icon" strokeWidth={1.8} />
+                <div className="benefit-text-wrap">
+                  <h4 className="benefit-title">Manage Operations</h4>
+                  <p className="benefit-desc">Keep everything on schedule</p>
+                </div>
+              </div>
+
+              <div className="login-benefit-item">
+                <BarChart2 size={22} className="benefit-icon" strokeWidth={1.8} />
+                <div className="benefit-text-wrap">
+                  <h4 className="benefit-title">Grow Your Business</h4>
+                  <p className="benefit-desc">Serve more customers efficiently</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Authentication Card */}
+        {/* Right Authentication Card with Towels tucked directly beneath */}
         <div className="login-right-col">
-          <div className="login-card-container animate-fade-in">
-            {/* Centered Top Brand & Role */}
-            <div className="login-card-brand">
-              <span className="card-logo">Laund<span className="card-logo-acc">rix</span></span>
+          <div className="login-card-wrapper">
+            {/* Folded Towels with Green Leaves Imagery tucked beneath the card */}
+            <div className="login-visual-towels">
+              <img 
+                src="/assets/reference_towels_transparent.png?v=7" 
+                alt="Fresh laundered towels" 
+                className="login-towels-img"
+                loading="eager"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = '/assets/reference_towels_cleaned.png';
+                }}
+              />
+            </div>
+
+            <div className="login-card-container animate-fade-in">
+              {/* Centered Top Brand & Role */}
+              <div className="login-card-brand">
+              <span className="card-logo">Fabri<span className="card-logo-acc">Care</span></span>
               <span className="card-role-label">ADMIN PORTAL</span>
             </div>
 
@@ -278,7 +279,7 @@ export const LoginPage = () => {
                       className="form-input with-icon"
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="admin@laundrix.com"
+                      placeholder="admin@fabricare.com"
                       autoComplete="username"
                     />
                   </div>
@@ -386,6 +387,7 @@ export const LoginPage = () => {
           </div>
         </div>
       </div>
+      </div>
 
       <style>{`
         .login-page-wrapper {
@@ -415,32 +417,38 @@ export const LoginPage = () => {
           flex-direction: column;
         }
 
-        .login-brand-logo {
+        .login-top-logo {
+          position: absolute;
+          top: 36px;
+          left: 56px;
           display: inline-flex;
           align-items: center;
           cursor: pointer;
           user-select: none;
-          margin-bottom: 32px;
+          z-index: 10;
         }
 
-        .login-brand-logo .logo-text {
+        .login-top-logo .logo-text {
+          font-family: 'Poppins', sans-serif;
           font-size: 2.125rem;
           font-weight: 850;
-          color: #0F172A;
+          color: #000000;
           letter-spacing: -0.03em;
         }
 
-        .login-brand-logo .logo-accent {
-          color: #0D7A75;
+        .login-top-logo .logo-accent {
+          color: #087F8C;
         }
 
         .login-main-headline {
-          font-size: 3.375rem;
-          font-weight: 850;
+          font-family: 'Poppins', sans-serif;
+          font-weight: 800;
+          font-size: 57.6px;
+          line-height: 57.6px;
+          letter-spacing: -1.44px;
           color: #0F172A;
-          line-height: 1.1;
-          letter-spacing: -0.035em;
           margin: 0 0 16px;
+          max-width: 580px;
         }
 
         .text-teal {
@@ -450,33 +458,23 @@ export const LoginPage = () => {
         .login-subtext {
           font-size: 1rem;
           color: #475569;
-          margin-bottom: 36px;
+          margin-bottom: 24px;
           max-width: 480px;
           line-height: 1.55;
         }
 
-        .login-features-imagery-row {
-          display: flex;
-          align-items: flex-end;
-          justify-content: space-between;
-          gap: 24px;
-          margin-top: 10px;
-          position: relative;
-          width: 100%;
-        }
-
-        .login-benefits-list {
-          flex: 0 0 240px;
+        .login-features-list {
           display: flex;
           flex-direction: column;
-          gap: 26px;
-          z-index: 2;
+          gap: 18px;
+          margin-top: 6px;
+          max-width: 240px;
         }
 
         .login-benefit-item {
           display: flex;
           align-items: flex-start;
-          gap: 14px;
+          gap: 12px;
         }
 
         .benefit-icon {
@@ -491,57 +489,60 @@ export const LoginPage = () => {
         }
 
         .benefit-title {
-          font-size: 0.9375rem;
+          font-size: 0.9rem;
           font-weight: 750;
           color: #0F172A;
-          margin: 0 0 3px;
+          margin: 0 0 1px;
           line-height: 1.25;
         }
 
         .benefit-desc {
-          font-size: 0.8125rem;
+          font-size: 0.8rem;
           color: #64748B;
           margin: 0;
           line-height: 1.35;
-        }
-
-        .login-visual-towels {
-          flex: 0 0 auto;
-          width: 275px;
-          max-width: 285px;
-          margin-left: auto;
-          background: transparent;
-          border: none;
-          box-shadow: none;
-          overflow: visible;
-          pointer-events: none;
-          display: flex;
-          justify-content: flex-end;
-        }
-
-        .login-towels-img {
-          width: 100%;
-          max-width: 275px;
-          height: auto;
-          display: block;
-          object-fit: contain;
-          filter: drop-shadow(0 10px 20px rgba(13, 122, 117, 0.08));
         }
 
         .login-right-col {
           display: flex;
           justify-content: center;
           width: 100%;
+          position: relative;
+        }
+
+        .login-card-wrapper {
+          position: relative;
+          width: 100%;
+          max-width: 440px;
         }
 
         .login-card-container {
+          position: relative;
+          z-index: 5;
           background: #FFFFFF;
           border: 1px solid rgba(226, 232, 240, 0.8);
           border-radius: 28px;
           padding: 44px 38px;
           box-shadow: 0 24px 60px rgba(13, 122, 117, 0.1), 0 4px 12px rgba(0, 0, 0, 0.03);
           width: 100%;
-          max-width: 440px;
+        }
+
+        .login-visual-towels {
+          position: absolute;
+          right: calc(100% - 50px);
+          bottom: -8px;
+          width: 410px;
+          max-width: 430px;
+          pointer-events: none;
+          z-index: 2;
+        }
+
+        .login-towels-img {
+          width: 100%;
+          height: auto;
+          display: block;
+          object-fit: contain;
+          filter: drop-shadow(0 14px 28px rgba(13, 122, 117, 0.09));
         }
 
         .login-card-brand {
@@ -550,14 +551,15 @@ export const LoginPage = () => {
         }
 
         .card-logo {
+          font-family: 'Poppins', sans-serif;
           font-size: 1.625rem;
           font-weight: 850;
-          color: #0F172A;
+          color: #000000;
           letter-spacing: -0.02em;
         }
 
         .card-logo-acc {
-          color: #0D7A75;
+          color: #087F8C;
         }
 
         .card-role-label {
@@ -758,7 +760,7 @@ export const LoginPage = () => {
           display: flex;
           align-items: center;
           text-align: center;
-          margin: 18px 0;
+          margin: 10px 0;
           color: #94A3B8;
           font-size: 0.75rem;
         }
@@ -770,7 +772,7 @@ export const LoginPage = () => {
         }
 
         .login-or-divider span {
-          padding: 0 12px;
+          padding: 0 10px;
           color: #94A3B8;
           font-size: 0.75rem;
         }
@@ -801,7 +803,7 @@ export const LoginPage = () => {
           font-size: 0.8125rem;
           color: #64748B;
           text-align: center;
-          margin-top: 22px;
+          margin-top: 20px;
         }
 
         .support-link {
@@ -824,6 +826,12 @@ export const LoginPage = () => {
         }
 
         @media (max-width: 1024px) {
+          .login-top-logo {
+            position: static;
+            margin-bottom: 24px;
+            justify-content: center;
+            display: flex;
+          }
           .login-page-container {
             grid-template-columns: 1fr;
             gap: 40px;
@@ -832,22 +840,24 @@ export const LoginPage = () => {
             text-align: center;
             align-items: center;
           }
-          .login-brand-logo {
-            justify-content: center;
-          }
           .login-main-headline {
-            font-size: 2.75rem;
+            font-size: 42px;
+            line-height: 44px;
+            letter-spacing: -1px;
           }
           .login-subtext {
             max-width: 100%;
           }
-          .login-features-imagery-row {
-            flex-direction: column;
-            gap: 24px;
+          .login-features-list {
             align-items: center;
+            margin: 0 auto;
           }
-          .login-benefits-list {
-            align-items: center;
+          .login-visual-towels {
+            position: static;
+            width: 100%;
+            max-width: 320px;
+            margin: 0 auto 20px;
+            display: block;
           }
         }
 
@@ -856,7 +866,9 @@ export const LoginPage = () => {
             padding: 32px 16px;
           }
           .login-main-headline {
-            font-size: 2.125rem;
+            font-size: 32px;
+            line-height: 34px;
+            letter-spacing: -0.8px;
           }
           .login-visual-towels {
             width: 100%;
