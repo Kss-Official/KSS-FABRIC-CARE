@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
-import { invoicesApi, ordersApi } from '../api/apiClient';
+import { ordersApi } from '../api/apiClient';
 import { 
   Download, 
   Printer, 
@@ -56,7 +56,6 @@ export const PaymentsInvoices = () => {
   // Extract clean pickup time slot without any date prefix
   const getCleanPickupSlot = (ord) => {
     if (ord?.pickup_time_slot) {
-      // Strip any accidental leading date e.g. "12 Oct 2026 · 9:00 AM" -> "9:00 AM"
       return ord.pickup_time_slot.replace(/^.*·\s*/, '').trim();
     }
     return '09:00 AM – 11:00 AM';
@@ -66,10 +65,9 @@ export const PaymentsInvoices = () => {
     setIsRefreshing(true);
     setLoading(true);
     try {
-      // Add cache buster query so browser never returns cached result
-      const res = await ordersApi.getOrders({ _t: Date.now() });
+      const res = await ordersApi.getOrders();
       const ordList = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-      setOrders(ordList);
+      setOrders([...ordList]);
 
       if (ordList.length > 0) {
         if (activeTrackingOrderId) {
@@ -80,14 +78,15 @@ export const PaymentsInvoices = () => {
           );
           if (match) {
             setSelectedOrder(match);
-            return;
+          } else {
+            setSelectedOrder(ordList[0]);
           }
+        } else {
+          setSelectedOrder(prev => {
+            if (!prev) return ordList[0];
+            return ordList.find(o => o.id === prev.id) || ordList[0];
+          });
         }
-        // Keep selected order or default to first
-        setSelectedOrder(prev => {
-          if (!prev) return ordList[0];
-          return ordList.find(o => o.id === prev.id) || ordList[0];
-        });
       }
 
       setRefreshSuccess(true);
@@ -136,8 +135,8 @@ export const PaymentsInvoices = () => {
     }, 1500);
   };
 
-  // Exact reference data matching the 5th image
-  const customerName = 'Priyanka Kushwah';
+  // 1. Customer Name displayed as Rohan Mehta as requested
+  const customerName = 'Rohan Mehta';
   const customerPhone = '+91 98765 43210';
   const customerEmail = 'rohan.mehta@gmail.com';
   const customerAddress = '123, Shree Nagar, Ujjain';
@@ -149,7 +148,7 @@ export const PaymentsInvoices = () => {
   const paymentMethodDisplay = 'UPI (Paid)';
   const transactionIdDisplay = 'UPI1234567890';
 
-  // Exact 3 reference items from the 5th image
+  // Exact 3 reference items from the reference image
   const invoiceItems = [
     {
       index: '1.',
@@ -180,8 +179,8 @@ export const PaymentsInvoices = () => {
     }
   ];
 
-  // Reusable Tax Invoice Card Component matching Reference Image 5
-  const renderTaxInvoiceCard = (isModal = false) => (
+  // Reusable Tax Invoice Card Component matching Reference Image
+  const renderTaxInvoiceCard = () => (
     <div id="tax-invoice-document-card" className="content-card tax-invoice-document-card">
       {/* Top Brand & Invoice Header */}
       <div className="invoice-doc-header">
@@ -397,7 +396,7 @@ export const PaymentsInvoices = () => {
 
   return (
     <div className="portal-container invoice-page-portal animate-fade-in">
-      {/* 1. Breadcrumb and Header Action Row */}
+      {/* 1. Breadcrumb and Header - Download and Print buttons removed from main listing */}
       <div className="invoice-header-row mb-6 no-print">
         <div className="header-breadcrumbs-col">
           <div className="breadcrumbs-nav">
@@ -416,29 +415,9 @@ export const PaymentsInvoices = () => {
             View, download, and print official tax invoices for your laundry orders
           </p>
         </div>
-
-        <div className="header-actions-col">
-          <button 
-            onClick={handleDownload}
-            className="invoice-action-btn"
-            title="Download PDF Invoice"
-          >
-            <Download size={15} />
-            <span>Download PDF</span>
-          </button>
-
-          <button 
-            onClick={handlePrint}
-            className="invoice-action-btn"
-            title="Print Invoice"
-          >
-            <Printer size={15} />
-            <span>Print</span>
-          </button>
-        </div>
       </div>
 
-      {/* 2. Customer Orders Table Card (Displays all customer orders with Order ID & Date) */}
+      {/* 2. Customer Orders Table Card */}
       <div className="content-card customer-orders-invoices-card mb-8 no-print">
         <div className="orders-card-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
@@ -459,7 +438,7 @@ export const PaymentsInvoices = () => {
             </span>
             <button 
               type="button"
-              onClick={fetchOrdersAndInvoices} 
+              onClick={() => fetchOrdersAndInvoices()} 
               className={`refresh-orders-btn flex items-center gap-1.5 text-xs ${isRefreshing ? 'loading' : ''}`}
               disabled={isRefreshing}
               title="Refresh orders list"
@@ -507,7 +486,7 @@ export const PaymentsInvoices = () => {
                       <td className="py-3 px-3 text-sm text-slate-600 font-medium">
                         {ordDate}
                       </td>
-                      {/* 1. Date removed from Pickup column as requested in image 1 */}
+                      {/* Date removed from Pickup column as requested */}
                       <td className="py-3 px-3 text-sm text-slate-600 font-medium">
                         {cleanTimeSlot}
                       </td>
@@ -521,7 +500,7 @@ export const PaymentsInvoices = () => {
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right">
-                        {/* 3 & 5. Opens the exact invoice form shown in the fifth reference image */}
+                        {/* 4 & 5. Clicking "View Invoice/Bill" opens the modal dialog with download and print options */}
                         <button
                           type="button"
                           onClick={() => handleViewInvoiceClick(ord)}
@@ -541,49 +520,21 @@ export const PaymentsInvoices = () => {
         )}
       </div>
 
-      {/* 3. Centered Tax Invoice Card (Exact Reference Image 5, No Sidebar) */}
-      <div className="invoice-centered-container max-w-4xl mx-auto">
-        <div className="section-inline-title-row flex items-center justify-between mb-4 no-print">
-          <div className="flex items-center gap-2">
-            <FileText size={18} className="text-teal" />
-            <h3 className="font-bold text-navy text-base">Tax Invoice Preview ({orderNumberDisplay})</h3>
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={handleDownload}
-              className="btn-mini-action"
-              title="Download PDF"
-            >
-              <Download size={13} />
-              <span>Download PDF</span>
-            </button>
-            <button 
-              onClick={handlePrint}
-              className="btn-mini-action"
-              title="Print"
-            >
-              <Printer size={13} />
-              <span>Print</span>
-            </button>
-          </div>
-        </div>
-
-        {renderTaxInvoiceCard(false)}
-      </div>
-
-      {/* 4. Full Modal Dialog for "View Invoice/Bill" (Matching Fifth Image Exactly) */}
+      {/* 3. Modal Dialog for "View Invoice" (Exact Reference Form, Single Instance for Clean Print/PDF) */}
       {isModalOpen && (
-        <div className="invoice-modal-overlay no-print" onClick={() => setIsModalOpen(false)}>
+        <div className="invoice-modal-overlay" onClick={() => setIsModalOpen(false)}>
           <div className="invoice-modal-container" onClick={(e) => e.stopPropagation()}>
-            <div className="invoice-modal-top-bar flex items-center justify-between p-4 border-b border-slate-100 bg-white">
+            <div className="invoice-modal-top-bar flex items-center justify-between p-4 border-b border-slate-100 bg-white no-print">
               <div className="flex items-center gap-2">
                 <Receipt size={18} className="text-teal" />
                 <span className="font-bold text-navy text-sm">Official Tax Invoice - {orderNumberDisplay}</span>
               </div>
               <div className="flex items-center gap-2">
+                {/* Download PDF & Print shown ONLY inside modal after clicking View Invoice */}
                 <button 
                   onClick={handleDownload}
                   className="modal-action-pill"
+                  title="Download PDF"
                 >
                   <Download size={14} />
                   <span>Download PDF</span>
@@ -591,6 +542,7 @@ export const PaymentsInvoices = () => {
                 <button 
                   onClick={handlePrint}
                   className="modal-action-pill"
+                  title="Print Invoice"
                 >
                   <Printer size={14} />
                   <span>Print</span>
@@ -606,7 +558,7 @@ export const PaymentsInvoices = () => {
             </div>
 
             <div className="invoice-modal-content-scroll p-6 overflow-y-auto max-h-[85vh]">
-              {renderTaxInvoiceCard(true)}
+              {renderTaxInvoiceCard()}
             </div>
           </div>
         </div>
@@ -621,7 +573,7 @@ export const PaymentsInvoices = () => {
           color: #0D7A75 !important;
         }
 
-        /* 1. Header & Actions */
+        /* 1. Header & Breadcrumbs */
         .invoice-header-row {
           display: flex;
           align-items: center;
@@ -672,32 +624,6 @@ export const PaymentsInvoices = () => {
           font-size: 0.875rem;
           color: #64748B;
           margin-top: 4px;
-        }
-
-        .header-actions-col {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .invoice-action-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 8px 16px;
-          background: #ffffff;
-          border: 1.5px solid #0D7A75;
-          color: #0D7A75;
-          font-size: 0.8125rem;
-          font-weight: 600;
-          border-radius: 999px;
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-
-        .invoice-action-btn:hover {
-          background: #0D7A75;
-          color: #ffffff;
         }
 
         /* 2. Customer Orders Table Card */
@@ -787,26 +713,7 @@ export const PaymentsInvoices = () => {
           color: #ffffff;
         }
 
-        .btn-mini-action {
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          padding: 5px 12px;
-          border-radius: 999px;
-          border: 1px solid #0D7A75;
-          background: #ffffff;
-          color: #0D7A75;
-          font-size: 0.75rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-
-        .btn-mini-action:hover {
-          background: #E8FAF6;
-        }
-
-        /* 3. Main Tax Invoice Document Card (Matches Reference Image 5 Exactly) */
+        /* 3. Main Tax Invoice Document Card */
         .tax-invoice-document-card {
           background: #ffffff;
           border: 1.5px solid #E2E8F0;
@@ -1328,7 +1235,7 @@ export const PaymentsInvoices = () => {
             print-color-adjust: exact !important;
           }
 
-          /* Hide everything not part of the invoice card */
+          /* Hide everything not part of the modal invoice card */
           header,
           footer,
           nav,
@@ -1336,7 +1243,6 @@ export const PaymentsInvoices = () => {
           .no-print,
           .invoice-header-row,
           .customer-orders-invoices-card,
-          .section-inline-title-row,
           .invoice-modal-top-bar,
           .btn,
           button {
@@ -1345,9 +1251,9 @@ export const PaymentsInvoices = () => {
 
           .portal-container,
           .invoice-page-portal,
-          .invoice-centered-container,
           .invoice-modal-overlay,
-          .invoice-modal-container {
+          .invoice-modal-container,
+          .invoice-modal-content-scroll {
             display: block !important;
             padding: 0 !important;
             margin: 0 !important;
@@ -1356,6 +1262,8 @@ export const PaymentsInvoices = () => {
             background: transparent !important;
             box-shadow: none !important;
             position: static !important;
+            overflow: visible !important;
+            max-height: none !important;
           }
 
           .tax-invoice-document-card {
