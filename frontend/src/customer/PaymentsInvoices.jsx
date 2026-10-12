@@ -16,6 +16,7 @@ import {
   Shirt, 
   Check, 
   RefreshCw,
+  Search,
   X
 } from 'lucide-react';
 
@@ -28,6 +29,7 @@ export const PaymentsInvoices = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const modalScrollRef = useRef(null);
 
   // Helper date formatters
@@ -62,6 +64,35 @@ export const PaymentsInvoices = () => {
     }
     return '09:00 AM – 11:00 AM';
   };
+
+  // Filter orders based on user search query across order ID, date, slot, status, amount, services, address
+  const filteredOrders = orders.filter((ord) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    const ordNum = (ord.order_number || ord.order_id || `#FC${ord.id}` || '').toLowerCase();
+    const ordDate = formatOrderDate(ord.created_at || ord.pickup_date).toLowerCase();
+    const cleanSlot = getCleanPickupSlot(ord).toLowerCase();
+    const status = (ord.status || 'paid').toLowerCase();
+    const amount = `${parseFloat(ord.total_amount || 735).toFixed(2)}`.toLowerCase();
+    const amountWithRupee = `₹${parseFloat(ord.total_amount || 735).toFixed(2)}`.toLowerCase();
+    const customerName = (ord.customer_name || ord.user_name || '').toLowerCase();
+    const address = (ord.address || ord.pickup_address || '').toLowerCase();
+    const serviceName = Array.isArray(ord.services)
+      ? ord.services.map(s => (typeof s === 'string' ? s : s.name || s.title || '')).join(' ').toLowerCase()
+      : (typeof ord.services === 'string' ? ord.services.toLowerCase() : '');
+
+    return (
+      ordNum.includes(q) ||
+      ordDate.includes(q) ||
+      cleanSlot.includes(q) ||
+      status.includes(q) ||
+      amount.includes(q) ||
+      amountWithRupee.includes(q) ||
+      customerName.includes(q) ||
+      address.includes(q) ||
+      serviceName.includes(q)
+    );
+  });
 
   const fetchOrdersAndInvoices = async () => {
     setIsRefreshing(true);
@@ -624,7 +655,7 @@ export const PaymentsInvoices = () => {
 
       {/* 2. Customer Orders Table Card */}
       <div className="content-card customer-orders-invoices-card mb-3 no-print">
-        <div className="orders-card-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+        <div className="orders-card-header flex flex-col gap-3 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="orders-icon-circle">
               <Receipt size={18} className="text-teal" />
@@ -637,20 +668,43 @@ export const PaymentsInvoices = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="orders-count-pill font-bold text-xs px-3 py-1 rounded-full">
-              {orders.length} {orders.length === 1 ? 'Order' : 'Orders'}
-            </span>
-            <button 
-              type="button"
-              onClick={() => fetchOrdersAndInvoices()} 
-              className={`refresh-orders-btn flex items-center gap-1.5 text-xs ${isRefreshing ? 'loading' : ''}`}
-              disabled={isRefreshing}
-              title="Refresh orders list"
-            >
-              <RefreshCw size={13} className={isRefreshing ? 'animate-spin text-teal' : ''} />
-              <span>{isRefreshing ? 'Refreshing...' : refreshSuccess ? 'Refreshed!' : 'Refresh'}</span>
-            </button>
+          <div className="orders-actions-bar flex flex-wrap items-center justify-between gap-3 pt-1">
+            <div className="flex items-center gap-2">
+              <span className="orders-count-pill font-bold text-xs px-3 py-1 rounded-full">
+                {searchQuery.trim() ? `${filteredOrders.length} of ${orders.length} Orders` : `${orders.length} ${orders.length === 1 ? 'Order' : 'Orders'}`}
+              </span>
+              <button 
+                type="button"
+                onClick={() => fetchOrdersAndInvoices()} 
+                className={`refresh-orders-btn flex items-center gap-1.5 text-xs ${isRefreshing ? 'loading' : ''}`}
+                disabled={isRefreshing}
+                title="Refresh orders list"
+              >
+                <RefreshCw size={13} className={isRefreshing ? 'animate-spin text-teal' : ''} />
+                <span>{isRefreshing ? 'Refreshing...' : refreshSuccess ? 'Refreshed!' : 'Refresh'}</span>
+              </button>
+            </div>
+
+            <div className="orders-search-wrapper">
+              <Search size={15} className="orders-search-icon" />
+              <input
+                type="text"
+                placeholder="Search by Order ID, date, status, slot, amount..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="orders-search-input"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="orders-search-clear-btn"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -659,6 +713,21 @@ export const PaymentsInvoices = () => {
             <Package size={34} className="text-slate-300 mx-auto mb-2" />
             <p className="text-sm font-semibold text-slate-700">No orders found</p>
             <p className="text-xs text-slate-500 mt-0.5">Your orders will appear here once booked.</p>
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="orders-empty-state text-center py-8">
+            <Search size={32} className="text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-slate-700">No matching orders found</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              No orders matched &ldquo;{searchQuery}&rdquo;. Try another Order ID, date, or amount.
+            </p>
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="clear-search-pill-btn"
+            >
+              Clear Search
+            </button>
           </div>
         ) : (
           <div className="orders-table-wrapper overflow-x-auto mt-3">
@@ -674,7 +743,7 @@ export const PaymentsInvoices = () => {
                 </tr>
               </thead>
               <tbody>
-                {orders.map((ord) => {
+                {filteredOrders.map((ord) => {
                   const isCurrent = (selectedOrder?.id === ord.id) || 
                                     (!selectedOrder && (ord.order_number === '#FC8F71E' || ord.order_id === '#FC8F71E'));
                   const ordNum = ord.order_number || ord.order_id || `#FC${ord.id}`;
@@ -893,6 +962,93 @@ export const PaymentsInvoices = () => {
         .refresh-orders-btn.loading {
           border-color: #0D7A75;
           background: #F4FBFA;
+        }
+
+        .orders-actions-bar {
+          width: 100%;
+        }
+
+        .orders-search-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+          width: 100%;
+          max-width: 340px;
+        }
+
+        @media (max-width: 640px) {
+          .orders-search-wrapper {
+            max-width: 100%;
+          }
+        }
+
+        .orders-search-icon {
+          position: absolute;
+          left: 12px;
+          color: #94A3B8;
+          pointer-events: none;
+        }
+
+        .orders-search-input {
+          width: 100%;
+          padding: 6px 32px 6px 34px;
+          border-radius: 999px;
+          border: 1.5px solid #CBD5E1;
+          background: #FAFCFC;
+          color: #0F172A;
+          font-size: 0.8125rem;
+          font-weight: 500;
+          outline: none;
+          transition: all 0.2s ease;
+        }
+
+        .orders-search-input::placeholder {
+          color: #94A3B8;
+          font-weight: 400;
+        }
+
+        .orders-search-input:focus {
+          background: #FFFFFF;
+          border-color: #0D7A75;
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.12);
+        }
+
+        .orders-search-clear-btn {
+          position: absolute;
+          right: 10px;
+          background: none;
+          border: none;
+          color: #94A3B8;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2px;
+          border-radius: 50%;
+          transition: color 0.15s ease, background 0.15s ease;
+        }
+
+        .orders-search-clear-btn:hover {
+          color: #0F172A;
+          background: #E2E8F0;
+        }
+
+        .clear-search-pill-btn {
+          margin-top: 12px;
+          padding: 6px 16px;
+          background: #E8FAF6;
+          color: #0D7A75;
+          border: 1px solid #BCEAE6;
+          border-radius: 999px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .clear-search-pill-btn:hover {
+          background: #0D7A75;
+          color: #ffffff;
         }
 
         .orders-table {
