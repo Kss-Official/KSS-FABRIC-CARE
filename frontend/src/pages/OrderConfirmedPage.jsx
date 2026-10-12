@@ -1,34 +1,19 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useBooking } from '../context/BookingContext';
-import confetti from 'canvas-confetti';
 import { Calendar, MapPin, ArrowRight, Home, RefreshCw, Truck } from 'lucide-react';
 
 export const OrderConfirmedPage = () => {
   const { lastOrder, navigateTo, startBooking } = useBooking();
 
-  useEffect(() => {
-    // Trigger celebratory confetti
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#0D7A75', '#FF6B50', '#64DFDF', '#FFD166']
-      });
-    } catch (e) {
-      console.log('Confetti effect');
-    }
-  }, []);
-
   return (
     <div className="confirmed-page-wrapper">
       <div className="container">
-        <div className="confirmed-card animate-fade-in">
-          {/* Mascot 3D Illustration */}
+        <div className="confirmed-card">
+          {/* Pickup Confirmed Illustration */}
           <div className="mascot-illustration-wrapper">
             <img
-              src="/assets/pickup-confirmed-mascot.jpg"
-              alt="Pickup Confirmed Mascot Courier"
+              src="/assets/pickup-confirmed.png"
+              alt="Pickup Confirmed"
               className="mascot-img"
             />
           </div>
@@ -133,8 +118,8 @@ export const OrderConfirmedPage = () => {
         }
 
         .mascot-illustration-wrapper {
-          width: 320px;
-          height: 240px;
+          width: 380px;
+          max-width: 100%;
           margin: 0 auto 16px;
           display: flex;
           align-items: center;
@@ -142,9 +127,11 @@ export const OrderConfirmedPage = () => {
         }
 
         .mascot-img {
-          max-width: 100%;
-          max-height: 100%;
+          width: 100%;
+          height: auto;
+          max-height: 260px;
           object-fit: contain;
+          display: block;
         }
 
         .confirmed-title {
