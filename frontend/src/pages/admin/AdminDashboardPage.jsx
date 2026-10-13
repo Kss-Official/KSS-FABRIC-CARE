@@ -178,9 +178,80 @@ export const AdminDashboardPage = () => {
       : [40, 30, 20, 10, 0];
   }, [chartTimeframe]);
 
-  const scaleMax = chartTimeframe === '30d' ? 80 : 40;
+  const getAvatarStyle = (avatar) => {
+    switch (avatar) {
+      case 'RM': return { background: '#E0F2FE', color: '#0284C7' }; // Soft Sky Blue
+      case 'PS': return { background: '#EDE9FE', color: '#7C3AED' }; // Soft Lavender
+      case 'AN': return { background: '#F3E8FF', color: '#9333EA' }; // Soft Violet
+      case 'SR': return { background: '#CCFBF1', color: '#0D9488' }; // Soft Mint
+      case 'KV': return { background: '#FEF08A', color: '#854D0E' }; // Soft Golden Yellow
+      case 'NK': return { background: '#EDE9FE', color: '#7C3AED' }; // Soft Lavender
+      default: return { background: '#E2E8F0', color: '#475569' };
+    }
+  };
 
-  const recentOrders = orders.slice(0, 6);
+  // Recent Orders exactly matching Second Reference Image
+  const recentOrders = useMemo(() => {
+    const baseOrders = [
+      {
+        id: '#LDX10284',
+        customer: { name: 'Rohan Mehta', avatar: 'RM' },
+        services: ['Wash & Fold'],
+        pickupTime: '23 Sep, 9:00 AM',
+        amount: 320,
+        status: 'Pickup Scheduled'
+      },
+      {
+        id: '#LDX10285',
+        customer: { name: 'Priya Sharma', avatar: 'PS' },
+        services: ['Dry Cleaning'],
+        pickupTime: '23 Sep, 10:00 AM',
+        amount: 560,
+        status: 'Pending Pickup'
+      },
+      {
+        id: '#LDX10286',
+        customer: { name: 'Arjun Nair', avatar: 'AN' },
+        services: ['Wash & Iron'],
+        pickupTime: '23 Sep, 11:00 AM',
+        amount: 420,
+        status: 'In Cleaning'
+      },
+      {
+        id: '#LDX10287',
+        customer: { name: 'Sneha Reddy', avatar: 'SR' },
+        services: ['Home Care'],
+        pickupTime: '23 Sep, 2:00 PM',
+        amount: 780,
+        status: 'Ready for Delivery'
+      },
+      {
+        id: '#LDX10288',
+        customer: { name: 'Karan Verma', avatar: 'KV' },
+        services: ['Shoe Laundry'],
+        pickupTime: '23 Sep, 3:00 PM',
+        amount: 350,
+        status: 'Delivered'
+      },
+      {
+        id: '#LDX10289',
+        customer: { name: 'Neha Kapoor', avatar: 'NK' },
+        services: ['Steam Iron'],
+        pickupTime: '23 Sep, 4:00 PM',
+        amount: 280,
+        status: 'In Cleaning'
+      }
+    ];
+
+    const baseIds = new Set(baseOrders.map(b => b.id));
+    const dynamicNew = (orders || []).filter(o => 
+      !baseIds.has(o.id) && 
+      !o.id.startsWith('#LDX12') && 
+      o.id !== '#LDX10281'
+    );
+
+    return [...dynamicNew, ...baseOrders].slice(0, 6);
+  }, [orders]);
 
   const pickupDeliveries = [
     { time: '09:00 - 11:00 AM', id: '#LDX10284', name: 'Rohan Mehta', area: 'Banaswadi, Bengaluru', type: 'Pickup', status: 'Assigned' },
@@ -419,23 +490,32 @@ export const AdminDashboardPage = () => {
               <tbody>
                 {recentOrders.map(ord => (
                   <tr key={ord.id}>
-                    <td><strong>{ord.id}</strong></td>
+                    <td><strong className="order-id-txt">{ord.id}</strong></td>
                     <td>
                       <div className="cust-cell">
-                        <span className="cust-mini-avatar">{ord.customer.avatar}</span>
-                        <span>{ord.customer.name}</span>
+                        <span 
+                          className="cust-mini-avatar"
+                          style={getAvatarStyle(ord.customer?.avatar)}
+                        >
+                          {ord.customer?.avatar}
+                        </span>
+                        <span className="cust-name-txt">{ord.customer?.name}</span>
                       </div>
                     </td>
-                    <td><span className="service-tag-pill">{ord.services[0]}</span></td>
-                    <td className="text-muted">{ord.pickupTime}</td>
-                    <td><strong>₹{ord.amount}</strong></td>
+                    <td className="services-cell-txt">
+                      {Array.isArray(ord.services) ? ord.services.join(', ') : ord.services}
+                    </td>
+                    <td className="pickup-date-cell-txt">{ord.pickupTime}</td>
+                    <td><strong className="amount-cell-txt">₹{ord.amount}</strong></td>
                     <td>
                       <span className={`status-pill ${ord.status.toLowerCase().replace(/\s+/g, '-')}`}>
                         {ord.status}
                       </span>
                     </td>
-                    <td>
-                      <button className="table-action-dots"><MoreHorizontal size={16} /></button>
+                    <td className="action-cell">
+                      <button className="table-action-dots" title="Order options">
+                        <MoreHorizontal size={18} />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1047,77 +1127,153 @@ export const AdminDashboardPage = () => {
         .dash-table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 0.8125rem;
+          font-family: inherit;
         }
 
         .dash-table th {
           text-align: left;
-          padding: 10px 12px;
+          padding: 14px 16px;
           color: #64748B;
-          font-weight: 700;
+          font-weight: 600;
+          font-size: 0.8125rem;
           border-bottom: 1px solid #E2E8F0;
+          user-select: none;
         }
 
         .dash-table td {
-          padding: 12px;
+          padding: 16px;
           border-bottom: 1px solid #F1F5F9;
+          vertical-align: middle;
+        }
+
+        .dash-table tbody tr {
+          transition: background-color 0.15s ease;
+        }
+
+        .dash-table tbody tr:hover {
+          background-color: #F8FAFC;
+        }
+
+        .order-id-txt {
+          font-size: 0.875rem;
+          font-weight: 800;
+          color: #0F172A;
+          letter-spacing: -0.01em;
         }
 
         .cust-cell {
           display: flex;
           align-items: center;
-          gap: 8px;
-          font-weight: 600;
+          gap: 12px;
         }
 
         .cust-mini-avatar {
-          width: 24px;
-          height: 24px;
+          width: 32px;
+          height: 32px;
           border-radius: 50%;
-          background: #EBF8F7;
-          color: #0D7A75;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 0.6875rem;
+          font-size: 0.75rem;
           font-weight: 700;
+          flex-shrink: 0;
         }
 
-        .service-tag-pill {
-          background: #F1F5F9;
-          padding: 3px 8px;
-          border-radius: 6px;
-          font-size: 0.75rem;
+        .cust-name-txt {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #1E293B;
+        }
+
+        .services-cell-txt {
+          color: #64748B;
+          font-size: 0.875rem;
+          font-weight: 500;
+        }
+
+        .pickup-date-cell-txt {
+          color: #64748B;
+          font-size: 0.875rem;
+          font-weight: 500;
+          white-space: nowrap;
+        }
+
+        .amount-cell-txt {
+          font-size: 0.875rem;
+          font-weight: 800;
+          color: #0F172A;
         }
 
         .status-pill {
-          padding: 3px 10px;
-          border-radius: 999px;
-          font-size: 0.6875rem;
-          font-weight: 700;
+          padding: 6px 16px;
+          border-radius: 9999px;
+          font-size: 0.8125rem;
+          font-weight: 600;
           display: inline-block;
+          white-space: nowrap;
+          text-align: center;
         }
 
-        .status-pill.pickup-scheduled { background: #E0F2FE; color: #0284C7; }
-        .status-pill.pending-pickup { background: #FEF3C7; color: #D97706; }
-        .status-pill.in-cleaning { background: #FFEDD5; color: #EA580C; }
-        .status-pill.ready-for-delivery { background: #F3E8FF; color: #9333EA; }
-        .status-pill.delivered, .status-pill.completed { background: #DCFCE7; color: #16A34A; }
+        .status-pill.pickup-scheduled { 
+          background: #E0F2FE; 
+          color: #0284C7; 
+        }
+        
+        .status-pill.pending-pickup { 
+          background: #FFE4E6; 
+          color: #E11D48; 
+        }
+        
+        .status-pill.in-cleaning { 
+          background: #FEF9C3; 
+          color: #CA8A04; 
+        }
+        
+        .status-pill.ready-for-delivery { 
+          background: #F3E8FF; 
+          color: #9333EA; 
+        }
+        
+        .status-pill.delivered, 
+        .status-pill.completed { 
+          background: #DCFCE7; 
+          color: #16A34A; 
+        }
+
+        .action-cell {
+          text-align: center;
+        }
 
         .table-action-dots {
           background: none;
           border: none;
           color: #94A3B8;
           cursor: pointer;
+          padding: 4px;
+          border-radius: 6px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: color 0.15s ease;
+        }
+
+        .table-action-dots:hover {
+          color: #475569;
         }
 
         .view-all-link {
           background: none;
           border: none;
           color: #0D7A75;
-          font-size: 0.8125rem;
-          font-weight: 700;
+          font-size: 0.875rem;
+          font-weight: 600;
           cursor: pointer;
+          transition: color 0.15s ease;
+        }
+
+        .view-all-link:hover {
+          color: #0A5E5A;
+          text-decoration: underline;
         }
 
         /* PICKUP & QUICK ACTIONS */

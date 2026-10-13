@@ -22,7 +22,7 @@ const AdminContext = createContext();
 
 export const INITIAL_ORDERS = [
   {
-    id: '#LDX1290',
+    id: '#LDX10284',
     date: '23 Sep 2026',
     customer: {
       name: 'Rohan Mehta',
@@ -31,16 +31,16 @@ export const INITIAL_ORDERS = [
       avatar: 'RM',
       address: 'Banaswadi, Bengaluru - 560043'
     },
-    services: ['Wash & Fold', 'Dry Cleaning'],
-    pickupTime: '23 Sep, 09:00 AM – 11:00 AM',
-    amount: 560,
-    status: 'Pending Pickup',
+    services: ['Wash & Fold'],
+    pickupTime: '23 Sep, 9:00 AM',
+    amount: 320,
+    status: 'Pickup Scheduled',
     payment: 'Paid',
     type: 'Pickup',
     driver: 'Ravi Kumar (+91 98765 43210)'
   },
   {
-    id: '#LDX1289',
+    id: '#LDX10285',
     date: '23 Sep 2026',
     customer: {
       name: 'Priya Sharma',
@@ -50,15 +50,15 @@ export const INITIAL_ORDERS = [
       address: 'House #45, 3rd Cross, HRBR Layout, Bengaluru - 560043'
     },
     services: ['Dry Cleaning'],
-    pickupTime: '23 Sep, 10:00 AM – 12:00 PM',
-    amount: 240,
-    status: 'In Cleaning',
+    pickupTime: '23 Sep, 10:00 AM',
+    amount: 560,
+    status: 'Pending Pickup',
     payment: 'Paid',
     type: 'Pickup',
     driver: 'Not Assigned'
   },
   {
-    id: '#LDX1288',
+    id: '#LDX10286',
     date: '23 Sep 2026',
     customer: {
       name: 'Arjun Nair',
@@ -67,10 +67,10 @@ export const INITIAL_ORDERS = [
       avatar: 'AN',
       address: 'Indiranagar, Bengaluru - 560038'
     },
-    services: ['Wash & Iron', 'Steam Iron'],
-    pickupTime: '23 Sep, 11:00 AM – 01:00 PM',
+    services: ['Wash & Iron'],
+    pickupTime: '23 Sep, 11:00 AM',
     amount: 420,
-    status: 'Ready for Delivery',
+    status: 'In Cleaning',
     payment: 'COD',
     type: 'Delivery',
     driver: 'Ravi Kumar (+91 98765 43210)'
@@ -86,15 +86,15 @@ export const INITIAL_ORDERS = [
       address: 'Whitefield, Bengaluru - 560066'
     },
     services: ['Home Care'],
-    pickupTime: '23 Sep, 02:00 PM – 04:00 PM',
+    pickupTime: '23 Sep, 2:00 PM',
     amount: 780,
-    status: 'Completed',
+    status: 'Ready for Delivery',
     payment: 'Paid',
     type: 'Pickup',
     driver: 'Arjun Singh (+91 87654 32109)'
   },
   {
-    id: '#LDX1286',
+    id: '#LDX10288',
     date: '23 Sep 2026',
     customer: {
       name: 'Karan Verma',
@@ -104,15 +104,15 @@ export const INITIAL_ORDERS = [
       address: 'Marathahalli, Bengaluru - 560037'
     },
     services: ['Shoe Laundry'],
-    pickupTime: '23 Sep, 03:00 PM – 05:00 PM',
+    pickupTime: '23 Sep, 3:00 PM',
     amount: 350,
-    status: 'In Cleaning',
+    status: 'Delivered',
     payment: 'Paid',
     type: 'Delivery',
     driver: 'Ravi Kumar (+91 98765 43210)'
   },
   {
-    id: '#LDX1285',
+    id: '#LDX10289',
     date: '23 Sep 2026',
     customer: {
       name: 'Neha Kapoor',
@@ -122,9 +122,9 @@ export const INITIAL_ORDERS = [
       address: 'HSR Layout, Bengaluru - 560102'
     },
     services: ['Steam Iron'],
-    pickupTime: '23 Sep, 04:00 PM – 06:00 PM',
+    pickupTime: '23 Sep, 4:00 PM',
     amount: 280,
-    status: 'Pending Pickup',
+    status: 'In Cleaning',
     payment: 'Unpaid',
     type: 'Pickup',
     driver: 'Arjun Singh (+91 87654 32109)'
