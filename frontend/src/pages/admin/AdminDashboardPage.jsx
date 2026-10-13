@@ -520,13 +520,16 @@ export const AdminDashboardPage = () => {
         </div>
 
         {/* Right: Orders by Service Donut Chart */}
-        <div className="dash-card">
+        <div className="dash-card orders-service-card">
           <div className="dash-card-header">
             <h3 className="dash-card-title">Orders by Service</h3>
-            <select className="card-dropdown-select">
-              <option>This Week</option>
-              <option>This Month</option>
-            </select>
+            <div className="chart-dropdown-wrap">
+              <select className="card-dropdown-select">
+                <option>This Week</option>
+                <option>This Month</option>
+              </select>
+              <ChevronDown size={14} className="dropdown-chevron-icon" />
+            </div>
           </div>
 
           <div className="donut-chart-layout">
@@ -1348,17 +1351,29 @@ export const AdminDashboardPage = () => {
           background: #FFD5CD; 
         }
 
-        /* DONUT CHART */
+        /* DONUT CHART - Orders by Service Centered Layout */
+        .orders-service-card {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+        }
+
         .donut-chart-layout {
+          flex: 1;
           display: flex;
           align-items: center;
-          gap: 24px;
+          justify-content: center;
+          gap: 40px;
+          width: 100%;
+          max-width: 540px;
+          margin: 0 auto;
+          padding: 8px 12px 16px 12px;
         }
 
         .donut-visual-wrap {
           position: relative;
-          width: 140px;
-          height: 140px;
+          width: 176px;
+          height: 176px;
           flex-shrink: 0;
         }
 
@@ -1375,47 +1390,65 @@ export const AdminDashboardPage = () => {
           flex-direction: column;
           align-items: center;
           justify-content: center;
+          pointer-events: none;
         }
 
         .donut-total-num {
-          font-size: 1.25rem;
+          font-size: 1.625rem;
           font-weight: 800;
-          color: #1E293B;
+          color: #0F172A;
+          line-height: 1.1;
+          letter-spacing: -0.02em;
         }
 
         .donut-total-lbl {
-          font-size: 0.6875rem;
+          font-size: 0.75rem;
+          font-weight: 500;
           color: #94A3B8;
+          margin-top: 3px;
         }
 
         .donut-legend-list {
           flex: 1;
+          max-width: 280px;
+          min-width: 210px;
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          justify-content: center;
+          gap: 13px;
         }
 
         .donut-legend-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          font-size: 0.8125rem;
+          font-size: 0.875rem;
+          padding: 2px 0;
         }
 
         .legend-name-col {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 10px;
         }
 
         .legend-color-dot {
-          width: 8px;
-          height: 8px;
+          width: 9px;
+          height: 9px;
           border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .legend-service-name {
+          color: #334155;
+          font-size: 0.875rem;
+          font-weight: 500;
         }
 
         .legend-pct-val {
-          color: #1E293B;
+          color: #0F172A;
+          font-size: 0.9375rem;
+          font-weight: 700;
         }
 
         /* RECENT ORDERS FULL-WIDTH CARD */
@@ -2300,6 +2333,17 @@ export const AdminDashboardPage = () => {
         @media (max-width: 860px) {
           .dash-stats-grid {
             grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 640px) {
+          .donut-chart-layout {
+            flex-direction: column;
+            gap: 20px;
+          }
+          .donut-legend-list {
+            width: 100%;
+            max-width: 320px;
           }
         }
 

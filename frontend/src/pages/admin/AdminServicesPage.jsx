@@ -372,7 +372,7 @@ export const AdminServicesPage = () => {
       <div className="services-filters-row">
         {/* Search Input */}
         <div className="search-field-wrapper">
-          <Search size={18} strokeWidth={2} className="search-field-icon" />
+          <Search size={16} strokeWidth={2.2} className="search-field-icon" />
           <input 
             type="text"
             className="search-field-input"
@@ -908,21 +908,26 @@ export const AdminServicesPage = () => {
           flex-shrink: 0;
         }
 
-        /* Filter & Search Bar */
+        /* Filter & Search Bar Container Card */
         .services-filters-row {
           display: flex;
           align-items: center;
-          justify-content: flex-start;
-          gap: 12px;
+          justify-content: space-between;
+          gap: 16px;
           margin-bottom: 24px;
-          flex-wrap: wrap;
+          background: #FFFFFF;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
+          padding: 16px 18px;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+          width: 100%;
+          box-sizing: border-box;
         }
 
         .search-field-wrapper {
           position: relative;
-          width: 380px;
-          max-width: 100%;
-          flex-shrink: 0;
+          flex: 1;
+          min-width: 260px;
         }
 
         .search-field-icon {
@@ -930,7 +935,7 @@ export const AdminServicesPage = () => {
           left: 14px;
           top: 50%;
           transform: translateY(-50%);
-          color: #94A3B8;
+          color: #1E293B;
           pointer-events: none;
         }
 
@@ -939,12 +944,13 @@ export const AdminServicesPage = () => {
           height: 42px;
           padding: 0 14px 0 42px;
           background: #FFFFFF;
-          border: 1px solid #E2E8F0;
-          border-radius: 10px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
           font-size: 14px;
           font-family: inherit;
-          color: #0F172A;
+          color: #1E293B;
           outline: none;
+          box-sizing: border-box;
           transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
 
@@ -958,36 +964,40 @@ export const AdminServicesPage = () => {
         }
 
         .search-field-input::placeholder {
-          color: #94A3B8;
+          color: #6B7280;
+          opacity: 1;
         }
 
         .filter-controls-group {
           display: flex;
           align-items: center;
           gap: 12px;
-          flex-wrap: wrap;
+          flex-shrink: 0;
         }
 
         .select-picker-wrap {
           position: relative;
           display: inline-flex;
           align-items: center;
+          flex-shrink: 0;
         }
 
         .select-picker-input {
           height: 42px;
-          padding: 0 36px 0 16px;
+          padding: 0 34px 0 14px;
           background: #FFFFFF;
-          border: 1px solid #E2E8F0;
-          border-radius: 10px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
           font-size: 14px;
-          color: #0F172A;
+          color: #1E293B;
           font-weight: 500;
           font-family: inherit;
           appearance: none;
           -webkit-appearance: none;
           cursor: pointer;
           outline: none;
+          box-sizing: border-box;
+          white-space: nowrap;
           transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
         }
 
@@ -1003,25 +1013,28 @@ export const AdminServicesPage = () => {
 
         .select-picker-arrow {
           position: absolute;
-          right: 14px;
-          color: #64748B;
+          right: 12px;
+          color: #1E293B;
           pointer-events: none;
         }
 
         .btn-filter-reset {
           height: 42px;
-          padding: 0 18px;
+          padding: 0 14px;
           background: #FFFFFF;
-          border: 1px solid #E2E8F0;
-          border-radius: 10px;
+          border: 1px solid #E5E7EB;
+          border-radius: 8px;
           font-size: 14px;
           font-weight: 500;
           font-family: inherit;
-          color: #0F172A;
+          color: #1E293B;
           display: inline-flex;
           align-items: center;
-          gap: 8px;
+          gap: 7px;
           cursor: pointer;
+          box-sizing: border-box;
+          flex-shrink: 0;
+          white-space: nowrap;
           transition: all 0.15s ease;
         }
 
@@ -1031,7 +1044,7 @@ export const AdminServicesPage = () => {
         }
 
         .btn-filter-reset:active {
-          background: #F1F5F9;
+          transform: translateY(1px);
         }
 
         /* Services Table Card */
@@ -1542,6 +1555,7 @@ export const AdminServicesPage = () => {
             width: 100%;
           }
           .btn-filter-reset {
+            margin-left: 0;
             width: 100%;
             justify-content: center;
           }
