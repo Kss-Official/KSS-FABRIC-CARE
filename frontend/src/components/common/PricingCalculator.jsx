@@ -60,10 +60,19 @@ const IronIcon = ({ size = 20, color = '#087F8C' }) => (
 );
 
 export const PricingCalculator = () => {
-  const bookingCtx = useBooking() || {};
-  const startBooking = bookingCtx.startBooking || (() => {
-    if (typeof window !== 'undefined') window.location.hash = 'booking';
-  });
+  const {
+    selectedItemsList = [],
+    totalItemsCount = 0,
+    addItem = () => {},
+    removeItem = () => {},
+    updateItemQuantity = () => {},
+    getItemQuantity = () => 0,
+    clearAllItems = () => {},
+    calculateItemsTotal = () => 0,
+    startBooking = () => {
+      if (typeof window !== 'undefined') window.location.hash = 'booking';
+    }
+  } = useBooking() || {};
 
   // State 1: Active Main Category ('wash-fold' | 'wash-iron' | 'dry-cleaning' | 'steam-iron' | 'express-laundry' | null)
   const [activeCategory, setActiveCategory] = useState('wash-fold');
@@ -238,7 +247,17 @@ export const PricingCalculator = () => {
                           {renderCategoryIcon(category.icon)}
                         </div>
                         <div>
-                          <h4 className="rate-text-title">{category.name}</h4>
+                          <div className="rate-title-wrapper">
+                            <h4 className="rate-text-title">{category.name}</h4>
+                            {(() => {
+                              const catCount = selectedItemsList
+                                .filter(it => it.categoryId === category.id)
+                                .reduce((s, it) => s + it.quantity, 0);
+                              return catCount > 0 ? (
+                                <span className="cat-count-badge">{catCount} selected</span>
+                              ) : null;
+                            })()}
+                          </div>
                           <p className="rate-text-desc">{category.desc}</p>
                         </div>
                       </div>
@@ -261,6 +280,10 @@ export const PricingCalculator = () => {
                         <div className="subcategories-pill-row">
                           {PRICING_SUBCATEGORIES.map(sub => {
                             const isSubOpen = activeSubcategory === sub.id;
+                            const subCount = selectedItemsList
+                              .filter(it => it.categoryId === activeCategory && it.subcategoryId === sub.id)
+                              .reduce((s, it) => s + it.quantity, 0);
+
                             return (
                               <button
                                 key={sub.id}
@@ -274,6 +297,7 @@ export const PricingCalculator = () => {
                               >
                                 <span className="sub-pill-icon">{renderSubcategoryIcon(sub.icon)}</span>
                                 <span className="sub-pill-name">{sub.name}</span>
+                                {subCount > 0 && <span className="sub-count-badge">{subCount}</span>}
                                 <ChevronDown 
                                   size={13} 
                                   className={`sub-pill-chevron ${isSubOpen ? 'open' : ''}`} 
@@ -322,32 +346,74 @@ export const PricingCalculator = () => {
                               </div>
                             </div>
 
-                            {/* Clothing Items Table / List with Restored Prices */}
+                            {/* Clothing Items Table / List with Restored Prices and Selection */}
                             <div className="items-scroll-list">
                               {activeItems.length > 0 ? (
                                 <div className="items-table-grid">
-                                  {activeItems.map((item) => (
-                                    <div key={item.id} className="item-row">
-                                      <div className="item-row-left">
-                                        <span className="item-bullet"></span>
-                                        <span className="item-name">{item.name}</span>
-                                      </div>
+                                  {activeItems.map((item) => {
+                                    const itemKey = `${activeCategory}__${item.id}`;
+                                    const currentQty = getItemQuantity(activeCategory, item.id);
+                                    const isSelected = currentQty > 0;
 
-                                      <div className="item-row-right">
-                                        {item.isPriceEnabled && item.price ? (
-                                          <div className="item-price-pill">
-                                            <span className="price-symbol">₹</span>
-                                            <span className="price-number">{item.price}</span>
-                                          </div>
-                                        ) : (
-                                          <div className="item-available-pill">
-                                            <CheckCircle2 size={13} strokeWidth={2.4} />
-                                            <span>Available</span>
-                                          </div>
-                                        )}
+                                    return (
+                                      <div key={item.id} className={`item-row ${isSelected ? 'item-row-selected' : ''}`}>
+                                        <div className="item-row-left">
+                                          <span className={`item-bullet ${isSelected ? 'bullet-active' : ''}`}></span>
+                                          <span className="item-name">{item.name}</span>
+                                        </div>
+
+                                        <div className="item-row-right">
+                                          {item.isPriceEnabled && item.price ? (
+                                            <div className="item-price-pill">
+                                              <span className="price-symbol">₹</span>
+                                              <span className="price-number">{item.price}</span>
+                                            </div>
+                                          ) : (
+                                            <div className="item-available-pill">
+                                              <CheckCircle2 size={13} strokeWidth={2.4} />
+                                              <span>Available</span>
+                                            </div>
+                                          )}
+
+                                          {/* Selection Stepper or Add Button */}
+                                          {isSelected ? (
+                                            <div className="item-selection-controls" onClick={(e) => e.stopPropagation()}>
+                                              <button
+                                                type="button"
+                                                className="item-stepper-btn"
+                                                onClick={() => updateItemQuantity(itemKey, -1)}
+                                                aria-label={`Decrease ${item.name}`}
+                                              >
+                                                <Minus size={11} strokeWidth={2.5} />
+                                              </button>
+                                              <span className="item-stepper-val">{currentQty}</span>
+                                              <button
+                                                type="button"
+                                                className="item-stepper-btn"
+                                                onClick={() => updateItemQuantity(itemKey, 1)}
+                                                aria-label={`Increase ${item.name}`}
+                                              >
+                                                <Plus size={11} strokeWidth={2.5} />
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              className="btn-select-item"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                addItem(item, activeCategory, activeSubcategory);
+                                              }}
+                                              aria-label={`Add ${item.name}`}
+                                            >
+                                              <Plus size={12} strokeWidth={2.5} />
+                                              <span>Add</span>
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 <div className="items-empty-state">
@@ -365,60 +431,136 @@ export const PricingCalculator = () => {
             </div>
           </div>
 
-          {/* Right Column: Instant Estimator */}
+          {/* Right Column: Live Booking Summary & Estimator */}
           <div className="estimator-col">
             <div className="estimator-card">
-              <h3 className="estimator-card-title">Instant Estimator</h3>
-              <p className="estimator-card-sub">
-                Select items below to get an estimated total.
-              </p>
-
-              <div className="estimator-items-stack">
-                {estimatorItems.map(item => (
-                  <div key={item.id} className="estimator-item-row">
-                    <div className="estimator-item-left">
-                      <div className="estimator-icon-circle">
-                        {item.icon}
-                      </div>
-                      <div>
-                        <h4 className="estimator-item-name">{item.name}</h4>
-                        <p className="estimator-item-rate">₹ {item.rate} / {item.unit}</p>
-                      </div>
-                    </div>
-
-                    <div className="estimator-counter-wrap">
-                      <button 
-                        type="button"
-                        className="counter-action-btn"
-                        onClick={() => updateCount(item.id, -1)}
-                        disabled={item.count === 0}
-                        aria-label={`Decrease ${item.name}`}
-                      >
-                        <Minus size={13} strokeWidth={2.5} />
-                      </button>
-                      <span className="counter-display-num">{item.count}</span>
-                      <button 
-                        type="button"
-                        className="counter-action-btn"
-                        onClick={() => updateCount(item.id, 1)}
-                        aria-label={`Increase ${item.name}`}
-                      >
-                        <Plus size={13} strokeWidth={2.5} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              {/* Header with Title and Clear All */}
+              <div className="estimator-card-header-row">
+                <div>
+                  <h3 className="estimator-card-title">
+                    {selectedItemsList.length > 0 ? `Booking Summary (${totalItemsCount})` : 'Instant Estimator'}
+                  </h3>
+                  <p className="estimator-card-sub">
+                    {selectedItemsList.length > 0
+                      ? `${totalItemsCount} item${totalItemsCount > 1 ? 's' : ''} selected across categories.`
+                      : 'Select clothing items on the left or estimate pickup total.'}
+                  </p>
+                </div>
+                {selectedItemsList.length > 0 && (
+                  <button
+                    type="button"
+                    className="clear-summary-btn"
+                    onClick={clearAllItems}
+                    title="Clear all selected items"
+                  >
+                    Clear All
+                  </button>
+                )}
               </div>
+
+              {/* View 1: When Clothing Items are Selected */}
+              {selectedItemsList.length > 0 ? (
+                <div className="booking-summary-items-stack">
+                  {selectedItemsList.map(it => (
+                    <div key={it.key} className="summary-item-card">
+                      <div className="summary-item-info">
+                        <div className="summary-item-title-row">
+                          <span className="summary-item-name">{it.name}</span>
+                          <span className="summary-cat-tag">{it.categoryName}</span>
+                        </div>
+                        <div className="summary-item-rate">
+                          {it.isPriceEnabled ? `₹${it.unitPrice} / item` : `Standard Care (₹${it.unitPrice})`}
+                        </div>
+                      </div>
+
+                      <div className="summary-item-right">
+                        <div className="summary-stepper-wrap">
+                          <button
+                            type="button"
+                            className="summary-stepper-btn"
+                            onClick={() => updateItemQuantity(it.key, -1)}
+                            aria-label={`Decrease ${it.name}`}
+                          >
+                            <Minus size={11} strokeWidth={2.5} />
+                          </button>
+                          <span className="summary-stepper-num">{it.quantity}</span>
+                          <button
+                            type="button"
+                            className="summary-stepper-btn"
+                            onClick={() => updateItemQuantity(it.key, 1)}
+                            aria-label={`Increase ${it.name}`}
+                          >
+                            <Plus size={11} strokeWidth={2.5} />
+                          </button>
+                        </div>
+                        <span className="summary-item-price">₹{it.unitPrice * it.quantity}</span>
+                        <button
+                          type="button"
+                          className="summary-item-remove-btn"
+                          onClick={() => removeItem(it.key)}
+                          aria-label={`Remove ${it.name}`}
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* View 2: When 0 Items are selected, show Quick Estimator Stack */
+                <div className="estimator-items-stack">
+                  <div className="empty-selection-tip">
+                    <CheckCircle2 size={15} strokeWidth={2.5} color="#087F8C" />
+                    <span>Select items from any category on the left to build your order.</span>
+                  </div>
+                  {estimatorItems.map(item => (
+                    <div key={item.id} className="estimator-item-row">
+                      <div className="estimator-item-left">
+                        <div className="estimator-icon-circle">
+                          {item.icon}
+                        </div>
+                        <div>
+                          <h4 className="estimator-item-name">{item.name}</h4>
+                          <p className="estimator-item-rate">₹ {item.rate} / {item.unit}</p>
+                        </div>
+                      </div>
+
+                      <div className="estimator-counter-wrap">
+                        <button 
+                          type="button"
+                          className="counter-action-btn"
+                          onClick={() => updateCount(item.id, -1)}
+                          disabled={item.count === 0}
+                          aria-label={`Decrease ${item.name}`}
+                        >
+                          <Minus size={13} strokeWidth={2.5} />
+                        </button>
+                        <span className="counter-display-num">{item.count}</span>
+                        <button 
+                          type="button"
+                          className="counter-action-btn"
+                          onClick={() => updateCount(item.id, 1)}
+                          aria-label={`Increase ${item.name}`}
+                        >
+                          <Plus size={13} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Subtotal Box */}
               <div className="subtotal-highlight-box">
                 <div className="subtotal-line">
                   <span className="subtotal-text-label">Estimated Subtotal</span>
-                  <span className="subtotal-amount-val">₹ {subtotal}</span>
+                  <span className="subtotal-amount-val">
+                    ₹ {selectedItemsList.length > 0 ? calculateItemsTotal() : subtotal}
+                  </span>
                 </div>
                 <div className="subtotal-badge-msg">
                   <CheckCircle2 size={15} strokeWidth={2.5} color="#087F8C" />
-                  <span>Includes standard handling and quality care.</span>
+                  <span>Free doorstep pickup and delivery included.</span>
                 </div>
               </div>
 
@@ -426,9 +568,19 @@ export const PricingCalculator = () => {
               <button 
                 type="button"
                 className="btn-book-pickup-now"
-                onClick={() => startBooking()}
+                onClick={() => {
+                  if (selectedItemsList.length === 0 && subtotal === 0) {
+                    alert('Please select at least one clothing item or service to proceed with booking.');
+                    return;
+                  }
+                  startBooking(selectedItemsList.length > 0 ? 2 : 1);
+                }}
               >
-                <span>Book a Pickup Now</span>
+                <span>
+                  {selectedItemsList.length > 0 
+                    ? `Book a Pickup (₹${calculateItemsTotal()})`
+                    : 'Book a Pickup Now'}
+                </span>
                 <ArrowRight size={17} strokeWidth={2.2} />
               </button>
 
@@ -934,6 +1086,304 @@ export const PricingCalculator = () => {
           color: #8FA4B0;
           font-family: 'Inter', sans-serif;
           font-size: 13px;
+        }
+
+        .rate-title-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .cat-count-badge {
+          background: #087F8C;
+          color: #FFFFFF;
+          font-family: 'Poppins', sans-serif;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 999px;
+          letter-spacing: 0.3px;
+        }
+
+        .sub-count-badge {
+          background: #FF6B54;
+          color: #FFFFFF;
+          font-family: 'Poppins', sans-serif;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 1px 6px;
+          border-radius: 999px;
+          margin-left: 2px;
+        }
+
+        .item-row.item-row-selected {
+          background: #F0FDF9;
+          border-color: #087F8C;
+          box-shadow: 0 2px 8px rgba(8, 127, 140, 0.08);
+        }
+
+        .item-bullet.bullet-active {
+          background: #0D7A75;
+          transform: scale(1.3);
+        }
+
+        .item-row-right {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-shrink: 0;
+        }
+
+        /* Add Item Button */
+        .btn-select-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: #E8F7F5;
+          color: #087F8C;
+          border: 1px solid #BCEAE6;
+          border-radius: 8px;
+          padding: 4px 10px;
+          font-family: 'Poppins', sans-serif;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .btn-select-item:hover {
+          background: #087F8C;
+          color: #FFFFFF;
+          border-color: #087F8C;
+        }
+
+        /* Item Stepper inside row */
+        .item-selection-controls {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: #E0F4F2;
+          border: 1px solid #B2E5E0;
+          border-radius: 8px;
+          padding: 2px;
+        }
+
+        .item-stepper-btn {
+          width: 22px;
+          height: 22px;
+          border-radius: 6px;
+          background: #FFFFFF;
+          color: #087F8C;
+          border: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .item-stepper-btn:hover {
+          background: #087F8C;
+          color: #FFFFFF;
+        }
+
+        .item-stepper-val {
+          font-family: 'Poppins', sans-serif;
+          font-size: 12.5px;
+          font-weight: 700;
+          color: #0D7A75;
+          min-width: 18px;
+          text-align: center;
+        }
+
+        /* Right Column Header */
+        .estimator-card-header-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+
+        .clear-summary-btn {
+          background: none;
+          border: 1px solid #CBD5E1;
+          color: #64748B;
+          font-family: 'Inter', sans-serif;
+          font-size: 11.5px;
+          font-weight: 600;
+          padding: 4px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          white-space: nowrap;
+        }
+
+        .clear-summary-btn:hover {
+          background: #FEE2E2;
+          color: #EF4444;
+          border-color: #FCA5A5;
+        }
+
+        /* Booking Summary Items Stack */
+        .booking-summary-items-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          max-height: 290px;
+          overflow-y: auto;
+          padding-right: 4px;
+          margin-bottom: 16px;
+        }
+
+        .booking-summary-items-stack::-webkit-scrollbar {
+          width: 4px;
+        }
+
+        .booking-summary-items-stack::-webkit-scrollbar-thumb {
+          background: #BCEAE6;
+          border-radius: 6px;
+        }
+
+        .summary-item-card {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 10px 12px;
+          transition: all 0.15s ease;
+        }
+
+        .summary-item-card:hover {
+          background: #F1F8F7;
+          border-color: #B2E5E0;
+        }
+
+        .summary-item-info {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .summary-item-title-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+          margin-bottom: 2px;
+        }
+
+        .summary-item-name {
+          font-family: 'Poppins', sans-serif;
+          font-size: 13.5px;
+          font-weight: 700;
+          color: #12263A;
+        }
+
+        .summary-cat-tag {
+          font-family: 'Inter', sans-serif;
+          font-size: 10.5px;
+          font-weight: 600;
+          color: #087F8C;
+          background: #E0F4F2;
+          padding: 1px 6px;
+          border-radius: 4px;
+        }
+
+        .summary-item-rate {
+          font-family: 'Inter', sans-serif;
+          font-size: 11.5px;
+          color: #64748B;
+        }
+
+        .summary-item-right {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-shrink: 0;
+        }
+
+        .summary-stepper-wrap {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          background: #E2E8F0;
+          border-radius: 6px;
+          padding: 2px;
+        }
+
+        .summary-stepper-btn {
+          width: 20px;
+          height: 20px;
+          border-radius: 4px;
+          background: #FFFFFF;
+          color: #0F172A;
+          border: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .summary-stepper-btn:hover {
+          background: #087F8C;
+          color: #FFFFFF;
+        }
+
+        .summary-stepper-num {
+          font-family: 'Poppins', sans-serif;
+          font-size: 12px;
+          font-weight: 700;
+          color: #0F172A;
+          min-width: 16px;
+          text-align: center;
+        }
+
+        .summary-item-price {
+          font-family: 'Poppins', sans-serif;
+          font-size: 13.5px;
+          font-weight: 800;
+          color: #087F8C;
+          min-width: 44px;
+          text-align: right;
+        }
+
+        .summary-item-remove-btn {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: none;
+          border: none;
+          color: #94A3B8;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          padding: 0;
+        }
+
+        .summary-item-remove-btn:hover {
+          color: #EF4444;
+          background: #FEE2E2;
+        }
+
+        .empty-selection-tip {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: #E8F7F5;
+          border-radius: 10px;
+          padding: 10px 12px;
+          font-family: 'Inter', sans-serif;
+          font-size: 12px;
+          font-weight: 600;
+          color: #0D7A75;
+          margin-bottom: 14px;
         }
 
         /* Right Column: Instant Estimator Card */

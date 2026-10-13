@@ -93,6 +93,29 @@ export const OrderConfirmedPage = () => {
             </div>
           </div>
 
+          {/* Booked Items List if Available */}
+          {lastOrder?.items && lastOrder.items.length > 0 && (
+            <div className="confirmed-items-card" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '16px', padding: '16px 20px', margin: '20px auto 0', maxWidth: '720px', textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A' }}>
+                  Booked Clothing Items ({lastOrder.items.reduce((s, it) => s + (it.quantity || 1), 0)})
+                </span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0D7A75' }}>
+                  Total: ₹{lastOrder.estimatedTotal || 0}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {lastOrder.items.map((it, idx) => (
+                  <span key={idx} style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '8px', fontSize: '0.8125rem', fontWeight: 600, color: '#334155', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <span>{it.item_name || it.service_name || it.name}</span>
+                    <span style={{ color: '#64748B' }}>×{it.quantity || 1}</span>
+                    <span style={{ color: '#0D7A75', fontWeight: 700 }}>₹{it.total_price || (it.unit_price * (it.quantity || 1))}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Notice */}
           <p className="sms-email-notice">
             We'll send you a confirmation via SMS and Email.
@@ -101,8 +124,16 @@ export const OrderConfirmedPage = () => {
           {/* Actions */}
           <div className="confirmed-actions-row">
             <button
-              id="confirmed-track-order-btn"
+              id="confirmed-view-orders-btn"
               className="btn btn-teal confirmed-btn"
+              onClick={() => navigateTo('customer-orders')}
+            >
+              <span>View My Orders</span>
+            </button>
+
+            <button
+              id="confirmed-track-order-btn"
+              className="btn btn-outline-teal confirmed-btn"
               onClick={() => navigateTo('customer-track', lastOrder?.id)}
             >
               <Truck size={17} />

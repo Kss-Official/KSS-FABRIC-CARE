@@ -237,7 +237,7 @@ export const MyOrders = () => {
                   <span className="text-xs text-muted block mb-1">Items & Services</span>
                   <div className="font-medium text-navy">
                     {order.items && order.items.length > 0
-                      ? order.items.map(i => `${i.item_name} ×${i.quantity}`).join(', ')
+                      ? order.items.map(i => `${i.item_name || i.service_name || 'Item'} ×${i.quantity}`).join(', ')
                       : 'General Laundry Service'}
                   </div>
                   <div className="text-xs text-slate-500 truncate max-w-xs">{order.pickup_address}</div>

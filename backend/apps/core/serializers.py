@@ -53,9 +53,11 @@ class ServiceSerializer(serializers.ModelSerializer):
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
+    item_name = serializers.CharField(source='service_name', read_only=True)
+
     class Meta:
         model = OrderItem
-        fields = '__all__'
+        fields = ('id', 'order', 'service_name', 'item_name', 'category_name', 'quantity', 'unit_price', 'total_price')
         read_only_fields = ('order',)
 
 
@@ -213,13 +215,18 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         # Create order items from payload or services_list
         if items_payload:
             for it in items_payload:
+                s_name = it.get('item_name') or it.get('service_name') or 'Laundry Service'
+                c_name = it.get('service_category') or it.get('category_name') or 'General Care'
+                qty = int(it.get('quantity') or 1)
+                u_price = float(it.get('unit_price') or 100.0)
+                t_price = float(it.get('total_price') or (u_price * qty))
                 OrderItem.objects.create(
                     order=order,
-                    service_name=it.get('item_name', 'Laundry Service'),
-                    category_name=it.get('service_category', 'General Care'),
-                    quantity=it.get('quantity', 1),
-                    unit_price=it.get('unit_price', 100.00),
-                    total_price=it.get('total_price', float(it.get('unit_price', 100)) * it.get('quantity', 1))
+                    service_name=s_name,
+                    category_name=c_name,
+                    quantity=qty,
+                    unit_price=u_price,
+                    total_price=t_price
                 )
         elif services_list:
             for item_name in services_list:

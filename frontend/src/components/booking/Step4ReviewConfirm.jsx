@@ -17,7 +17,9 @@ import {
 export const Step4ReviewConfirm = () => {
   const { 
     allServices, 
-    selectedServices, 
+    selectedServices,
+    selectedItemsList = [],
+    totalItemsCount = 0,
     pickupDetails, 
     pickupSchedule, 
     specialInstructions, 
@@ -95,14 +97,18 @@ export const Step4ReviewConfirm = () => {
           </div>
 
           <div className="review-grid-2x2">
-            {/* Card 1: Selected Services */}
+            {/* Card 1: Selected Clothing Items & Services */}
             <div className="review-inner-card">
               <div className="inner-card-header">
                 <div className="inner-header-left">
                   <div className="icon-square">
                     {renderServiceIcon('wash-fold')}
                   </div>
-                  <h3 className="inner-card-title">Selected Services</h3>
+                  <h3 className="inner-card-title">
+                    {selectedItemsList.length > 0 
+                      ? `Selected Clothing Items (${totalItemsCount})` 
+                      : 'Selected Services'}
+                  </h3>
                 </div>
                 <button 
                   type="button" 
@@ -115,17 +121,40 @@ export const Step4ReviewConfirm = () => {
               </div>
 
               <div className="inner-card-body">
-                {selectedItemsData.map(s => (
-                  <div key={s.id} className="service-item-row">
-                    <span className="item-service-icon">
-                      {renderServiceIcon(s.id)}
-                    </span>
-                    <div className="item-text-wrap">
-                      <div className="item-main-title">{s.name}</div>
-                      <div className="item-sub-title">{s.subtitle}</div>
-                    </div>
+                {selectedItemsList.length > 0 ? (
+                  <div className="review-items-stack">
+                    {selectedItemsList.map(item => (
+                      <div key={item.key} className="service-item-row">
+                        <span className="item-service-icon">
+                          {renderServiceIcon(item.categoryId)}
+                        </span>
+                        <div className="item-text-wrap" style={{ flex: 1 }}>
+                          <div className="item-main-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span>{item.name}</span>
+                            <span style={{ fontWeight: 700, color: '#087F8C', fontSize: '0.875rem' }}>
+                              ₹{item.unitPrice * item.quantity}
+                            </span>
+                          </div>
+                          <div className="item-sub-title">
+                            {item.categoryName} • Qty: {item.quantity} ({item.isPriceEnabled ? `₹${item.unitPrice} each` : `Standard Care`})
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  selectedItemsData.map(s => (
+                    <div key={s.id} className="service-item-row">
+                      <span className="item-service-icon">
+                        {renderServiceIcon(s.id)}
+                      </span>
+                      <div className="item-text-wrap">
+                        <div className="item-main-title">{s.name}</div>
+                        <div className="item-sub-title">{s.subtitle}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -265,15 +294,32 @@ export const Step4ReviewConfirm = () => {
               <h3 className="sidebar-main-title">Estimated Summary</h3>
             </div>
 
-            {/* Services breakdown table */}
+            {/* Services & clothing items breakdown table */}
             <div className="summary-items-list">
-              {selectedItemsData.map(s => (
-                <div key={s.id} className="summary-item-row">
-                  <span className="item-name">{s.name}</span>
-                  <span className="item-qty">1</span>
-                  <span className="item-price">₹{s.price || 120}</span>
-                </div>
-              ))}
+              {selectedItemsList.length > 0 ? (
+                selectedItemsList.map(it => (
+                  <div key={it.key} className="summary-item-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span className="item-name" style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {it.name}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#087F8C', fontWeight: 600 }}>
+                        {it.categoryName}
+                      </span>
+                    </div>
+                    <span className="item-qty" style={{ fontWeight: 600, color: '#64748B' }}>×{it.quantity}</span>
+                    <span className="item-price" style={{ fontWeight: 700, color: '#111827' }}>₹{it.unitPrice * it.quantity}</span>
+                  </div>
+                ))
+              ) : (
+                selectedItemsData.map(s => (
+                  <div key={s.id} className="summary-item-row">
+                    <span className="item-name">{s.name}</span>
+                    <span className="item-qty">1</span>
+                    <span className="item-price">₹{s.price || 120}</span>
+                  </div>
+                ))
+              )}
             </div>
 
             {/* Estimated Total */}
