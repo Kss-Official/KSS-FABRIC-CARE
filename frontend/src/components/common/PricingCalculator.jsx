@@ -12,7 +12,8 @@ import {
   CheckCircle2, 
   Truck, 
   ShieldCheck, 
-  Leaf 
+  Leaf,
+  Zap 
 } from 'lucide-react';
 
 const HangerIcon = ({ size = 20, color = '#087F8C' }) => (
@@ -118,19 +119,10 @@ export const PricingCalculator = () => {
     },
     { 
       id: 5, 
-      title: 'Bed Sheets & Blankets', 
-      desc: 'Fresh, soft and hygienic.', 
-      price: '₹ 149 / item', 
-      prefix: 'From ', 
-      icon: <BlanketIcon size={20} color="#087F8C" /> 
-    },
-    { 
-      id: 6, 
-      title: 'Curtain Cleaning', 
-      desc: 'Deep cleaning for a healthier home.', 
-      price: '₹ 150 / piece', 
-      prefix: 'From ', 
-      icon: <CurtainIcon size={20} color="#087F8C" /> 
+      title: 'Express Laundry', 
+      desc: 'Superfast 24-hour turnaround for urgent laundry care.', 
+      price: '₹ 200 / item', 
+      icon: <Zap size={20} color="#087F8C" strokeWidth={2.2} /> 
     }
   ];
 
