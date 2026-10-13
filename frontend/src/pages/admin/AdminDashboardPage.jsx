@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   Package, 
@@ -8,6 +8,7 @@ import {
   ArrowUp,
   Calendar, 
   ChevronRight, 
+  ChevronDown,
   MoreHorizontal, 
   Plus, 
   UserPlus, 
@@ -100,15 +101,67 @@ export const AdminDashboardPage = () => {
     { name: 'Home Care', pct: 4, color: '#EF4444' }
   ];
 
-  const chartDays = [
-    { day: '17 Sep', comp: 14, inClean: 8, pend: 6 },
-    { day: '18 Sep', comp: 18, inClean: 7, pend: 5 },
-    { day: '19 Sep', comp: 12, inClean: 6, pend: 4 },
-    { day: '20 Sep', comp: 24, inClean: 9, pend: 7 },
-    { day: '21 Sep', comp: 19, inClean: 8, pend: 6 },
-    { day: '22 Sep', comp: 16, inClean: 7, pend: 5 },
-    { day: '23 Sep', comp: 10, inClean: 6, pend: 4 }
+  const [chartTimeframe, setChartTimeframe] = useState('7d');
+
+  // Baseline proportions exactly matching Reference Image 1
+  const baseChartDays7d = [
+    { day: '17 Sep', comp: 7.0, inClean: 4.5, pend: 4.0 },
+    { day: '18 Sep', comp: 8.0, inClean: 4.5, pend: 4.0 },
+    { day: '19 Sep', comp: 6.0, inClean: 4.0, pend: 3.5 },
+    { day: '20 Sep', comp: 12.5, inClean: 5.5, pend: 5.0 },
+    { day: '21 Sep', comp: 9.5, inClean: 5.0, pend: 4.5 },
+    { day: '22 Sep', comp: 8.0, inClean: 4.5, pend: 4.0 },
+    { day: '23 Sep', comp: 5.5, inClean: 4.0, pend: 3.5 }
   ];
+
+  const baseChartDays30d = [
+    { day: 'Week 1', comp: 18, inClean: 9, pend: 6 },
+    { day: 'Week 2', comp: 22, inClean: 11, pend: 8 },
+    { day: 'Week 3', comp: 26, inClean: 13, pend: 9 },
+    { day: 'Week 4', comp: 20, inClean: 10, pend: 7 }
+  ];
+
+  // Dynamically compute chart data from orders
+  const chartDays = useMemo(() => {
+    if (chartTimeframe === '30d') {
+      const compCount = (orders || []).filter(o => o.status === 'Completed' || o.status === 'Delivered').length;
+      const cleanCount = (orders || []).filter(o => o.status === 'In Cleaning' || o.status === 'Processing' || o.status === 'Ready for Delivery').length;
+      const pendCount = (orders || []).filter(o => o.status === 'Pending Pickup' || o.status === 'Pending Review' || o.status === 'Pending').length;
+
+      return baseChartDays30d.map((wk, idx) => {
+        if (idx === baseChartDays30d.length - 1) {
+          return {
+            ...wk,
+            comp: wk.comp + Math.max(0, compCount - 3),
+            inClean: wk.inClean + Math.max(0, cleanCount - 2),
+            pend: wk.pend + Math.max(0, pendCount - 2)
+          };
+        }
+        return wk;
+      });
+    }
+
+    return baseChartDays7d.map(item => {
+      const dayOrders = (orders || []).filter(o => {
+        const dateStr = (o.date || o.pickupTime || '').toLowerCase();
+        return dateStr.includes(item.day.toLowerCase());
+      });
+
+      if (dayOrders.length > 0) {
+        const extraComp = dayOrders.filter(o => o.status === 'Completed' || o.status === 'Delivered').length;
+        const extraClean = dayOrders.filter(o => o.status === 'In Cleaning' || o.status === 'Processing' || o.status === 'Ready for Delivery').length;
+        const extraPend = dayOrders.filter(o => o.status === 'Pending Pickup' || o.status === 'Pending Review' || o.status === 'Pending').length;
+
+        return {
+          day: item.day,
+          comp: item.comp + extraComp,
+          inClean: item.inClean + extraClean,
+          pend: item.pend + extraPend
+        };
+      }
+      return item;
+    });
+  }, [orders, chartTimeframe]);
 
   const recentOrders = orders.slice(0, 6);
 
@@ -183,17 +236,25 @@ export const AdminDashboardPage = () => {
 
       {/* Charts 2-Column Row */}
       <div className="dash-charts-grid">
-        {/* Left: Orders Overview Bar Chart */}
-        <div className="dash-card">
+        {/* Left: Orders Overview Bar Chart matching Reference Image 1 */}
+        <div className="dash-card orders-overview-card">
           <div className="dash-card-header">
             <h3 className="dash-card-title">Orders Overview</h3>
-            <select className="card-dropdown-select">
-              <option>Last 7 Days</option>
-              <option>This Month</option>
-            </select>
+            <div className="chart-dropdown-wrap">
+              <select 
+                className="card-dropdown-select"
+                value={chartTimeframe}
+                onChange={(e) => setChartTimeframe(e.target.value)}
+              >
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">This Month</option>
+              </select>
+              <ChevronDown size={14} className="dropdown-chevron-icon" />
+            </div>
           </div>
 
           <div className="bar-chart-container">
+            {/* Y-Axis scale 0 to 40 */}
             <div className="chart-y-axis">
               <span>40</span>
               <span>30</span>
@@ -202,24 +263,62 @@ export const AdminDashboardPage = () => {
               <span>0</span>
             </div>
 
-            <div className="chart-bars-wrap">
-              {chartDays.map((cd, idx) => (
-                <div key={idx} className="chart-bar-group">
-                  <div className="stacked-bar">
-                    <div className="bar-segment pend" style={{ height: `${cd.pend * 2}px` }} title={`Pending: ${cd.pend}`} />
-                    <div className="bar-segment clean" style={{ height: `${cd.inClean * 2}px` }} title={`In Cleaning: ${cd.inClean}`} />
-                    <div className="bar-segment comp" style={{ height: `${cd.comp * 2}px` }} title={`Completed: ${cd.comp}`} />
-                  </div>
-                  <span className="chart-x-label">{cd.day}</span>
-                </div>
-              ))}
+            {/* Canvas area with bars and dotted baseline */}
+            <div className="chart-canvas-area">
+              <div className="chart-bars-wrap">
+                {chartDays.map((cd, idx) => {
+                  const scaleMax = 40;
+                  const maxHeightPx = 185;
+                  const pendPx = Math.max(12, (cd.pend / scaleMax) * maxHeightPx);
+                  const cleanPx = Math.max(12, (cd.inClean / scaleMax) * maxHeightPx);
+                  const compPx = Math.max(14, (cd.comp / scaleMax) * maxHeightPx);
+
+                  return (
+                    <div key={idx} className="chart-bar-group">
+                      <div className="stacked-bar">
+                        {/* Top: Completed (Teal) */}
+                        <div 
+                          className="bar-segment comp" 
+                          style={{ height: `${compPx}px` }} 
+                          title={`Completed: ${Math.round(cd.comp)}`} 
+                        />
+                        {/* Middle: In Cleaning (Royal Blue) */}
+                        <div 
+                          className="bar-segment clean" 
+                          style={{ height: `${cleanPx}px` }} 
+                          title={`In Cleaning: ${Math.round(cd.inClean)}`} 
+                        />
+                        {/* Bottom: Pending (Salmon Coral) */}
+                        <div 
+                          className="bar-segment pend" 
+                          style={{ height: `${pendPx}px` }} 
+                          title={`Pending: ${Math.round(cd.pend)}`} 
+                        />
+                      </div>
+                      <span className="chart-x-label">{cd.day}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Dotted horizontal baseline at 0 level */}
+              <div className="chart-dotted-baseline" />
             </div>
           </div>
 
+          {/* Centered Legend matching Image 1 */}
           <div className="chart-legend-row">
-            <div className="legend-item"><span className="legend-dot comp" /> Completed</div>
-            <div className="legend-item"><span className="legend-dot clean" /> In Cleaning</div>
-            <div className="legend-item"><span className="legend-dot pend" /> Pending</div>
+            <div className="legend-item">
+              <span className="legend-dot comp" />
+              <span>Completed</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-dot clean" />
+              <span>In Cleaning</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-dot pend" />
+              <span>Pending</span>
+            </div>
           </div>
         </div>
 
@@ -642,30 +741,74 @@ export const AdminDashboardPage = () => {
           color: #1E293B;
         }
 
-        .card-dropdown-select {
-          padding: 6px 12px;
-          border-radius: 8px;
-          border: 1px solid #E2E8F0;
-          font-size: 0.8125rem;
-          background: #FFFFFF;
-          color: #475569;
+        /* BAR CHART - Exact reproduction of Reference Image 1 */
+        .orders-overview-card {
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
         }
 
-        /* BAR CHART */
+        .chart-dropdown-wrap {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+        }
+
+        .card-dropdown-select {
+          padding: 6px 28px 6px 14px;
+          border-radius: 8px;
+          border: 1px solid #E2E8F0;
+          font-family: inherit;
+          font-size: 0.8125rem;
+          font-weight: 500;
+          background: #FFFFFF;
+          color: #475569;
+          cursor: pointer;
+          appearance: none;
+          outline: none;
+          transition: border-color 0.15s ease;
+        }
+
+        .card-dropdown-select:hover,
+        .card-dropdown-select:focus {
+          border-color: #CBD5E1;
+        }
+
+        .dropdown-chevron-icon {
+          position: absolute;
+          right: 10px;
+          color: #64748B;
+          pointer-events: none;
+        }
+
         .bar-chart-container {
           display: flex;
-          gap: 16px;
-          height: 180px;
-          align-items: flex-end;
+          align-items: stretch;
+          height: 220px;
+          gap: 12px;
+          margin-top: 10px;
+          position: relative;
         }
 
         .chart-y-axis {
           display: flex;
           flex-direction: column;
           justify-content: space-between;
-          height: 100%;
-          font-size: 0.6875rem;
+          height: 185px;
+          font-family: inherit;
+          font-size: 0.75rem;
+          font-weight: 500;
           color: #94A3B8;
+          text-align: right;
+          min-width: 20px;
+          user-select: none;
+        }
+
+        .chart-canvas-area {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          position: relative;
         }
 
         .chart-bars-wrap {
@@ -673,62 +816,110 @@ export const AdminDashboardPage = () => {
           display: flex;
           justify-content: space-around;
           align-items: flex-end;
-          height: 100%;
-          border-bottom: 1px dashed #E2E8F0;
+          height: 185px;
+          position: relative;
+          z-index: 2;
+        }
+
+        .chart-dotted-baseline {
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 185px;
+          border-bottom: 1.5px dotted #CBD5E1;
+          z-index: 1;
         }
 
         .chart-bar-group {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 8px;
+          height: 100%;
+          justify-content: flex-end;
         }
 
         .stacked-bar {
-          width: 24px;
+          width: 34px;
           display: flex;
-          flex-direction: column-reverse;
-          gap: 2px;
+          flex-direction: column;
+          justify-content: flex-end;
+          gap: 3px;
+          transition: transform 0.2s ease;
+        }
+
+        .chart-bar-group:hover .stacked-bar {
+          transform: translateY(-2px);
         }
 
         .bar-segment {
           width: 100%;
-          border-radius: 3px;
+          border-radius: 4px;
+          transition: all 0.2s ease;
         }
 
-        .bar-segment.comp { background: #0D7A75; }
-        .bar-segment.clean { background: #0284C7; }
-        .bar-segment.pend { background: #FCA5A5; }
+        .bar-segment:hover {
+          filter: brightness(1.08);
+        }
+
+        /* Exact colors from Reference Image 1 */
+        .bar-segment.comp { 
+          background: #007A78; /* Deep Teal */
+        }
+        
+        .bar-segment.clean { 
+          background: #2F74E8; /* Royal Blue */
+        }
+        
+        .bar-segment.pend { 
+          background: #FF8577; /* Salmon Coral Pink */
+        }
 
         .chart-x-label {
-          font-size: 0.6875rem;
-          color: #64748B;
+          font-family: inherit;
+          font-size: 0.75rem;
+          font-weight: 500;
+          color: #8F9CAE;
+          margin-top: 10px;
+          user-select: none;
         }
 
+        /* Legend matching Reference Image 1 */
         .chart-legend-row {
           display: flex;
           justify-content: center;
-          gap: 20px;
-          margin-top: 18px;
-          font-size: 0.75rem;
-          color: #64748B;
+          align-items: center;
+          gap: 28px;
+          margin-top: 24px;
+          font-family: inherit;
+          font-size: 0.8125rem;
+          color: #475569;
+          font-weight: 500;
         }
 
         .legend-item {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 7px;
         }
 
         .legend-dot {
           width: 8px;
           height: 8px;
           border-radius: 50%;
+          flex-shrink: 0;
         }
 
-        .legend-dot.comp { background: #0D7A75; }
-        .legend-dot.clean { background: #0284C7; }
-        .legend-dot.pend { background: #FCA5A5; }
+        .legend-dot.comp { 
+          background: #007A78; 
+        }
+
+        .legend-dot.clean { 
+          background: #2F74E8; 
+        }
+
+        .legend-dot.pend { 
+          background: #FF8577; 
+        }
 
         /* DONUT CHART */
         .donut-chart-layout {
