@@ -670,7 +670,6 @@ export const AdminOrdersPage = () => {
         .filter-search-field-wrap {
           position: relative;
           flex: 1;
-          max-width: 400px;
           min-width: 260px;
         }
 
