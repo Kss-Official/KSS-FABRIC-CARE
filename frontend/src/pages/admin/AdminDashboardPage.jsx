@@ -103,54 +103,46 @@ export const AdminDashboardPage = () => {
 
   const [chartTimeframe, setChartTimeframe] = useState('7d');
 
-  // Baseline proportions exactly matching Reference Image 1
+  // Baseline data exactly matching Second Reference Image
   const baseChartDays7d = [
-    { day: '17 Sep', comp: 7.0, inClean: 4.5, pend: 4.0 },
-    { day: '18 Sep', comp: 8.0, inClean: 4.5, pend: 4.0 },
-    { day: '19 Sep', comp: 6.0, inClean: 4.0, pend: 3.5 },
-    { day: '20 Sep', comp: 12.5, inClean: 5.5, pend: 5.0 },
-    { day: '21 Sep', comp: 9.5, inClean: 5.0, pend: 4.5 },
-    { day: '22 Sep', comp: 8.0, inClean: 4.5, pend: 4.0 },
-    { day: '23 Sep', comp: 5.5, inClean: 4.0, pend: 3.5 }
+    { day: '17 Sep', comp: 10.0, inClean: 5.5, pend: 4.5 },
+    { day: '18 Sep', comp: 13.5, inClean: 6.5, pend: 5.5 },
+    { day: '19 Sep', comp: 10.0, inClean: 5.5, pend: 4.5 },
+    { day: '20 Sep', comp: 15.5, inClean: 9.0, pend: 8.0 },
+    { day: '21 Sep', comp: 13.0, inClean: 7.0, pend: 6.0 },
+    { day: '22 Sep', comp: 12.0, inClean: 6.0, pend: 6.5 },
+    { day: '23 Sep', comp: 0.0, inClean: 12.0, pend: 7.0 }
   ];
 
   const baseChartDays30d = [
-    { day: 'Week 1', comp: 18, inClean: 9, pend: 6 },
-    { day: 'Week 2', comp: 22, inClean: 11, pend: 8 },
-    { day: 'Week 3', comp: 26, inClean: 13, pend: 9 },
-    { day: 'Week 4', comp: 20, inClean: 10, pend: 7 }
+    { day: 'Week 1', comp: 24, inClean: 12, pend: 8 },
+    { day: 'Week 2', comp: 28, inClean: 14, pend: 10 },
+    { day: 'Week 3', comp: 32, inClean: 16, pend: 12 },
+    { day: 'Week 4', comp: 22, inClean: 14, pend: 8 }
   ];
 
-  // Dynamically compute chart data from orders
+  // Dynamically compute chart data while preserving exact Second Reference Image baseline
   const chartDays = useMemo(() => {
     if (chartTimeframe === '30d') {
-      const compCount = (orders || []).filter(o => o.status === 'Completed' || o.status === 'Delivered').length;
-      const cleanCount = (orders || []).filter(o => o.status === 'In Cleaning' || o.status === 'Processing' || o.status === 'Ready for Delivery').length;
-      const pendCount = (orders || []).filter(o => o.status === 'Pending Pickup' || o.status === 'Pending Review' || o.status === 'Pending').length;
+      return baseChartDays30d;
+    }
 
-      return baseChartDays30d.map((wk, idx) => {
-        if (idx === baseChartDays30d.length - 1) {
-          return {
-            ...wk,
-            comp: wk.comp + Math.max(0, compCount - 3),
-            inClean: wk.inClean + Math.max(0, cleanCount - 2),
-            pend: wk.pend + Math.max(0, pendCount - 2)
-          };
-        }
-        return wk;
-      });
+    // Baseline exactly matches the second reference image
+    const initialOrderIds = new Set([
+      '#LDX10287', '#LDX10286', '#LDX1286', '#LDX1285', 
+      '#LDX1284', '#LDX1283', '#LDX1282', '#LDX10281'
+    ]);
+    const dynamicOrders = (orders || []).filter(o => !initialOrderIds.has(o.id));
+
+    if (dynamicOrders.length === 0) {
+      return baseChartDays7d;
     }
 
     return baseChartDays7d.map(item => {
-      const dayOrders = (orders || []).filter(o => {
-        const dateStr = (o.date || o.pickupTime || '').toLowerCase();
-        return dateStr.includes(item.day.toLowerCase());
-      });
-
-      if (dayOrders.length > 0) {
-        const extraComp = dayOrders.filter(o => o.status === 'Completed' || o.status === 'Delivered').length;
-        const extraClean = dayOrders.filter(o => o.status === 'In Cleaning' || o.status === 'Processing' || o.status === 'Ready for Delivery').length;
-        const extraPend = dayOrders.filter(o => o.status === 'Pending Pickup' || o.status === 'Pending Review' || o.status === 'Pending').length;
+      if (item.day === '23 Sep') {
+        const extraComp = dynamicOrders.filter(o => o.status === 'Completed' || o.status === 'Delivered').length;
+        const extraClean = dynamicOrders.filter(o => o.status === 'In Cleaning' || o.status === 'Processing' || o.status === 'Ready for Delivery').length;
+        const extraPend = dynamicOrders.filter(o => o.status === 'Pending Pickup' || o.status === 'Pending Review' || o.status === 'Pending').length;
 
         return {
           day: item.day,
@@ -236,7 +228,7 @@ export const AdminDashboardPage = () => {
 
       {/* Charts 2-Column Row */}
       <div className="dash-charts-grid">
-        {/* Left: Orders Overview Bar Chart matching Reference Image 1 */}
+        {/* Left: Orders Overview Bar Chart matching Second Reference Image */}
         <div className="dash-card orders-overview-card">
           <div className="dash-card-header">
             <h3 className="dash-card-title">Orders Overview</h3>
@@ -256,56 +248,68 @@ export const AdminDashboardPage = () => {
           <div className="bar-chart-container">
             {/* Y-Axis scale 0 to 40 */}
             <div className="chart-y-axis">
-              <span>40</span>
-              <span>30</span>
-              <span>20</span>
-              <span>10</span>
-              <span>0</span>
+              <span style={{ top: '0%' }}>40</span>
+              <span style={{ top: '25%' }}>30</span>
+              <span style={{ top: '50%' }}>20</span>
+              <span style={{ top: '75%' }}>10</span>
+              <span style={{ top: '100%' }}>0</span>
             </div>
 
-            {/* Canvas area with bars and dotted baseline */}
+            {/* Canvas area with grid lines and continuous stacked bars */}
             <div className="chart-canvas-area">
+              <div className="chart-grid-lines">
+                <div className="chart-grid-line" style={{ top: '0%' }} />
+                <div className="chart-grid-line" style={{ top: '25%' }} />
+                <div className="chart-grid-line" style={{ top: '50%' }} />
+                <div className="chart-grid-line" style={{ top: '75%' }} />
+                <div className="chart-grid-line baseline" style={{ top: '100%' }} />
+              </div>
+
               <div className="chart-bars-wrap">
                 {chartDays.map((cd, idx) => {
                   const scaleMax = 40;
-                  const maxHeightPx = 185;
-                  const pendPx = Math.max(12, (cd.pend / scaleMax) * maxHeightPx);
-                  const cleanPx = Math.max(12, (cd.inClean / scaleMax) * maxHeightPx);
-                  const compPx = Math.max(14, (cd.comp / scaleMax) * maxHeightPx);
+                  const plotHeight = 200;
+                  const pendPx = (cd.pend / scaleMax) * plotHeight;
+                  const cleanPx = (cd.inClean / scaleMax) * plotHeight;
+                  const compPx = (cd.comp / scaleMax) * plotHeight;
 
                   return (
                     <div key={idx} className="chart-bar-group">
                       <div className="stacked-bar">
-                        {/* Top: Completed (Teal) */}
-                        <div 
-                          className="bar-segment comp" 
-                          style={{ height: `${compPx}px` }} 
-                          title={`Completed: ${Math.round(cd.comp)}`} 
-                        />
-                        {/* Middle: In Cleaning (Royal Blue) */}
-                        <div 
-                          className="bar-segment clean" 
-                          style={{ height: `${cleanPx}px` }} 
-                          title={`In Cleaning: ${Math.round(cd.inClean)}`} 
-                        />
-                        {/* Bottom: Pending (Salmon Coral) */}
-                        <div 
-                          className="bar-segment pend" 
-                          style={{ height: `${pendPx}px` }} 
-                          title={`Pending: ${Math.round(cd.pend)}`} 
-                        />
+                        {/* Top: Pending (Soft Peach) */}
+                        {cd.pend > 0 && (
+                          <div 
+                            className="bar-segment pend" 
+                            style={{ height: `${pendPx}px` }} 
+                            title={`Pending: ${cd.pend}`} 
+                          />
+                        )}
+                        {/* Middle: In Cleaning (Turquoise Cyan) */}
+                        {cd.inClean > 0 && (
+                          <div 
+                            className="bar-segment clean" 
+                            style={{ height: `${cleanPx}px` }} 
+                            title={`In Cleaning: ${cd.inClean}`} 
+                          />
+                        )}
+                        {/* Bottom: Completed (Dark Teal) */}
+                        {cd.comp > 0 && (
+                          <div 
+                            className="bar-segment comp" 
+                            style={{ height: `${compPx}px` }} 
+                            title={`Completed: ${cd.comp}`} 
+                          />
+                        )}
                       </div>
                       <span className="chart-x-label">{cd.day}</span>
                     </div>
                   );
                 })}
               </div>
-              {/* Dotted horizontal baseline at 0 level */}
-              <div className="chart-dotted-baseline" />
             </div>
           </div>
 
-          {/* Centered Legend matching Image 1 */}
+          {/* Left-Aligned Legend matching Second Reference Image */}
           <div className="chart-legend-row">
             <div className="legend-item">
               <span className="legend-dot comp" />
@@ -755,8 +759,8 @@ export const AdminDashboardPage = () => {
         }
 
         .card-dropdown-select {
-          padding: 6px 28px 6px 14px;
-          border-radius: 8px;
+          padding: 7px 34px 7px 16px;
+          border-radius: 20px;
           border: 1px solid #E2E8F0;
           font-family: inherit;
           font-size: 0.8125rem;
@@ -776,149 +780,162 @@ export const AdminDashboardPage = () => {
 
         .dropdown-chevron-icon {
           position: absolute;
-          right: 10px;
+          right: 12px;
           color: #64748B;
           pointer-events: none;
         }
 
         .bar-chart-container {
           display: flex;
-          align-items: stretch;
-          height: 220px;
+          align-items: flex-start;
           gap: 12px;
-          margin-top: 10px;
+          margin-top: 20px;
+          margin-bottom: 32px;
           position: relative;
         }
 
         .chart-y-axis {
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          height: 185px;
+          position: relative;
+          width: 24px;
+          height: 200px;
+          flex-shrink: 0;
           font-family: inherit;
-          font-size: 0.75rem;
+          font-size: 0.8125rem;
           font-weight: 500;
           color: #94A3B8;
-          text-align: right;
-          min-width: 20px;
           user-select: none;
+        }
+
+        .chart-y-axis span {
+          position: absolute;
+          right: 4px;
+          transform: translateY(-50%);
+          line-height: 1;
         }
 
         .chart-canvas-area {
           flex: 1;
-          display: flex;
-          flex-direction: column;
           position: relative;
+          height: 200px;
         }
 
-        .chart-bars-wrap {
-          flex: 1;
-          display: flex;
-          justify-content: space-around;
-          align-items: flex-end;
-          height: 185px;
-          position: relative;
-          z-index: 2;
+        .chart-grid-lines {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 1;
         }
 
-        .chart-dotted-baseline {
+        .chart-grid-line {
           position: absolute;
           left: 0;
           right: 0;
-          top: 185px;
-          border-bottom: 1.5px dotted #CBD5E1;
-          z-index: 1;
+          border-bottom: 1px dashed #E5EEF0;
+        }
+
+        .chart-grid-line.baseline {
+          border-bottom: 1.5px solid #E2ECF0;
+        }
+
+        .chart-bars-wrap {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          justify-content: space-around;
+          align-items: flex-end;
+          z-index: 2;
         }
 
         .chart-bar-group {
           display: flex;
           flex-direction: column;
           align-items: center;
-          height: 100%;
-          justify-content: flex-end;
+          position: relative;
         }
 
         .stacked-bar {
-          width: 34px;
+          width: 36px;
           display: flex;
           flex-direction: column;
           justify-content: flex-end;
-          gap: 3px;
-          transition: transform 0.2s ease;
+          border-radius: 8px;
+          overflow: hidden;
+          transition: transform 0.2s ease, filter 0.2s ease;
         }
 
         .chart-bar-group:hover .stacked-bar {
-          transform: translateY(-2px);
+          transform: translateY(-3px);
+          filter: brightness(1.05);
         }
 
         .bar-segment {
           width: 100%;
-          border-radius: 4px;
-          transition: all 0.2s ease;
+          transition: height 0.3s ease;
         }
 
-        .bar-segment:hover {
-          filter: brightness(1.08);
-        }
-
-        /* Exact colors from Reference Image 1 */
+        /* Exact colors from Second Reference Image */
         .bar-segment.comp { 
-          background: #007A78; /* Deep Teal */
+          background: #0E7A86; /* Dark Teal */
         }
         
         .bar-segment.clean { 
-          background: #2F74E8; /* Royal Blue */
+          background: #36BAC6; /* Vibrant Turquoise / Cyan */
         }
         
         .bar-segment.pend { 
-          background: #FF8577; /* Salmon Coral Pink */
+          background: #FFD5CD; /* Soft Peach / Apricot */
         }
 
         .chart-x-label {
+          position: absolute;
+          top: 100%;
+          left: 50%;
+          transform: translateX(-50%);
+          margin-top: 12px;
           font-family: inherit;
-          font-size: 0.75rem;
+          font-size: 0.8125rem;
           font-weight: 500;
-          color: #8F9CAE;
-          margin-top: 10px;
+          color: #7A919B;
+          white-space: nowrap;
           user-select: none;
         }
 
-        /* Legend matching Reference Image 1 */
+        /* Legend matching Second Reference Image */
         .chart-legend-row {
           display: flex;
-          justify-content: center;
           align-items: center;
-          gap: 28px;
-          margin-top: 24px;
+          gap: 32px;
+          margin-top: 8px;
+          padding-left: 36px;
           font-family: inherit;
-          font-size: 0.8125rem;
-          color: #475569;
+          font-size: 0.875rem;
+          color: #334155;
           font-weight: 500;
         }
 
         .legend-item {
           display: flex;
           align-items: center;
-          gap: 7px;
+          gap: 10px;
         }
 
         .legend-dot {
-          width: 8px;
-          height: 8px;
+          width: 10px;
+          height: 10px;
           border-radius: 50%;
           flex-shrink: 0;
         }
 
         .legend-dot.comp { 
-          background: #007A78; 
+          background: #0E7A86; 
         }
 
         .legend-dot.clean { 
-          background: #2F74E8; 
+          background: #36BAC6; 
         }
 
         .legend-dot.pend { 
-          background: #FF8577; 
+          background: #FFD5CD; 
         }
 
         /* DONUT CHART */
