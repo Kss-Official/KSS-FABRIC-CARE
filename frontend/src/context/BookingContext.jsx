@@ -9,6 +9,80 @@ const BookingContext = createContext();
 
 export { INITIAL_SERVICES };
 
+/**
+ * Calculates effective pricing for an item, avoiding duplicate washing charges:
+ * Rule: If the same clothing item is selected under both a washing category (Wash & Fold or Express Laundry)
+ * and Wash & Iron, the washing charge is applied only once.
+ * For Wash & Iron, only the ironing component is charged (calculated as half of the total item price).
+ */
+export const getItemPricing = (item, allItemsList = []) => {
+  if (!item) {
+    return {
+      baseUnitPrice: 0,
+      effectiveUnitPrice: 0,
+      ironingComponentRate: 0,
+      lineTotal: 0,
+      hasIroningDiscount: false,
+      isIroningOnly: false,
+      overlappingQty: 0,
+      discountPerItem: 0,
+      totalSaved: 0,
+      discountReason: null
+    };
+  }
+
+  const baseUnitPrice = Number(item.unitPrice || 0);
+  const qty = Number(item.quantity || 0);
+
+  // Check if this item is in Wash & Iron
+  const isWashIron = item.categoryId === 'wash-iron';
+
+  if (isWashIron && allItemsList && allItemsList.length > 0) {
+    // Check if the same clothing item is also selected under a washing service (Wash & Fold or Express Laundry)
+    const washItem = allItemsList.find(other => 
+      other.key !== item.key &&
+      (other.categoryId === 'wash-fold' || other.categoryId === 'express-laundry') &&
+      (other.id === item.id || (other.name && item.name && other.name.trim().toLowerCase() === item.name.trim().toLowerCase()))
+    );
+
+    if (washItem && washItem.quantity > 0) {
+      const washQty = washItem.quantity;
+      const ironingComponentRate = Math.round(baseUnitPrice / 2); // Ironing charge is half of total item price
+      const overlappingQty = Math.min(washQty, qty);
+      const remainingQty = Math.max(0, qty - overlappingQty);
+
+      const lineTotal = (overlappingQty * ironingComponentRate) + (remainingQty * baseUnitPrice);
+      const effectiveUnitPrice = qty > 0 ? (lineTotal / qty) : ironingComponentRate;
+
+      return {
+        baseUnitPrice,
+        effectiveUnitPrice,
+        ironingComponentRate,
+        lineTotal,
+        hasIroningDiscount: true,
+        isIroningOnly: qty <= washQty,
+        overlappingQty,
+        discountPerItem: baseUnitPrice - ironingComponentRate,
+        totalSaved: overlappingQty * (baseUnitPrice - ironingComponentRate),
+        discountReason: `Ironing charge only (₹${ironingComponentRate}/item) · Washing price applied in ${washItem.categoryName || 'Wash & Fold'}`
+      };
+    }
+  }
+
+  return {
+    baseUnitPrice,
+    effectiveUnitPrice: baseUnitPrice,
+    ironingComponentRate: Math.round(baseUnitPrice / 2),
+    lineTotal: baseUnitPrice * qty,
+    hasIroningDiscount: false,
+    isIroningOnly: false,
+    overlappingQty: 0,
+    discountPerItem: 0,
+    totalSaved: 0,
+    discountReason: null
+  };
+};
+
 export const BookingProvider = ({ children }) => {
   const { currentUser, userProfile, isAuthenticated } = useAuth();
 
@@ -166,8 +240,25 @@ export const BookingProvider = ({ children }) => {
   const selectedItemsList = Object.values(selectedItems);
   const totalItemsCount = selectedItemsList.reduce((sum, it) => sum + it.quantity, 0);
 
+  // Helper to compute effective item pricing avoiding duplicate washing charge:
+  // If the same item is selected under both Wash & Fold (or Express Laundry) and Wash & Iron,
+  // the washing charge is applied once, and Wash & Iron charges only the ironing component (50% of item price).
+  const calculateItemPricing = (item, allItems = selectedItemsList) => {
+    return getItemPricing(item, allItems);
+  };
+
   const calculateItemsTotal = () => {
-    return selectedItemsList.reduce((sum, it) => sum + (it.unitPrice * it.quantity), 0);
+    return selectedItemsList.reduce((sum, it) => {
+      const pricing = getItemPricing(it, selectedItemsList);
+      return sum + pricing.lineTotal;
+    }, 0);
+  };
+
+  const calculateDuplicateWashSavings = () => {
+    return selectedItemsList.reduce((sum, it) => {
+      const pricing = getItemPricing(it, selectedItemsList);
+      return sum + pricing.totalSaved;
+    }, 0);
   };
   
   // Step 2 Pickup Details
@@ -355,14 +446,18 @@ export const BookingProvider = ({ children }) => {
     setOrderError(null);
 
     try {
-      // Build itemized payload for Django backend OrderItem creation
-      const itemsPayload = selectedItemsList.map(it => ({
-        item_name: it.name,
-        service_category: it.categoryName || it.categoryId,
-        quantity: it.quantity,
-        unit_price: it.unitPrice,
-        total_price: it.unitPrice * it.quantity
-      }));
+      // Build itemized payload for Django backend OrderItem creation with effective pricing
+      const itemsPayload = selectedItemsList.map(it => {
+        const pricing = getItemPricing(it, selectedItemsList);
+        return {
+          item_name: it.name,
+          service_category: it.categoryName || it.categoryId,
+          quantity: it.quantity,
+          unit_price: pricing.effectiveUnitPrice,
+          total_price: pricing.lineTotal,
+          note: pricing.hasIroningDiscount ? pricing.discountReason : ''
+        };
+      });
 
       // Service names list
       const serviceNames = [
@@ -485,7 +580,10 @@ export const BookingProvider = ({ children }) => {
         setItemQuantity,
         getItemQuantity,
         clearAllItems,
+        getItemPricing: (item) => getItemPricing(item, selectedItemsList),
+        calculateItemPricing,
         calculateItemsTotal,
+        calculateDuplicateWashSavings,
         pickupDetails,
         setPickupDetails,
         pickupSchedule,

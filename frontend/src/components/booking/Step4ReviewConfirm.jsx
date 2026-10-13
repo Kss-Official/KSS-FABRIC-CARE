@@ -27,6 +27,8 @@ export const Step4ReviewConfirm = () => {
     setCurrentStep, 
     confirmOrder, 
     calculateTotal, 
+    calculateDuplicateWashSavings = () => 0,
+    getItemPricing = (it) => ({ effectiveUnitPrice: it.unitPrice, lineTotal: it.unitPrice * it.quantity, hasIroningDiscount: false }),
     isSubmittingOrder, 
     orderError 
   } = useBooking();
@@ -123,24 +125,52 @@ export const Step4ReviewConfirm = () => {
               <div className="inner-card-body">
                 {selectedItemsList.length > 0 ? (
                   <div className="review-items-stack">
-                    {selectedItemsList.map(item => (
-                      <div key={item.key} className="service-item-row">
-                        <span className="item-service-icon">
-                          {renderServiceIcon(item.categoryId)}
-                        </span>
-                        <div className="item-text-wrap" style={{ flex: 1 }}>
-                          <div className="item-main-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <span>{item.name}</span>
-                            <span style={{ fontWeight: 700, color: '#087F8C', fontSize: '0.875rem' }}>
-                              ₹{item.unitPrice * item.quantity}
-                            </span>
-                          </div>
-                          <div className="item-sub-title">
-                            {item.categoryName} • Qty: {item.quantity} ({item.isPriceEnabled ? `₹${item.unitPrice} each` : `Standard Care`})
+                    {selectedItemsList.map(item => {
+                      const pricing = getItemPricing(item);
+                      return (
+                        <div key={item.key} className="service-item-row">
+                          <span className="item-service-icon">
+                            {renderServiceIcon(item.categoryId)}
+                          </span>
+                          <div className="item-text-wrap" style={{ flex: 1 }}>
+                            <div className="item-main-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span>{item.name}</span>
+                                {pricing.hasIroningDiscount && (
+                                  <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#0D7A75', background: '#E6F8F6', border: '1px solid #BCEAE6', padding: '1px 6px', borderRadius: '999px' }}>
+                                    Ironing only
+                                  </span>
+                                )}
+                              </div>
+                              <span style={{ fontWeight: 700, color: '#087F8C', fontSize: '0.875rem' }}>
+                                ₹{pricing.lineTotal}
+                              </span>
+                            </div>
+                            <div className="item-sub-title">
+                              {item.categoryName} • Qty: {item.quantity} (
+                                {item.isPriceEnabled ? (
+                                  pricing.hasIroningDiscount ? (
+                                    <>
+                                      <span style={{ textDecoration: 'line-through', color: '#94A3B8' }}>₹{item.unitPrice}</span>{' '}
+                                      <span style={{ color: '#0D7A75', fontWeight: 600 }}>₹{pricing.effectiveUnitPrice} each</span>
+                                    </>
+                                  ) : (
+                                    `₹${item.unitPrice} each`
+                                  )
+                                ) : (
+                                  `Standard Care`
+                                )}
+                              )
+                              {pricing.hasIroningDiscount && (
+                                <span style={{ display: 'block', fontSize: '0.7rem', color: '#0D7A75', marginTop: '2px' }}>
+                                  ✓ Wash fee waived (included in Wash & Fold)
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   selectedItemsData.map(s => (
@@ -296,21 +326,48 @@ export const Step4ReviewConfirm = () => {
 
             {/* Services & clothing items breakdown table */}
             <div className="summary-items-list">
+              {calculateDuplicateWashSavings() > 0 && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#E6F8F6',
+                  border: '1px solid #BCEAE6',
+                  color: '#0D7A75',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  fontSize: '0.725rem',
+                  marginBottom: '10px'
+                }}>
+                  <span>🎉</span>
+                  <span><strong>₹{calculateDuplicateWashSavings()} saved</strong> — duplicate wash charge waived</span>
+                </div>
+              )}
               {selectedItemsList.length > 0 ? (
-                selectedItemsList.map(it => (
-                  <div key={it.key} className="summary-item-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <span className="item-name" style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {it.name}
-                      </span>
-                      <span style={{ fontSize: '0.75rem', color: '#087F8C', fontWeight: 600 }}>
-                        {it.categoryName}
-                      </span>
+                selectedItemsList.map(it => {
+                  const pricing = getItemPricing(it);
+                  return (
+                    <div key={it.key} className="summary-item-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className="item-name" style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {it.name}
+                          </span>
+                          {pricing.hasIroningDiscount && (
+                            <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#0D7A75', background: '#E6F8F6', border: '1px solid #BCEAE6', padding: '1px 5px', borderRadius: '4px' }}>
+                              Ironing
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#087F8C', fontWeight: 600 }}>
+                          {it.categoryName}
+                        </span>
+                      </div>
+                      <span className="item-qty" style={{ fontWeight: 600, color: '#64748B' }}>×{it.quantity}</span>
+                      <span className="item-price" style={{ fontWeight: 700, color: '#111827' }}>₹{pricing.lineTotal}</span>
                     </div>
-                    <span className="item-qty" style={{ fontWeight: 600, color: '#64748B' }}>×{it.quantity}</span>
-                    <span className="item-price" style={{ fontWeight: 700, color: '#111827' }}>₹{it.unitPrice * it.quantity}</span>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 selectedItemsData.map(s => (
                   <div key={s.id} className="summary-item-row">

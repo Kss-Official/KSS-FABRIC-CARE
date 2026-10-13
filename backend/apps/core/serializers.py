@@ -152,6 +152,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     pickup_city = serializers.CharField(required=False, allow_blank=True, default='Bengaluru')
     pickup_pincode = serializers.CharField(required=False, allow_blank=True, default='560043')
     pickup_date = serializers.CharField(required=False, allow_blank=True)
+    pickup_time_slot = serializers.CharField(required=False, allow_blank=True, default='9:00 AM – 11:00 AM')
     delivery_date = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def validate_pickup_date(self, value):
@@ -194,13 +195,51 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         if not validated_data.get('delivery_address'):
             validated_data['delivery_address'] = validated_data['pickup_address']
 
-        # Calculate total if not set
+        # Calculate total and process items with duplicate wash waiver logic
         calculated_total = 0.0
+        processed_items = []
         if items_payload:
+            wash_counts = {}
             for it in items_payload:
-                qty = it.get('quantity', 1)
-                rate = float(it.get('unit_price', 100))
-                calculated_total += (rate * qty)
+                c_name = str(it.get('service_category') or it.get('category_name') or '').lower()
+                s_name = str(it.get('item_name') or it.get('service_name') or '').strip().lower()
+                if 'fold' in c_name or 'express' in c_name:
+                    wash_counts[s_name] = wash_counts.get(s_name, 0) + int(it.get('quantity') or 1)
+
+            iron_applied = {}
+            for it in items_payload:
+                s_name = it.get('item_name') or it.get('service_name') or 'Laundry Service'
+                s_name_norm = str(s_name).strip().lower()
+                c_name = it.get('service_category') or it.get('category_name') or 'General Care'
+                c_name_norm = str(c_name).lower()
+                qty = int(it.get('quantity') or 1)
+                u_price = float(it.get('unit_price') or 100.0)
+
+                is_wash_iron = 'iron' in c_name_norm and ('wash' in c_name_norm or 'iron' in c_name_norm)
+                wash_available = wash_counts.get(s_name_norm, 0) - iron_applied.get(s_name_norm, 0)
+
+                if it.get('total_price') is not None:
+                    t_price = float(it.get('total_price'))
+                    eff_u_price = u_price
+                elif is_wash_iron and wash_available > 0:
+                    discounted_qty = min(qty, wash_available)
+                    iron_applied[s_name_norm] = iron_applied.get(s_name_norm, 0) + discounted_qty
+                    ironing_rate = round(u_price / 2.0)
+                    rem_qty = qty - discounted_qty
+                    t_price = (discounted_qty * ironing_rate) + (rem_qty * u_price)
+                    eff_u_price = round(t_price / qty, 2)
+                else:
+                    t_price = float(u_price * qty)
+                    eff_u_price = u_price
+
+                calculated_total += t_price
+                processed_items.append({
+                    'service_name': s_name,
+                    'category_name': c_name,
+                    'quantity': qty,
+                    'unit_price': eff_u_price,
+                    'total_price': t_price
+                })
         
         total_amount = float(validated_data.get('total_amount') or calculated_total or 300.00)
         validated_data['total_amount'] = total_amount
@@ -212,21 +251,16 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
-        # Create order items from payload or services_list
-        if items_payload:
-            for it in items_payload:
-                s_name = it.get('item_name') or it.get('service_name') or 'Laundry Service'
-                c_name = it.get('service_category') or it.get('category_name') or 'General Care'
-                qty = int(it.get('quantity') or 1)
-                u_price = float(it.get('unit_price') or 100.0)
-                t_price = float(it.get('total_price') or (u_price * qty))
+        # Create order items from processed payload or services_list
+        if processed_items:
+            for item_dict in processed_items:
                 OrderItem.objects.create(
                     order=order,
-                    service_name=s_name,
-                    category_name=c_name,
-                    quantity=qty,
-                    unit_price=u_price,
-                    total_price=t_price
+                    service_name=item_dict['service_name'],
+                    category_name=item_dict['category_name'],
+                    quantity=item_dict['quantity'],
+                    unit_price=item_dict['unit_price'],
+                    total_price=item_dict['total_price']
                 )
         elif services_list:
             for item_name in services_list:

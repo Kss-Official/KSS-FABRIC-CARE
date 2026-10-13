@@ -69,6 +69,8 @@ export const PricingCalculator = () => {
     getItemQuantity = () => 0,
     clearAllItems = () => {},
     calculateItemsTotal = () => 0,
+    calculateDuplicateWashSavings = () => 0,
+    getItemPricing = (it) => ({ effectiveUnitPrice: it.unitPrice, lineTotal: it.unitPrice * it.quantity, hasIroningDiscount: false }),
     startBooking = () => {
       if (typeof window !== 'undefined') window.location.hash = 'booking';
     }
@@ -364,10 +366,23 @@ export const PricingCalculator = () => {
 
                                         <div className="item-row-right">
                                           {item.isPriceEnabled && item.price ? (
-                                            <div className="item-price-pill">
-                                              <span className="price-symbol">₹</span>
-                                              <span className="price-number">{item.price}</span>
-                                            </div>
+                                            activeCategory === 'wash-iron' && selectedItemsList.some(other =>
+                                              (other.categoryId === 'wash-fold' || other.categoryId === 'express-laundry') &&
+                                              (other.id === item.id || (other.name && item.name && other.name.trim().toLowerCase() === item.name.trim().toLowerCase())) &&
+                                              other.quantity > 0
+                                            ) ? (
+                                              <div className="item-price-pill item-price-pill-ironing-only" title="Washing charge applied in Wash & Fold · Only ironing component charged">
+                                                <span className="price-old-striked">₹{item.price}</span>
+                                                <span className="price-symbol">₹</span>
+                                                <span className="price-number">{Math.round(item.price / 2)}</span>
+                                                <span className="pill-ironing-note">Ironing only</span>
+                                              </div>
+                                            ) : (
+                                              <div className="item-price-pill">
+                                                <span className="price-symbol">₹</span>
+                                                <span className="price-number">{item.price}</span>
+                                              </div>
+                                            )
                                           ) : (
                                             <div className="item-available-pill">
                                               <CheckCircle2 size={13} strokeWidth={2.4} />
@@ -461,50 +476,66 @@ export const PricingCalculator = () => {
               {/* View 1: When Clothing Items are Selected */}
               {selectedItemsList.length > 0 ? (
                 <div className="booking-summary-items-stack">
-                  {selectedItemsList.map(it => (
-                    <div key={it.key} className="summary-item-card">
-                      <div className="summary-item-info">
-                        <div className="summary-item-title-row">
-                          <span className="summary-item-name">{it.name}</span>
-                          <span className="summary-cat-tag">{it.categoryName}</span>
+                  {selectedItemsList.map(it => {
+                    const pricing = getItemPricing ? getItemPricing(it) : { effectiveUnitPrice: it.unitPrice, lineTotal: it.unitPrice * it.quantity, hasIroningDiscount: false };
+                    return (
+                      <div key={it.key} className="summary-item-card">
+                        <div className="summary-item-info">
+                          <div className="summary-item-title-row">
+                            <span className="summary-item-name">{it.name}</span>
+                            <span className="summary-cat-tag">{it.categoryName}</span>
+                            {pricing.hasIroningDiscount && (
+                              <span className="summary-discount-chip">Ironing only</span>
+                            )}
+                          </div>
+                          <div className="summary-item-rate">
+                            {pricing.hasIroningDiscount ? (
+                              <span className="rate-discount-row">
+                                <span className="rate-old-strike">₹{it.unitPrice}</span>
+                                <span className="rate-current">₹{pricing.effectiveUnitPrice} / item</span>
+                                <span className="rate-discount-note">(50% Ironing charge)</span>
+                              </span>
+                            ) : it.isPriceEnabled ? (
+                              `₹${it.unitPrice} / item`
+                            ) : (
+                              `Standard Care (₹${it.unitPrice})`
+                            )}
+                          </div>
                         </div>
-                        <div className="summary-item-rate">
-                          {it.isPriceEnabled ? `₹${it.unitPrice} / item` : `Standard Care (₹${it.unitPrice})`}
-                        </div>
-                      </div>
 
-                      <div className="summary-item-right">
-                        <div className="summary-stepper-wrap">
+                        <div className="summary-item-right">
+                          <div className="summary-stepper-wrap">
+                            <button
+                              type="button"
+                              className="summary-stepper-btn"
+                              onClick={() => updateItemQuantity(it.key, -1)}
+                              aria-label={`Decrease ${it.name}`}
+                            >
+                              <Minus size={11} strokeWidth={2.5} />
+                            </button>
+                            <span className="summary-stepper-num">{it.quantity}</span>
+                            <button
+                              type="button"
+                              className="summary-stepper-btn"
+                              onClick={() => updateItemQuantity(it.key, 1)}
+                              aria-label={`Increase ${it.name}`}
+                            >
+                              <Plus size={11} strokeWidth={2.5} />
+                            </button>
+                          </div>
+                          <span className="summary-item-price">₹{pricing.lineTotal}</span>
                           <button
                             type="button"
-                            className="summary-stepper-btn"
-                            onClick={() => updateItemQuantity(it.key, -1)}
-                            aria-label={`Decrease ${it.name}`}
+                            className="summary-item-remove-btn"
+                            onClick={() => removeItem(it.key)}
+                            aria-label={`Remove ${it.name}`}
                           >
-                            <Minus size={11} strokeWidth={2.5} />
-                          </button>
-                          <span className="summary-stepper-num">{it.quantity}</span>
-                          <button
-                            type="button"
-                            className="summary-stepper-btn"
-                            onClick={() => updateItemQuantity(it.key, 1)}
-                            aria-label={`Increase ${it.name}`}
-                          >
-                            <Plus size={11} strokeWidth={2.5} />
+                            <X size={13} />
                           </button>
                         </div>
-                        <span className="summary-item-price">₹{it.unitPrice * it.quantity}</span>
-                        <button
-                          type="button"
-                          className="summary-item-remove-btn"
-                          onClick={() => removeItem(it.key)}
-                          aria-label={`Remove ${it.name}`}
-                        >
-                          <X size={13} />
-                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 /* View 2: When 0 Items are selected, show Quick Estimator Stack */
@@ -552,6 +583,12 @@ export const PricingCalculator = () => {
 
               {/* Subtotal Box */}
               <div className="subtotal-highlight-box">
+                {calculateDuplicateWashSavings() > 0 && (
+                  <div className="subtotal-savings-line">
+                    <Sparkles size={13} color="#0D7A75" strokeWidth={2.4} />
+                    <span>Washing fee applied once: Saved ₹{calculateDuplicateWashSavings()} on ironing</span>
+                  </div>
+                )}
                 <div className="subtotal-line">
                   <span className="subtotal-text-label">Estimated Subtotal</span>
                   <span className="subtotal-amount-val">
@@ -1297,6 +1334,78 @@ export const PricingCalculator = () => {
           font-family: 'Inter', sans-serif;
           font-size: 11.5px;
           color: #64748B;
+        }
+
+        .summary-discount-chip {
+          font-family: 'Inter', sans-serif;
+          font-size: 10px;
+          font-weight: 700;
+          color: #0D7A75;
+          background: #E6F8F6;
+          border: 1px solid #BCEAE6;
+          padding: 1px 6px;
+          border-radius: 999px;
+        }
+
+        .rate-discount-row {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          flex-wrap: wrap;
+        }
+
+        .rate-old-strike {
+          text-decoration: line-through;
+          color: #94A3B8;
+          font-size: 11px;
+        }
+
+        .rate-current {
+          color: #0D7A75;
+          font-weight: 700;
+        }
+
+        .rate-discount-note {
+          color: #0D7A75;
+          font-size: 10.5px;
+          font-weight: 500;
+        }
+
+        .item-price-pill-ironing-only {
+          background: #E8F7F5 !important;
+          border-color: #BCEAE6 !important;
+        }
+
+        .price-old-striked {
+          font-size: 11px;
+          color: #94A3B8;
+          text-decoration: line-through;
+          margin-right: 3px;
+        }
+
+        .pill-ironing-note {
+          font-size: 9.5px;
+          font-weight: 700;
+          color: #0D7A75;
+          background: #D5F3EE;
+          padding: 1px 5px;
+          border-radius: 999px;
+          margin-left: 4px;
+        }
+
+        .subtotal-savings-line {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: #E6F8F6;
+          border: 1px solid #BCEAE6;
+          border-radius: 10px;
+          padding: 6px 10px;
+          font-family: 'Inter', sans-serif;
+          font-size: 11.5px;
+          font-weight: 700;
+          color: #0D7A75;
+          margin-bottom: 12px;
         }
 
         .summary-item-right {

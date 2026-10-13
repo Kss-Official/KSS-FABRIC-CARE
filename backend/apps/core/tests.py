@@ -135,3 +135,55 @@ class LaundryBookingFlowTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         order.refresh_from_db()
         self.assertEqual(order.status, Order.Status.CANCELLED)
+
+    def test_wash_and_iron_duplicate_wash_charge_logic(self):
+        """
+        When the same clothing item is selected under both Wash & Fold and Wash & Iron:
+        - The washing charge is applied only once (in Wash & Fold).
+        - For Wash & Iron, only the ironing component is charged (50% of unit price).
+        - Prevents duplicate washing charges and ensures accurate total calculation.
+        """
+        items_payload = [
+            {
+                "item_name": "T-shirt",
+                "service_category": "Wash & Fold",
+                "quantity": 1,
+                "unit_price": 35.0,
+            },
+            {
+                "item_name": "Jeans",
+                "service_category": "Wash & Fold",
+                "quantity": 1,
+                "unit_price": 50.0,
+            },
+            {
+                "item_name": "Suit (2-piece)",
+                "service_category": "Wash & Fold",
+                "quantity": 1,
+                "unit_price": 150.0,
+            },
+            {
+                "item_name": "T-shirt",
+                "service_category": "Wash & Iron",
+                "quantity": 1,
+                "unit_price": 50.0,  # Base price is 50; ironing only should be 25
+            }
+        ]
+
+        order_data = {
+            "pickup_address": "Banaswadi, Bengaluru",
+            "items": items_payload
+        }
+
+        response = self.client.post('/api/orders/', order_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        res_data = response.data
+        # Subtotal: 35 (T-shirt wash) + 50 (Jeans) + 150 (Suit) + 25 (T-shirt ironing @ 50%) = 260
+        expected_total = 35.0 + 50.0 + 150.0 + 25.0
+        self.assertEqual(float(res_data['total_amount']), expected_total)
+
+        order = Order.objects.get(order_id=res_data['order_id'])
+        wi_tshirt = order.items.get(service_name="T-shirt", category_name="Wash & Iron")
+        self.assertEqual(float(wi_tshirt.unit_price), 25.0)
+        self.assertEqual(float(wi_tshirt.total_price), 25.0)

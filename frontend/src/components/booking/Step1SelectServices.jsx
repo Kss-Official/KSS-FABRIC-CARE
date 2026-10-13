@@ -40,6 +40,8 @@ export const Step1SelectServices = () => {
     getItemQuantity,
     clearAllItems,
     calculateTotal,
+    calculateDuplicateWashSavings = () => 0,
+    getItemPricing = (it) => ({ effectiveUnitPrice: it.unitPrice, lineTotal: it.unitPrice * it.quantity, hasIroningDiscount: false }),
     setCurrentStep 
   } = useBooking();
 
@@ -247,7 +249,19 @@ export const Step1SelectServices = () => {
 
                             <div className="item-row-action">
                               {item.isPriceEnabled && item.price ? (
-                                <span className="item-price-tag">₹{item.price}</span>
+                                activeCategory === 'wash-iron' && selectedItemsList.some(other =>
+                                  (other.categoryId === 'wash-fold' || other.categoryId === 'express-laundry') &&
+                                  (other.id === item.id || (other.name && item.name && other.name.trim().toLowerCase() === item.name.trim().toLowerCase())) &&
+                                  other.quantity > 0
+                                ) ? (
+                                  <div className="item-price-tag-discounted" title="Washing charge applied in Wash & Fold · Only ironing component charged">
+                                    <span className="price-striked">₹{item.price}</span>
+                                    <span className="price-effective">₹{Math.round(item.price / 2)}</span>
+                                    <span className="ironing-pill">Ironing only</span>
+                                  </div>
+                                ) : (
+                                  <span className="item-price-tag">₹{item.price}</span>
+                                )
                               ) : (
                                 <span className="item-avail-tag">
                                   <CheckCircle2 size={12} />
@@ -363,48 +377,65 @@ export const Step1SelectServices = () => {
               ) : (
                 <>
                   {/* Selected Clothing Items */}
-                  {selectedItemsList.map(it => (
-                    <div key={it.key} className="selected-item-chip">
-                      <div className="chip-item-main">
-                        <div className="chip-name-row">
-                          <span className="chip-item-name">{it.name}</span>
-                          <span className="chip-cat-badge">{it.categoryName}</span>
+                  {selectedItemsList.map(it => {
+                    const pricing = getItemPricing(it);
+                    return (
+                      <div key={it.key} className="selected-item-chip">
+                        <div className="chip-item-main">
+                          <div className="chip-name-row">
+                            <span className="chip-item-name">{it.name}</span>
+                            <span className="chip-cat-badge">{it.categoryName}</span>
+                            {pricing.hasIroningDiscount && (
+                              <span className="chip-discount-tag" title="Washing charge applied in Wash & Fold · Only ironing charged">
+                                Ironing only
+                              </span>
+                            )}
+                          </div>
+                          <span className="chip-item-rate">
+                            {it.isPriceEnabled ? (
+                              pricing.hasIroningDiscount ? (
+                                <span className="rate-disc-group">
+                                  <span className="rate-striked">₹{it.unitPrice}</span>
+                                  <span className="rate-disc">₹{pricing.effectiveUnitPrice} each</span>
+                                </span>
+                              ) : (
+                                `₹${it.unitPrice} each`
+                              )
+                            ) : 'Standard Care'}
+                          </span>
                         </div>
-                        <span className="chip-item-rate">
-                          {it.isPriceEnabled ? `₹${it.unitPrice} each` : 'Standard Care'}
-                        </span>
-                      </div>
 
-                      <div className="chip-actions-row">
-                        <div className="chip-stepper">
+                        <div className="chip-actions-row">
+                          <div className="chip-stepper">
+                            <button
+                              type="button"
+                              className="chip-stepper-btn"
+                              onClick={() => updateItemQuantity(it.key, -1)}
+                            >
+                              <Minus size={10} strokeWidth={2.5} />
+                            </button>
+                            <span className="chip-stepper-val">{it.quantity}</span>
+                            <button
+                              type="button"
+                              className="chip-stepper-btn"
+                              onClick={() => updateItemQuantity(it.key, 1)}
+                            >
+                              <Plus size={10} strokeWidth={2.5} />
+                            </button>
+                          </div>
+                          <span className="chip-price">₹{pricing.lineTotal}</span>
                           <button
                             type="button"
-                            className="chip-stepper-btn"
-                            onClick={() => updateItemQuantity(it.key, -1)}
+                            className="chip-remove-btn"
+                            onClick={() => removeItem(it.key)}
+                            aria-label={`Remove ${it.name}`}
                           >
-                            <Minus size={10} strokeWidth={2.5} />
-                          </button>
-                          <span className="chip-stepper-val">{it.quantity}</span>
-                          <button
-                            type="button"
-                            className="chip-stepper-btn"
-                            onClick={() => updateItemQuantity(it.key, 1)}
-                          >
-                            <Plus size={10} strokeWidth={2.5} />
+                            <X size={13} />
                           </button>
                         </div>
-                        <span className="chip-price">₹{it.unitPrice * it.quantity}</span>
-                        <button
-                          type="button"
-                          className="chip-remove-btn"
-                          onClick={() => removeItem(it.key)}
-                          aria-label={`Remove ${it.name}`}
-                        >
-                          <X size={13} />
-                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {/* Selected Package Services (if any) */}
                   {selectedItemsList.length === 0 && selectedItemsData.map(service => (
@@ -434,6 +465,12 @@ export const Step1SelectServices = () => {
             {/* Subtotal Banner inside Sidebar */}
             {hasSelections && (
               <div className="sidebar-subtotal-box">
+                {calculateDuplicateWashSavings() > 0 && (
+                  <div className="sidebar-savings-banner">
+                    <span className="savings-icon">🎉</span>
+                    <span><strong>₹{calculateDuplicateWashSavings()} saved</strong> — duplicate wash charge waived</span>
+                  </div>
+                )}
                 <div className="subtotal-row">
                   <span className="subtotal-label">Estimated Subtotal</span>
                   <span className="subtotal-val">₹{estimatedTotal}</span>
@@ -805,6 +842,37 @@ export const Step1SelectServices = () => {
           border-radius: 6px;
         }
 
+        .item-price-tag-discounted {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: #E8F7F5;
+          border: 1px solid #BCEAE6;
+          padding: 2px 7px;
+          border-radius: 6px;
+        }
+
+        .price-striked {
+          font-size: 0.725rem;
+          color: #94A3B8;
+          text-decoration: line-through;
+        }
+
+        .price-effective {
+          font-size: 0.8125rem;
+          font-weight: 700;
+          color: #0D7A75;
+        }
+
+        .ironing-pill {
+          font-size: 0.65rem;
+          font-weight: 700;
+          color: #0D7A75;
+          background: #D5F3EE;
+          padding: 1px 5px;
+          border-radius: 999px;
+        }
+
         .item-avail-tag {
           display: inline-flex;
           align-items: center;
@@ -1058,9 +1126,54 @@ export const Step1SelectServices = () => {
           border-radius: 4px;
         }
 
+        .chip-discount-tag {
+          font-size: 0.625rem;
+          font-weight: 700;
+          color: #0D7A75;
+          background: #E6F8F6;
+          border: 1px solid #BCEAE6;
+          padding: 1px 5px;
+          border-radius: 999px;
+        }
+
         .chip-item-rate {
           font-size: 0.725rem;
           color: #64748B;
+        }
+
+        .rate-disc-group {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .rate-striked {
+          font-size: 0.6875rem;
+          color: #94A3B8;
+          text-decoration: line-through;
+        }
+
+        .rate-disc {
+          font-size: 0.725rem;
+          font-weight: 700;
+          color: #0D7A75;
+        }
+
+        .sidebar-savings-banner {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: #E6F8F6;
+          border: 1px solid #BCEAE6;
+          color: #0D7A75;
+          padding: 6px 10px;
+          border-radius: 8px;
+          font-size: 0.725rem;
+          margin-bottom: 10px;
+        }
+
+        .sidebar-savings-banner .savings-icon {
+          font-size: 0.85rem;
         }
 
         .chip-actions-row {
