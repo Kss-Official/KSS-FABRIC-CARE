@@ -100,7 +100,9 @@ export const PricingCalculator = () => {
   const [estimatorItems, setEstimatorItems] = useState([
     { id: 'wash-fold', name: 'Wash & Fold (kg)', rate: 85, unit: 'kg', count: 2, icon: <Shirt size={18} strokeWidth={2.2} /> },
     { id: 'wash-iron', name: 'Wash & Iron (kg)', rate: 120, unit: 'kg', count: 1, icon: <IronIcon size={18} color="#087F8C" /> },
-    { id: 'express-laundry', name: 'Express Laundry (items)', rate: 200, unit: 'item', count: 1, icon: <Zap size={18} color="#087F8C" strokeWidth={2.2} /> }
+    { id: 'dry-cleaning', name: 'Dry Cleaning (pieces)', rate: 120, unit: 'item', count: 1, icon: <HangerIcon size={18} color="#087F8C" /> },
+    { id: 'steam-iron', name: 'Steam Iron (pieces)', rate: 20, unit: 'item', count: 2, icon: <IronIcon size={18} color="#087F8C" /> },
+    { id: 'express-laundry', name: 'Express Laundry (items)', rate: 200, unit: 'item', count: 0, icon: <Zap size={18} color="#087F8C" strokeWidth={2.2} /> }
   ]);
 
   const updateCount = (id, delta) => {
@@ -201,9 +203,7 @@ export const PricingCalculator = () => {
                         </div>
                       </div>
                       <div className="category-header-right">
-                        {category.isPriceEnabled && category.rateBadge && (
-                          <span className="rate-price-tag">{category.rateBadge}</span>
-                        )}
+                        <span className="rate-price-tag">{category.price}</span>
                         <div className={`category-toggle-circle ${isCatOpen ? 'open' : ''}`}>
                           <ChevronDown size={17} strokeWidth={2.4} />
                         </div>
@@ -279,40 +279,15 @@ export const PricingCalculator = () => {
                               </div>
                             </div>
 
-                            {/* Service Notice for Dry Cleaning & Steam Iron */}
-                            {!category.isPriceEnabled && (
-                              <div className="category-inspection-notice">
-                                <Sparkles size={14} color="#087F8C" />
-                                <span>Prices for {category.name} are provided upon physical garment inspection. Individual services are fully available for all items below.</span>
-                              </div>
-                            )}
-
-                            {/* Clothing Items Table / List */}
+                            {/* Clothing Items Grid (Item names only, no prices) */}
                             <div className="items-scroll-list">
                               {activeItems.length > 0 ? (
                                 <div className="items-table-grid">
                                   {activeItems.map((item) => (
                                     <div key={item.id} className="item-row">
-                                      <div className="item-row-left">
-                                        <span className="item-bullet"></span>
-                                        <span className="item-name">{item.name}</span>
-                                        <span className="item-unit-label">({item.unit})</span>
-                                      </div>
-
-                                      <div className="item-row-right">
-                                        {item.isPriceEnabled ? (
-                                          <div className="item-price-pill">
-                                            <span className="price-symbol">₹</span>
-                                            <span className="price-number">{item.price}</span>
-                                            <span className="price-unit">/{item.unit}</span>
-                                          </div>
-                                        ) : (
-                                          <div className="item-available-pill">
-                                            <CheckCircle2 size={13} strokeWidth={2.4} />
-                                            <span>Available</span>
-                                          </div>
-                                        )}
-                                      </div>
+                                      <span className="item-bullet"></span>
+                                      <span className="item-name">{item.name}</span>
+                                      <span className="item-unit-label">({item.unit})</span>
                                     </div>
                                   ))}
                                 </div>
@@ -802,15 +777,15 @@ export const PricingCalculator = () => {
         }
 
         .items-table-grid {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px;
         }
 
         .item-row {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          gap: 8px;
           padding: 8px 12px;
           background: #FFFFFF;
           border: 1px solid #EBF4F2;
@@ -821,13 +796,6 @@ export const PricingCalculator = () => {
         .item-row:hover {
           background: #F4FBFA;
           border-color: #CDECE7;
-        }
-
-        .item-row-left {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex: 1;
         }
 
         .item-bullet {
@@ -849,50 +817,6 @@ export const PricingCalculator = () => {
           font-family: 'Inter', sans-serif;
           font-size: 11.5px;
           color: #8FA4B0;
-        }
-
-        .item-row-right {
-          flex-shrink: 0;
-        }
-
-        .item-price-pill {
-          display: inline-flex;
-          align-items: baseline;
-          gap: 2px;
-          background: #E8F7F5;
-          color: #087F8C;
-          padding: 3px 10px;
-          border-radius: 8px;
-          font-family: 'Poppins', sans-serif;
-        }
-
-        .price-symbol {
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .price-number {
-          font-size: 14.5px;
-          font-weight: 700;
-        }
-
-        .price-unit {
-          font-size: 11px;
-          color: #556980;
-          font-weight: 500;
-        }
-
-        .item-available-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          background: #E8F7F5;
-          color: #0D7A75;
-          font-family: 'Inter', sans-serif;
-          font-size: 12px;
-          font-weight: 600;
-          padding: 3px 10px;
-          border-radius: 8px;
         }
 
         .items-empty-state {
@@ -1143,6 +1067,9 @@ export const PricingCalculator = () => {
           .items-dropdown-toolbar {
             flex-direction: column;
             align-items: flex-start;
+          }
+          .items-table-grid {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
