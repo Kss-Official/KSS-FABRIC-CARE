@@ -331,9 +331,6 @@ export const PricingCalculator = () => {
                                       <div className="item-row-left">
                                         <span className="item-bullet"></span>
                                         <span className="item-name">{item.name}</span>
-                                        {item.unit && item.unit !== 'item' && (
-                                          <span className="item-unit-label">({item.unit})</span>
-                                        )}
                                       </div>
 
                                       <div className="item-row-right">
@@ -341,9 +338,6 @@ export const PricingCalculator = () => {
                                           <div className="item-price-pill">
                                             <span className="price-symbol">₹</span>
                                             <span className="price-number">{item.price}</span>
-                                            {item.unit && item.unit !== 'item' && (
-                                              <span className="price-unit">/{item.unit}</span>
-                                            )}
                                           </div>
                                         ) : (
                                           <div className="item-available-pill">
