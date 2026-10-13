@@ -15,6 +15,7 @@ export const SavedAddresses = () => {
   const [addresses, setAddresses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState(null);
   const [newAddress, setNewAddress] = useState({
     title: 'Home',
     address_line: '',
@@ -42,13 +43,44 @@ export const SavedAddresses = () => {
     fetchAddresses();
   }, []);
 
+  const handleOpenAddModal = () => {
+    setEditingAddressId(null);
+    setNewAddress({
+      title: 'Home',
+      address_line: '',
+      landmark: '',
+      city: 'Bengaluru',
+      pincode: '560043',
+      is_default: false
+    });
+    setShowAddModal(true);
+  };
+
+  const handleOpenEditModal = (addr) => {
+    setEditingAddressId(addr.id);
+    setNewAddress({
+      title: addr.title || 'Home',
+      address_line: addr.address_line || addr.address_line1 || '',
+      landmark: addr.landmark || addr.address_line2 || '',
+      city: addr.city || 'Bengaluru',
+      pincode: addr.pincode || '560043',
+      is_default: Boolean(addr.is_default)
+    });
+    setShowAddModal(true);
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (!newAddress.address_line) return;
     setSaving(true);
     try {
-      await addressApi.createAddress(newAddress);
+      if (editingAddressId) {
+        await addressApi.updateAddress(editingAddressId, newAddress);
+      } else {
+        await addressApi.createAddress(newAddress);
+      }
       setShowAddModal(false);
+      setEditingAddressId(null);
       setNewAddress({
         title: 'Home',
         address_line: '',
@@ -59,7 +91,7 @@ export const SavedAddresses = () => {
       });
       fetchAddresses();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to save address');
+      alert(err.response?.data?.error || `Failed to ${editingAddressId ? 'update' : 'save'} address`);
     } finally {
       setSaving(false);
     }
@@ -85,7 +117,7 @@ export const SavedAddresses = () => {
           <p className="text-sm text-muted">Manage your delivery and pickup locations for 1-click booking</p>
         </div>
         <button 
-          onClick={() => setShowAddModal(true)} 
+          onClick={handleOpenAddModal} 
           className="btn btn-primary btn-sm flex items-center gap-1.5 self-start md:self-auto"
         >
           <Plus size={16} />
@@ -105,7 +137,7 @@ export const SavedAddresses = () => {
           <p className="text-sm text-muted max-w-sm mx-auto mt-1 mb-4">
             Add your home or office address to make scheduling pickups even faster.
           </p>
-          <button onClick={() => setShowAddModal(true)} className="btn btn-primary btn-sm">
+          <button onClick={handleOpenAddModal} className="btn btn-primary btn-sm">
             Add Address Now
           </button>
         </div>
@@ -126,12 +158,24 @@ export const SavedAddresses = () => {
                   </div>
                 </div>
 
-                <button 
-                  onClick={() => handleDelete(addr.id)}
-                  className="text-slate-400 hover:text-red-600 transition-colors"
-                >
-                  <Trash2 size={16} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={() => handleOpenEditModal(addr)}
+                    className="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded-lg transition-colors"
+                    title="Edit Address"
+                    aria-label="Edit Address"
+                  >
+                    <Edit3 size={16} />
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(addr.id)}
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Delete Address"
+                    aria-label="Delete Address"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
 
               <p className="text-sm text-slate-700 mb-2">
@@ -154,7 +198,9 @@ export const SavedAddresses = () => {
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in">
-            <h3 className="text-lg font-bold text-navy mb-4">Add Pickup Address</h3>
+            <h3 className="text-lg font-bold text-navy mb-4">
+              {editingAddressId ? 'Edit Pickup Address' : 'Add Pickup Address'}
+            </h3>
             <form onSubmit={handleSave} className="space-y-4">
               <div>
                 <label className="form-label">Address Tag</label>
@@ -214,6 +260,18 @@ export const SavedAddresses = () => {
                 </div>
               </div>
 
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                  <input 
+                    type="checkbox"
+                    checked={newAddress.is_default}
+                    onChange={(e) => setNewAddress({ ...newAddress, is_default: e.target.checked })}
+                    className="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"
+                  />
+                  <span>Set as default pickup address</span>
+                </label>
+              </div>
+
               <div className="flex justify-end gap-3 pt-3">
                 <button
                   type="button"
@@ -229,7 +287,7 @@ export const SavedAddresses = () => {
                   disabled={saving}
                 >
                   {saving ? <RefreshCw size={14} className="animate-spin" /> : null}
-                  <span>Save Address</span>
+                  <span>{editingAddressId ? 'Update Address' : 'Save Address'}</span>
                 </button>
               </div>
             </form>

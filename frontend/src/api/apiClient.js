@@ -116,7 +116,7 @@ export const laundryApi = {
 export const addressApi = {
   getAddresses: () => apiClient.get('/addresses/'),
   createAddress: (data) => apiClient.post('/addresses/', data),
-  updateAddress: (id, data) => apiClient.put(`/addresses/${id}/`, data),
+  updateAddress: (id, data) => apiClient.patch(`/addresses/${id}/`, data),
   deleteAddress: (id) => apiClient.delete(`/addresses/${id}/`),
 };
 

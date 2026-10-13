@@ -88,3 +88,15 @@ class CustomerAddressSerializer(serializers.ModelSerializer):
         if not validated_data.get('phone'):
             validated_data['phone'] = getattr(user, 'phone', '') or '+91 98765 43210'
         return CustomerAddress.objects.create(user=user, **validated_data)
+
+    def update(self, instance, validated_data):
+        addr_line = validated_data.pop('address_line', None)
+        landmark = validated_data.pop('landmark', None)
+        if addr_line is not None:
+            instance.address_line1 = addr_line
+        if landmark is not None:
+            instance.address_line2 = landmark
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
