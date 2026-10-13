@@ -45,6 +45,7 @@ export const AdminDashboardPage = () => {
     setAdminTab, 
     setIsCreateOrderDrawerOpen, 
     setIsAddCustomerModalOpen, 
+    setIsAddServiceModalOpen,
     setIsManageServicesModalOpen 
   } = useAdmin();
 
@@ -762,14 +763,14 @@ export const AdminDashboardPage = () => {
 
             <button 
               className="quick-action-btn-item" 
-              onClick={() => setIsAddCustomerModalOpen(true)}
+              onClick={() => setIsAddServiceModalOpen(true)}
             >
               <div className="quick-action-icon-circle">
-                <UserPlus size={22} color="#0D7A75" strokeWidth={2.2} />
+                <Tag size={22} color="#0D7A75" strokeWidth={2.2} />
               </div>
               <div className="quick-action-text-content">
-                <strong className="quick-action-title">Add Customer</strong>
-                <span className="quick-action-desc">Create a new customer</span>
+                <strong className="quick-action-title">Add Service</strong>
+                <span className="quick-action-desc">Add a new laundry service</span>
               </div>
               <div className="quick-action-chevron-circle">
                 <ChevronRight size={17} strokeWidth={2.2} />
