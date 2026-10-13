@@ -1,19 +1,30 @@
 import React, { useState } from 'react';
 import { useBooking } from '../../context/BookingContext';
 import { 
+  PRICING_CATEGORIES, 
+  PRICING_SUBCATEGORIES, 
+  getCategoryItems 
+} from '../../data/pricingData';
+import { 
   Tag, 
   Shirt, 
-  BedDouble, 
+  Layers, 
   Sparkles, 
-  Wind, 
+  Flame, 
+  Zap, 
+  User, 
+  Baby, 
+  Home, 
+  ChevronDown, 
+  Search, 
+  X, 
   Plus, 
   Minus, 
   ArrowRight, 
   CheckCircle2, 
   Truck, 
   ShieldCheck, 
-  Leaf,
-  Zap 
+  Leaf 
 } from 'lucide-react';
 
 const HangerIcon = ({ size = 20, color = '#087F8C' }) => (
@@ -48,89 +59,48 @@ const IronIcon = ({ size = 20, color = '#087F8C' }) => (
   </svg>
 );
 
-const CurtainIcon = ({ size = 20, color = '#087F8C' }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={color}
-    strokeWidth="2.2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M3 4h18" />
-    <path d="M4 4v16c0-3.5 2.5-5 4-5s4 1.5 4 5V4" />
-    <path d="M20 4v16c0-3.5-2.5-5-4-5s-4 1.5-4 5V4" />
-  </svg>
-);
-
-const BlanketIcon = ({ size = 20, color = '#087F8C' }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={color}
-    strokeWidth="2.2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="6" width="18" height="5" rx="2.5" />
-    <rect x="3" y="13" width="18" height="5" rx="2.5" />
-  </svg>
-);
-
 export const PricingCalculator = () => {
   const bookingCtx = useBooking() || {};
   const startBooking = bookingCtx.startBooking || (() => {
     if (typeof window !== 'undefined') window.location.hash = 'booking';
   });
 
-  // Static Popular Flat Rates (Matching Reference Design)
-  const flatRates = [
-    { 
-      id: 1, 
-      title: 'Wash & Fold', 
-      desc: 'Everyday clothes, fresh and clean.', 
-      price: '₹ 85 / kg', 
-      icon: <Shirt size={20} strokeWidth={2.2} /> 
-    },
-    { 
-      id: 2, 
-      title: 'Wash & Iron', 
-      desc: 'Cleaned and neatly ironed.', 
-      price: '₹ 120 / kg', 
-      icon: <IronIcon size={20} color="#087F8C" /> 
-    },
-    { 
-      id: 3, 
-      title: 'Dry Cleaning', 
-      desc: 'For premium and delicate fabrics.', 
-      price: '₹ 120 / item', 
-      icon: <HangerIcon size={20} color="#087F8C" /> 
-    },
-    { 
-      id: 4, 
-      title: 'Steam Iron', 
-      desc: 'Quick and perfect finish.', 
-      price: '₹ 20 / item', 
-      icon: <IronIcon size={20} color="#087F8C" /> 
-    },
-    { 
-      id: 5, 
-      title: 'Express Laundry', 
-      desc: 'Superfast 24-hour turnaround for urgent laundry care.', 
-      price: '₹ 200 / item', 
-      icon: <Zap size={20} color="#087F8C" strokeWidth={2.2} /> 
+  // State 1: Active Main Category ('wash-fold' | 'wash-iron' | 'dry-cleaning' | 'steam-iron' | 'express-laundry' | null)
+  const [activeCategory, setActiveCategory] = useState('wash-fold');
+
+  // State 2: Active Subcategory ('men' | 'women' | 'kids' | 'household' | null)
+  const [activeSubcategory, setActiveSubcategory] = useState(null);
+
+  // State 3: Search filter for clothing items within active subcategory
+  const [itemSearchQuery, setItemSearchQuery] = useState('');
+
+  // Handle Main Category click
+  const handleCategoryClick = (catId) => {
+    if (activeCategory === catId) {
+      setActiveCategory(null);
+      setActiveSubcategory(null);
+    } else {
+      setActiveCategory(catId);
+      setActiveSubcategory(null); // Rule 8: Switching category closes any open subcategory
     }
-  ];
+    setItemSearchQuery('');
+  };
+
+  // Handle Subcategory click
+  const handleSubcategoryClick = (subId) => {
+    if (activeSubcategory === subId) {
+      setActiveSubcategory(null); // Rule 9: Clicking currently open collapses it
+    } else {
+      setActiveSubcategory(subId); // Rule 4-7 & 10: Opens selected, closes others
+    }
+    setItemSearchQuery('');
+  };
 
   // Dynamic Estimator Items
   const [estimatorItems, setEstimatorItems] = useState([
     { id: 'wash-fold', name: 'Wash & Fold (kg)', rate: 85, unit: 'kg', count: 2, icon: <Shirt size={18} strokeWidth={2.2} /> },
-    { id: 'dry-cleaning', name: 'Dry Cleaning (pieces)', rate: 120, unit: 'item', count: 1, icon: <HangerIcon size={18} color="#087F8C" /> },
-    { id: 'steam-iron', name: 'Steam Iron (pieces)', rate: 20, unit: 'item', count: 1, icon: <IronIcon size={18} color="#087F8C" /> }
+    { id: 'wash-iron', name: 'Wash & Iron (kg)', rate: 120, unit: 'kg', count: 1, icon: <IronIcon size={18} color="#087F8C" /> },
+    { id: 'express-laundry', name: 'Express Laundry (items)', rate: 200, unit: 'item', count: 1, icon: <Zap size={18} color="#087F8C" strokeWidth={2.2} /> }
   ]);
 
   const updateCount = (id, delta) => {
@@ -145,6 +115,36 @@ export const PricingCalculator = () => {
 
   const subtotal = estimatorItems.reduce((sum, item) => sum + (item.count * item.rate), 0);
 
+  // Helper for Category Icon
+  const renderCategoryIcon = (iconName) => {
+    switch (iconName) {
+      case 'Shirt': return <Shirt size={20} strokeWidth={2.2} />;
+      case 'Layers': return <IronIcon size={20} color="#087F8C" />;
+      case 'Sparkles': return <HangerIcon size={20} color="#087F8C" />;
+      case 'Flame': return <IronIcon size={20} color="#087F8C" />;
+      case 'Zap': return <Zap size={20} color="#087F8C" strokeWidth={2.2} />;
+      default: return <Shirt size={20} strokeWidth={2.2} />;
+    }
+  };
+
+  // Helper for Subcategory Icon
+  const renderSubcategoryIcon = (iconName) => {
+    switch (iconName) {
+      case 'User': return <User size={15} strokeWidth={2.2} />;
+      case 'Sparkles': return <Sparkles size={15} strokeWidth={2.2} />;
+      case 'Baby': return <Baby size={15} strokeWidth={2.2} />;
+      case 'Home': return <Home size={15} strokeWidth={2.2} />;
+      default: return <Tag size={15} strokeWidth={2.2} />;
+    }
+  };
+
+  // Active items for current category + subcategory
+  const activeItems = (activeCategory && activeSubcategory)
+    ? getCategoryItems(activeCategory, activeSubcategory).filter(item =>
+        item.name.toLowerCase().includes(itemSearchQuery.trim().toLowerCase())
+      )
+    : [];
+
   return (
     <section className="pricing-section" id="pricing-section">
       <div className="container">
@@ -158,39 +158,177 @@ export const PricingCalculator = () => {
             No Hidden Fees. <span className="highlight">Pure Transparency.</span>
           </h2>
           <p className="pricing-subtitle">
-            Estimate your laundry cost instantly with simple, transparent pricing.
+            Explore our item-wise laundry prices by category and subcategory, or calculate your estimated pickup total.
           </p>
         </div>
 
         {/* Two-Column Grid */}
         <div className="pricing-two-col-grid">
-          {/* Left Column: Popular Flat Rates */}
+          {/* Left Column: Interactive Categories & Subcategories */}
           <div className="flat-rates-col">
             <div className="flat-rates-header">
-              <h3 className="flat-rates-title">Popular Flat Rates</h3>
+              <h3 className="flat-rates-title">Service Categories &amp; Item Prices</h3>
               <p className="flat-rates-sub">
-                Quality cleaning at honest prices. Here are our most chosen services in Bangalore.
+                Click any main category to view subcategories (Men, Women, Kids, Household) and expand clothing items.
               </p>
             </div>
 
+            {/* 5 Main Categories Accordion List */}
             <div className="flat-rates-list">
-              {flatRates.map(rate => (
-                <div key={rate.id} className="flat-rate-card">
-                  <div className="rate-card-left">
-                    <div className="rate-icon-box">
-                      {rate.icon}
+              {PRICING_CATEGORIES.map(category => {
+                const isCatOpen = activeCategory === category.id;
+                return (
+                  <div 
+                    key={category.id} 
+                    className={`flat-rate-card ${isCatOpen ? 'category-expanded' : ''}`}
+                  >
+                    {/* Main Category Header Button */}
+                    <div
+                      className="category-header-row"
+                      onClick={() => handleCategoryClick(category.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleCategoryClick(category.id); } }}
+                      aria-expanded={isCatOpen}
+                    >
+                      <div className="rate-card-left">
+                        <div className="rate-icon-box">
+                          {renderCategoryIcon(category.icon)}
+                        </div>
+                        <div>
+                          <h4 className="rate-text-title">{category.name}</h4>
+                          <p className="rate-text-desc">{category.desc}</p>
+                        </div>
+                      </div>
+                      <div className="category-header-right">
+                        {category.isPriceEnabled && category.rateBadge && (
+                          <span className="rate-price-tag">{category.rateBadge}</span>
+                        )}
+                        <div className={`category-toggle-circle ${isCatOpen ? 'open' : ''}`}>
+                          <ChevronDown size={17} strokeWidth={2.4} />
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="rate-text-title">{rate.title}</h4>
-                      <p className="rate-text-desc">{rate.desc}</p>
-                    </div>
+
+                    {/* Subcategories & Items Container (Underneath Main Category) */}
+                    {isCatOpen && (
+                      <div className="subcategories-panel animate-fade-in">
+                        <div className="subcategories-instruction">
+                          <span>Select a subcategory:</span>
+                        </div>
+
+                        {/* 4 Subcategories Pills: Men, Women, Kids, Household */}
+                        <div className="subcategories-pill-row">
+                          {PRICING_SUBCATEGORIES.map(sub => {
+                            const isSubOpen = activeSubcategory === sub.id;
+                            return (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                className={`sub-pill-btn ${isSubOpen ? 'active' : ''}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSubcategoryClick(sub.id);
+                                }}
+                                aria-expanded={isSubOpen}
+                              >
+                                <span className="sub-pill-icon">{renderSubcategoryIcon(sub.icon)}</span>
+                                <span className="sub-pill-name">{sub.name}</span>
+                                <ChevronDown 
+                                  size={13} 
+                                  className={`sub-pill-chevron ${isSubOpen ? 'open' : ''}`} 
+                                />
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Expandable Clothing Items List for Active Subcategory */}
+                        {activeSubcategory && (
+                          <div className="items-dropdown-container animate-fade-in">
+                            {/* Subcategory Heading & Search Bar */}
+                            <div className="items-dropdown-toolbar">
+                              <div className="items-toolbar-left">
+                                <span className="items-toolbar-title">
+                                  {PRICING_SUBCATEGORIES.find(s => s.id === activeSubcategory)?.name} Items
+                                </span>
+                                <span className="items-count-badge">
+                                  {activeItems.length} items
+                                </span>
+                              </div>
+
+                              <div className="items-search-box">
+                                <Search size={13} className="search-icon" />
+                                <input
+                                  type="text"
+                                  className="search-input"
+                                  placeholder={`Search ${PRICING_SUBCATEGORIES.find(s => s.id === activeSubcategory)?.name} items...`}
+                                  value={itemSearchQuery}
+                                  onChange={(e) => setItemSearchQuery(e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                {itemSearchQuery && (
+                                  <button
+                                    type="button"
+                                    className="search-clear-btn"
+                                    onClick={(e) => { e.stopPropagation(); setItemSearchQuery(''); }}
+                                  >
+                                    <X size={11} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Service Notice for Dry Cleaning & Steam Iron */}
+                            {!category.isPriceEnabled && (
+                              <div className="category-inspection-notice">
+                                <Sparkles size={14} color="#087F8C" />
+                                <span>Prices for {category.name} are provided upon physical garment inspection. Individual services are fully available for all items below.</span>
+                              </div>
+                            )}
+
+                            {/* Clothing Items Table / List */}
+                            <div className="items-scroll-list">
+                              {activeItems.length > 0 ? (
+                                <div className="items-table-grid">
+                                  {activeItems.map((item) => (
+                                    <div key={item.id} className="item-row">
+                                      <div className="item-row-left">
+                                        <span className="item-bullet"></span>
+                                        <span className="item-name">{item.name}</span>
+                                        <span className="item-unit-label">({item.unit})</span>
+                                      </div>
+
+                                      <div className="item-row-right">
+                                        {item.isPriceEnabled ? (
+                                          <div className="item-price-pill">
+                                            <span className="price-symbol">₹</span>
+                                            <span className="price-number">{item.price}</span>
+                                            <span className="price-unit">/{item.unit}</span>
+                                          </div>
+                                        ) : (
+                                          <div className="item-available-pill">
+                                            <CheckCircle2 size={13} strokeWidth={2.4} />
+                                            <span>Available</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="items-empty-state">
+                                  <p>No items found matching "{itemSearchQuery}".</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="rate-price-tag">
-                    {rate.prefix && <span className="prefix">{rate.prefix}</span>}
-                    {rate.price}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -347,7 +485,7 @@ export const PricingCalculator = () => {
           align-items: start;
         }
 
-        /* Left Column: Popular Flat Rates */
+        /* Left Column: Categories & Subcategories */
         .flat-rates-header {
           margin-bottom: 20px;
         }
@@ -365,36 +503,50 @@ export const PricingCalculator = () => {
           font-size: 13.5px;
           color: #64748B;
           margin: 0;
+          line-height: 1.5;
         }
 
         .flat-rates-list {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 14px;
         }
 
+        /* Main Category Card */
         .flat-rate-card {
           background: #FFFFFF;
           border: 1px solid #E6EEF0;
           border-radius: 18px;
           padding: 16px 20px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
           box-shadow: 0 4px 14px rgba(18, 38, 58, 0.02);
-          transition: all 0.2s ease;
+          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .flat-rate-card:hover {
           border-color: #B2E5E0;
           box-shadow: 0 8px 24px rgba(8, 127, 140, 0.08);
-          transform: translateY(-2px);
+        }
+
+        .flat-rate-card.category-expanded {
+          border-color: #087F8C;
+          box-shadow: 0 10px 28px rgba(8, 127, 140, 0.1);
+          background: #FDFFFF;
+        }
+
+        .category-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          cursor: pointer;
+          user-select: none;
+          gap: 16px;
         }
 
         .rate-card-left {
           display: flex;
           align-items: center;
           gap: 16px;
+          flex: 1;
         }
 
         .rate-icon-box {
@@ -411,7 +563,7 @@ export const PricingCalculator = () => {
 
         .rate-text-title {
           font-family: 'Poppins', sans-serif;
-          font-size: 15.5px;
+          font-size: 16px;
           font-weight: 700;
           color: #12263A;
           margin: 0 0 3px;
@@ -422,22 +574,333 @@ export const PricingCalculator = () => {
           font-size: 13px;
           color: #64748B;
           margin: 0;
+          line-height: 1.4;
+        }
+
+        .category-header-right {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-shrink: 0;
         }
 
         .rate-price-tag {
           font-family: 'Poppins', sans-serif;
-          font-size: 17px;
+          font-size: 14.5px;
           font-weight: 700;
           color: #087F8C;
           white-space: nowrap;
+          background: #E8F7F5;
+          padding: 4px 12px;
+          border-radius: 8px;
         }
 
-        .rate-price-tag .prefix {
+        .category-toggle-circle {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: #F1F8F7;
+          color: #087F8C;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: transform 0.25s ease, background 0.25s ease, color 0.25s ease;
+        }
+
+        .category-toggle-circle.open {
+          transform: rotate(180deg);
+          background: #087F8C;
+          color: #FFFFFF;
+        }
+
+        /* Subcategories Panel */
+        .subcategories-panel {
+          margin-top: 16px;
+          padding-top: 16px;
+          border-top: 1px dashed #D5EBE7;
+        }
+
+        .subcategories-instruction {
+          font-family: 'Poppins', sans-serif;
+          font-size: 12px;
+          font-weight: 600;
+          color: #087F8C;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 10px;
+        }
+
+        .subcategories-pill-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+          margin-bottom: 14px;
+        }
+
+        .sub-pill-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 9px 12px;
+          border-radius: 10px;
+          border: 1px solid #CDECE7;
+          background: #F4FBFA;
+          color: #164E4D;
+          font-family: 'Poppins', sans-serif;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+        }
+
+        .sub-pill-btn:hover {
+          background: #E1F6F3;
+          border-color: #087F8C;
+        }
+
+        .sub-pill-btn.active {
+          background: #0D7A75;
+          color: #FFFFFF;
+          border-color: #0D7A75;
+          box-shadow: 0 4px 12px rgba(13, 122, 117, 0.25);
+        }
+
+        .sub-pill-icon {
+          display: flex;
+          align-items: center;
+        }
+
+        .sub-pill-chevron {
+          transition: transform 0.2s ease;
+        }
+
+        .sub-pill-chevron.open {
+          transform: rotate(180deg);
+        }
+
+        /* Items Dropdown Box */
+        .items-dropdown-container {
+          background: #F8FCFB;
+          border: 1px solid #BCE5DF;
+          border-radius: 14px;
+          padding: 16px 18px;
+          box-shadow: inset 0 2px 6px rgba(8, 127, 140, 0.03);
+        }
+
+        .items-dropdown-toolbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+
+        .items-toolbar-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .items-toolbar-title {
+          font-family: 'Poppins', sans-serif;
+          font-size: 14px;
+          font-weight: 700;
+          color: #12263A;
+        }
+
+        .items-count-badge {
+          background: #DEF5F2;
+          color: #087F8C;
+          font-family: 'Inter', sans-serif;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 999px;
+        }
+
+        .items-search-box {
+          position: relative;
+          display: flex;
+          align-items: center;
+          width: 220px;
+        }
+
+        .search-icon {
+          position: absolute;
+          left: 10px;
+          color: #8FA4B0;
+          pointer-events: none;
+        }
+
+        .search-input {
+          width: 100%;
+          height: 32px;
+          border-radius: 20px;
+          border: 1px solid #D1EAE5;
+          background: #FFFFFF;
+          padding: 0 28px 0 30px;
           font-family: 'Inter', sans-serif;
           font-size: 12px;
+          color: #12263A;
+          outline: none;
+          transition: border-color 0.2s ease;
+        }
+
+        .search-input:focus {
+          border-color: #087F8C;
+          box-shadow: 0 0 0 3px rgba(8, 127, 140, 0.12);
+        }
+
+        .search-clear-btn {
+          position: absolute;
+          right: 8px;
+          background: none;
+          border: none;
+          color: #8FA4B0;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          padding: 2px;
+        }
+
+        .category-inspection-notice {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: #EFF9F8;
+          border-left: 3px solid #087F8C;
+          padding: 8px 12px;
+          border-radius: 6px;
+          font-family: 'Inter', sans-serif;
+          font-size: 12px;
+          color: #08535E;
+          margin-bottom: 12px;
+          line-height: 1.4;
+        }
+
+        .items-scroll-list {
+          max-height: 340px;
+          overflow-y: auto;
+          padding-right: 4px;
+        }
+
+        .items-scroll-list::-webkit-scrollbar {
+          width: 5px;
+        }
+
+        .items-scroll-list::-webkit-scrollbar-track {
+          background: #EEF8F6;
+          border-radius: 10px;
+        }
+
+        .items-scroll-list::-webkit-scrollbar-thumb {
+          background: #99DDD3;
+          border-radius: 10px;
+        }
+
+        .items-table-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .item-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 12px;
+          background: #FFFFFF;
+          border: 1px solid #EBF4F2;
+          border-radius: 10px;
+          transition: background 0.15s ease, border-color 0.15s ease;
+        }
+
+        .item-row:hover {
+          background: #F4FBFA;
+          border-color: #CDECE7;
+        }
+
+        .item-row-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex: 1;
+        }
+
+        .item-bullet {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: #087F8C;
+          flex-shrink: 0;
+        }
+
+        .item-name {
+          font-family: 'Poppins', sans-serif;
+          font-size: 13.5px;
+          font-weight: 600;
+          color: #12263A;
+        }
+
+        .item-unit-label {
+          font-family: 'Inter', sans-serif;
+          font-size: 11.5px;
+          color: #8FA4B0;
+        }
+
+        .item-row-right {
+          flex-shrink: 0;
+        }
+
+        .item-price-pill {
+          display: inline-flex;
+          align-items: baseline;
+          gap: 2px;
+          background: #E8F7F5;
+          color: #087F8C;
+          padding: 3px 10px;
+          border-radius: 8px;
+          font-family: 'Poppins', sans-serif;
+        }
+
+        .price-symbol {
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .price-number {
+          font-size: 14.5px;
+          font-weight: 700;
+        }
+
+        .price-unit {
+          font-size: 11px;
+          color: #556980;
           font-weight: 500;
-          color: #64748B;
-          margin-right: 4px;
+        }
+
+        .item-available-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          background: #E8F7F5;
+          color: #0D7A75;
+          font-family: 'Inter', sans-serif;
+          font-size: 12px;
+          font-weight: 600;
+          padding: 3px 10px;
+          border-radius: 8px;
+        }
+
+        .items-empty-state {
+          text-align: center;
+          padding: 24px 0;
+          color: #8FA4B0;
+          font-family: 'Inter', sans-serif;
+          font-size: 13px;
         }
 
         /* Right Column: Instant Estimator Card */
@@ -655,6 +1118,9 @@ export const PricingCalculator = () => {
           .estimator-card {
             position: static;
           }
+          .subcategories-pill-row {
+            grid-template-columns: repeat(2, 1fr);
+          }
         }
 
         @media (max-width: 640px) {
@@ -667,6 +1133,16 @@ export const PricingCalculator = () => {
           .estimator-trust-row {
             grid-template-columns: 1fr;
             gap: 8px;
+          }
+          .subcategories-pill-row {
+            grid-template-columns: 1fr 1fr;
+          }
+          .items-search-box {
+            width: 100%;
+          }
+          .items-dropdown-toolbar {
+            flex-direction: column;
+            align-items: flex-start;
           }
         }
       `}</style>
