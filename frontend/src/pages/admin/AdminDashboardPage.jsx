@@ -178,6 +178,8 @@ export const AdminDashboardPage = () => {
       : [40, 30, 20, 10, 0];
   }, [chartTimeframe]);
 
+  const scaleMax = chartTimeframe === '30d' ? 80 : 40;
+
   const getAvatarStyle = (avatar) => {
     switch (avatar) {
       case 'RM': return { background: '#E0F2FE', color: '#0284C7' }; // Soft Sky Blue
