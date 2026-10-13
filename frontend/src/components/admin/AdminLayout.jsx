@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 export const AdminLayout = ({ children }) => {
-  const { adminTab, setAdminTab, setIsAdminAuthenticated } = useAdmin();
+  const { adminTab, setAdminTab, setIsAdminAuthenticated, settings } = useAdmin();
   const { navigateTo } = useBooking();
   const { userProfile, currentUser, logout } = useAuth();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -148,11 +148,11 @@ export const AdminLayout = ({ children }) => {
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
               >
                 <div className="admin-avatar">
-                  {(userProfile?.displayName || currentUser?.displayName || 'A').substring(0, 1).toUpperCase()}
+                  {(settings?.name || userProfile?.displayName || currentUser?.displayName || 'A').substring(0, 1).toUpperCase()}
                 </div>
                 <div className="admin-user-info">
-                  <span className="admin-name">{userProfile?.displayName || currentUser?.displayName || 'Admin'}</span>
-                  <span className="admin-org">FabriCare</span>
+                  <span className="admin-name">{settings?.name || userProfile?.displayName || currentUser?.displayName || 'Admin'}</span>
+                  <span className="admin-org">Laundrix</span>
                 </div>
                 <ChevronDown size={14} className="profile-chevron" />
               </div>
@@ -160,8 +160,8 @@ export const AdminLayout = ({ children }) => {
               {profileDropdownOpen && (
                 <div className="profile-dropdown-menu animate-fade-in">
                   <div className="dropdown-header">
-                    <strong>{userProfile?.displayName || currentUser?.displayName || 'Admin User'}</strong>
-                    <span>{currentUser?.email || 'admin@fabricare.com'}</span>
+                    <strong>{settings?.name || userProfile?.displayName || currentUser?.displayName || 'Admin'}</strong>
+                    <span>{settings?.email || currentUser?.email || 'admin@laundrix.com'}</span>
                   </div>
                   <div className="dropdown-divider" />
                   <button 
@@ -403,9 +403,9 @@ export const AdminLayout = ({ children }) => {
 
         .notification-bell-btn {
           position: relative;
-          width: 40px;
-          height: 40px;
-          border-radius: 10px;
+          width: 42px;
+          height: 42px;
+          border-radius: 50%;
           border: 1px solid #E2E8F0;
           display: flex;
           align-items: center;

@@ -300,63 +300,135 @@ export const INITIAL_CUSTOMERS = [
 export const INITIAL_SERVICES_ADMIN = [
   {
     id: 1,
-    name: 'Wash & Fold',
-    description: 'Everyday clothing & casual wear',
+    name: 'Shirt',
+    description: 'Regular shirt cleaning and pressing',
     category: 'Wash & Fold',
-    price: 160,
-    turnaround: '24–48 hrs',
+    price: 80,
+    turnaround: '1–2 days',
     status: 'Active',
-    icon: 'Shirt'
+    icon: 'Shirt',
+    type: 'Standard'
   },
   {
     id: 2,
-    name: 'Wash & Iron',
-    description: 'Wash and steam iron care',
-    category: 'Wash & Iron',
-    price: 180,
-    turnaround: '24–48 hrs',
+    name: 'Jeans',
+    description: 'Denim washing and care',
+    category: 'Wash & Fold',
+    price: 120,
+    turnaround: '1–2 days',
     status: 'Active',
-    icon: 'Iron'
+    icon: 'Jeans',
+    type: 'Standard'
   },
   {
     id: 3,
-    name: 'Dry Cleaning',
-    description: 'Premium dry cleaning for delicate wear',
-    category: 'Dry Cleaning',
-    price: 240,
-    turnaround: '48–72 hrs',
+    name: 'T-Shirt',
+    description: 'Regular wash and fold',
+    category: 'Wash & Fold',
+    price: 70,
+    turnaround: '1–2 days',
     status: 'Active',
-    icon: 'Hanger'
+    icon: 'TShirt',
+    type: 'Standard'
   },
   {
     id: 4,
-    name: 'Steam Iron',
-    description: 'Professional steam pressing',
-    category: 'Steam Iron',
-    price: 150,
-    turnaround: '24 hrs',
+    name: 'Formal Suit',
+    description: 'Professional dry cleaning',
+    category: 'Dry Cleaning',
+    price: 250,
+    turnaround: '2–3 days',
     status: 'Active',
-    icon: 'Iron'
+    icon: 'Suit',
+    type: 'Premium'
   },
   {
     id: 5,
-    name: 'Shoe Laundry',
-    description: 'Deep cleaning for all types of footwear',
-    category: 'Shoe Laundry',
-    price: 200,
-    turnaround: '48–72 hrs',
+    name: 'Saree',
+    description: 'Special fabric care with dry cleaning',
+    category: 'Dry Cleaning',
+    price: 220,
+    turnaround: '2–3 days',
     status: 'Active',
-    icon: 'Footprints'
+    icon: 'Saree',
+    type: 'Premium'
   },
   {
     id: 6,
-    name: 'Home Care',
-    description: 'Curtains, bedsheets, blankets & linen',
-    category: 'Home Care',
+    name: 'Bedsheet (Single)',
+    description: 'Wash, dry and fold',
+    category: 'Steam Ironing',
+    price: 90,
+    turnaround: '1–2 days',
+    status: 'Active',
+    icon: 'Bedsheet',
+    type: 'Standard'
+  },
+  {
+    id: 7,
+    name: 'Blanket',
+    description: 'Deep cleaning and sanitization',
+    category: 'Special Care',
     price: 300,
-    turnaround: '48–72 hrs',
+    turnaround: '2–3 days',
     status: 'Inactive',
-    icon: 'Home'
+    icon: 'Blanket',
+    type: 'Premium'
+  },
+  {
+    id: 8,
+    name: 'Curtain (Per Piece)',
+    description: 'Dry cleaning and freshening',
+    category: 'Special Care',
+    price: 180,
+    turnaround: '2–3 days',
+    status: 'Active',
+    icon: 'Curtain',
+    type: 'Standard'
+  },
+  {
+    id: 9,
+    name: 'Silk Saree',
+    description: 'Delicate fabric dry cleaning',
+    category: 'Special Care',
+    price: 450,
+    turnaround: '2–3 days',
+    status: 'Active',
+    icon: 'Saree',
+    type: 'Premium'
+  },
+  {
+    id: 10,
+    name: 'Winter Jacket',
+    description: 'Heavy wool dry cleaning & sanitization',
+    category: 'Dry Cleaning',
+    price: 550,
+    turnaround: '3–4 days',
+    status: 'Active',
+    icon: 'Suit',
+    type: 'Premium'
+  },
+  {
+    id: 11,
+    name: 'Carpet Cleaning',
+    description: 'Deep steam sanitization & stain removal',
+    category: 'Special Care',
+    price: 850,
+    turnaround: '3–4 days',
+    status: 'Inactive',
+    icon: 'Blanket',
+    type: 'Premium'
+  },
+  {
+    id: 12,
+    name: 'Cushion Covers',
+    description: 'Gentle wash and steam press',
+    category: 'Wash & Fold',
+    price: 680,
+    turnaround: '1–2 days',
+    status: 'Active',
+    icon: 'Bedsheet',
+    type: 'Standard'
   }
 ];
 
@@ -442,7 +514,16 @@ export const AdminProvider = ({ children }) => {
 
   // Data Store
   const [orders, setOrders] = useState(INITIAL_ORDERS);
-  const [customers, setCustomers] = useState(INITIAL_CUSTOMERS);
+  const [customers, setCustomers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_customers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return INITIAL_CUSTOMERS;
+  });
   const [services, setServices] = useState(INITIAL_SERVICES_ADMIN);
   const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
   const [faqs, setFaqs] = useState(INITIAL_FAQS_ADMIN);
@@ -452,24 +533,33 @@ export const AdminProvider = ({ children }) => {
   });
 
   // Settings
-  const [settings, setSettings] = useState({
-    name: 'Admin',
-    email: 'admin@fabricare.com',
-    phone: '+91 98765 43210',
-    role: 'Administrator',
-    supportEmail: 'support@fabricare.com',
-    supportPhone: '+91 98765 43210',
-    websiteUrl: 'https://www.fabricare.com',
-    instagram: 'https://instagram.com/fabricare',
-    facebook: 'https://facebook.com/fabricare',
-    twitter: 'https://x.com/fabricare',
-    linkedin: 'https://linkedin.com/company/fabricare',
-    notifications: {
-      newOrders: true,
-      customerMessages: true,
-      pickupDelivery: true,
-      systemAnnouncements: false
-    }
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_settings');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return {
+      name: 'Admin',
+      email: 'admin@laundrix.com',
+      phone: '+91 98765 43210',
+      role: 'Administrator',
+      supportEmail: 'support@laundrix.com',
+      supportPhone: '+91 98765 43210',
+      websiteUrl: 'https://www.laundrix.com',
+      instagram: 'https://instagram.com/laundrix',
+      facebook: 'https://facebook.com/laundrix',
+      twitter: 'https://x.com/laundrix',
+      linkedin: 'https://linkedin.com/company/laundrix',
+      photoUrl: '',
+      notifications: {
+        newOrders: true,
+        customerMessages: true,
+        pickupDelivery: true,
+        systemAnnouncements: false
+      }
+    };
   });
 
   // Initialize Firestore Sync & Seeding
@@ -527,20 +617,58 @@ export const AdminProvider = ({ children }) => {
   }, []);
 
   const addCustomer = async (customerData) => {
+    const rawName = (customerData.name || 'New Customer').trim();
+    const initials = rawName
+      .split(/\s+/)
+      .map(n => n[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase() || 'NC';
+
+    const addressParts = [
+      customerData.address1,
+      customerData.address2,
+      customerData.area,
+      customerData.city || 'Bengaluru',
+      customerData.pincode
+    ].filter(Boolean);
+
+    const locationString = addressParts.length > 0 
+      ? addressParts.join(', ')
+      : (customerData.area ? `${customerData.area}, Bengaluru ${customerData.pincode || ''}` : 'Bengaluru');
+
     const newCust = {
       id: `#CUS${Math.floor(1000 + Math.random() * 9000)}`,
-      name: customerData.name || 'New Customer',
+      name: rawName.split(' ')[0] || rawName,
+      fullName: rawName,
       phone: customerData.phone || '+91 98765 00000',
-      email: customerData.email || 'customer@example.com',
-      avatar: (customerData.name || 'NC').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(),
-      location: customerData.area ? `${customerData.area}, Bengaluru ${customerData.pincode || ''}` : 'Bengaluru',
-      totalOrders: 1,
+      email: customerData.email || '',
+      whatsapp: customerData.whatsapp || customerData.phone || '',
+      address1: customerData.address1 || '',
+      address2: customerData.address2 || '',
+      city: customerData.city || 'Bengaluru',
+      area: customerData.area || 'HSR Layout',
+      pincode: customerData.pincode || '560043',
+      locationType: customerData.locationType || 'Home',
+      notes: customerData.notes || '',
+      avatar: initials,
+      avatarBg: '#E0F2FE',
+      avatarColor: '#0284C7',
+      location: locationString,
+      totalOrders: 0,
       totalSpent: '₹0',
       status: customerData.status !== undefined ? (customerData.status ? 'Active' : 'Inactive') : 'Active',
       joinDate: 'Today',
       joinRelative: 'Just now'
     };
-    setCustomers(prev => [newCust, ...prev]);
+
+    setCustomers(prev => {
+      const updated = [newCust, ...prev];
+      try {
+        localStorage.setItem('fabricare_admin_customers', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
     setIsAddCustomerModalOpen(false);
 
     try {
@@ -548,6 +676,8 @@ export const AdminProvider = ({ children }) => {
     } catch (err) {
       console.warn('Firestore addCustomer sync note:', err.message);
     }
+
+    return newCust;
   };
 
   const addService = async (serviceData) => {
@@ -663,6 +793,19 @@ export const AdminProvider = ({ children }) => {
 
   const updateSettings = async (newSettings) => {
     setSettings(newSettings);
+    try {
+      localStorage.setItem('fabricare_admin_settings', JSON.stringify(newSettings));
+      // Also update fabricare_user session if present
+      const savedUser = localStorage.getItem('fabricare_user') || sessionStorage.getItem('fabricare_user');
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        parsed.displayName = newSettings.name || parsed.displayName;
+        parsed.email = newSettings.email || parsed.email;
+        localStorage.setItem('fabricare_user', JSON.stringify(parsed));
+      }
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {}
+
     try {
       await saveFirestoreSettings(newSettings);
     } catch (err) {
