@@ -501,13 +501,68 @@ export const INITIAL_FAQS_ADMIN = [
 
 export const INITIAL_ADMIN_NOTIFICATIONS = [
   {
+    id: 'notif-fc-1',
+    type: 'order',
+    title: 'Order Placed Successfully',
+    desc: 'Your booking #FCEB0F4 has been received. Our team will review and assign pickup shortly.',
+    time: '13/10/2026, 1:44:58 pm',
+    timestamp: 1791888898000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#FCEB0F4' }
+  },
+  {
+    id: 'notif-fc-2',
+    type: 'order',
+    title: 'Order Placed Successfully',
+    desc: 'Your booking #FC88B84 has been received. Our team will review and assign pickup shortly.',
+    time: '13/10/2026, 1:14:23 pm',
+    timestamp: 1791887063000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#FC88B84' }
+  },
+  {
+    id: 'notif-fc-3',
+    type: 'order',
+    title: 'Order Placed Successfully',
+    desc: 'Your booking #FC9E22B has been received. Our team will review and assign pickup shortly.',
+    time: '13/10/2026, 1:06:04 pm',
+    timestamp: 1791886564000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#FC9E22B' }
+  },
+  {
+    id: 'notif-fc-4',
+    type: 'order',
+    title: 'Order Placed Successfully',
+    desc: 'Your booking #FC2C5DB has been received. Our team will review and assign pickup shortly.',
+    time: '13/10/2026, 1:05:09 pm',
+    timestamp: 1791886509000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#FC2C5DB' }
+  },
+  {
+    id: 'notif-fc-5',
+    type: 'order',
+    title: 'Order Placed Successfully',
+    desc: 'Your booking #FC66E0E has been received. Our team will review and assign pickup shortly.',
+    time: '13/10/2026, 1:04:28 pm',
+    timestamp: 1791886468000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#FC66E0E' }
+  },
+  {
     id: 'notif-1',
     type: 'order',
     title: 'New Order #LDX10290 Placed',
     desc: 'Rohan Mehta placed a Pickup order for 4 items (Wash & Fold). Pickup scheduled for today, 09:00 AM – 11:00 AM.',
-    time: '5 mins ago',
+    time: '13/10/2026, 12:45:00 pm',
     timestamp: Date.now() - 5 * 60 * 1000,
-    unread: true,
+    unread: false,
     actionTab: 'orders',
     meta: { orderId: '#LDX1290', customer: 'Rohan Mehta' }
   },
@@ -516,55 +571,11 @@ export const INITIAL_ADMIN_NOTIFICATIONS = [
     type: 'driver',
     title: 'Driver Assigned to Order #LDX10289',
     desc: 'Ravi Kumar has been assigned for pickup at House #45, HRBR Layout. Status: Driver en route.',
-    time: '25 mins ago',
+    time: '13/10/2026, 12:20:00 pm',
     timestamp: Date.now() - 25 * 60 * 1000,
-    unread: true,
+    unread: false,
     actionTab: 'pickup-delivery',
     meta: { orderId: '#LDX1289', driver: 'Ravi Kumar' }
-  },
-  {
-    id: 'notif-3',
-    type: 'delivery',
-    title: 'Pickup Completed Successfully',
-    desc: 'Order #LDX10283 successfully collected from Indiranagar and transferred to processing hub.',
-    time: '1 hour ago',
-    timestamp: Date.now() - 60 * 60 * 1000,
-    unread: true,
-    actionTab: 'orders',
-    meta: { orderId: '#LDX10283' }
-  },
-  {
-    id: 'notif-4',
-    type: 'payment',
-    title: 'Online Payment Confirmed',
-    desc: '₹620 paid via UPI (Google Pay) for Order #LDX10284. Gateway transaction ID: TXN_8839201.',
-    time: '2 hours ago',
-    timestamp: Date.now() - 120 * 60 * 1000,
-    unread: false,
-    actionTab: 'orders',
-    meta: { orderId: '#LDX10284', amount: 620 }
-  },
-  {
-    id: 'notif-5',
-    type: 'customer',
-    title: 'New Customer Registered',
-    desc: 'Karan Verma (+91 97654 32100) registered a new account from Koramangala, Bengaluru.',
-    time: '4 hours ago',
-    timestamp: Date.now() - 240 * 60 * 1000,
-    unread: false,
-    actionTab: 'customers',
-    meta: { customer: 'Karan Verma' }
-  },
-  {
-    id: 'notif-6',
-    type: 'system',
-    title: 'Automated Daily Backup Completed',
-    desc: 'All customer records, active orders, and service catalogues were backed up successfully.',
-    time: 'Yesterday at 11:30 PM',
-    timestamp: Date.now() - 18 * 60 * 60 * 1000,
-    unread: false,
-    actionTab: 'settings',
-    meta: { status: 'success' }
   }
 ];
 

@@ -127,15 +127,19 @@ export const AdminServicesPage = () => {
   // Filtered Services
   const filteredServices = useMemo(() => {
     return services.filter(s => {
-      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
-      if (typeFilter !== 'all' && s.type && s.type !== typeFilter) return false;
-      if (categoryFilter !== 'all' && s.category !== categoryFilter) return false;
-      if (searchTerm) {
-        const query = searchTerm.toLowerCase();
-        const matchesName = s.name.toLowerCase().includes(query);
+      if (statusFilter !== 'all' && (s.status || '').toLowerCase() !== statusFilter.toLowerCase()) return false;
+      if (typeFilter !== 'all') {
+        const itemType = (s.type || (Number(s.price) > 200 ? 'Premium' : 'Standard')).toLowerCase();
+        if (itemType !== typeFilter.toLowerCase()) return false;
+      }
+      if (categoryFilter !== 'all' && (s.category || '').toLowerCase() !== categoryFilter.toLowerCase()) return false;
+      if (searchTerm && searchTerm.trim()) {
+        const query = searchTerm.toLowerCase().trim();
+        const matchesName = s.name?.toLowerCase().includes(query);
         const matchesDesc = s.description && s.description.toLowerCase().includes(query);
-        const matchesCat = s.category.toLowerCase().includes(query);
-        if (!matchesName && !matchesDesc && !matchesCat) return false;
+        const matchesCat = s.category?.toLowerCase().includes(query);
+        const matchesPrice = String(s.price).includes(query);
+        if (!matchesName && !matchesDesc && !matchesCat && !matchesPrice) return false;
       }
       return true;
     });
@@ -368,7 +372,7 @@ export const AdminServicesPage = () => {
       <div className="services-filters-row">
         {/* Search Input */}
         <div className="search-field-wrapper">
-          <Search size={18} className="search-field-icon" />
+          <Search size={18} strokeWidth={2} className="search-field-icon" />
           <input 
             type="text"
             className="search-field-input"
@@ -392,12 +396,13 @@ export const AdminServicesPage = () => {
                 setStatusFilter(e.target.value);
                 setCurrentPage(1);
               }}
+              aria-label="Filter by Status"
             >
               <option value="all">All Status</option>
               <option value="Active">Active</option>
               <option value="Inactive">Inactive</option>
             </select>
-            <ChevronDown size={16} className="select-picker-arrow" />
+            <ChevronDown size={14} strokeWidth={2} className="select-picker-arrow" />
           </div>
 
           {/* Type Dropdown */}
@@ -409,12 +414,14 @@ export const AdminServicesPage = () => {
                 setTypeFilter(e.target.value);
                 setCurrentPage(1);
               }}
+              aria-label="Filter by Type"
             >
               <option value="all">All Types</option>
               <option value="Standard">Standard</option>
               <option value="Premium">Premium</option>
+              <option value="Express">Express</option>
             </select>
-            <ChevronDown size={16} className="select-picker-arrow" />
+            <ChevronDown size={14} strokeWidth={2} className="select-picker-arrow" />
           </div>
 
           {/* Category Dropdown */}
@@ -426,6 +433,7 @@ export const AdminServicesPage = () => {
                 setCategoryFilter(e.target.value);
                 setCurrentPage(1);
               }}
+              aria-label="Filter by Category"
             >
               <option value="all">All Categories</option>
               <option value="Wash & Fold">Wash & Fold</option>
@@ -433,7 +441,7 @@ export const AdminServicesPage = () => {
               <option value="Steam Ironing">Steam Ironing</option>
               <option value="Special Care">Special Care</option>
             </select>
-            <ChevronDown size={16} className="select-picker-arrow" />
+            <ChevronDown size={14} strokeWidth={2} className="select-picker-arrow" />
           </div>
 
           {/* Reset Button */}
@@ -441,8 +449,9 @@ export const AdminServicesPage = () => {
             type="button" 
             className="btn-filter-reset"
             onClick={handleReset}
+            title="Reset filters and search"
           >
-            <RotateCcw size={16} />
+            <RotateCcw size={15} strokeWidth={2} />
             <span>Reset</span>
           </button>
         </div>
@@ -903,7 +912,7 @@ export const AdminServicesPage = () => {
         .services-filters-row {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-start;
           gap: 12px;
           margin-bottom: 24px;
           flex-wrap: wrap;
@@ -911,9 +920,9 @@ export const AdminServicesPage = () => {
 
         .search-field-wrapper {
           position: relative;
-          flex: 1;
-          min-width: 280px;
-          max-width: 420px;
+          width: 380px;
+          max-width: 100%;
+          flex-shrink: 0;
         }
 
         .search-field-icon {
@@ -927,20 +936,25 @@ export const AdminServicesPage = () => {
 
         .search-field-input {
           width: 100%;
-          height: 44px;
+          height: 42px;
           padding: 0 14px 0 42px;
           background: #FFFFFF;
-          border: 1px solid #CBD5E1;
+          border: 1px solid #E2E8F0;
           border-radius: 10px;
           font-size: 14px;
+          font-family: inherit;
           color: #0F172A;
           outline: none;
-          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .search-field-input:hover {
+          border-color: #CBD5E1;
         }
 
         .search-field-input:focus {
           border-color: #0D7A75;
-          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.1);
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.12);
         }
 
         .search-field-input::placeholder {
@@ -961,23 +975,30 @@ export const AdminServicesPage = () => {
         }
 
         .select-picker-input {
-          height: 44px;
+          height: 42px;
           padding: 0 36px 0 16px;
           background: #FFFFFF;
-          border: 1px solid #CBD5E1;
+          border: 1px solid #E2E8F0;
           border-radius: 10px;
           font-size: 14px;
-          color: #1E293B;
+          color: #0F172A;
           font-weight: 500;
+          font-family: inherit;
           appearance: none;
           -webkit-appearance: none;
           cursor: pointer;
           outline: none;
-          transition: border-color 0.15s ease;
+          transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .select-picker-input:hover {
+          background: #F8FAFC;
+          border-color: #CBD5E1;
         }
 
         .select-picker-input:focus {
           border-color: #0D7A75;
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.12);
         }
 
         .select-picker-arrow {
@@ -988,14 +1009,15 @@ export const AdminServicesPage = () => {
         }
 
         .btn-filter-reset {
-          height: 44px;
-          padding: 0 16px;
+          height: 42px;
+          padding: 0 18px;
           background: #FFFFFF;
-          border: 1px solid #CBD5E1;
+          border: 1px solid #E2E8F0;
           border-radius: 10px;
           font-size: 14px;
           font-weight: 500;
-          color: #334155;
+          font-family: inherit;
+          color: #0F172A;
           display: inline-flex;
           align-items: center;
           gap: 8px;
@@ -1005,7 +1027,11 @@ export const AdminServicesPage = () => {
 
         .btn-filter-reset:hover {
           background: #F8FAFC;
-          border-color: #94A3B8;
+          border-color: #CBD5E1;
+        }
+
+        .btn-filter-reset:active {
+          background: #F1F5F9;
         }
 
         /* Services Table Card */
@@ -1496,13 +1522,28 @@ export const AdminServicesPage = () => {
           .services-filters-row {
             flex-direction: column;
             align-items: stretch;
+            gap: 12px;
           }
           .search-field-wrapper {
+            width: 100%;
             max-width: none;
           }
           .filter-controls-group {
             width: 100%;
-            justify-content: space-between;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+          }
+          .select-picker-wrap {
+            flex: 1;
+            min-width: 140px;
+          }
+          .select-picker-input {
+            width: 100%;
+          }
+          .btn-filter-reset {
+            width: 100%;
+            justify-content: center;
           }
           .form-grid-2col {
             grid-template-columns: 1fr;

@@ -21,7 +21,8 @@ import {
   Check,
   ChevronRight,
   Eye,
-  EyeOff
+  EyeOff,
+  RotateCcw
 } from 'lucide-react';
 
 export const AdminNotificationsPage = () => {
@@ -42,6 +43,32 @@ export const AdminNotificationsPage = () => {
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    setTimeout(() => {
+      setIsRefreshing(false);
+      showToast('Notifications refreshed');
+    }, 600);
+  };
+
+  const formatNotifDateTime = (val, timestamp) => {
+    if (typeof val === 'string' && val.includes('/') && (val.includes('am') || val.includes('pm') || val.includes(':'))) {
+      return val;
+    }
+    const dateObj = timestamp ? new Date(timestamp) : new Date();
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    let hours = dateObj.getHours();
+    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+    const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'pm' : 'am';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds} ${ampm}`;
+  };
 
   // Broadcast modal form state
   const [broadcastForm, setBroadcastForm] = useState({
@@ -185,13 +212,35 @@ export const AdminNotificationsPage = () => {
       {/* Page Header */}
       <div className="notifs-header-row">
         <div>
-          <h1 className="notifs-main-title">Notifications</h1>
+          <span className="notifs-live-tag">LIVE UPDATES</span>
+          <h1 className="notifs-main-title">Notifications &amp; Activity</h1>
           <p className="notifs-subtitle">
-            Monitor real-time order alerts, driver dispatches, customer activity, and system notices.
+            Stay informed on order status changes, delivery alerts, and service updates
           </p>
         </div>
 
         <div className="notifs-header-actions">
+          <button 
+            type="button" 
+            className="notif-pill-btn notif-refresh-pill"
+            onClick={handleRefresh}
+          >
+            <RotateCcw size={14} className={isRefreshing ? 'spin-anim' : ''} />
+            <span>Refresh</span>
+          </button>
+
+          <button 
+            type="button" 
+            className="notif-pill-btn notif-mark-read-pill"
+            onClick={() => {
+              markAllNotificationsAsRead();
+              showToast('All notifications marked as read');
+            }}
+          >
+            <CheckCheck size={16} />
+            <span>Mark All Read</span>
+          </button>
+
           <button 
             type="button" 
             className="notif-btn notif-btn-primary"
@@ -200,20 +249,6 @@ export const AdminNotificationsPage = () => {
             <Megaphone size={16} />
             <span>Send Announcement</span>
           </button>
-
-          {unreadCount > 0 && (
-            <button 
-              type="button" 
-              className="notif-btn notif-btn-outline"
-              onClick={() => {
-                markAllNotificationsAsRead();
-                showToast('All notifications marked as read');
-              }}
-            >
-              <CheckCheck size={16} />
-              <span>Mark All Read</span>
-            </button>
-          )}
 
           {totalCount > 0 && (
             <button 
@@ -438,8 +473,8 @@ export const AdminNotificationsPage = () => {
                       className="notif-checkbox"
                     />
 
-                    <div className={`notif-type-icon-box ${notif.type}`}>
-                      {getTypeIcon(notif.type)}
+                    <div className="notif-card-teal-icon">
+                      <Bell size={18} color="#FFFFFF" strokeWidth={2.2} />
                     </div>
                   </div>
 
@@ -452,7 +487,7 @@ export const AdminNotificationsPage = () => {
                         <h3 className="notif-card-title">{notif.title}</h3>
                         {notif.unread && <span className="notif-card-dot" />}
                       </div>
-                      <span className="notif-card-time">{notif.time}</span>
+                      <span className="notif-card-time">{formatNotifDateTime(notif.time, notif.timestamp)}</span>
                     </div>
 
                     <p className="notif-card-desc">{notif.desc}</p>
@@ -497,7 +532,7 @@ export const AdminNotificationsPage = () => {
 
                     <button 
                       type="button" 
-                      className="notif-icon-action-btn"
+                      className={`notif-card-circle-check-btn ${notif.unread ? '' : 'checked'}`}
                       onClick={() => {
                         if (notif.unread) {
                           markNotificationAsRead(notif.id);
@@ -509,7 +544,7 @@ export const AdminNotificationsPage = () => {
                       }}
                       title={notif.unread ? 'Mark as read' : 'Mark as unread'}
                     >
-                      {notif.unread ? <Check size={16} /> : <EyeOff size={16} />}
+                      <Check size={15} strokeWidth={2.4} />
                     </button>
 
                     <button 
@@ -701,6 +736,16 @@ export const AdminNotificationsPage = () => {
           flex-wrap: wrap;
         }
 
+        .notifs-live-tag {
+          display: inline-block;
+          font-size: 11px;
+          font-weight: 800;
+          color: #0D7A75;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          margin-bottom: 4px;
+        }
+
         .notifs-main-title {
           font-size: 1.875rem;
           font-weight: 800;
@@ -721,6 +766,90 @@ export const AdminNotificationsPage = () => {
           align-items: center;
           gap: 12px;
           flex-wrap: wrap;
+        }
+
+        .notif-pill-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          font-weight: 600;
+          border-radius: 9999px;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          font-family: inherit;
+          white-space: nowrap;
+          background: #FFFFFF;
+        }
+
+        .notif-refresh-pill {
+          padding: 8px 16px;
+          border: 1px solid #CBD5E1;
+          color: #334155;
+        }
+
+        .notif-refresh-pill:hover {
+          background: #F8FAFC;
+          border-color: #94A3B8;
+          color: #0F172A;
+        }
+
+        .notif-mark-read-pill {
+          padding: 8px 18px;
+          border: 1.5px solid #0D7A75;
+          color: #0D7A75;
+        }
+
+        .notif-mark-read-pill:hover {
+          background: #F0FDFA;
+        }
+
+        .spin-anim {
+          animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .notif-card-teal-icon {
+          width: 42px;
+          height: 42px;
+          border-radius: 10px;
+          background: #0D7A75;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          color: #FFFFFF;
+        }
+
+        .notif-card-circle-check-btn {
+          width: 34px;
+          height: 34px;
+          border-radius: 50%;
+          border: 1px solid #CBD5E1;
+          background: #FFFFFF;
+          color: #0D7A75;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.18s ease;
+          padding: 0;
+        }
+
+        .notif-card-circle-check-btn:hover {
+          border-color: #0D7A75;
+          background: #F0FDFA;
+        }
+
+        .notif-card-circle-check-btn.checked {
+          background: #F0FDFA;
+          border-color: #0D7A75;
+          color: #0D7A75;
         }
 
         .notif-btn {

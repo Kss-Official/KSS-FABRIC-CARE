@@ -19,7 +19,10 @@ import {
   CreditCard,
   Menu,
   X,
-  Globe
+  Globe,
+  RotateCcw,
+  CheckCheck,
+  Check
 } from 'lucide-react';
 
 export const AdminLayout = ({ children }) => {
@@ -30,6 +33,7 @@ export const AdminLayout = ({ children }) => {
     settings,
     notifications,
     markNotificationAsRead,
+    markNotificationAsUnread,
     markAllNotificationsAsRead,
     unreadNotificationsCount 
   } = useAdmin();
@@ -38,11 +42,36 @@ export const AdminLayout = ({ children }) => {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const notifRef = useRef(null);
   const profileRef = useRef(null);
 
   const unreadNotifsCount = unreadNotificationsCount || 0;
+
+  const handleRefreshNotifs = () => {
+    setIsRefreshing(true);
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 600);
+  };
+
+  const formatNotifDateTime = (val, timestamp) => {
+    if (typeof val === 'string' && val.includes('/') && (val.includes('am') || val.includes('pm') || val.includes(':'))) {
+      return val;
+    }
+    const dateObj = timestamp ? new Date(timestamp) : new Date();
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    let hours = dateObj.getHours();
+    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+    const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'pm' : 'am';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds} ${ampm}`;
+  };
 
   // Close dropdowns when clicking anywhere outside on the page or pressing Escape
   useEffect(() => {
@@ -87,7 +116,7 @@ export const AdminLayout = ({ children }) => {
     { id: 'pickup-delivery', label: 'Pickup & Delivery', icon: <Truck size={20} /> },
     { id: 'customers', label: 'Customers', icon: <Users size={20} /> },
     { id: 'services', label: 'Services & Pricing', icon: <Tag size={20} /> },
-    { id: 'notifications', label: 'Notifications', icon: <Bell size={20} />, badgeCount: unreadNotifsCount },
+    { id: 'notifications', label: 'Notifications', icon: <Bell size={20} /> },
     { id: 'content', label: 'Content', icon: <FileText size={20} /> },
   ];
 
@@ -195,52 +224,88 @@ export const AdminLayout = ({ children }) => {
               {notifDropdownOpen && (
                 <div className="notification-dropdown-menu animate-fade-in">
                   <div className="notif-dropdown-header">
-                    <div className="notif-header-title-wrap">
-                      <h4 className="notif-header-title">Notifications</h4>
-                      {unreadNotifsCount > 0 && (
-                        <span className="notif-badge-pill">{unreadNotifsCount} New</span>
-                      )}
+                    <div className="notif-header-text-block">
+                      <span className="notif-header-live-tag">LIVE UPDATES</span>
+                      <h3 className="notif-header-main-title">Notifications &amp; Activity</h3>
+                      <p className="notif-header-subtext">
+                        Stay informed on order status changes, delivery alerts, and service updates
+                      </p>
                     </div>
-                    {unreadNotifsCount > 0 && (
+
+                    <div className="notif-header-actions-group">
                       <button 
                         type="button" 
-                        className="notif-mark-read-btn"
-                        onClick={markAllNotificationsAsRead}
+                        className="notif-pill-btn notif-refresh-pill"
+                        onClick={handleRefreshNotifs}
+                        title="Refresh notifications"
                       >
-                        Mark all read
+                        <RotateCcw size={13} className={isRefreshing ? 'spin-anim' : ''} />
+                        <span>Refresh</span>
                       </button>
-                    )}
+
+                      <button 
+                        type="button" 
+                        className="notif-pill-btn notif-mark-read-pill"
+                        onClick={() => markAllNotificationsAsRead()}
+                        title="Mark all notifications as read"
+                      >
+                        <CheckCheck size={15} />
+                        <span>Mark All Read</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="notif-items-list">
-                    {(notifications || []).slice(0, 5).map((notif) => (
-                      <div 
-                        key={notif.id}
-                        className={`notif-item ${notif.unread ? 'unread' : ''}`}
-                        onClick={() => {
-                          markNotificationAsRead(notif.id);
-                          if (notif.actionTab) {
-                            setAdminTab(notif.actionTab);
-                            setNotifDropdownOpen(false);
-                          }
-                        }}
-                      >
-                        <div className={`notif-item-icon ${notif.type}`}>
-                          {notif.type === 'order' && <ShoppingBag size={16} />}
-                          {notif.type === 'driver' && <Truck size={16} />}
-                          {notif.type === 'delivery' && <CheckCircle2 size={16} />}
-                          {notif.type === 'payment' && <CreditCard size={16} />}
-                          {notif.type === 'customer' && <Users size={16} />}
-                          {notif.type === 'system' && <Bell size={16} />}
-                        </div>
-                        <div className="notif-item-content">
-                          <p className="notif-item-title">{notif.title}</p>
-                          <p className="notif-item-desc">{notif.desc}</p>
-                          <span className="notif-item-time">{notif.time}</span>
-                        </div>
-                        {notif.unread && <span className="notif-unread-dot" />}
+                  <div className="notif-cards-scroll-list">
+                    {(!notifications || notifications.length === 0) ? (
+                      <div className="notif-dropdown-empty">
+                        <p>No notifications available</p>
                       </div>
-                    ))}
+                    ) : (
+                      notifications.map((notif) => (
+                        <div 
+                          key={notif.id}
+                          className={`notif-reference-card ${notif.unread ? 'unread' : 'read'}`}
+                        >
+                          <div className="notif-card-teal-icon">
+                            <Bell size={18} color="#FFFFFF" strokeWidth={2.2} />
+                          </div>
+
+                          <div 
+                            className="notif-card-text-body"
+                            onClick={() => {
+                              if (notif.unread) markNotificationAsRead(notif.id);
+                              if (notif.actionTab) {
+                                setAdminTab(notif.actionTab);
+                                setNotifDropdownOpen(false);
+                              }
+                            }}
+                          >
+                            <h4 className="notif-card-title-text">{notif.title}</h4>
+                            <p className="notif-card-desc-text">{notif.desc}</p>
+                            <span className="notif-card-time-text">
+                              {formatNotifDateTime(notif.time, notif.timestamp)}
+                            </span>
+                          </div>
+
+                          <button 
+                            type="button"
+                            className={`notif-card-circle-check-btn ${notif.unread ? '' : 'checked'}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (notif.unread) {
+                                markNotificationAsRead(notif.id);
+                              } else {
+                                markNotificationAsUnread(notif.id);
+                              }
+                            }}
+                            title={notif.unread ? "Mark as read" : "Mark as unread"}
+                            aria-label="Toggle notification read status"
+                          >
+                            <Check size={15} strokeWidth={2.4} />
+                          </button>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   <div className="notif-dropdown-footer">
@@ -252,7 +317,7 @@ export const AdminLayout = ({ children }) => {
                         setNotifDropdownOpen(false);
                       }}
                     >
-                      View All Notifications ({(notifications || []).length}) →
+                      View All Notifications →
                     </button>
                   </div>
                 </div>
@@ -600,17 +665,19 @@ export const AdminLayout = ({ children }) => {
 
         .notification-dropdown-menu {
           position: absolute;
-          top: calc(100% + 10px);
-          right: -10px;
-          width: 360px;
-          max-width: 90vw;
-          background: #FFFFFF;
+          top: calc(100% + 12px);
+          right: -8px;
+          width: 580px;
+          max-width: calc(100vw - 28px);
+          background: #F8FAFC;
           border: 1px solid #E2E8F0;
           border-radius: 16px;
-          box-shadow: 0 15px 35px -5px rgba(15, 23, 42, 0.14), 0 0 1px 1px rgba(0, 0, 0, 0.04);
-          z-index: 1000;
+          box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.16), 0 0 1px 1px rgba(0, 0, 0, 0.04);
+          z-index: 1050;
           overflow: hidden;
-          animation: adminMenuDrop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+          display: flex;
+          flex-direction: column;
+          animation: adminMenuDrop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         @keyframes adminMenuDrop {
@@ -625,163 +692,228 @@ export const AdminLayout = ({ children }) => {
         }
 
         .notif-dropdown-header {
+          padding: 20px 22px 16px 22px;
+          background: #FFFFFF;
+          border-bottom: 1px solid #EDF2F7;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+        }
+
+        .notif-header-text-block {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          text-align: left;
+        }
+
+        .notif-header-live-tag {
+          font-size: 11px;
+          font-weight: 800;
+          color: #0D7A75;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          margin-bottom: 4px;
+        }
+
+        .notif-header-main-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #0F172A;
+          margin: 0 0 4px 0;
+          line-height: 1.25;
+          letter-spacing: -0.01em;
+        }
+
+        .notif-header-subtext {
+          font-size: 12.5px;
+          color: #64748B;
+          margin: 0;
+          line-height: 1.4;
+          font-weight: 400;
+        }
+
+        .notif-header-actions-group {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-shrink: 0;
+          margin-top: 4px;
+        }
+
+        .notif-pill-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          font-weight: 600;
+          border-radius: 9999px;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          font-family: inherit;
+          white-space: nowrap;
+          background: #FFFFFF;
+        }
+
+        .notif-refresh-pill {
+          padding: 6px 14px;
+          border: 1px solid #CBD5E1;
+          color: #334155;
+        }
+
+        .notif-refresh-pill:hover {
+          background: #F8FAFC;
+          border-color: #94A3B8;
+          color: #0F172A;
+        }
+
+        .notif-mark-read-pill {
+          padding: 6px 16px;
+          border: 1.5px solid #0D7A75;
+          color: #0D7A75;
+        }
+
+        .notif-mark-read-pill:hover {
+          background: #F0FDFA;
+        }
+
+        .spin-anim {
+          animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .notif-cards-scroll-list {
+          padding: 16px 20px;
+          max-height: 420px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          background: #F8FAFC;
+        }
+
+        .notif-reference-card {
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
           padding: 14px 18px;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          border-bottom: 1px solid #F1F5F9;
-          background: #FFFFFF;
+          gap: 14px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+          transition: all 0.18s ease;
+          text-align: left;
         }
 
-        .notif-header-title-wrap {
-          display: flex;
-          align-items: center;
-          gap: 8px;
+        .notif-reference-card:hover {
+          border-color: #CBD5E1;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
         }
 
-        .notif-header-title {
-          font-size: 14.5px;
-          font-weight: 700;
-          color: #0F172A;
-          margin: 0;
-        }
-
-        .notif-badge-pill {
-          background: #E6F7F5;
-          color: #007E8A;
-          font-size: 11px;
-          font-weight: 700;
-          padding: 2px 8px;
-          border-radius: 9999px;
-        }
-
-        .notif-mark-read-btn {
-          background: none;
-          border: none;
-          color: #007E8A;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          padding: 4px 6px;
-          border-radius: 4px;
-        }
-
-        .notif-mark-read-btn:hover {
-          background: #F1F5F9;
-        }
-
-        .notif-items-list {
-          max-height: 320px;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .notif-item {
-          padding: 12px 18px;
-          display: flex;
-          align-items: flex-start;
-          gap: 12px;
-          border-bottom: 1px solid #F8FAFC;
-          cursor: pointer;
-          transition: background 0.15s ease;
-          position: relative;
-        }
-
-        .notif-item:hover {
-          background: #F8FAFC;
-        }
-
-        .notif-item.unread {
-          background: #FAFEFD;
-        }
-
-        .notif-item-icon {
-          width: 34px;
-          height: 34px;
+        .notif-card-teal-icon {
+          width: 42px;
+          height: 42px;
           border-radius: 10px;
+          background: #0D7A75;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
+          color: #FFFFFF;
         }
 
-        .notif-item-icon.order {
-          background: #E6F7F5;
-          color: #007E8A;
-        }
-
-        .notif-item-icon.driver {
-          background: #EFF6FF;
-          color: #2563EB;
-        }
-
-        .notif-item-icon.delivery {
-          background: #ECFDF5;
-          color: #059669;
-        }
-
-        .notif-item-icon.payment {
-          background: #FEF3C7;
-          color: #D97706;
-        }
-
-        .notif-item-content {
+        .notif-card-text-body {
           flex: 1;
           display: flex;
           flex-direction: column;
-          gap: 2px;
+          gap: 3px;
+          cursor: pointer;
         }
 
-        .notif-item-title {
-          font-size: 13px;
-          font-weight: 600;
-          color: #1E293B;
+        .notif-card-title-text {
+          font-size: 14px;
+          font-weight: 700;
+          color: #0F172A;
           margin: 0;
+          line-height: 1.3;
         }
 
-        .notif-item-desc {
-          font-size: 12px;
-          color: #64748B;
+        .notif-card-desc-text {
+          font-size: 12.5px;
+          color: #475569;
           margin: 0;
-          line-height: 1.35;
+          line-height: 1.4;
         }
 
-        .notif-item-time {
-          font-size: 11px;
+        .notif-card-time-text {
+          font-size: 11.5px;
           color: #94A3B8;
-          margin-top: 3px;
+          font-weight: 500;
+          margin-top: 2px;
         }
 
-        .notif-unread-dot {
-          width: 7px;
-          height: 7px;
+        .notif-card-circle-check-btn {
+          width: 34px;
+          height: 34px;
           border-radius: 50%;
-          background: #007E8A;
+          border: 1px solid #CBD5E1;
+          background: #FFFFFF;
+          color: #0D7A75;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
           flex-shrink: 0;
-          margin-top: 6px;
+          transition: all 0.18s ease;
+          padding: 0;
+        }
+
+        .notif-card-circle-check-btn:hover {
+          border-color: #0D7A75;
+          background: #F0FDFA;
+        }
+
+        .notif-card-circle-check-btn.checked {
+          background: #F0FDFA;
+          border-color: #0D7A75;
+          color: #0D7A75;
+        }
+
+        .notif-dropdown-empty {
+          padding: 30px 20px;
+          text-align: center;
+          color: #94A3B8;
+          font-size: 13px;
         }
 
         .notif-dropdown-footer {
-          padding: 10px 18px;
-          border-top: 1px solid #F1F5F9;
-          background: #FAFCFD;
+          padding: 12px 18px;
+          border-top: 1px solid #E2E8F0;
+          background: #FFFFFF;
           text-align: center;
         }
 
         .notif-view-all-link {
           background: none;
           border: none;
-          color: #007E8A;
-          font-size: 12.5px;
+          color: #0D7A75;
+          font-size: 13px;
           font-weight: 600;
           cursor: pointer;
           width: 100%;
           padding: 4px;
+          transition: color 0.15s ease;
         }
 
         .notif-view-all-link:hover {
           text-decoration: underline;
+          color: #0A605C;
         }
 
         /* ADMIN PROFILE PILL & DROPDOWN */
