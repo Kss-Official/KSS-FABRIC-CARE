@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   Package, 
@@ -13,7 +13,10 @@ import {
   Plus, 
   UserPlus, 
   Tag, 
-  Sparkles
+  Sparkles,
+  Eye,
+  Check,
+  X
 } from 'lucide-react';
 
 // Washing Machine front-load icon matching reference image
@@ -38,6 +41,7 @@ const WasherIcon = ({ size = 23, color = "#D97706" }) => (
 export const AdminDashboardPage = () => {
   const { 
     orders, 
+    updateOrderStatus,
     setAdminTab, 
     setIsCreateOrderDrawerOpen, 
     setIsAddCustomerModalOpen, 
@@ -45,6 +49,39 @@ export const AdminDashboardPage = () => {
   } = useAdmin();
 
   const [pickupTab, setPickupTab] = useState('all');
+  const [activeActionMenuId, setActiveActionMenuId] = useState(null);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
+
+  // Close action dropdown menu on outside click or Escape key
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (activeActionMenuId && !e.target.closest('.action-menu-anchor')) {
+        setActiveActionMenuId(null);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setActiveActionMenuId(null);
+        setSelectedOrderDetails(null);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('click', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeActionMenuId]);
+
+  // Keep modal view in sync with live order changes
+  useEffect(() => {
+    if (selectedOrderDetails) {
+      const current = orders?.find(o => o.id === selectedOrderDetails.id);
+      if (current && current.status !== selectedOrderDetails.status) {
+        setSelectedOrderDetails(prev => ({ ...prev, ...current }));
+      }
+    }
+  }, [orders, selectedOrderDetails]);
 
   const barHeights = [6, 11, 16, 22];
 
@@ -188,71 +225,128 @@ export const AdminDashboardPage = () => {
       case 'SR': return { background: '#CCFBF1', color: '#0D9488' }; // Soft Mint
       case 'KV': return { background: '#FEF08A', color: '#854D0E' }; // Soft Golden Yellow
       case 'NK': return { background: '#EDE9FE', color: '#7C3AED' }; // Soft Lavender
-      default: return { background: '#E2E8F0', color: '#475569' };
+      default: {
+        const palettes = [
+          { background: '#E0F2FE', color: '#0284C7' },
+          { background: '#EDE9FE', color: '#7C3AED' },
+          { background: '#CCFBF1', color: '#0D9488' },
+          { background: '#FEF08A', color: '#854D0E' },
+          { background: '#DCFCE7', color: '#16A34A' }
+        ];
+        const hash = (avatar || 'CU').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+        return palettes[hash % palettes.length];
+      }
     }
   };
 
-  // Recent Orders exactly matching Second Reference Image
-  const recentOrders = useMemo(() => {
-    const baseOrders = [
-      {
-        id: '#LDX10284',
-        customer: { name: 'Rohan Mehta', avatar: 'RM' },
-        services: ['Wash & Fold'],
-        pickupTime: '23 Sep, 9:00 AM',
-        amount: 320,
-        status: 'Pickup Scheduled'
-      },
-      {
-        id: '#LDX10285',
-        customer: { name: 'Priya Sharma', avatar: 'PS' },
-        services: ['Dry Cleaning'],
-        pickupTime: '23 Sep, 10:00 AM',
-        amount: 560,
-        status: 'Pending Pickup'
-      },
-      {
-        id: '#LDX10286',
-        customer: { name: 'Arjun Nair', avatar: 'AN' },
-        services: ['Wash & Iron'],
-        pickupTime: '23 Sep, 11:00 AM',
-        amount: 420,
-        status: 'In Cleaning'
-      },
-      {
-        id: '#LDX10287',
-        customer: { name: 'Sneha Reddy', avatar: 'SR' },
-        services: ['Home Care'],
-        pickupTime: '23 Sep, 2:00 PM',
-        amount: 780,
-        status: 'Ready for Delivery'
-      },
-      {
-        id: '#LDX10288',
-        customer: { name: 'Karan Verma', avatar: 'KV' },
-        services: ['Shoe Laundry'],
-        pickupTime: '23 Sep, 3:00 PM',
-        amount: 350,
-        status: 'Delivered'
-      },
-      {
-        id: '#LDX10289',
-        customer: { name: 'Neha Kapoor', avatar: 'NK' },
-        services: ['Steam Iron'],
-        pickupTime: '23 Sep, 4:00 PM',
-        amount: 280,
-        status: 'In Cleaning'
-      }
-    ];
+  const getStatusClass = (status = '') => {
+    const s = String(status).toLowerCase();
+    if (s.includes('pickup scheduled') || s.includes('scheduled')) return 'pickup-scheduled';
+    if (s.includes('pending')) return 'pending-pickup';
+    if (s.includes('cleaning') || s.includes('processing')) return 'in-cleaning';
+    if (s.includes('ready')) return 'ready-for-delivery';
+    if (s.includes('delivered') || s.includes('completed')) return 'delivered';
+    return 'pickup-scheduled';
+  };
 
-    const baseIds = new Set(baseOrders.map(b => b.id));
-    const dynamicNew = (orders || []).filter(o => 
-      !baseIds.has(o.id) && 
+  // Recent Orders dynamically bound to live orders in AdminContext
+  const recentOrders = useMemo(() => {
+    if (!orders || orders.length === 0) return [];
+
+    const refOrderIds = [
+      '#LDX10284',
+      '#LDX10285',
+      '#LDX10286',
+      '#LDX10287',
+      '#LDX10288',
+      '#LDX10289'
+    ];
+    const refSet = new Set(refOrderIds);
+
+    const dynamicNewOrders = orders.filter(o => 
+      !refSet.has(o.id) && 
       !o.id.startsWith('#LDX12') && 
       o.id !== '#LDX10281'
     );
 
-    return [...dynamicNew, ...baseOrders].slice(0, 6);
+    const fallbackBaseOrders = [
+      {
+        id: '#LDX10284',
+        customer: { name: 'Rohan Mehta', avatar: 'RM', phone: '+91 98765 43210', email: 'rohan.mehta@gmail.com', address: 'Banaswadi, Bengaluru - 560043' },
+        services: ['Wash & Fold'],
+        pickupTime: '23 Sep, 9:00 AM',
+        amount: 320,
+        status: 'Pickup Scheduled',
+        payment: 'Paid',
+        driver: 'Ravi Kumar (+91 98765 43210)'
+      },
+      {
+        id: '#LDX10285',
+        customer: { name: 'Priya Sharma', avatar: 'PS', phone: '+91 99876 54321', email: 'priya.sharma@gmail.com', address: 'House #45, 3rd Cross, HRBR Layout, Bengaluru - 560043' },
+        services: ['Dry Cleaning'],
+        pickupTime: '23 Sep, 10:00 AM',
+        amount: 560,
+        status: 'Pending Pickup',
+        payment: 'Paid',
+        driver: 'Not Assigned'
+      },
+      {
+        id: '#LDX10286',
+        customer: { name: 'Arjun Nair', avatar: 'AN', phone: '+91 91234 56789', email: 'arjun.nair@gmail.com', address: 'Indiranagar, Bengaluru - 560038' },
+        services: ['Wash & Iron'],
+        pickupTime: '23 Sep, 11:00 AM',
+        amount: 420,
+        status: 'In Cleaning',
+        payment: 'COD',
+        driver: 'Ravi Kumar (+91 98765 43210)'
+      },
+      {
+        id: '#LDX10287',
+        customer: { name: 'Sneha Reddy', avatar: 'SR', phone: '+91 99887 66554', email: 'sneha.reddy@gmail.com', address: 'Whitefield, Bengaluru - 560066' },
+        services: ['Home Care'],
+        pickupTime: '23 Sep, 2:00 PM',
+        amount: 780,
+        status: 'Ready for Delivery',
+        payment: 'Paid',
+        driver: 'Arjun Singh (+91 87654 32109)'
+      },
+      {
+        id: '#LDX10288',
+        customer: { name: 'Karan Verma', avatar: 'KV', phone: '+91 98712 34567', email: 'karan.verma@gmail.com', address: 'Marathahalli, Bengaluru - 560037' },
+        services: ['Shoe Laundry'],
+        pickupTime: '23 Sep, 3:00 PM',
+        amount: 350,
+        status: 'Delivered',
+        payment: 'Paid',
+        driver: 'Ravi Kumar (+91 98765 43210)'
+      },
+      {
+        id: '#LDX10289',
+        customer: { name: 'Neha Kapoor', avatar: 'NK', phone: '+91 87654 32109', email: 'neha.kapoor@gmail.com', address: 'HSR Layout, Bengaluru - 560102' },
+        services: ['Steam Iron'],
+        pickupTime: '23 Sep, 4:00 PM',
+        amount: 280,
+        status: 'In Cleaning',
+        payment: 'Unpaid',
+        driver: 'Arjun Singh (+91 87654 32109)'
+      }
+    ];
+
+    const liveReferenceOrders = refOrderIds.map(id => {
+      const live = orders.find(o => o.id === id);
+      const fallback = fallbackBaseOrders.find(f => f.id === id);
+      if (!live) return fallback;
+      return {
+        ...fallback,
+        ...live,
+        customer: {
+          ...(fallback?.customer || {}),
+          ...(live.customer || {})
+        }
+      };
+    });
+
+    return [...dynamicNewOrders, ...liveReferenceOrders].slice(0, 6);
   }, [orders]);
 
   const pickupDeliveries = [
@@ -468,7 +562,7 @@ export const AdminDashboardPage = () => {
       {/* Tables & Action Row */}
       <div className="dash-bottom-grid">
         {/* Recent Orders Table */}
-        <div className="dash-card">
+        <div className="dash-card recent-orders-card">
           <div className="dash-card-header">
             <h3 className="dash-card-title">Recent Orders</h3>
             <button className="view-all-link" onClick={() => setAdminTab('orders')}>
@@ -499,25 +593,80 @@ export const AdminDashboardPage = () => {
                           className="cust-mini-avatar"
                           style={getAvatarStyle(ord.customer?.avatar)}
                         >
-                          {ord.customer?.avatar}
+                          {ord.customer?.avatar || (ord.customer?.name ? ord.customer.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'CU')}
                         </span>
                         <span className="cust-name-txt">{ord.customer?.name}</span>
                       </div>
                     </td>
                     <td className="services-cell-txt">
-                      {Array.isArray(ord.services) ? ord.services.join(', ') : ord.services}
+                      {Array.isArray(ord.services) ? ord.services.join(', ') : (ord.services || 'Wash & Fold')}
                     </td>
-                    <td className="pickup-date-cell-txt">{ord.pickupTime}</td>
+                    <td className="pickup-date-cell-txt">{ord.pickupTime || ord.date}</td>
                     <td><strong className="amount-cell-txt">₹{ord.amount}</strong></td>
                     <td>
-                      <span className={`status-pill ${ord.status.toLowerCase().replace(/\s+/g, '-')}`}>
+                      <span className={`status-pill ${getStatusClass(ord.status)}`}>
                         {ord.status}
                       </span>
                     </td>
                     <td className="action-cell">
-                      <button className="table-action-dots" title="Order options">
-                        <MoreHorizontal size={18} />
-                      </button>
+                      <div className="action-menu-anchor">
+                        <button 
+                          className={`table-action-dots ${activeActionMenuId === ord.id ? 'active' : ''}`}
+                          title="Order options"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveActionMenuId(activeActionMenuId === ord.id ? null : ord.id);
+                          }}
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+
+                        {activeActionMenuId === ord.id && (
+                          <div className="action-dropdown-menu" onClick={e => e.stopPropagation()}>
+                            <div className="dropdown-order-header">
+                              <span>Order {ord.id}</span>
+                              <span className={`status-mini-badge ${getStatusClass(ord.status)}`}>{ord.status}</span>
+                            </div>
+                            
+                            <button 
+                              className="dropdown-action-btn primary"
+                              onClick={() => {
+                                setSelectedOrderDetails(ord);
+                                setActiveActionMenuId(null);
+                              }}
+                            >
+                              <Eye size={15} />
+                              <span>View Details</span>
+                            </button>
+
+                            <div className="dropdown-divider" />
+                            <div className="dropdown-section-title">Change Status:</div>
+
+                            <div className="dropdown-status-options">
+                              {[
+                                'Pickup Scheduled',
+                                'Pending Pickup',
+                                'In Cleaning',
+                                'Ready for Delivery',
+                                'Delivered'
+                              ].map(st => (
+                                <button
+                                  key={st}
+                                  className={`dropdown-status-btn ${ord.status === st ? 'current' : ''}`}
+                                  onClick={() => {
+                                    updateOrderStatus(ord.id, st);
+                                    setActiveActionMenuId(null);
+                                  }}
+                                >
+                                  <span className={`status-indicator-dot ${getStatusClass(st)}`} />
+                                  <span>{st}</span>
+                                  {ord.status === st && <Check size={14} className="check-icon" />}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -608,6 +757,114 @@ export const AdminDashboardPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Order Details Modal */}
+      {selectedOrderDetails && (
+        <div className="modal-backdrop animate-fade-in" onClick={() => setSelectedOrderDetails(null)}>
+          <div className="order-details-modal animate-scale-up" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-header-left">
+                <h3 className="modal-title">Order Details</h3>
+                <span className="modal-order-id">{selectedOrderDetails.id}</span>
+                <span className={`status-pill ${getStatusClass(selectedOrderDetails.status)}`}>
+                  {selectedOrderDetails.status}
+                </span>
+              </div>
+              <button 
+                className="modal-close-btn" 
+                onClick={() => setSelectedOrderDetails(null)}
+                title="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {/* Customer Info Card */}
+              <div className="modal-section-card">
+                <h4 className="modal-section-title">Customer Information</h4>
+                <div className="modal-customer-row">
+                  <span 
+                    className="cust-mini-avatar modal-avatar"
+                    style={getAvatarStyle(selectedOrderDetails.customer?.avatar)}
+                  >
+                    {selectedOrderDetails.customer?.avatar || selectedOrderDetails.customer?.name?.[0] || 'C'}
+                  </span>
+                  <div className="modal-customer-info">
+                    <strong className="modal-customer-name">{selectedOrderDetails.customer?.name}</strong>
+                    <div className="modal-meta-row">
+                      <span>{selectedOrderDetails.customer?.phone || '+91 98765 43210'}</span>
+                      <span>•</span>
+                      <span>{selectedOrderDetails.customer?.email || 'customer@gmail.com'}</span>
+                    </div>
+                    <p className="modal-customer-address">{selectedOrderDetails.customer?.address || 'Bengaluru, Karnataka'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Order Info Grid */}
+              <div className="modal-details-grid">
+                <div className="modal-grid-item">
+                  <span className="grid-label">Services</span>
+                  <span className="grid-value">
+                    {Array.isArray(selectedOrderDetails.services) ? selectedOrderDetails.services.join(', ') : selectedOrderDetails.services}
+                  </span>
+                </div>
+                <div className="modal-grid-item">
+                  <span className="grid-label">Pickup Date & Time</span>
+                  <span className="grid-value">{selectedOrderDetails.pickupTime || selectedOrderDetails.date || '23 Sep, 9:00 AM'}</span>
+                </div>
+                <div className="modal-grid-item">
+                  <span className="grid-label">Amount</span>
+                  <span className="grid-value highlight-amount">₹{selectedOrderDetails.amount}</span>
+                </div>
+                <div className="modal-grid-item">
+                  <span className="grid-label">Payment Status</span>
+                  <span className="grid-value">{selectedOrderDetails.payment || 'Paid'}</span>
+                </div>
+                <div className="modal-grid-item full-width">
+                  <span className="grid-label">Assigned Driver</span>
+                  <span className="grid-value">{selectedOrderDetails.driver || 'Ravi Kumar (+91 98765 43210)'}</span>
+                </div>
+              </div>
+
+              {/* Quick Status Update inside modal */}
+              <div className="modal-status-update-box">
+                <label className="grid-label">Update Order Status:</label>
+                <div className="modal-status-buttons">
+                  {[
+                    'Pickup Scheduled',
+                    'Pending Pickup',
+                    'In Cleaning',
+                    'Ready for Delivery',
+                    'Delivered'
+                  ].map(st => (
+                    <button
+                      key={st}
+                      className={`modal-status-btn ${selectedOrderDetails.status === st ? 'active' : ''}`}
+                      onClick={() => {
+                        updateOrderStatus(selectedOrderDetails.id, st);
+                        setSelectedOrderDetails(prev => ({ ...prev, status: st }));
+                      }}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                className="btn-modal-close" 
+                onClick={() => setSelectedOrderDetails(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .admin-dashboard-page {
@@ -1115,15 +1372,18 @@ export const AdminDashboardPage = () => {
           color: #1E293B;
         }
 
-        /* BOTTOM GRID */
+        /* BOTTOM GRID - Balanced width so Recent Orders never wraps */
         .dash-bottom-grid {
           display: grid;
-          grid-template-columns: 1.4fr 1fr;
-          gap: 20px;
+          grid-template-columns: minmax(0, 1.72fr) minmax(360px, 1fr);
+          gap: 24px;
+          align-items: start;
         }
 
         .dash-table-wrapper {
+          width: 100%;
           overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
         }
 
         .dash-table {
@@ -1134,18 +1394,20 @@ export const AdminDashboardPage = () => {
 
         .dash-table th {
           text-align: left;
-          padding: 14px 16px;
+          padding: 14px 14px;
           color: #64748B;
           font-weight: 600;
           font-size: 0.8125rem;
           border-bottom: 1px solid #E2E8F0;
           user-select: none;
+          white-space: nowrap;
         }
 
         .dash-table td {
-          padding: 16px;
+          padding: 16px 14px;
           border-bottom: 1px solid #F1F5F9;
           vertical-align: middle;
+          white-space: nowrap;
         }
 
         .dash-table tbody tr {
@@ -1156,17 +1418,23 @@ export const AdminDashboardPage = () => {
           background-color: #F8FAFC;
         }
 
+        .dash-table tbody tr:last-child td {
+          border-bottom: none;
+        }
+
         .order-id-txt {
           font-size: 0.875rem;
           font-weight: 800;
           color: #0F172A;
           letter-spacing: -0.01em;
+          white-space: nowrap;
         }
 
         .cust-cell {
           display: flex;
           align-items: center;
           gap: 12px;
+          white-space: nowrap;
         }
 
         .cust-mini-avatar {
@@ -1185,12 +1453,14 @@ export const AdminDashboardPage = () => {
           font-size: 0.875rem;
           font-weight: 600;
           color: #1E293B;
+          white-space: nowrap;
         }
 
         .services-cell-txt {
           color: #64748B;
           font-size: 0.875rem;
           font-weight: 500;
+          white-space: nowrap;
         }
 
         .pickup-date-cell-txt {
@@ -1204,6 +1474,7 @@ export const AdminDashboardPage = () => {
           font-size: 0.875rem;
           font-weight: 800;
           color: #0F172A;
+          white-space: nowrap;
         }
 
         .status-pill {
@@ -1214,6 +1485,8 @@ export const AdminDashboardPage = () => {
           display: inline-block;
           white-space: nowrap;
           text-align: center;
+          line-height: 1.25;
+          letter-spacing: -0.01em;
         }
 
         .status-pill.pickup-scheduled { 
@@ -1243,24 +1516,421 @@ export const AdminDashboardPage = () => {
         }
 
         .action-cell {
-          text-align: center;
+          text-align: right;
+          position: relative;
+        }
+
+        .action-menu-anchor {
+          position: relative;
+          display: inline-block;
         }
 
         .table-action-dots {
-          background: none;
+          background: transparent;
+          border: none;
+          color: #94A3B8;
+          cursor: pointer;
+          padding: 6px 8px;
+          border-radius: 8px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
+        }
+
+        .table-action-dots:hover,
+        .table-action-dots.active {
+          color: #0F172A;
+          background: #F1F5F9;
+        }
+
+        /* Dropdown Action Menu */
+        .action-dropdown-menu {
+          position: absolute;
+          top: calc(100% + 4px);
+          right: 0;
+          z-index: 50;
+          width: 210px;
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 14px;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+          padding: 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          animation: dropdownPop 0.15s ease-out;
+        }
+
+        @keyframes dropdownPop {
+          from {
+            opacity: 0;
+            transform: translateY(-6px) scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .dropdown-order-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 6px 8px 8px 8px;
+          border-bottom: 1px solid #F1F5F9;
+          margin-bottom: 4px;
+        }
+
+        .dropdown-order-header span:first-child {
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #0F172A;
+        }
+
+        .status-mini-badge {
+          font-size: 0.65rem;
+          font-weight: 600;
+          padding: 2px 6px;
+          border-radius: 9999px;
+        }
+
+        .status-mini-badge.pickup-scheduled { background: #E0F2FE; color: #0284C7; }
+        .status-mini-badge.pending-pickup { background: #FFE4E6; color: #E11D48; }
+        .status-mini-badge.in-cleaning { background: #FEF9C3; color: #CA8A04; }
+        .status-mini-badge.ready-for-delivery { background: #F3E8FF; color: #9333EA; }
+        .status-mini-badge.delivered { background: #DCFCE7; color: #16A34A; }
+
+        .dropdown-action-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          padding: 8px 10px;
+          border: none;
+          background: transparent;
+          border-radius: 8px;
+          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #1E293B;
+          cursor: pointer;
+          text-align: left;
+          transition: all 0.15s ease;
+        }
+
+        .dropdown-action-btn:hover {
+          background: #F0FDF4;
+          color: #0D7A75;
+        }
+
+        .dropdown-divider {
+          height: 1px;
+          background: #F1F5F9;
+          margin: 4px 0;
+        }
+
+        .dropdown-section-title {
+          font-size: 0.6875rem;
+          font-weight: 700;
+          color: #94A3B8;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 4px 8px 2px;
+          text-align: left;
+        }
+
+        .dropdown-status-options {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .dropdown-status-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          padding: 6px 8px;
+          border: none;
+          background: transparent;
+          border-radius: 6px;
+          font-size: 0.775rem;
+          font-weight: 500;
+          color: #475569;
+          cursor: pointer;
+          text-align: left;
+          transition: all 0.15s ease;
+        }
+
+        .dropdown-status-btn:hover {
+          background: #F8FAFC;
+          color: #0F172A;
+        }
+
+        .dropdown-status-btn.current {
+          background: #F1F5F9;
+          font-weight: 600;
+          color: #0F172A;
+        }
+
+        .status-indicator-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .status-indicator-dot.pickup-scheduled { background: #0284C7; }
+        .status-indicator-dot.pending-pickup { background: #E11D48; }
+        .status-indicator-dot.in-cleaning { background: #CA8A04; }
+        .status-indicator-dot.ready-for-delivery { background: #9333EA; }
+        .status-indicator-dot.delivered { background: #16A34A; }
+
+        .check-icon {
+          margin-left: auto;
+          color: #0D7A75;
+        }
+
+        /* Order Details Modal */
+        .modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.45);
+          backdrop-filter: blur(4px);
+          z-index: 999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+
+        .order-details-modal {
+          background: #FFFFFF;
+          border-radius: 20px;
+          width: 100%;
+          max-width: 540px;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          animation: modalSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes modalSlideIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95) translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+
+        .modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px;
+          border-bottom: 1px solid #E2E8F0;
+        }
+
+        .modal-header-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .modal-title {
+          font-size: 1.125rem;
+          font-weight: 800;
+          color: #0F172A;
+          margin: 0;
+        }
+
+        .modal-order-id {
+          font-size: 0.875rem;
+          font-weight: 700;
+          color: #64748B;
+        }
+
+        .modal-close-btn {
+          background: transparent;
           border: none;
           color: #94A3B8;
           cursor: pointer;
           padding: 4px;
-          border-radius: 6px;
-          display: inline-flex;
+          border-radius: 8px;
+          display: flex;
           align-items: center;
           justify-content: center;
-          transition: color 0.15s ease;
+          transition: all 0.15s ease;
         }
 
-        .table-action-dots:hover {
+        .modal-close-btn:hover {
+          background: #F1F5F9;
+          color: #0F172A;
+        }
+
+        .modal-body {
+          padding: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          max-height: calc(85vh - 120px);
+          overflow-y: auto;
+        }
+
+        .modal-section-card {
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 14px;
+          padding: 16px;
+        }
+
+        .modal-section-title {
+          font-size: 0.75rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: #64748B;
+          margin: 0 0 12px 0;
+        }
+
+        .modal-customer-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 14px;
+        }
+
+        .modal-avatar {
+          width: 44px;
+          height: 44px;
+          font-size: 1rem;
+        }
+
+        .modal-customer-info {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+
+        .modal-customer-name {
+          font-size: 1rem;
+          color: #0F172A;
+        }
+
+        .modal-meta-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.8125rem;
+          color: #64748B;
+        }
+
+        .modal-customer-address {
+          font-size: 0.8125rem;
+          color: #64748B;
+          margin: 4px 0 0;
+        }
+
+        .modal-details-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 14px;
+        }
+
+        .modal-grid-item {
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 12px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .modal-grid-item.full-width {
+          grid-column: span 2;
+        }
+
+        .grid-label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: #64748B;
+        }
+
+        .grid-value {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #1E293B;
+        }
+
+        .highlight-amount {
+          font-size: 1.125rem;
+          font-weight: 800;
+          color: #0F172A;
+        }
+
+        .modal-status-update-box {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .modal-status-buttons {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .modal-status-btn {
+          padding: 6px 14px;
+          border-radius: 20px;
+          font-size: 0.775rem;
+          font-weight: 600;
+          border: 1px solid #E2E8F0;
+          background: #FFFFFF;
           color: #475569;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .modal-status-btn:hover {
+          border-color: #0D7A75;
+          color: #0D7A75;
+        }
+
+        .modal-status-btn.active {
+          background: #0D7A75;
+          border-color: #0D7A75;
+          color: #FFFFFF;
+        }
+
+        .modal-footer {
+          display: flex;
+          justify-content: flex-end;
+          padding: 16px 24px;
+          border-top: 1px solid #E2E8F0;
+          background: #F8FAFC;
+        }
+
+        .btn-modal-close {
+          padding: 8px 20px;
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+          border-radius: 10px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #334155;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .btn-modal-close:hover {
+          background: #F1F5F9;
+          color: #0F172A;
         }
 
         .view-all-link {
@@ -1459,7 +2129,13 @@ export const AdminDashboardPage = () => {
           .dash-stats-grid {
             grid-template-columns: repeat(3, 1fr);
           }
-          .dash-charts-grid, .dash-bottom-grid {
+          .dash-charts-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 1100px) {
+          .dash-bottom-grid {
             grid-template-columns: 1fr;
           }
         }
