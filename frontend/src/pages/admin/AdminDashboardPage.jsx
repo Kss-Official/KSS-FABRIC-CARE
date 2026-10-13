@@ -3,18 +3,36 @@ import { useAdmin } from '../../context/AdminContext';
 import { 
   Package, 
   Truck, 
-  Clock, 
   ShoppingBag, 
-  TrendingUp, 
+  CircleDollarSign,
+  ArrowUp,
   Calendar, 
   ChevronRight, 
   MoreHorizontal, 
   Plus, 
   UserPlus, 
   Tag, 
-  Sparkles,
-  ArrowUpRight
+  Sparkles
 } from 'lucide-react';
+
+// Washing Machine front-load icon matching reference image
+const WasherIcon = ({ size = 23, color = "#D97706" }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke={color} 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    <rect x="3" y="2" width="18" height="20" rx="3" />
+    <circle cx="12" cy="13" r="4.5" />
+    <circle cx="12" cy="13" r="1.5" />
+    <circle cx="12" cy="5.5" r="0.9" fill={color} />
+  </svg>
+);
 
 export const AdminDashboardPage = () => {
   const { 
@@ -27,12 +45,50 @@ export const AdminDashboardPage = () => {
 
   const [pickupTab, setPickupTab] = useState('all');
 
+  const barHeights = [6, 11, 16, 22];
+
   const stats = [
-    { label: "Today's orders", value: "28", change: "+ 12%", positive: true, icon: <Package size={20} />, color: "cyan" },
-    { label: "Need attention", value: "12", change: "+ 2%", positive: true, icon: <Truck size={20} />, color: "orange" },
-    { label: "Currently processing", value: "08", change: "+ 8%", positive: true, icon: <Clock size={20} />, color: "yellow" },
-    { label: "Ready to go", value: "06", change: "+ 20%", positive: true, icon: <ShoppingBag size={20} />, color: "purple" },
-    { label: "₹12,560", sub: "From completed orders", change: "+ 22%", positive: true, icon: <span className="rupee-text">₹</span>, color: "green", isRev: true }
+    { 
+      label: "Today's orders", 
+      value: "28", 
+      change: "12%", 
+      icon: <Package size={23} strokeWidth={2} />, 
+      theme: "blue",
+      barColors: ["#BCE0FD", "#78BCFB", "#389BF9", "#0284C7"]
+    },
+    { 
+      label: "Need attention", 
+      value: "12", 
+      change: "2%", 
+      icon: <Truck size={23} strokeWidth={2} />, 
+      theme: "coral",
+      barColors: ["#FFD0C4", "#FFAA95", "#FF8263", "#FA5A3A"]
+    },
+    { 
+      label: "Currently processing", 
+      value: "08", 
+      change: "8%", 
+      icon: <WasherIcon size={23} color="#D97706" />, 
+      theme: "amber",
+      barColors: ["#FDE68A", "#FCD34D", "#F59E0B", "#D97706"]
+    },
+    { 
+      label: "Ready to go", 
+      value: "06", 
+      change: "20%", 
+      icon: <ShoppingBag size={23} strokeWidth={2} />, 
+      theme: "purple",
+      barColors: ["#DDD6FE", "#C4B5FD", "#A78BFA", "#8B5CF6"]
+    },
+    { 
+      label: "From completed orders", 
+      value: "₹12,560", 
+      change: "22%", 
+      icon: <CircleDollarSign size={23} strokeWidth={2} />, 
+      theme: "green",
+      isRevenue: true,
+      barColors: ["#A7F3D0", "#6EE7B7", "#34D399", "#10B981"]
+    }
   ];
 
   const serviceBreakdown = [
@@ -87,32 +143,38 @@ export const AdminDashboardPage = () => {
         </div>
       </div>
 
-      {/* 5 Stats Cards Grid */}
+      {/* 5 Stats Cards Grid - Exact match with reference image */}
       <div className="dash-stats-grid">
         {stats.map((st, i) => (
-          <div key={i} className="dash-stat-card">
+          <div key={i} className={`dash-stat-card ${st.theme}`}>
             <div className="stat-card-top">
-              <div className={`stat-icon-wrap ${st.color}`}>
+              <div className="stat-icon-wrap">
                 {st.icon}
               </div>
               <div className="stat-card-val-col">
-                <div className="stat-val">{st.value}</div>
-                <div className="stat-name">{st.isRev ? st.sub : st.label}</div>
+                <div className={`stat-val ${st.isRevenue ? 'rev-val' : ''}`}>
+                  {st.value}
+                </div>
+                <div className="stat-name">{st.label}</div>
               </div>
             </div>
 
             <div className="stat-card-bottom">
               <div className="stat-growth-tag">
-                <ArrowUpRight size={13} />
-                <span>{st.change} vs yesterday</span>
+                <ArrowUp size={13} strokeWidth={2.8} className="growth-arrow" />
+                <span className="growth-val">{st.change}</span>
+                <span className="growth-period">vs yesterday</span>
               </div>
-              {/* Sparkline Visual Simulation */}
               <div className="stat-sparkline-bars">
-                <span style={{ height: '40%' }}></span>
-                <span style={{ height: '60%' }}></span>
-                <span style={{ height: '50%' }}></span>
-                <span style={{ height: '80%' }}></span>
-                <span style={{ height: '100%' }}></span>
+                {st.barColors.map((color, bIdx) => (
+                  <span 
+                    key={bIdx} 
+                    style={{ 
+                      height: `${barHeights[bIdx]}px`, 
+                      backgroundColor: color 
+                    }} 
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -384,93 +446,172 @@ export const AdminDashboardPage = () => {
           box-shadow: 0 1px 3px rgba(0,0,0,0.02);
         }
 
-        /* STATS GRID */
+        /* STATS GRID - Pixel perfect reproduction of reference image */
         .dash-stats-grid {
           display: grid;
-          grid-template-columns: repeat(5, 1fr);
+          grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 16px;
         }
 
         .dash-stat-card {
-          background: #FFFFFF;
-          border: 1px solid #E2E8F0;
-          border-radius: 18px;
-          padding: 18px;
+          border-radius: 20px;
+          padding: 22px 20px 20px 20px;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+          min-height: 144px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
+        .dash-stat-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Card Theming matching reference image */
+        .dash-stat-card.blue {
+          background: #F0F8FF;
+          border: 1.5px solid #DCEAFD;
+        }
+        .dash-stat-card.blue .stat-icon-wrap {
+          background: #D9EEFF;
+          color: #0284C7;
+        }
+
+        .dash-stat-card.coral {
+          background: #FFF5F2;
+          border: 1.5px solid #FFDDD0;
+        }
+        .dash-stat-card.coral .stat-icon-wrap {
+          background: #FFE5DC;
+          color: #FA5A3A;
+        }
+
+        .dash-stat-card.amber {
+          background: #FFFDF0;
+          border: 1.5px solid #FEF08A;
+        }
+        .dash-stat-card.amber .stat-icon-wrap {
+          background: #FEF0C7;
+          color: #D97706;
+        }
+
+        .dash-stat-card.purple {
+          background: #FAF5FF;
+          border: 1.5px solid #EDE5FF;
+        }
+        .dash-stat-card.purple .stat-icon-wrap {
+          background: #EFE6FE;
+          color: #8B5CF6;
+        }
+
+        .dash-stat-card.green {
+          background: #F0FDF5;
+          border: 1.5px solid #D1FAE5;
+        }
+        .dash-stat-card.green .stat-icon-wrap {
+          background: #D5F7E2;
+          color: #10B981;
+        }
+
+        /* Top Row: Icon + Value & Label */
         .stat-card-top {
           display: flex;
-          align-items: flex-start;
+          align-items: center;
           gap: 14px;
         }
 
         .stat-icon-wrap {
-          width: 42px;
-          height: 42px;
-          border-radius: 12px;
+          width: 50px;
+          height: 50px;
+          border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
+          transition: transform 0.2s ease;
         }
 
-        .stat-icon-wrap.cyan { background: #E0F2FE; color: #0284C7; }
-        .stat-icon-wrap.orange { background: #FFEDD5; color: #EA580C; }
-        .stat-icon-wrap.yellow { background: #FEF3C7; color: #D97706; }
-        .stat-icon-wrap.purple { background: #F3E8FF; color: #9333EA; }
-        .stat-icon-wrap.green { background: #DCFCE7; color: #16A34A; }
+        .dash-stat-card:hover .stat-icon-wrap {
+          transform: scale(1.04);
+        }
 
-        .rupee-text {
-          font-weight: 800;
-          font-size: 1.125rem;
+        .stat-card-val-col {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
         }
 
         .stat-val {
-          font-size: 1.5rem;
+          font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 1.85rem;
           font-weight: 800;
-          color: #1E293B;
-          line-height: 1.2;
+          color: #0F172A;
+          line-height: 1.1;
+          letter-spacing: -0.02em;
+        }
+
+        .stat-val.rev-val {
+          font-size: 1.65rem;
+          letter-spacing: -0.01em;
         }
 
         .stat-name {
-          font-size: 0.75rem;
+          font-size: 0.8125rem;
           color: #64748B;
           font-weight: 500;
+          margin-top: 4px;
+          line-height: 1.25;
         }
 
+        /* Bottom Row: Growth Tag + Themed Sparkline Bars */
         .stat-card-bottom {
           display: flex;
-          align-items: center;
+          align-items: flex-end;
           justify-content: space-between;
-          margin-top: 16px;
-          padding-top: 10px;
-          border-top: 1px solid #F1F5F9;
+          margin-top: 22px;
+          padding-top: 0;
+          border-top: none;
         }
 
         .stat-growth-tag {
           display: flex;
           align-items: center;
-          gap: 4px;
-          font-size: 0.6875rem;
+          gap: 3px;
+          font-size: 0.775rem;
+          white-space: nowrap;
+        }
+
+        .growth-arrow {
+          color: #10B981;
+          flex-shrink: 0;
+        }
+
+        .growth-val {
           font-weight: 700;
           color: #10B981;
+        }
+
+        .growth-period {
+          font-weight: 500;
+          color: #64748B;
+          margin-left: 2px;
         }
 
         .stat-sparkline-bars {
           display: flex;
           align-items: flex-end;
-          gap: 3px;
-          height: 16px;
+          gap: 3.5px;
+          height: 22px;
+          flex-shrink: 0;
         }
 
         .stat-sparkline-bars span {
-          width: 3px;
-          background: #10B981;
+          width: 3.5px;
           border-radius: 2px;
+          display: inline-block;
+          transition: height 0.2s ease;
         }
 
         /* CHARTS GRID */
@@ -923,7 +1064,7 @@ export const AdminDashboardPage = () => {
           object-fit: cover;
         }
 
-        @media (max-width: 1200px) {
+        @media (max-width: 1350px) {
           .dash-stats-grid {
             grid-template-columns: repeat(3, 1fr);
           }
@@ -932,7 +1073,13 @@ export const AdminDashboardPage = () => {
           }
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 860px) {
+          .dash-stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 580px) {
           .dash-stats-grid {
             grid-template-columns: 1fr;
           }
