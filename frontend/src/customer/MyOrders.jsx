@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { ordersApi } from '../api/apiClient';
 import { 
@@ -23,6 +23,33 @@ export const MyOrders = () => {
   const [cancellingId, setCancellingId] = useState(null);
   const [cancelModalOrder, setCancelModalOrder] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
+  const cancelModalRef = useRef(null);
+
+  useEffect(() => {
+    if (!cancelModalOrder) return;
+
+    const handleClickOutside = (e) => {
+      if (cancelModalRef.current && !cancelModalRef.current.contains(e.target)) {
+        setCancelModalOrder(null);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setCancelModalOrder(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [cancelModalOrder]);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -258,8 +285,15 @@ export const MyOrders = () => {
 
       {/* Cancel Order Modal */}
       {cancelModalOrder && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in">
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setCancelModalOrder(null)}
+        >
+          <div 
+            ref={cancelModalRef}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 text-red-600 mb-3">
               <AlertCircle size={24} />
               <h3 className="text-lg font-bold">Cancel Order {cancelModalOrder.order_number}?</h3>

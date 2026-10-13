@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supportApi, contentApi } from '../api/apiClient';
 import { useBooking } from '../context/BookingContext';
 import { 
@@ -26,6 +26,25 @@ export const HelpSupport = () => {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [expandedFaq, setExpandedFaq] = useState(null);
+  const faqCardRef = useRef(null);
+
+  useEffect(() => {
+    if (expandedFaq === null) return;
+
+    const handleClickOutside = (event) => {
+      if (faqCardRef.current && !faqCardRef.current.contains(event.target)) {
+        setExpandedFaq(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [expandedFaq]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -202,7 +221,7 @@ export const HelpSupport = () => {
           </div>
 
           {/* Frequently Asked Questions Card (Exact Layout from Image 1) */}
-          <div className="content-card faq-accordion-card">
+          <div className="content-card faq-accordion-card" ref={faqCardRef}>
             <div className="faq-card-header">
               <HelpCircle size={20} className="text-teal" />
               <h3 className="faq-header-title">Frequently Asked Questions</h3>

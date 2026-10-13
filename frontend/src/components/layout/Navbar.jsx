@@ -205,8 +205,8 @@ export const Navbar = () => {
 
       {/* Mobile Menu Dropdown */}
       {mobileMenuOpen && (
-        <div className="mobile-menu-overlay animate-fade-in">
-          <div className="mobile-menu-content">
+        <div className="mobile-menu-overlay animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
+          <div className="mobile-menu-content" onClick={(e) => e.stopPropagation()}>
             {navItems.map((item) => (
               <button
                 key={item.id}

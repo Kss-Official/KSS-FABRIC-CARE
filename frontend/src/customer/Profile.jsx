@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { addressApi } from '../api/apiClient';
 import { 
@@ -29,6 +29,33 @@ export const Profile = () => {
     is_default: false
   });
   const [saving, setSaving] = useState(false);
+  const modalRef = useRef(null);
+
+  useEffect(() => {
+    if (!showAddModal) return;
+
+    const handleClickOutside = (e) => {
+      if (modalRef.current && !modalRef.current.contains(e.target)) {
+        setShowAddModal(false);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowAddModal(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showAddModal]);
 
   const fetchAddresses = async () => {
     setLoadingAddresses(true);
@@ -287,8 +314,15 @@ export const Profile = () => {
 
       {/* Add Address Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in">
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div 
+            ref={modalRef}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-bold text-navy mb-4">
               {editingAddressId ? 'Edit Pickup Address' : 'Add Pickup Address'}
             </h3>
