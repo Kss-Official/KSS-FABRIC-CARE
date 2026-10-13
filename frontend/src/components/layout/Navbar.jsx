@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useBooking } from '../../context/BookingContext';
 import { useAuth } from '../../context/AuthContext';
 import { Sparkles, Menu, X, ArrowRight, ShieldCheck, PhoneCall, User, LogOut, LayoutDashboard, Truck, Layers, ChevronDown, Package, Clock, FileText, MapPin, Bell, HelpCircle } from 'lucide-react';
@@ -8,6 +8,25 @@ export const Navbar = () => {
   const { currentUser, userProfile, userRole, isAuthenticated, logout, openAuthModal } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const profileMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!profileDropdownOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setProfileDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [profileDropdownOpen]);
 
   const isDeliveryAgent = userRole === 'delivery_agent' || userRole === 'delivery';
   const isLaundryStaff = userRole === 'laundry_staff' || userRole === 'laundry';
@@ -92,7 +111,7 @@ export const Navbar = () => {
         {/* Header Action Button */}
         <div className="nav-actions">
           {isAuthenticated && (
-            <div className="user-profile-menu-wrap">
+            <div className="user-profile-menu-wrap" ref={profileMenuRef}>
               <button 
                 className="user-profile-btn"
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}

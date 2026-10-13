@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useBooking } from '../../context/BookingContext';
 import { 
   PRICING_CATEGORIES, 
@@ -96,6 +96,45 @@ export const PricingCalculator = () => {
     setItemSearchQuery('');
   };
 
+  // Ref for the active open category card and subcategory dropdown
+  const activeCardRef = useRef(null);
+  const activeSubcategoryRef = useRef(null);
+
+  // Auto-close open cards / dropdowns when clicking outside
+  useEffect(() => {
+    if (!activeCategory && !activeSubcategory) return;
+
+    const handleClickOutside = (event) => {
+      // 1. If click is outside any category card entirely, close both card and subcategory
+      if (!event.target.closest('.flat-rate-card')) {
+        setActiveCategory(null);
+        setActiveSubcategory(null);
+        setItemSearchQuery('');
+        return;
+      }
+
+      // 2. If a subcategory is open and click is inside the card but outside the dropdown & pills
+      if (activeSubcategory && activeSubcategoryRef.current) {
+        const isInsideDropdown = activeSubcategoryRef.current.contains(event.target);
+        const isSubPill = event.target.closest('.sub-pill-btn');
+        const isCategoryHeader = event.target.closest('.category-header-row');
+
+        if (!isInsideDropdown && !isSubPill && !isCategoryHeader) {
+          setActiveSubcategory(null);
+          setItemSearchQuery('');
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [activeCategory, activeSubcategory]);
+
   // Dynamic Estimator Items
   const [estimatorItems, setEstimatorItems] = useState([
     { id: 'wash-fold', name: 'Wash & Fold (kg)', rate: 85, unit: 'kg', count: 2, icon: <Shirt size={18} strokeWidth={2.2} /> },
@@ -182,6 +221,7 @@ export const PricingCalculator = () => {
                 return (
                   <div 
                     key={category.id} 
+                    ref={isCatOpen ? activeCardRef : null}
                     className={`flat-rate-card ${isCatOpen ? 'category-expanded' : ''}`}
                   >
                     {/* Main Category Header Button */}
@@ -245,7 +285,10 @@ export const PricingCalculator = () => {
 
                         {/* Expandable Clothing Items List for Active Subcategory */}
                         {activeSubcategory && (
-                          <div className="items-dropdown-container animate-fade-in">
+                          <div 
+                            ref={activeSubcategoryRef}
+                            className="items-dropdown-container animate-fade-in"
+                          >
                             {/* Subcategory Heading & Search Bar */}
                             <div className="items-dropdown-toolbar">
                               <div className="items-toolbar-left">
