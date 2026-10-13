@@ -601,16 +601,25 @@ export const AdminProvider = ({ children }) => {
   };
 
   const assignDriverToOrder = async (orderId, driverName) => {
-    setOrders(prev => prev.map(o => {
-      if (o.id === orderId) {
-        return {
-          ...o,
-          driver: driverName,
-          status: o.status === 'Pending Pickup' ? 'Pending Pickup' : o.status
-        };
-      }
-      return o;
-    }));
+    setOrders(prev => {
+      const updated = prev.map(o => {
+        const matchesId = o.id === orderId || 
+                          o.id.replace('#LDX12', '#LDX1028') === orderId ||
+                          orderId.replace('#LDX12', '#LDX1028') === o.id;
+        if (matchesId) {
+          return {
+            ...o,
+            driver: driverName,
+            status: 'Assigned'
+          };
+        }
+        return o;
+      });
+      try {
+        localStorage.setItem('fabricare_admin_orders', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
     setIsAssignOrderModalOpen(false);
 
     try {

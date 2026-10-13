@@ -448,6 +448,14 @@ export const AdminPickupDeliveryPage = () => {
     pending: 7
   };
 
+  const [updateTick, setUpdateTick] = useState(0);
+
+  useEffect(() => {
+    const handleStorage = () => setUpdateTick(t => t + 1);
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
   // Synchronize orders with dynamic updates from AdminContext if any
   const combinedOrders = useMemo(() => {
     // Map context updates into the baseline orders
@@ -459,28 +467,43 @@ export const AdminPickupDeliveryPage = () => {
       contextMap.set(cleanId, o);
     });
 
+    let persistedMap = {};
+    try {
+      persistedMap = JSON.parse(localStorage.getItem('fabricare_pickup_delivery_assignments') || '{}');
+    } catch (e) {}
+
     return BASELINE_PICKUP_DELIVERY_ORDERS.map(baseOrd => {
       const live = contextMap.get(baseOrd.id);
-      if (!live) return baseOrd;
+      const persisted = persistedMap[baseOrd.id];
 
       // Extract driver info if live driver changed
       let driverName = baseOrd.driver.name;
       let driverPhone = baseOrd.driver.phone;
       let driverInitials = baseOrd.driver.initials;
       let isAssigned = baseOrd.driver.assigned;
+      let status = baseOrd.status;
 
-      if (live.driver && live.driver !== 'Not Assigned') {
+      if (live && live.driver && live.driver !== 'Not Assigned') {
         isAssigned = true;
         const namePart = live.driver.split('(')[0]?.trim();
         const phonePart = live.driver.match(/\((.*?)\)/)?.[1]?.trim() || '+91 98765 43210';
         driverName = namePart || live.driver;
         driverPhone = phonePart;
         driverInitials = driverName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
+        status = 'Assigned';
+      }
+
+      if (persisted) {
+        isAssigned = true;
+        driverName = persisted.driverName || driverName;
+        driverPhone = persisted.driverPhone || driverPhone;
+        driverInitials = persisted.driverInitials || driverInitials;
+        status = 'Assigned';
       }
 
       return {
         ...baseOrd,
-        status: live.status === 'Ready for Delivery' ? 'In Transit' : (live.status === 'Pending Pickup' ? 'Pending' : (live.status || baseOrd.status)),
+        status: isAssigned && baseOrd.status === 'Pending' ? 'Assigned' : (live?.status === 'Ready for Delivery' ? 'In Transit' : status),
         driver: {
           ...baseOrd.driver,
           name: driverName,
@@ -490,7 +513,7 @@ export const AdminPickupDeliveryPage = () => {
         }
       };
     });
-  }, [contextOrders]);
+  }, [contextOrders, updateTick]);
 
   // Tab counts
   const totalAllCount = combinedOrders.length;
@@ -554,14 +577,18 @@ export const AdminPickupDeliveryPage = () => {
     setAssigningOrder({
       id: ord.id,
       date: ord.date,
-      pickupTime: `${ord.timeStart} – ${ord.timeEnd}`,
+      timeStart: ord.timeStart,
+      timeEnd: ord.timeEnd,
+      pickupTime: `${ord.date}, ${ord.timeStart} – ${ord.timeEnd}`,
       customer: {
         name: ord.customer.name,
         phone: ord.customer.phone,
+        locality: ord.customer.address?.split(',')[0]?.trim() || 'HRBR Layout, Bengaluru',
         address: ord.customer.address
       },
       services: ['Dry Cleaning'],
-      amount: 450,
+      itemCount: '1 item',
+      amount: ord.amount || 240,
       type: ord.type
     });
     setIsAssignOrderModalOpen(true);
@@ -607,7 +634,20 @@ export const AdminPickupDeliveryPage = () => {
           <button 
             className="btn-assign-order"
             onClick={() => {
-              setAssigningOrder(null);
+              setAssigningOrder({
+                id: '#LDX10289',
+                pickupTime: '23 Sep 2026, 10:00 AM – 12:00 PM',
+                type: 'Pickup',
+                customer: {
+                  name: 'Priya Sharma',
+                  phone: '+91 99876 54321',
+                  locality: 'HRBR Layout, Bengaluru',
+                  address: 'House #45, 3rd Cross, HBBR Layout, Bengaluru – 560043'
+                },
+                services: ['Dry Cleaning'],
+                itemCount: '1 item',
+                amount: 240
+              });
               setIsAssignOrderModalOpen(true);
             }}
             type="button"
@@ -897,7 +937,12 @@ export const AdminPickupDeliveryPage = () => {
                       {/* DRIVER */}
                       <td className="td-col-driver">
                         {isAssigned ? (
-                          <div className="driver-assigned-cell">
+                          <div 
+                            className="driver-assigned-cell"
+                            onClick={() => openAssignModalForOrder(ord)}
+                            title="Click to reassign driver"
+                            style={{ cursor: 'pointer' }}
+                          >
                             <div className="driver-avatar-circle dark">
                               {ord.driver.initials}
                             </div>
@@ -911,6 +956,7 @@ export const AdminPickupDeliveryPage = () => {
                             className="driver-assigned-cell unassigned"
                             onClick={() => openAssignModalForOrder(ord)}
                             title="Click to assign driver"
+                            style={{ cursor: 'pointer' }}
                           >
                             <div className="driver-avatar-circle unassigned">
                               {ord.driver.initials || 'NK'}
