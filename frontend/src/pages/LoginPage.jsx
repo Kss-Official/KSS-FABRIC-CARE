@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth, getPortalForRole } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
+import { getPortalForRole } from '../utils/roleUtils';
 import { useBooking } from '../context/BookingContext';
 import { useAdmin } from '../context/AdminContext';
 import {

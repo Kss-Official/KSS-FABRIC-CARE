@@ -17,7 +17,9 @@ import { AdminPortal } from './pages/admin/AdminPortal';
 import { CustomerAuthModal } from './components/common/CustomerAuthModal';
 
 import { LoginPage } from './pages/LoginPage';
-import { useAuth, getPortalForRole } from './context/AuthContext';
+import { useAuth } from './context/AuthContext';
+import { getPortalForRole } from './utils/roleUtils';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
 // Customer Portal Pages
@@ -141,6 +143,8 @@ const AppContent = () => {
   const { currentPage, navigateTo } = useBooking();
   const { isAuthenticated, userRole, loading } = useAuth();
 
+  const normalizedRoute = String(currentPage || 'home').replace(/^#\/?/, '').trim().toLowerCase();
+
   // Show subtle loader while session is being verified from storage
   if (loading) {
     return (
@@ -159,12 +163,12 @@ const AppContent = () => {
   }
 
   // Route 1: Dedicated Login Page
-  if (currentPage === 'login') {
+  if (normalizedRoute === 'login') {
     return <LoginPage />;
   }
 
   // Route 2: Admin Portal (Strictly Protected: role === 'admin')
-  if (currentPage === 'admin') {
+  if (normalizedRoute === 'admin') {
     if (!isAuthenticated) {
       navigateTo('login');
       return null;
@@ -177,7 +181,7 @@ const AppContent = () => {
   }
 
   // Route 3: Delivery Portal (Strictly Protected: role === 'delivery_agent' or 'admin')
-  if (currentPage === 'delivery-portal') {
+  if (normalizedRoute === 'delivery-portal') {
     if (!isAuthenticated) {
       navigateTo('login');
       return null;
@@ -190,7 +194,7 @@ const AppContent = () => {
   }
 
   // Route 4: Laundry Hub Portal (Strictly Protected: role === 'laundry_staff' or 'admin')
-  if (currentPage === 'laundry-portal') {
+  if (normalizedRoute === 'laundry-portal') {
     if (!isAuthenticated) {
       navigateTo('login');
       return null;
@@ -203,7 +207,7 @@ const AppContent = () => {
   }
 
   // Route 5: Customer Account Pages (Protected: requires customer/user authentication)
-  if (CUSTOMER_PORTAL_PAGES.includes(currentPage)) {
+  if (CUSTOMER_PORTAL_PAGES.includes(normalizedRoute)) {
     if (!isAuthenticated) {
       navigateTo('login');
       return null;
@@ -213,14 +217,14 @@ const AppContent = () => {
         <Navbar />
         <main className="main-content">
           <CustomerAccountLayout>
-            {currentPage === 'customer-dashboard' && <CustomerDashboard />}
-            {currentPage === 'customer-orders' && <MyOrders />}
-            {currentPage === 'customer-track' && <TrackOrder />}
-            {currentPage === 'customer-invoices' && <PaymentsInvoices />}
-            {currentPage === 'customer-addresses' && <Profile />}
-            {currentPage === 'customer-support' && <HelpSupport />}
-            {currentPage === 'customer-profile' && <Profile />}
-            {currentPage === 'customer-notifications' && <CustomerNotifications />}
+            {normalizedRoute === 'customer-dashboard' && <CustomerDashboard />}
+            {normalizedRoute === 'customer-orders' && <MyOrders />}
+            {normalizedRoute === 'customer-track' && <TrackOrder />}
+            {normalizedRoute === 'customer-invoices' && <PaymentsInvoices />}
+            {normalizedRoute === 'customer-addresses' && <Profile />}
+            {normalizedRoute === 'customer-support' && <HelpSupport />}
+            {normalizedRoute === 'customer-profile' && <Profile />}
+            {normalizedRoute === 'customer-notifications' && <CustomerNotifications />}
           </CustomerAccountLayout>
         </main>
         <Footer />
@@ -230,19 +234,24 @@ const AppContent = () => {
   }
 
   // Route 6: Public Main Site (Home, Dedicated Pages, Booking, Confirmed)
+  const isKnownPublicPage = [
+    'home', 'about', 'services', 'why-us', 'pricing',
+    'how-it-works', 'service-detail', 'booking', 'confirmed'
+  ].includes(normalizedRoute);
+
   return (
     <div className="app-layout">
       <Navbar />
       <main className="main-content">
-        {currentPage === 'home' && <HomePage />}
-        {currentPage === 'about' && <AboutPage />}
-        {currentPage === 'services' && <ServicesPage />}
-        {currentPage === 'why-us' && <WhyUsPage />}
-        {currentPage === 'pricing' && <PricingPage />}
-        {currentPage === 'how-it-works' && <HowItWorksPage />}
-        {currentPage === 'service-detail' && <ServiceDetailPage />}
-        {currentPage === 'booking' && <BookingPage />}
-        {currentPage === 'confirmed' && <OrderConfirmedPage />}
+        {(normalizedRoute === 'home' || !isKnownPublicPage) && <HomePage />}
+        {normalizedRoute === 'about' && <AboutPage />}
+        {normalizedRoute === 'services' && <ServicesPage />}
+        {normalizedRoute === 'why-us' && <WhyUsPage />}
+        {normalizedRoute === 'pricing' && <PricingPage />}
+        {normalizedRoute === 'how-it-works' && <HowItWorksPage />}
+        {normalizedRoute === 'service-detail' && <ServiceDetailPage />}
+        {normalizedRoute === 'booking' && <BookingPage />}
+        {normalizedRoute === 'confirmed' && <OrderConfirmedPage />}
       </main>
       <Footer />
       <CustomerAuthModal />
@@ -252,13 +261,15 @@ const AppContent = () => {
 
 export const App = () => {
   return (
-    <AuthProvider>
-      <BookingProvider>
-        <AdminProvider>
-          <AppContent />
-        </AdminProvider>
-      </BookingProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <BookingProvider>
+          <AdminProvider>
+            <AppContent />
+          </AdminProvider>
+        </BookingProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 };
 

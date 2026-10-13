@@ -81,7 +81,10 @@ const BlanketIcon = ({ size = 20, color = '#087F8C' }) => (
 );
 
 export const PricingCalculator = () => {
-  const { startBooking } = useBooking();
+  const bookingCtx = useBooking() || {};
+  const startBooking = bookingCtx.startBooking || (() => {
+    if (typeof window !== 'undefined') window.location.hash = 'booking';
+  });
 
   // Static Popular Flat Rates (Matching Reference Design)
   const flatRates = [

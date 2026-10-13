@@ -2,87 +2,19 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { createFirestoreOrder, subscribeServices } from '../services/firestoreService';
 import { servicesApi, ordersApi, addressApi } from '../api/apiClient';
 import { useAuth } from './AuthContext';
+import { INITIAL_SERVICES } from '../constants/servicesConstants';
 
 const BookingContext = createContext();
 
-export const INITIAL_SERVICES = [
-  {
-    id: 'wash-fold',
-    name: 'Wash & Fold',
-    subtitle: 'Everyday essentials fresh and clean.',
-    pricePerKg: 60,
-    unit: 'kg',
-    price: 120,
-    icon: 'Shirt',
-    image: '/assets/service-wash.jpg',
-    checked: true,
-    popular: true
-  },
-  {
-    id: 'wash-iron',
-    name: 'Wash & Iron',
-    subtitle: 'Clean clothes, ready to wear.',
-    pricePerKg: 90,
-    unit: 'kg',
-    price: 180,
-    icon: 'Layers',
-    image: '/assets/service-wash.jpg',
-    checked: false
-  },
-  {
-    id: 'dry-cleaning',
-    name: 'Dry Cleaning',
-    subtitle: 'For your delicate and premium wear.',
-    pricePerPiece: 120,
-    unit: 'pc',
-    price: 220,
-    icon: 'Sparkles',
-    image: '/assets/service-dryclean.jpg',
-    checked: true,
-    popular: true
-  },
-  {
-    id: 'steam-iron',
-    name: 'Steam Iron',
-    subtitle: 'Crisp and perfectly pressed.',
-    pricePerPiece: 20,
-    unit: 'pc',
-    price: 60,
-    icon: 'Flame',
-    image: '/assets/service-iron.jpg',
-    checked: false
-  },
-  {
-    id: 'shoe-laundry',
-    name: 'Shoe Laundry',
-    subtitle: 'Clean shoes, step brighter.',
-    pricePerPair: 250,
-    unit: 'pair',
-    price: 250,
-    icon: 'Footprints',
-    image: '/assets/service-shoe.jpg',
-    checked: false
-  },
-  {
-    id: 'home-care',
-    name: 'Home Care',
-    subtitle: 'Curtains, bed sheets and more.',
-    pricePerItem: 150,
-    unit: 'item',
-    price: 200,
-    icon: 'BedDouble',
-    image: '/assets/service-curtain.jpg',
-    checked: false
-  }
-];
+export { INITIAL_SERVICES };
 
 export const BookingProvider = ({ children }) => {
   const { currentUser, userProfile, isAuthenticated } = useAuth();
 
-  // Navigation State: 'home' | 'services' | 'booking' | 'confirmed' | 'admin' | 'customer-*' | 'delivery-portal' | 'laundry-portal'
+  // Navigation State: 'home' | 'about' | 'services' | 'why-us' | 'pricing' | 'how-it-works' | 'booking' | 'confirmed' | 'admin' | 'customer-*' | 'delivery-portal' | 'laundry-portal'
   const getInitialPage = () => {
     if (typeof window !== 'undefined' && window.location.hash) {
-      const hash = window.location.hash.replace(/^#\/?/, '').trim();
+      const hash = window.location.hash.replace(/^#\/?/, '').trim().toLowerCase();
       if (hash) return hash;
     }
     return 'home';
@@ -92,7 +24,7 @@ export const BookingProvider = ({ children }) => {
 
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.replace(/^#\/?/, '').trim();
+      const hash = (window.location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
       if (hash) {
         setCurrentPage(hash);
       } else {
@@ -235,13 +167,14 @@ export const BookingProvider = ({ children }) => {
   };
 
   const navigateTo = (page, idParam = null) => {
-    setCurrentPage(page);
+    const cleanPage = String(page || 'home').replace(/^#\/?/, '').trim().toLowerCase();
+    setCurrentPage(cleanPage);
     if (typeof window !== 'undefined') {
-      window.location.hash = page;
+      window.location.hash = cleanPage;
     }
-    if (page === 'customer-track' && idParam) {
+    if (cleanPage === 'customer-track' && idParam) {
       setActiveTrackingOrderId(idParam);
-    } else if (page === 'services' && idParam) {
+    } else if (cleanPage === 'services' && idParam) {
       setSelectedServiceDetail(idParam);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });

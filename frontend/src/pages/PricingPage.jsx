@@ -29,7 +29,13 @@ const HangerIcon = ({ size = 20, color = '#087F8C' }) => (
 );
 
 export const PricingPage = () => {
-  const { startBooking, navigateTo } = useBooking();
+  const bookingCtx = useBooking() || {};
+  const startBooking = bookingCtx.startBooking || (() => {
+    if (typeof window !== 'undefined') window.location.hash = 'booking';
+  });
+  const navigateTo = bookingCtx.navigateTo || ((page) => {
+    if (typeof window !== 'undefined') window.location.hash = page;
+  });
   const [openFaq, setOpenFaq] = useState(0);
 
   const faqItems = [

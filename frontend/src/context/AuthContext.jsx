@@ -11,8 +11,6 @@ import {
 import { authApi } from '../api/apiClient';
 import { normalizeRole, getPortalForRole } from '../utils/roleUtils';
 
-export { normalizeRole, getPortalForRole };
-
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
