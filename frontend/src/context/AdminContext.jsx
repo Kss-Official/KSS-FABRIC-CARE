@@ -300,83 +300,63 @@ export const INITIAL_CUSTOMERS = [
 export const INITIAL_SERVICES_ADMIN = [
   {
     id: 1,
-    name: 'Shirt',
-    description: 'Regular shirt cleaning and pressing',
+    name: 'Wash & Fold',
+    description: 'Everyday clothing & casual wear',
     category: 'Wash & Fold',
-    price: 80,
-    turnaround: '1–2 days',
+    price: 160,
+    turnaround: '24–48 hrs',
     status: 'Active',
     icon: 'Shirt'
   },
   {
     id: 2,
-    name: 'Jeans',
-    description: 'Denim washing and care',
-    category: 'Wash & Fold',
-    price: 120,
-    turnaround: '1–2 days',
+    name: 'Wash & Iron',
+    description: 'Wash and steam iron care',
+    category: 'Wash & Iron',
+    price: 180,
+    turnaround: '24–48 hrs',
     status: 'Active',
-    icon: 'Layers'
+    icon: 'Iron'
   },
   {
     id: 3,
-    name: 'T-Shirt',
-    description: 'Regular wash and fold',
-    category: 'Wash & Fold',
-    price: 70,
-    turnaround: '1–2 days',
+    name: 'Dry Cleaning',
+    description: 'Premium dry cleaning for delicate wear',
+    category: 'Dry Cleaning',
+    price: 240,
+    turnaround: '48–72 hrs',
     status: 'Active',
-    icon: 'Shirt'
+    icon: 'Hanger'
   },
   {
     id: 4,
-    name: 'Formal Suit',
-    description: 'Professional dry cleaning',
-    category: 'Dry Cleaning',
-    price: 250,
-    turnaround: '2–3 days',
+    name: 'Steam Iron',
+    description: 'Professional steam pressing',
+    category: 'Steam Iron',
+    price: 150,
+    turnaround: '24 hrs',
     status: 'Active',
-    icon: 'Sparkles'
+    icon: 'Iron'
   },
   {
     id: 5,
-    name: 'Saree',
-    description: 'Special fabric care with dry cleaning',
-    category: 'Dry Cleaning',
-    price: 220,
-    turnaround: '2–3 days',
+    name: 'Shoe Laundry',
+    description: 'Deep cleaning for all types of footwear',
+    category: 'Shoe Laundry',
+    price: 200,
+    turnaround: '48–72 hrs',
     status: 'Active',
-    icon: 'Sparkles'
+    icon: 'Footprints'
   },
   {
     id: 6,
-    name: 'Bedsheet (Single)',
-    description: 'Wash, dry and fold',
-    category: 'Steam Ironing',
-    price: 90,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Flame'
-  },
-  {
-    id: 7,
-    name: 'Blanket',
-    description: 'Deep cleaning and sanitization',
-    category: 'Special Care',
+    name: 'Home Care',
+    description: 'Curtains, bedsheets, blankets & linen',
+    category: 'Home Care',
     price: 300,
-    turnaround: '2–3 days',
+    turnaround: '48–72 hrs',
     status: 'Inactive',
-    icon: 'BedDouble'
-  },
-  {
-    id: 8,
-    name: 'Curtain (Per Piece)',
-    description: 'Dry cleaning and freshening',
-    category: 'Special Care',
-    price: 180,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'BedDouble'
+    icon: 'Home'
   }
 ];
 
@@ -668,6 +648,10 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  const deleteService = async (serviceId) => {
+    setServices(prev => prev.filter(s => s.id !== serviceId));
+  };
+
   const updateSettings = async (newSettings) => {
     setSettings(newSettings);
     try {
@@ -725,7 +709,8 @@ export const AdminProvider = ({ children }) => {
         createOrder,
         updateOrderStatus,
         assignDriverToOrder,
-        toggleServiceStatus
+        toggleServiceStatus,
+        deleteService
       }}
     >
       {children}
