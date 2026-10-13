@@ -443,7 +443,7 @@ export const INITIAL_DRIVERS = [
 export const INITIAL_FAQS_ADMIN = [
   {
     id: 1,
-    question: 'How does FabriCare pickup and delivery work?',
+    question: 'How does Laundrix pickup and delivery work?',
     answer: 'Schedule a pickup through our app or website. Our executive will arrive with specialized laundry bags and deliver clean clothes within 24-48 hours.',
     status: 'Active',
     displayOrder: 1
@@ -499,10 +499,128 @@ export const INITIAL_FAQS_ADMIN = [
   }
 ];
 
+export const INITIAL_ADMIN_NOTIFICATIONS = [
+  {
+    id: 'notif-1',
+    type: 'order',
+    title: 'New Order #LDX10290 Placed',
+    desc: 'Rohan Mehta placed a Pickup order for 4 items (Wash & Fold). Pickup scheduled for today, 09:00 AM – 11:00 AM.',
+    time: '5 mins ago',
+    timestamp: Date.now() - 5 * 60 * 1000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#LDX1290', customer: 'Rohan Mehta' }
+  },
+  {
+    id: 'notif-2',
+    type: 'driver',
+    title: 'Driver Assigned to Order #LDX10289',
+    desc: 'Ravi Kumar has been assigned for pickup at House #45, HRBR Layout. Status: Driver en route.',
+    time: '25 mins ago',
+    timestamp: Date.now() - 25 * 60 * 1000,
+    unread: true,
+    actionTab: 'pickup-delivery',
+    meta: { orderId: '#LDX1289', driver: 'Ravi Kumar' }
+  },
+  {
+    id: 'notif-3',
+    type: 'delivery',
+    title: 'Pickup Completed Successfully',
+    desc: 'Order #LDX10283 successfully collected from Indiranagar and transferred to processing hub.',
+    time: '1 hour ago',
+    timestamp: Date.now() - 60 * 60 * 1000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#LDX10283' }
+  },
+  {
+    id: 'notif-4',
+    type: 'payment',
+    title: 'Online Payment Confirmed',
+    desc: '₹620 paid via UPI (Google Pay) for Order #LDX10284. Gateway transaction ID: TXN_8839201.',
+    time: '2 hours ago',
+    timestamp: Date.now() - 120 * 60 * 1000,
+    unread: false,
+    actionTab: 'orders',
+    meta: { orderId: '#LDX10284', amount: 620 }
+  },
+  {
+    id: 'notif-5',
+    type: 'customer',
+    title: 'New Customer Registered',
+    desc: 'Karan Verma (+91 97654 32100) registered a new account from Koramangala, Bengaluru.',
+    time: '4 hours ago',
+    timestamp: Date.now() - 240 * 60 * 1000,
+    unread: false,
+    actionTab: 'customers',
+    meta: { customer: 'Karan Verma' }
+  },
+  {
+    id: 'notif-6',
+    type: 'system',
+    title: 'Automated Daily Backup Completed',
+    desc: 'All customer records, active orders, and service catalogues were backed up successfully.',
+    time: 'Yesterday at 11:30 PM',
+    timestamp: Date.now() - 18 * 60 * 60 * 1000,
+    unread: false,
+    actionTab: 'settings',
+    meta: { status: 'success' }
+  }
+];
+
 export const AdminProvider = ({ children }) => {
-  // Navigation: 'dashboard' | 'orders' | 'pickup-delivery' | 'customers' | 'services' | 'content' | 'settings' | 'login'
+  // Navigation: 'dashboard' | 'orders' | 'pickup-delivery' | 'customers' | 'services' | 'notifications' | 'content' | 'settings' | 'login'
   const [adminTab, setAdminTab] = useState('dashboard');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(true);
+
+  // Notifications State
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_notifications');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return INITIAL_ADMIN_NOTIFICATIONS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fabricare_admin_notifications', JSON.stringify(notifications));
+    } catch (e) {}
+  }, [notifications]);
+
+  const markNotificationAsRead = (id) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, unread: false } : n));
+  };
+
+  const markNotificationAsUnread = (id) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, unread: true } : n));
+  };
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+  };
+
+  const deleteNotification = (id) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const clearAllNotifications = () => {
+    setNotifications([]);
+  };
+
+  const addAdminNotification = (notif) => {
+    const newNotif = {
+      id: `notif-${Date.now()}`,
+      time: 'Just now',
+      timestamp: Date.now(),
+      unread: true,
+      ...notif
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+  };
 
   // Modals & Drawers State
   const [isCreateOrderDrawerOpen, setIsCreateOrderDrawerOpen] = useState(false);
@@ -529,7 +647,7 @@ export const AdminProvider = ({ children }) => {
   const [faqs, setFaqs] = useState(INITIAL_FAQS_ADMIN);
   const [termsContent, setTermsContent] = useState({
     title: 'Terms & Conditions',
-    body: `1. Introduction\nWelcome to FabriCare. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nFabriCare provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.\n\n3. Orders & Pickup\nOrders can be placed through our website, mobile app or by phone. Pickup and delivery timings are subject to availability. Please ensure clothes are securely packed and handed over in clean condition.\n\n4. Pricing & Payment\nPrices are based on the type of garment, fabric and service selected. All charges are transparent with no hidden fees.`
+    body: `1. Introduction\nWelcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nLaundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.\n\n3. Orders & Pickup\n  Orders can be placed through our website, mobile app or by phone.\n  Pickup and delivery timings are subject to availability.\n  Please ensure clothes are securely packed and handed over in clean condition.\n\n4. Pricing & Payment\n  Prices are based on the type of garment, fabric and service selected.`
   });
 
   // Settings
@@ -542,16 +660,16 @@ export const AdminProvider = ({ children }) => {
     } catch (e) {}
     return {
       name: 'Admin',
-      email: 'admin@laundrix.com',
+      email: 'admin@fabricare.com',
       phone: '+91 98765 43210',
       role: 'Administrator',
-      supportEmail: 'support@laundrix.com',
+      supportEmail: 'support@fabricare.com',
       supportPhone: '+91 98765 43210',
-      websiteUrl: 'https://www.laundrix.com',
-      instagram: 'https://instagram.com/laundrix',
-      facebook: 'https://facebook.com/laundrix',
-      twitter: 'https://x.com/laundrix',
-      linkedin: 'https://linkedin.com/company/laundrix',
+      websiteUrl: 'https://www.fabricare.com',
+      instagram: 'https://instagram.com/fabricare',
+      facebook: 'https://facebook.com/fabricare',
+      twitter: 'https://x.com/fabricare',
+      linkedin: 'https://linkedin.com/company/fabricare',
       photoUrl: '',
       notifications: {
         newOrders: true,
@@ -862,7 +980,16 @@ export const AdminProvider = ({ children }) => {
         updateOrderStatus,
         assignDriverToOrder,
         toggleServiceStatus,
-        deleteService
+        deleteService,
+        notifications,
+        setNotifications,
+        markNotificationAsRead,
+        markNotificationAsUnread,
+        markAllNotificationsAsRead,
+        deleteNotification,
+        clearAllNotifications,
+        addAdminNotification,
+        unreadNotificationsCount: notifications.filter(n => n.unread).length
       }}
     >
       {children}

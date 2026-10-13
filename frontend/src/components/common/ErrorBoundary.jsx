@@ -19,7 +19,6 @@ export class ErrorBoundary extends React.Component {
   handleReset = () => {
     this.setState({ hasError: false, error: null, errorInfo: null });
     if (typeof window !== 'undefined') {
-      window.location.hash = 'home';
       window.location.reload();
     }
   };

@@ -9,6 +9,7 @@ import { AdminCustomersPage } from './AdminCustomersPage';
 import { AdminServicesPage } from './AdminServicesPage';
 import { AdminContentPage } from './AdminContentPage';
 import { AdminSettingsPage } from './AdminSettingsPage';
+import { AdminNotificationsPage } from './AdminNotificationsPage';
 
 import { CreateOrderDrawer } from '../../components/admin/CreateOrderDrawer';
 import { AddCustomerModal } from '../../components/admin/AddCustomerModal';
@@ -35,6 +36,8 @@ export const AdminPortal = () => {
         return <AdminCustomersPage />;
       case 'services':
         return <AdminServicesPage />;
+      case 'notifications':
+        return <AdminNotificationsPage />;
       case 'content':
         return <AdminContentPage />;
       case 'settings':

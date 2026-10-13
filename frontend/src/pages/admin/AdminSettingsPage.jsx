@@ -20,16 +20,16 @@ export const AdminSettingsPage = () => {
 
   const [form, setForm] = useState(() => ({
     name: settings?.name || 'Admin',
-    email: settings?.email || 'admin@laundrix.com',
+    email: settings?.email || 'admin@fabricare.com',
     phone: settings?.phone || '+91 98765 43210',
     role: settings?.role || 'Administrator',
-    supportEmail: settings?.supportEmail || 'support@laundrix.com',
+    supportEmail: settings?.supportEmail || 'support@fabricare.com',
     supportPhone: settings?.supportPhone || '+91 98765 43210',
-    websiteUrl: settings?.websiteUrl || 'https://www.laundrix.com',
-    instagram: settings?.instagram || 'https://instagram.com/laundrix',
-    facebook: settings?.facebook || 'https://facebook.com/laundrix',
-    twitter: settings?.twitter || 'https://x.com/laundrix',
-    linkedin: settings?.linkedin || 'https://linkedin.com/company/laundrix',
+    websiteUrl: settings?.websiteUrl || 'https://www.fabricare.com',
+    instagram: settings?.instagram || 'https://instagram.com/fabricare',
+    facebook: settings?.facebook || 'https://facebook.com/fabricare',
+    twitter: settings?.twitter || 'https://x.com/fabricare',
+    linkedin: settings?.linkedin || 'https://linkedin.com/company/fabricare',
     photoUrl: settings?.photoUrl || '',
     notifications: {
       newOrders: settings?.notifications?.newOrders ?? true,
