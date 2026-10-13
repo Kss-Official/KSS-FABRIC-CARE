@@ -350,10 +350,10 @@ export const AdminDashboardPage = () => {
   }, [orders]);
 
   const pickupDeliveries = [
-    { time: '09:00 - 11:00 AM', id: '#LDX10284', name: 'Rohan Mehta', area: 'Banaswadi, Bengaluru', type: 'Pickup', status: 'Assigned' },
-    { time: '11:00 - 01:00 PM', id: '#LDX10285', name: 'Arjun Nair', area: 'Indiranagar, Bengaluru', type: 'Delivery', status: 'Assigned' },
-    { time: '02:00 - 04:00 PM', id: '#LDX10287', name: 'Sneha Reddy', area: 'Whitefield, Bengaluru', type: 'Pickup', status: 'Pending' },
-    { time: '03:00 - 05:00 PM', id: '#LDX10288', name: 'Karan Verma', area: 'Marathahalli, Bengaluru', type: 'Delivery', status: 'Assigned' }
+    { timeStart: '09:00', timeEnd: '11:00 AM', id: '#LDX10284', name: 'Rohan Mehta', area: 'Banaswadi, Bengaluru', type: 'Pickup', status: 'Assigned' },
+    { timeStart: '11:00', timeEnd: '01:00 PM', id: '#LDX10286', name: 'Arjun Nair', area: 'Indiranagar, Bengaluru', type: 'Delivery', status: 'Assigned' },
+    { timeStart: '02:00', timeEnd: '04:00 PM', id: '#LDX10287', name: 'Sneha Reddy', area: 'Whitefield, Bengaluru', type: 'Pickup', status: 'Pending' },
+    { timeStart: '03:00', timeEnd: '05:00 PM', id: '#LDX10288', name: 'Karan Verma', area: 'Marathahalli, Bengaluru', type: 'Delivery', status: 'Assigned' }
   ];
 
   const filteredPickups = pickupDeliveries.filter(p => {
@@ -559,201 +559,246 @@ export const AdminDashboardPage = () => {
         </div>
       </div>
 
-      {/* Tables & Action Row */}
-      <div className="dash-bottom-grid">
-        {/* Recent Orders Table */}
-        <div className="dash-card recent-orders-card">
+      {/* Full-Width Recent Orders Section */}
+      <div className="dash-card recent-orders-card">
+        <div className="dash-card-header">
+          <h3 className="dash-card-title">Recent Orders</h3>
+          <button className="view-all-link" onClick={() => setAdminTab('orders')}>
+            View All
+          </button>
+        </div>
+
+        <div className="dash-table-wrapper">
+          <table className="dash-table">
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Customer</th>
+                <th>Services</th>
+                <th>Pickup Date & Time</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentOrders.map(ord => (
+                <tr key={ord.id}>
+                  <td><strong className="order-id-txt">{ord.id}</strong></td>
+                  <td>
+                    <div className="cust-cell">
+                      <span 
+                        className="cust-mini-avatar"
+                        style={getAvatarStyle(ord.customer?.avatar)}
+                      >
+                        {ord.customer?.avatar || (ord.customer?.name ? ord.customer.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'CU')}
+                      </span>
+                      <span className="cust-name-txt">{ord.customer?.name}</span>
+                    </div>
+                  </td>
+                  <td className="services-cell-txt">
+                    {Array.isArray(ord.services) ? ord.services.join(', ') : (ord.services || 'Wash & Fold')}
+                  </td>
+                  <td className="pickup-date-cell-txt">{ord.pickupTime || ord.date}</td>
+                  <td><strong className="amount-cell-txt">₹{ord.amount}</strong></td>
+                  <td>
+                    <span className={`status-pill ${getStatusClass(ord.status)}`}>
+                      {ord.status}
+                    </span>
+                  </td>
+                  <td className="action-cell">
+                    <div className="action-menu-anchor">
+                      <button 
+                        className={`table-action-dots ${activeActionMenuId === ord.id ? 'active' : ''}`}
+                        title="Order options"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveActionMenuId(activeActionMenuId === ord.id ? null : ord.id);
+                        }}
+                      >
+                        <MoreHorizontal size={18} />
+                      </button>
+
+                      {activeActionMenuId === ord.id && (
+                        <div className="action-dropdown-menu" onClick={e => e.stopPropagation()}>
+                          <div className="dropdown-order-header">
+                            <span>Order {ord.id}</span>
+                            <span className={`status-mini-badge ${getStatusClass(ord.status)}`}>{ord.status}</span>
+                          </div>
+                          
+                          <button 
+                            className="dropdown-action-btn primary"
+                            onClick={() => {
+                              setSelectedOrderDetails(ord);
+                              setActiveActionMenuId(null);
+                            }}
+                          >
+                            <Eye size={15} />
+                            <span>View Details</span>
+                          </button>
+
+                          <div className="dropdown-divider" />
+                          <div className="dropdown-section-title">Change Status:</div>
+
+                          <div className="dropdown-status-options">
+                            {[
+                              'Pickup Scheduled',
+                              'Pending Pickup',
+                              'In Cleaning',
+                              'Ready for Delivery',
+                              'Delivered'
+                            ].map(st => (
+                              <button
+                                key={st}
+                                className={`dropdown-status-btn ${ord.status === st ? 'current' : ''}`}
+                                onClick={() => {
+                                  updateOrderStatus(ord.id, st);
+                                  setActiveActionMenuId(null);
+                                }}
+                              >
+                                <span className={`status-indicator-dot ${getStatusClass(st)}`} />
+                                <span>{st}</span>
+                                {ord.status === st && <Check size={14} className="check-icon" />}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Directly below Recent Orders: 2-Column Operations Grid */}
+      <div className="dash-operations-grid">
+        {/* Left: Today's Pickup & Delivery matching Second Reference Image */}
+        <div className="dash-card pickup-delivery-card">
           <div className="dash-card-header">
-            <h3 className="dash-card-title">Recent Orders</h3>
-            <button className="view-all-link" onClick={() => setAdminTab('orders')}>
-              View All
+            <h3 className="dash-card-title">Today's Pickup & Delivery</h3>
+            <button className="view-all-link" onClick={() => setAdminTab('pickup-delivery')}>
+              View All →
             </button>
           </div>
 
-          <div className="dash-table-wrapper">
-            <table className="dash-table">
-              <thead>
-                <tr>
-                  <th>Order ID</th>
-                  <th>Customer</th>
-                  <th>Services</th>
-                  <th>Pickup Date & Time</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentOrders.map(ord => (
-                  <tr key={ord.id}>
-                    <td><strong className="order-id-txt">{ord.id}</strong></td>
-                    <td>
-                      <div className="cust-cell">
-                        <span 
-                          className="cust-mini-avatar"
-                          style={getAvatarStyle(ord.customer?.avatar)}
-                        >
-                          {ord.customer?.avatar || (ord.customer?.name ? ord.customer.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'CU')}
-                        </span>
-                        <span className="cust-name-txt">{ord.customer?.name}</span>
-                      </div>
-                    </td>
-                    <td className="services-cell-txt">
-                      {Array.isArray(ord.services) ? ord.services.join(', ') : (ord.services || 'Wash & Fold')}
-                    </td>
-                    <td className="pickup-date-cell-txt">{ord.pickupTime || ord.date}</td>
-                    <td><strong className="amount-cell-txt">₹{ord.amount}</strong></td>
-                    <td>
-                      <span className={`status-pill ${getStatusClass(ord.status)}`}>
-                        {ord.status}
-                      </span>
-                    </td>
-                    <td className="action-cell">
-                      <div className="action-menu-anchor">
-                        <button 
-                          className={`table-action-dots ${activeActionMenuId === ord.id ? 'active' : ''}`}
-                          title="Order options"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveActionMenuId(activeActionMenuId === ord.id ? null : ord.id);
-                          }}
-                        >
-                          <MoreHorizontal size={18} />
-                        </button>
+          <div className="pickup-subtabs">
+            <button 
+              className={`subtab-btn ${pickupTab === 'all' ? 'active' : ''}`} 
+              onClick={() => setPickupTab('all')}
+            >
+              All (18)
+            </button>
+            <button 
+              className={`subtab-btn ${pickupTab === 'pickups' ? 'active' : ''}`} 
+              onClick={() => setPickupTab('pickups')}
+            >
+              Pickups (10)
+            </button>
+            <button 
+              className={`subtab-btn ${pickupTab === 'deliveries' ? 'active' : ''}`} 
+              onClick={() => setPickupTab('deliveries')}
+            >
+              Deliveries (8)
+            </button>
+          </div>
 
-                        {activeActionMenuId === ord.id && (
-                          <div className="action-dropdown-menu" onClick={e => e.stopPropagation()}>
-                            <div className="dropdown-order-header">
-                              <span>Order {ord.id}</span>
-                              <span className={`status-mini-badge ${getStatusClass(ord.status)}`}>{ord.status}</span>
-                            </div>
-                            
-                            <button 
-                              className="dropdown-action-btn primary"
-                              onClick={() => {
-                                setSelectedOrderDetails(ord);
-                                setActiveActionMenuId(null);
-                              }}
-                            >
-                              <Eye size={15} />
-                              <span>View Details</span>
-                            </button>
+          <div className="pickup-items-list">
+            {filteredPickups.map((item, idx) => (
+              <div 
+                key={idx} 
+                className="pickup-item-card" 
+                onClick={() => setAdminTab('pickup-delivery')}
+              >
+                <div className="pickup-left-col">
+                  <div className="pickup-time-box">
+                    <span className="pickup-time-start">{item.timeStart}</span>
+                    <span className="pickup-time-end">{item.timeEnd}</span>
+                  </div>
 
-                            <div className="dropdown-divider" />
-                            <div className="dropdown-section-title">Change Status:</div>
+                  <div className="pickup-truck-circle">
+                    <Truck size={19} strokeWidth={2.2} />
+                  </div>
 
-                            <div className="dropdown-status-options">
-                              {[
-                                'Pickup Scheduled',
-                                'Pending Pickup',
-                                'In Cleaning',
-                                'Ready for Delivery',
-                                'Delivered'
-                              ].map(st => (
-                                <button
-                                  key={st}
-                                  className={`dropdown-status-btn ${ord.status === st ? 'current' : ''}`}
-                                  onClick={() => {
-                                    updateOrderStatus(ord.id, st);
-                                    setActiveActionMenuId(null);
-                                  }}
-                                >
-                                  <span className={`status-indicator-dot ${getStatusClass(st)}`} />
-                                  <span>{st}</span>
-                                  {ord.status === st && <Check size={14} className="check-icon" />}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  <div className="pickup-info-col">
+                    <strong className="pickup-item-id">{item.id}</strong>
+                    <span className="pickup-item-name">{item.name}</span>
+                    <span className="pickup-item-area">{item.area}</span>
+                  </div>
+                </div>
+
+                <div className="pickup-right-col">
+                  <span className={`pickup-type-pill ${item.type.toLowerCase()}`}>{item.type}</span>
+                  <span className={`pickup-status-pill ${item.status.toLowerCase()}`}>{item.status}</span>
+                  <ChevronRight size={17} className="pickup-arrow-icon" />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* 2-Column Sub: Today's Pickup & Quick Actions */}
-        <div className="dash-side-col">
-          {/* Today's Pickup & Delivery */}
-          <div className="dash-card">
-            <div className="dash-card-header">
-              <h3 className="dash-card-title">Today's Pickup & Delivery</h3>
-              <button className="view-all-link" onClick={() => setAdminTab('pickup-delivery')}>
-                View All →
-              </button>
-            </div>
+        {/* Right: Quick Actions matching Third Reference Image */}
+        <div className="dash-card quick-actions-card">
+          <h3 className="dash-card-title">Quick Actions</h3>
 
-            <div className="pickup-subtabs">
-              <button className={`subtab-btn ${pickupTab === 'all' ? 'active' : ''}`} onClick={() => setPickupTab('all')}>
-                All (18)
-              </button>
-              <button className={`subtab-btn ${pickupTab === 'pickups' ? 'active' : ''}`} onClick={() => setPickupTab('pickups')}>
-                Pickups (10)
-              </button>
-              <button className={`subtab-btn ${pickupTab === 'deliveries' ? 'active' : ''}`} onClick={() => setPickupTab('deliveries')}>
-                Deliveries (8)
-              </button>
-            </div>
+          <div className="quick-actions-list">
+            <button 
+              className="quick-action-btn-item" 
+              onClick={() => setIsCreateOrderDrawerOpen(true)}
+            >
+              <div className="quick-action-icon-circle">
+                <Plus size={24} color="#0D7A75" strokeWidth={2.4} />
+              </div>
+              <div className="quick-action-text-content">
+                <strong className="quick-action-title">Create Order</strong>
+                <span className="quick-action-desc">Add a walk-in or manual order</span>
+              </div>
+              <div className="quick-action-chevron-circle">
+                <ChevronRight size={17} strokeWidth={2.2} />
+              </div>
+            </button>
 
-            <div className="pickup-mini-list">
-              {filteredPickups.map((item, idx) => (
-                <div key={idx} className="pickup-mini-card" onClick={() => setAdminTab('pickup-delivery')}>
-                  <div className="mini-card-time">{item.time}</div>
-                  <div className="mini-card-truck"><Truck size={18} /></div>
-                  <div className="mini-card-info">
-                    <strong>{item.id}</strong>
-                    <span className="mini-cust-name">{item.name}</span>
-                    <span className="mini-cust-loc">{item.area}</span>
-                  </div>
-                  <div className="mini-card-tags">
-                    <span className={`type-tag ${item.type.toLowerCase()}`}>{item.type}</span>
-                    <span className={`status-mini-tag ${item.status.toLowerCase()}`}>{item.status}</span>
-                  </div>
-                  <ChevronRight size={16} className="mini-arrow" />
-                </div>
-              ))}
-            </div>
+            <button 
+              className="quick-action-btn-item" 
+              onClick={() => setIsAddCustomerModalOpen(true)}
+            >
+              <div className="quick-action-icon-circle">
+                <UserPlus size={22} color="#0D7A75" strokeWidth={2.2} />
+              </div>
+              <div className="quick-action-text-content">
+                <strong className="quick-action-title">Add Customer</strong>
+                <span className="quick-action-desc">Create a new customer</span>
+              </div>
+              <div className="quick-action-chevron-circle">
+                <ChevronRight size={17} strokeWidth={2.2} />
+              </div>
+            </button>
+
+            <button 
+              className="quick-action-btn-item" 
+              onClick={() => setIsManageServicesModalOpen(true)}
+            >
+              <div className="quick-action-icon-circle">
+                <Tag size={22} color="#0D7A75" strokeWidth={2.2} />
+              </div>
+              <div className="quick-action-text-content">
+                <strong className="quick-action-title">Manage Services</strong>
+                <span className="quick-action-desc">Update services & pricing</span>
+              </div>
+              <div className="quick-action-chevron-circle">
+                <ChevronRight size={17} strokeWidth={2.2} />
+              </div>
+            </button>
           </div>
 
-          {/* Quick Actions Card */}
-          <div className="dash-card quick-actions-card">
-            <h3 className="dash-card-title">Quick Actions</h3>
-
-            <div className="quick-actions-list">
-              <button className="quick-action-item" onClick={() => setIsCreateOrderDrawerOpen(true)}>
-                <div className="quick-act-icon teal"><Plus size={18} /></div>
-                <div className="quick-act-text">
-                  <strong>Create Order</strong>
-                  <span>Add a walk-in or manual order</span>
-                </div>
-                <ChevronRight size={16} className="act-arrow" />
-              </button>
-
-              <button className="quick-action-item" onClick={() => setIsAddCustomerModalOpen(true)}>
-                <div className="quick-act-icon green"><UserPlus size={18} /></div>
-                <div className="quick-act-text">
-                  <strong>Add Customer</strong>
-                  <span>Create a new customer</span>
-                </div>
-                <ChevronRight size={16} className="act-arrow" />
-              </button>
-
-              <button className="quick-action-item" onClick={() => setIsManageServicesModalOpen(true)}>
-                <div className="quick-act-icon cyan"><Tag size={18} /></div>
-                <div className="quick-act-text">
-                  <strong>Manage Services</strong>
-                  <span>Update services & pricing</span>
-                </div>
-                <ChevronRight size={16} className="act-arrow" />
-              </button>
-            </div>
-
-            <div className="quick-action-towels-thumb">
-              <img src="/assets/folded-towels.jpg" alt="Towels" />
-            </div>
+          <div className="quick-action-illustration-wrap">
+            <img 
+              src="/assets/folded-towels.png" 
+              alt="Clean folded towels with mint leaves" 
+              className="quick-action-towels-exact"
+            />
           </div>
         </div>
       </div>
@@ -1372,12 +1417,17 @@ export const AdminDashboardPage = () => {
           color: #1E293B;
         }
 
-        /* BOTTOM GRID - Balanced width so Recent Orders never wraps */
-        .dash-bottom-grid {
+        /* RECENT ORDERS FULL-WIDTH CARD */
+        .recent-orders-card {
+          width: 100%;
+        }
+
+        /* OPERATIONS GRID: Today's Pickup & Delivery (Left) + Quick Actions (Right) */
+        .dash-operations-grid {
           display: grid;
-          grid-template-columns: minmax(0, 1.72fr) minmax(360px, 1fr);
+          grid-template-columns: minmax(0, 1.35fr) minmax(360px, 1fr);
           gap: 24px;
-          align-items: start;
+          align-items: stretch;
         }
 
         .dash-table-wrapper {
@@ -1948,181 +1998,287 @@ export const AdminDashboardPage = () => {
           text-decoration: underline;
         }
 
-        /* PICKUP & QUICK ACTIONS */
-        .dash-side-col {
+        /* PICKUP & DELIVERY CARD - Matching Second Reference Image */
+        .pickup-delivery-card {
           display: flex;
           flex-direction: column;
-          gap: 20px;
         }
 
         .pickup-subtabs {
           display: flex;
-          gap: 8px;
-          margin-bottom: 14px;
+          gap: 10px;
+          margin-bottom: 20px;
         }
 
         .subtab-btn {
           background: #F1F5F9;
           border: none;
-          border-radius: 8px;
-          padding: 6px 12px;
-          font-size: 0.75rem;
+          border-radius: 10px;
+          padding: 8px 18px;
+          font-size: 0.8125rem;
           font-weight: 600;
-          color: #64748B;
+          color: #475569;
           cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .subtab-btn:hover {
+          background: #E2E8F0;
+          color: #0F172A;
         }
 
         .subtab-btn.active {
           background: #0D7A75;
           color: #FFFFFF;
+          font-weight: 700;
         }
 
-        .pickup-mini-list {
+        .pickup-items-list {
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 12px;
         }
 
-        .pickup-mini-card {
+        .pickup-item-card {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 10px 14px;
-          background: #F8FAFC;
-          border: 1px solid #E2E8F0;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .pickup-mini-card:hover {
-          border-color: #BCEAE6;
-          background: #FFFFFF;
-        }
-
-        .mini-card-time {
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: #475569;
-          min-width: 60px;
-        }
-
-        .mini-card-truck {
-          color: #0D7A75;
-        }
-
-        .mini-card-info {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          font-size: 0.8125rem;
-        }
-
-        .mini-cust-name {
-          font-size: 0.75rem;
-          color: #64748B;
-        }
-
-        .mini-cust-loc {
-          font-size: 0.6875rem;
-          color: #94A3B8;
-        }
-
-        .mini-card-tags {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          align-items: flex-end;
-        }
-
-        .type-tag {
-          font-size: 0.625rem;
-          font-weight: 700;
-          padding: 2px 6px;
-          border-radius: 4px;
-        }
-
-        .type-tag.pickup { background: #E0F2FE; color: #0284C7; }
-        .type-tag.delivery { background: #F3E8FF; color: #9333EA; }
-
-        .status-mini-tag {
-          font-size: 0.625rem;
-          font-weight: 700;
-          color: #10B981;
-        }
-
-        .status-mini-tag.pending { color: #F59E0B; }
-
-        .quick-actions-card {
-          display: flex;
-          flex-direction: column;
+          justify-content: space-between;
           gap: 16px;
+          padding: 14px 20px;
+          background: #FFFFFF;
+          border: 1.5px solid #EBF2F7;
+          border-radius: 16px;
+          cursor: pointer;
+          transition: all 0.2s ease;
         }
 
-        .quick-actions-list {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
+        .pickup-item-card:hover {
+          border-color: #BCEAE6;
+          background: #F8FAFC;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.03);
         }
 
-        .quick-action-item {
+        .pickup-left-col {
           display: flex;
           align-items: center;
           gap: 14px;
-          background: #FFFFFF;
-          border: 1px solid #E2E8F0;
-          border-radius: 12px;
-          padding: 12px 14px;
-          cursor: pointer;
-          text-align: left;
-          transition: all 0.2s;
+          min-width: 0;
         }
 
-        .quick-action-item:hover {
-          border-color: #0D7A75;
-          transform: translateX(4px);
+        .pickup-time-box {
+          display: flex;
+          flex-direction: column;
+          min-width: 70px;
+          flex-shrink: 0;
         }
 
-        .quick-act-icon {
-          width: 36px;
-          height: 36px;
+        .pickup-time-start {
+          font-size: 0.875rem;
+          font-weight: 700;
+          color: #0F172A;
+          line-height: 1.25;
+        }
+
+        .pickup-time-end {
+          font-size: 0.775rem;
+          font-weight: 600;
+          color: #64748B;
+          line-height: 1.25;
+        }
+
+        .pickup-truck-circle {
+          width: 38px;
+          height: 38px;
           border-radius: 10px;
+          background: #E0F7FA;
+          color: #0E7490;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
         }
 
-        .quick-act-icon.teal { background: #EBF8F7; color: #0D7A75; }
-        .quick-act-icon.green { background: #DCFCE7; color: #16A34A; }
-        .quick-act-icon.cyan { background: #E0F2FE; color: #0284C7; }
+        .pickup-info-col {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
 
-        .quick-act-text {
+        .pickup-item-id {
+          font-size: 0.875rem;
+          font-weight: 800;
+          color: #0F172A;
+          line-height: 1.2;
+        }
+
+        .pickup-item-name {
+          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #334155;
+          line-height: 1.2;
+        }
+
+        .pickup-item-area {
+          font-size: 0.75rem;
+          color: #94A3B8;
+          line-height: 1.2;
+        }
+
+        .pickup-right-col {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-shrink: 0;
+        }
+
+        .pickup-type-pill {
+          padding: 4px 14px;
+          border-radius: 9999px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+
+        .pickup-type-pill.pickup {
+          background: #E0F2FE;
+          color: #0284C7;
+        }
+
+        .pickup-type-pill.delivery {
+          background: #F3E8FF;
+          color: #9333EA;
+        }
+
+        .pickup-status-pill {
+          padding: 4px 14px;
+          border-radius: 9999px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+
+        .pickup-status-pill.assigned {
+          background: #DCFCE7;
+          color: #16A34A;
+        }
+
+        .pickup-status-pill.pending {
+          background: #FEF3C7;
+          color: #D97706;
+        }
+
+        .pickup-arrow-icon {
+          color: #94A3B8;
+          flex-shrink: 0;
+        }
+
+        /* QUICK ACTIONS CARD - Matching Third Reference Image */
+        .quick-actions-card {
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+
+        .quick-actions-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .quick-action-btn-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          background: #FFFFFF;
+          border: 1.5px solid #EBF2F7;
+          border-radius: 18px;
+          padding: 14px 18px;
+          cursor: pointer;
+          text-align: left;
+          transition: all 0.2s ease;
+          width: 100%;
+        }
+
+        .quick-action-btn-item:hover {
+          border-color: #0D7A75;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 14px rgba(13, 122, 117, 0.08);
+        }
+
+        .quick-action-icon-circle {
+          width: 50px;
+          height: 50px;
+          border-radius: 50%;
+          background: #E0F7F6;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: transform 0.2s ease;
+        }
+
+        .quick-action-btn-item:hover .quick-action-icon-circle {
+          transform: scale(1.05);
+        }
+
+        .quick-action-text-content {
           flex: 1;
           display: flex;
           flex-direction: column;
+          min-width: 0;
         }
 
-        .quick-act-text strong {
-          font-size: 0.875rem;
-          color: #1E293B;
+        .quick-action-title {
+          font-size: 0.9375rem;
+          font-weight: 700;
+          color: #0F172A;
+          line-height: 1.25;
         }
 
-        .quick-act-text span {
-          font-size: 0.75rem;
+        .quick-action-desc {
+          font-size: 0.8125rem;
+          font-weight: 500;
           color: #64748B;
+          margin-top: 3px;
+          line-height: 1.2;
         }
 
-        .quick-action-towels-thumb {
-          height: 100px;
-          border-radius: 12px;
-          overflow: hidden;
+        .quick-action-chevron-circle {
+          width: 34px;
+          height: 34px;
+          border-radius: 50%;
+          border: 1.5px solid #CBD5E1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          color: #94A3B8;
+          transition: all 0.2s ease;
         }
 
-        .quick-action-towels-thumb img {
+        .quick-action-btn-item:hover .quick-action-chevron-circle {
+          border-color: #0D7A75;
+          background: #E0F7F6;
+          color: #0D7A75;
+        }
+
+        .quick-action-illustration-wrap {
+          display: flex;
+          justify-content: center;
+          align-items: flex-end;
+          margin-top: auto;
+          padding-top: 16px;
+        }
+
+        .quick-action-towels-exact {
+          max-width: 310px;
           width: 100%;
-          height: 100%;
-          object-fit: cover;
+          height: auto;
+          object-fit: contain;
+          filter: drop-shadow(0 4px 14px rgba(0,0,0,0.05));
         }
 
         @media (max-width: 1350px) {
@@ -2135,7 +2291,7 @@ export const AdminDashboardPage = () => {
         }
 
         @media (max-width: 1100px) {
-          .dash-bottom-grid {
+          .dash-operations-grid {
             grid-template-columns: 1fr;
           }
         }
