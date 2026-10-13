@@ -123,16 +123,32 @@ export const AdminDashboardPage = () => {
 
   // Dynamically compute chart data while preserving exact Second Reference Image baseline
   const chartDays = useMemo(() => {
-    if (chartTimeframe === '30d') {
-      return baseChartDays30d;
-    }
-
-    // Baseline exactly matches the second reference image
     const initialOrderIds = new Set([
       '#LDX10287', '#LDX10286', '#LDX1286', '#LDX1285', 
       '#LDX1284', '#LDX1283', '#LDX1282', '#LDX10281'
     ]);
     const dynamicOrders = (orders || []).filter(o => !initialOrderIds.has(o.id));
+
+    if (chartTimeframe === '30d') {
+      if (dynamicOrders.length === 0) {
+        return baseChartDays30d;
+      }
+      return baseChartDays30d.map((wk, idx) => {
+        if (idx === baseChartDays30d.length - 1) {
+          const extraComp = dynamicOrders.filter(o => o.status === 'Completed' || o.status === 'Delivered').length;
+          const extraClean = dynamicOrders.filter(o => o.status === 'In Cleaning' || o.status === 'Processing' || o.status === 'Ready for Delivery').length;
+          const extraPend = dynamicOrders.filter(o => o.status === 'Pending Pickup' || o.status === 'Pending Review' || o.status === 'Pending').length;
+
+          return {
+            ...wk,
+            comp: wk.comp + extraComp,
+            inClean: wk.inClean + extraClean,
+            pend: wk.pend + extraPend
+          };
+        }
+        return wk;
+      });
+    }
 
     if (dynamicOrders.length === 0) {
       return baseChartDays7d;
@@ -154,6 +170,15 @@ export const AdminDashboardPage = () => {
       return item;
     });
   }, [orders, chartTimeframe]);
+
+  // Dynamic Y-axis scale: 0 to 40 for 7 Days, 0 to 80 for This Month
+  const yAxisTicks = useMemo(() => {
+    return chartTimeframe === '30d' 
+      ? [80, 60, 40, 20, 0] 
+      : [40, 30, 20, 10, 0];
+  }, [chartTimeframe]);
+
+  const scaleMax = chartTimeframe === '30d' ? 80 : 40;
 
   const recentOrders = orders.slice(0, 6);
 
@@ -246,13 +271,13 @@ export const AdminDashboardPage = () => {
           </div>
 
           <div className="bar-chart-container">
-            {/* Y-Axis scale 0 to 40 */}
+            {/* Dynamic Y-Axis scale based on timeframe (0-40 for 7d, 0-80 for 30d) */}
             <div className="chart-y-axis">
-              <span style={{ top: '0%' }}>40</span>
-              <span style={{ top: '25%' }}>30</span>
-              <span style={{ top: '50%' }}>20</span>
-              <span style={{ top: '75%' }}>10</span>
-              <span style={{ top: '100%' }}>0</span>
+              <span style={{ top: '0%' }}>{yAxisTicks[0]}</span>
+              <span style={{ top: '25%' }}>{yAxisTicks[1]}</span>
+              <span style={{ top: '50%' }}>{yAxisTicks[2]}</span>
+              <span style={{ top: '75%' }}>{yAxisTicks[3]}</span>
+              <span style={{ top: '100%' }}>{yAxisTicks[4]}</span>
             </div>
 
             {/* Canvas area with grid lines and continuous stacked bars */}
@@ -267,15 +292,15 @@ export const AdminDashboardPage = () => {
 
               <div className="chart-bars-wrap">
                 {chartDays.map((cd, idx) => {
-                  const scaleMax = 40;
                   const plotHeight = 200;
                   const pendPx = (cd.pend / scaleMax) * plotHeight;
                   const cleanPx = (cd.inClean / scaleMax) * plotHeight;
                   const compPx = (cd.comp / scaleMax) * plotHeight;
+                  const barWidth = chartTimeframe === '30d' ? 44 : 36;
 
                   return (
                     <div key={idx} className="chart-bar-group">
-                      <div className="stacked-bar">
+                      <div className="stacked-bar" style={{ width: `${barWidth}px` }}>
                         {/* Top: Pending (Soft Peach) */}
                         {cd.pend > 0 && (
                           <div 
@@ -854,13 +879,13 @@ export const AdminDashboardPage = () => {
         }
 
         .stacked-bar {
-          width: 36px;
           display: flex;
           flex-direction: column;
           justify-content: flex-end;
           border-radius: 8px;
           overflow: hidden;
-          transition: transform 0.2s ease, filter 0.2s ease;
+          max-height: 200px;
+          transition: width 0.3s ease, transform 0.2s ease, filter 0.2s ease;
         }
 
         .chart-bar-group:hover .stacked-bar {
@@ -870,7 +895,7 @@ export const AdminDashboardPage = () => {
 
         .bar-segment {
           width: 100%;
-          transition: height 0.3s ease;
+          transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         /* Exact colors from Second Reference Image */
