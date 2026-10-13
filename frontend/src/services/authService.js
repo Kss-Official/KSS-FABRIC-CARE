@@ -12,7 +12,7 @@ import {
   updateDoc,
   serverTimestamp
 } from 'firebase/firestore';
-import { auth, db } from '../config/firebase.js';
+import { auth, db, isRealApiKey } from '../config/firebase.js';
 
 /**
  * Maps Firebase Auth error codes to user-friendly messages
@@ -49,6 +49,9 @@ export const mapAuthError = (error) => {
  * Security Notice: Public registration strictly assigns role = 'customer'
  */
 export const registerUser = async ({ email, password, fullName, phone = '' }) => {
+  if (!isRealApiKey || !auth) {
+    throw new Error('Firebase Authentication is not configured with a valid API key.');
+  }
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
     const user = userCredential.user;
@@ -99,6 +102,9 @@ export const registerUser = async ({ email, password, fullName, phone = '' }) =>
  * Sign in an existing user with email and password
  */
 export const loginUser = async (email, password) => {
+  if (!isRealApiKey || !auth) {
+    throw new Error('Firebase Authentication is not configured with a valid API key.');
+  }
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
     const user = userCredential.user;
@@ -116,6 +122,7 @@ export const loginUser = async (email, password) => {
  * Sign out the currently logged in user
  */
 export const logoutUser = async () => {
+  if (!isRealApiKey || !auth) return;
   try {
     await signOut(auth);
   } catch (error) {
@@ -128,6 +135,9 @@ export const logoutUser = async () => {
  * Send a password reset email
  */
 export const resetPassword = async (email) => {
+  if (!isRealApiKey || !auth) {
+    throw new Error('Firebase Authentication is not configured with a valid API key.');
+  }
   try {
     await sendPasswordResetEmail(auth, email.trim());
     return true;

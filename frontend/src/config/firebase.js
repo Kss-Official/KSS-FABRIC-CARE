@@ -23,22 +23,24 @@ const firebaseConfig = {
   measurementId: getEnv('VITE_FIREBASE_MEASUREMENT_ID', 'G-G7VVZ44JH4')
 };
 
-// Initialize Firebase as a singleton instance
-export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-
-// Initialize Firebase Authentication
-export const auth = getAuth(app);
-
-// Initialize Cloud Firestore Database
-export const db = getFirestore(app);
-
-// Initialize Analytics conditionally only when supported and a valid non-placeholder key is configured
-const isRealApiKey = Boolean(
+// Determine whether a genuine Firebase Web API key is configured
+export const isRealApiKey = Boolean(
   firebaseConfig.apiKey &&
   !firebaseConfig.apiKey.includes('placeholder') &&
   !firebaseConfig.apiKey.includes('demo') &&
   !firebaseConfig.apiKey.includes('your_api_key')
 );
+
+// Initialize Firebase as a singleton instance
+export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
+// Initialize Firebase Authentication only with a valid non-placeholder API key.
+// When a placeholder key is used, getAuth(app) attempts an iframe network call
+// to Identity Toolkit (https://www.googleapis.com/identitytoolkit/...) which fails with 400 Bad Request.
+export const auth = isRealApiKey ? getAuth(app) : null;
+
+// Initialize Cloud Firestore Database
+export const db = getFirestore(app);
 
 let analytics = null;
 if (typeof window !== 'undefined' && isRealApiKey) {

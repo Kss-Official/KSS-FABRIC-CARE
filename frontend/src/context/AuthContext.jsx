@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { auth, isRealApiKey } from '../config/firebase';
 import {
   loginUser,
   registerUser,
@@ -88,37 +88,39 @@ export const AuthProvider = ({ children }) => {
 
     restoreSession();
 
-    // Firebase Auth listener (supports dual authentication)
+    // Firebase Auth listener (active only when a valid real Firebase key is provided)
     let unsubscribeFirebase = () => {};
-    try {
-      unsubscribeFirebase = onAuthStateChanged(auth, async (firebaseUser) => {
-        if (firebaseUser) {
-          try {
-            const profile = await getUserProfile(firebaseUser.uid);
-            const normalized = normalizeRole(profile?.role || 'customer');
-            const fullProfile = {
-              uid: firebaseUser.uid,
-              id: firebaseUser.uid,
-              email: firebaseUser.email,
-              displayName: profile?.displayName || firebaseUser.displayName || 'Customer',
-              phoneNumber: profile?.phoneNumber || firebaseUser.phoneNumber || '',
-              role: normalized,
-              rawRole: profile?.role || 'customer',
-              avatar: (profile?.displayName || firebaseUser.displayName || 'CU').substring(0, 2).toUpperCase(),
-              provider: 'firebase'
-            };
-            if (isMounted) {
-              setCurrentUser(fullProfile);
-              setUserProfile(fullProfile);
-              localStorage.setItem('fabricare_user', JSON.stringify(fullProfile));
+    if (isRealApiKey && auth) {
+      try {
+        unsubscribeFirebase = onAuthStateChanged(auth, async (firebaseUser) => {
+          if (firebaseUser) {
+            try {
+              const profile = await getUserProfile(firebaseUser.uid);
+              const normalized = normalizeRole(profile?.role || 'customer');
+              const fullProfile = {
+                uid: firebaseUser.uid,
+                id: firebaseUser.uid,
+                email: firebaseUser.email,
+                displayName: profile?.displayName || firebaseUser.displayName || 'Customer',
+                phoneNumber: profile?.phoneNumber || firebaseUser.phoneNumber || '',
+                role: normalized,
+                rawRole: profile?.role || 'customer',
+                avatar: (profile?.displayName || firebaseUser.displayName || 'CU').substring(0, 2).toUpperCase(),
+                provider: 'firebase'
+              };
+              if (isMounted) {
+                setCurrentUser(fullProfile);
+                setUserProfile(fullProfile);
+                localStorage.setItem('fabricare_user', JSON.stringify(fullProfile));
+              }
+            } catch (err) {
+              console.warn('Failed to load Firestore profile:', err);
             }
-          } catch (err) {
-            console.warn('Failed to load Firestore profile:', err);
           }
-        }
-      });
-    } catch (fbErr) {
-      console.warn('Firebase onAuthStateChanged not active:', fbErr.message);
+        });
+      } catch (fbErr) {
+        console.warn('Firebase onAuthStateChanged not active:', fbErr.message);
+      }
     }
 
     return () => {
@@ -188,7 +190,7 @@ export const AuthProvider = ({ children }) => {
       const isForbidden = backendErr?.response?.status === 403;
 
       // 2. If backend was unreachable or if user used email, attempt Firebase as fallback
-      if (identifier.includes('@') && !isForbidden) {
+      if (identifier.includes('@') && !isForbidden && isRealApiKey && auth) {
         try {
           const { user: fbUser, profile: fbProfile } = await loginUser(identifier, password);
           const normalized = normalizeRole(fbProfile?.role || 'customer');
@@ -238,6 +240,12 @@ export const AuthProvider = ({ children }) => {
   const loginWithGoogle = async () => {
     setLoading(true);
     setAuthError(null);
+    if (!isRealApiKey || !auth) {
+      const msg = 'Google Sign-In is unavailable until a valid Firebase API Key is configured in .env.';
+      setAuthError(msg);
+      setLoading(false);
+      throw new Error(msg);
+    }
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
@@ -321,25 +329,29 @@ export const AuthProvider = ({ children }) => {
         console.warn('Backend register failed, trying Firebase:', backendErr.message);
       }
 
-      // 2. Fallback to Firebase Registration
-      const { user, profile } = await registerUser(userData);
-      const normalized = normalizeRole(profile.role);
-      const profileData = {
-        uid: user.uid,
-        id: user.uid,
-        email: user.email,
-        displayName: profile.displayName,
-        phoneNumber: profile.phoneNumber || '',
-        role: normalized,
-        rawRole: profile.role,
-        avatar: profile.avatar || 'CU',
-        provider: 'firebase'
-      };
-      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
-      setCurrentUser(profileData);
-      setUserProfile(profileData);
-      setIsAuthModalOpen(false);
-      return { user: profileData, profile: profileData, role: normalized };
+      // 2. Fallback to Firebase Registration (if valid Firebase configuration is active)
+      if (isRealApiKey && auth) {
+        const { user, profile } = await registerUser(userData);
+        const normalized = normalizeRole(profile.role);
+        const profileData = {
+          uid: user.uid,
+          id: user.uid,
+          email: user.email,
+          displayName: profile.displayName,
+          phoneNumber: profile.phoneNumber || '',
+          role: normalized,
+          rawRole: profile.role,
+          avatar: profile.avatar || 'CU',
+          provider: 'firebase'
+        };
+        localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+        setCurrentUser(profileData);
+        setUserProfile(profileData);
+        setIsAuthModalOpen(false);
+        return { user: profileData, profile: profileData, role: normalized };
+      }
+
+      throw new Error('Registration failed. Unable to connect to the backend server.');
     } catch (err) {
       setAuthError(err.message);
       throw err;
@@ -361,10 +373,12 @@ export const AuthProvider = ({ children }) => {
       sessionStorage.removeItem('fabricare_user');
 
       // Firebase signOut attempt
-      try {
-        await logoutUser();
-      } catch (fbErr) {
-        // Ignored if not firebase
+      if (isRealApiKey && auth) {
+        try {
+          await logoutUser();
+        } catch (fbErr) {
+          // Ignored if not firebase
+        }
       }
 
       setCurrentUser(null);
