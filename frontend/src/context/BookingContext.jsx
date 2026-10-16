@@ -81,9 +81,16 @@ export const BookingProvider = ({ children }) => {
 
   // Navigation State: 'home' | 'services' | 'booking' | 'confirmed' | 'admin' | 'customer-*' | 'delivery-portal' | 'laundry-portal'
   const getInitialPage = () => {
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const hash = window.location.hash.replace(/^#\/?/, '').trim();
-      if (hash) return hash;
+    if (typeof window !== 'undefined') {
+      if (window.location.hash) {
+        const hash = window.location.hash.replace(/^#\/?/, '').trim();
+        if (hash) return hash;
+      }
+      if (window.location.pathname && window.location.pathname !== '/') {
+        const path = window.location.pathname.replace(/^\//, '').trim();
+        const search = window.location.search || '';
+        return `${path}${search}`;
+      }
     }
     return 'home';
   };
@@ -91,16 +98,28 @@ export const BookingProvider = ({ children }) => {
   const [currentPage, setCurrentPage] = useState(getInitialPage);
 
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace(/^#\/?/, '').trim();
-      if (hash) {
-        setCurrentPage(hash);
-      } else {
-        setCurrentPage('home');
+    const handleUrlChange = () => {
+      if (window.location.hash) {
+        const hash = window.location.hash.replace(/^#\/?/, '').trim();
+        if (hash) {
+          setCurrentPage(hash);
+          return;
+        }
       }
+      if (window.location.pathname && window.location.pathname !== '/') {
+        const path = window.location.pathname.replace(/^\//, '').trim();
+        const search = window.location.search || '';
+        setCurrentPage(`${path}${search}`);
+        return;
+      }
+      setCurrentPage('home');
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
   }, []);
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState('dry-cleaning');
@@ -234,15 +253,26 @@ export const BookingProvider = ({ children }) => {
     }, 0);
   };
 
-  const navigateTo = (page, idParam = null) => {
+  const navigateTo = (page, idParam = null, options = {}) => {
+    let actualId = idParam;
+    let actualOptions = options;
+    if (idParam && typeof idParam === 'object' && !Array.isArray(idParam)) {
+      actualOptions = idParam;
+      actualId = null;
+    }
+
     setCurrentPage(page);
     if (typeof window !== 'undefined') {
-      window.location.hash = page;
+      if (actualOptions?.replace) {
+        window.location.replace(`#${page}`);
+      } else {
+        window.location.hash = page;
+      }
     }
-    if (page === 'customer-track' && idParam) {
-      setActiveTrackingOrderId(idParam);
-    } else if (page === 'services' && idParam) {
-      setSelectedServiceDetail(idParam);
+    if (page === 'customer-track' && actualId) {
+      setActiveTrackingOrderId(actualId);
+    } else if (page === 'services' && actualId) {
+      setSelectedServiceDetail(actualId);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };

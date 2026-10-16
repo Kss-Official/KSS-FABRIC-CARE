@@ -369,6 +369,30 @@ export const LoginPage = () => {
                   <span>Continue with Google</span>
                 </button>
 
+                <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setIdentifier('delivery_ravi'); setPassword('delivery123'); }}
+                    style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '999px', border: '1px solid #0D7A75', background: '#E6F7F5', color: '#0D7A75', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    🚚 Demo: Delivery Agent (Ravi)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIdentifier('laundry_anita'); setPassword('laundry123'); }}
+                    style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '999px', border: '1px solid #0F766E', background: '#E6F4F1', color: '#0F766E', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    🧺 Demo: Laundry Staff (Anita)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIdentifier('admin'); setPassword('admin123'); }}
+                    style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '999px', border: '1px solid #CBD5E1', background: '#F8FAFC', color: '#475569', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    🛡️ Demo: Admin
+                  </button>
+                </div>
+
                 <div className="login-footer-text">
                   Don't have an admin account?{' '}
                   <a 

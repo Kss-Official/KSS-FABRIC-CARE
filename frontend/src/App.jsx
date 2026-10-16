@@ -36,7 +36,9 @@ import { LaundryPortal } from './laundry-staff/LaundryPortal';
 
 // Portal wrapper (no navbar/footer - self-contained)
 const FULL_SCREEN_PAGES = [
-  'admin', 'delivery-portal', 'laundry-portal', 'login'
+  'admin', 'delivery-portal', 'laundry-portal', 'login', 'orders',
+  'dashboard', 'incoming', 'processing', 'quality-check', 'ready-for-delivery', 'history',
+  'received-clothes', 'inspection', 'washing', 'drying', 'ironing', 'packing', 'ready'
 ];
 
 // Customer portal pages (with sidebar layout)
@@ -166,37 +168,54 @@ const AppContent = () => {
   // Route 2: Admin Portal (Strictly Protected: role === 'admin')
   if (currentPage === 'admin') {
     if (!isAuthenticated) {
-      navigateTo('login');
+      navigateTo('login', null, { replace: true });
       return null;
     }
     if (userRole !== 'admin') {
-      navigateTo(getPortalForRole(userRole));
+      navigateTo(getPortalForRole(userRole), null, { replace: true });
       return null;
     }
     return <AdminPortal />;
   }
 
-  // Route 3: Delivery Portal (Strictly Protected: role === 'delivery_agent' or 'admin')
+  // Route 3: Delivery Portal (Protected: requires active session)
   if (currentPage === 'delivery-portal') {
     if (!isAuthenticated) {
-      navigateTo('login');
-      return null;
-    }
-    if (userRole !== 'delivery_agent' && userRole !== 'admin') {
-      navigateTo(getPortalForRole(userRole));
+      navigateTo('login', null, { replace: true });
       return null;
     }
     return <DeliveryPortal />;
   }
 
   // Route 4: Laundry Hub Portal (Strictly Protected: role === 'laundry_staff' or 'admin')
-  if (currentPage === 'laundry-portal') {
+  const LAUNDRY_STAFF_ROUTES = [
+    'laundry-portal',
+    'dashboard',
+    'orders',
+    'history',
+    'incoming',
+    'processing',
+    'quality-check',
+    'ready-for-delivery',
+    'received-clothes',
+    'inspection',
+    'washing',
+    'drying',
+    'ironing',
+    'packing',
+    'ready'
+  ];
+  const cleanPageName = (currentPage || '').split('?')[0].replace(/^#\/?/, '').replace(/^\//, '');
+  const isLaundryRoute = LAUNDRY_STAFF_ROUTES.includes(cleanPageName) || 
+    ((cleanPageName === 'notifications' || cleanPageName === 'profile') && (userRole === 'laundry_staff' || userRole === 'admin'));
+
+  if (isLaundryRoute) {
     if (!isAuthenticated) {
-      navigateTo('login');
+      navigateTo('login', null, { replace: true });
       return null;
     }
     if (userRole !== 'laundry_staff' && userRole !== 'admin') {
-      navigateTo(getPortalForRole(userRole));
+      navigateTo(getPortalForRole(userRole), null, { replace: true });
       return null;
     }
     return <LaundryPortal />;
@@ -205,7 +224,7 @@ const AppContent = () => {
   // Route 5: Customer Account Pages (Protected: requires customer/user authentication)
   if (CUSTOMER_PORTAL_PAGES.includes(currentPage)) {
     if (!isAuthenticated) {
-      navigateTo('login');
+      navigateTo('login', null, { replace: true });
       return null;
     }
     return (

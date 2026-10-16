@@ -1,3 +1,4 @@
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import status, permissions, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -17,7 +18,7 @@ class RegisterView(APIView):
             user = serializer.save()
             refresh = RefreshToken.for_user(user)
             return Response({
-                'user': UserSerializer(user).data,
+                'user': UserSerializer(user, context={'request': request}).data,
                 'tokens': {
                     'refresh': str(refresh),
                     'access': str(refresh.access_token),
@@ -90,7 +91,7 @@ class LoginView(APIView):
             refresh = RefreshToken.for_user(user)
             access_token = str(refresh.access_token)
             refresh_token = str(refresh)
-            user_data = UserSerializer(user).data
+            user_data = UserSerializer(user, context={'request': request}).data
 
             return Response({
                 'user': user_data,
@@ -110,12 +111,13 @@ class LoginView(APIView):
 
 class MeView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get(self, request):
-        return Response(UserSerializer(request.user).data)
+        return Response(UserSerializer(request.user, context={'request': request}).data)
 
     def patch(self, request):
-        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        serializer = UserSerializer(request.user, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)

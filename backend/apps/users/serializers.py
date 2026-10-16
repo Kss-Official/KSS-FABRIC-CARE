@@ -1,20 +1,146 @@
+import re
+import os
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import CustomerAddress
 
 User = get_user_model()
 
+ALLOWED_DOC_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.pdf']
+ALLOWED_IMG_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
 class UserSerializer(serializers.ModelSerializer):
-    full_name = serializers.CharField(read_only=True)
+    full_name = serializers.CharField(required=False)
+    profile_picture_url = serializers.SerializerMethodField()
+    aadhaar_document_url = serializers.SerializerMethodField()
+    pan_document_url = serializers.SerializerMethodField()
+    remove_profile_picture = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    dob = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = User
         fields = (
             'id', 'username', 'email', 'first_name', 'last_name',
-            'full_name', 'role', 'phone', 'avatar', 'address', 'city',
-            'pincode', 'is_active_staff', 'is_staff', 'is_superuser', 'created_at'
+            'full_name', 'role', 'phone', 'avatar', 'profile_picture',
+            'profile_picture_url', 'dob', 'driving_licence_number',
+            'aadhaar_number', 'aadhaar_document', 'aadhaar_document_url',
+            'pan_number', 'pan_document', 'pan_document_url',
+            'address', 'city', 'pincode', 'is_active_staff', 'is_staff',
+            'is_superuser', 'created_at', 'remove_profile_picture'
         )
         read_only_fields = ('id', 'created_at', 'is_staff', 'is_superuser')
+
+    def get_profile_picture_url(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+
+    def get_aadhaar_document_url(self, obj):
+        if obj.aadhaar_document:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.aadhaar_document.url)
+            return obj.aadhaar_document.url
+        return None
+
+    def get_pan_document_url(self, obj):
+        if obj.pan_document:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.pan_document.url)
+            return obj.pan_document.url
+        return None
+
+    def validate_dob(self, value):
+        if not value:
+            return None
+        if isinstance(value, str):
+            val = value.strip()
+            if not val or val.lower() in ('null', 'none'):
+                return None
+            import datetime
+            for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%d-%m-%Y'):
+                try:
+                    return datetime.datetime.strptime(val, fmt).date()
+                except ValueError:
+                    pass
+            raise serializers.ValidationError("Please provide a valid date in YYYY-MM-DD or MM/DD/YYYY format.")
+        return value
+
+    def validate_aadhaar_number(self, value):
+        if value:
+            cleaned = str(value).replace(' ', '').replace('-', '').strip()
+            if not re.match(r'^\d{12}$', cleaned):
+                raise serializers.ValidationError("Aadhaar card number must contain exactly 12 digits.")
+            return cleaned
+        return value
+
+    def validate_pan_number(self, value):
+        if value:
+            cleaned = str(value).replace(' ', '').strip().upper()
+            if not re.match(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$', cleaned):
+                raise serializers.ValidationError("PAN card number must follow standard format (e.g., ABCDE1234F).")
+            return cleaned
+        return value
+
+    def validate_aadhaar_document(self, file_obj):
+        if file_obj:
+            ext = os.path.splitext(file_obj.name)[1].lower()
+            if ext not in ALLOWED_DOC_EXTENSIONS:
+                raise serializers.ValidationError("Aadhaar document must be a JPG, JPEG, PNG, or PDF file.")
+            if file_obj.size > MAX_FILE_SIZE:
+                raise serializers.ValidationError("Aadhaar document exceeds maximum allowed size of 5 MB.")
+        return file_obj
+
+    def validate_pan_document(self, file_obj):
+        if file_obj:
+            ext = os.path.splitext(file_obj.name)[1].lower()
+            if ext not in ALLOWED_DOC_EXTENSIONS:
+                raise serializers.ValidationError("PAN document must be a JPG, JPEG, PNG, or PDF file.")
+            if file_obj.size > MAX_FILE_SIZE:
+                raise serializers.ValidationError("PAN document exceeds maximum allowed size of 5 MB.")
+        return file_obj
+
+    def validate_profile_picture(self, file_obj):
+        if file_obj:
+            ext = os.path.splitext(file_obj.name)[1].lower()
+            if ext not in ALLOWED_IMG_EXTENSIONS:
+                raise serializers.ValidationError("Profile image must be a JPG, JPEG, or PNG file.")
+            if file_obj.size > MAX_FILE_SIZE:
+                raise serializers.ValidationError("Profile image exceeds maximum allowed size of 5 MB.")
+        return file_obj
+
+    def update(self, instance, validated_data):
+        full_name = validated_data.pop('full_name', None)
+        if full_name is not None:
+            parts = full_name.strip().split(' ', 1)
+            instance.first_name = parts[0]
+            instance.last_name = parts[1] if len(parts) > 1 else ''
+
+        remove_pic = validated_data.pop('remove_profile_picture', None)
+        if remove_pic and str(remove_pic).lower() in ['true', '1', 'yes']:
+            if instance.profile_picture:
+                try:
+                    instance.profile_picture.delete(save=False)
+                except Exception:
+                    pass
+            instance.profile_picture = None
+            instance.avatar = None
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if instance.profile_picture:
+            instance.avatar = instance.profile_picture.url
+        elif remove_pic and str(remove_pic).lower() in ['true', '1', 'yes']:
+            instance.avatar = None
+
+        instance.save()
+        return instance
 
 
 class RegisterSerializer(serializers.ModelSerializer):

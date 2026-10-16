@@ -585,9 +585,14 @@ img {
 .pt-4 { padding-top: 16px; }
 .pl-9 { padding-left: 36px; }
 .w-full { width: 100%; }
-.max-w-sm { max-width: 384px; }
 .max-w-xs { max-width: 320px; }
+.max-w-sm { max-width: 384px; }
 .max-w-md { max-width: 448px; }
+.max-w-lg { max-width: 540px; }
+.max-w-xl { max-width: 600px; }
+.max-w-2xl { max-width: 672px; }
+.max-w-3xl { max-width: 768px; }
+.max-w-4xl { max-width: 896px; }
 
 /* Colors & Typography */
 .text-navy { color: #0F172A; }
@@ -694,6 +699,10 @@ img {
 .left-3 { left: 12px; }
 .top-3 { top: 12px; }
 .z-50 { z-index: 50; }
+.z-100 { z-index: 100; }
+.z-500 { z-index: 500; }
+.z-1000 { z-index: 1000; }
+.z-9999 { z-index: 9999; }
 .hidden { display: none; }
 .block { display: block; }
 .inline-flex { display: inline-flex; }
@@ -741,4 +750,8 @@ img {
 
 /* Background opacity */
 .bg-black\/50 { background: rgba(0,0,0,.5); }
+.bg-black\/60 { background: rgba(0,0,0,.6); }
+.bg-black\/70 { background: rgba(0,0,0,.7); }
+.bg-black\/75 { background: rgba(0,0,0,.75); }
+.bg-black\/80 { background: rgba(0,0,0,.8); }
 

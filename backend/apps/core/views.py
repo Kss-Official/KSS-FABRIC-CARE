@@ -475,43 +475,37 @@ class LaundryOrdersListView(APIView):
         if user.role != User.Role.LAUNDRY_STAFF and user.role != User.Role.ADMIN and not user.is_staff:
             return Response({'detail': 'Access restricted to laundry operations team.'}, status=status.HTTP_403_FORBIDDEN)
 
-        incoming = Order.objects.filter(status__in=[Order.Status.PICKED_UP, Order.Status.DROPPED_OFF_AT_LAUNDRY])
-        received = Order.objects.filter(status__in=[Order.Status.RECEIVED_BY_LAUNDRY, Order.Status.INSPECTION])
-        washing = Order.objects.filter(status=Order.Status.WASHING)
-        drying = Order.objects.filter(status=Order.Status.DRYING)
-        ironing = Order.objects.filter(status=Order.Status.IRONING)
-        qc = Order.objects.filter(status=Order.Status.QUALITY_CHECK)
-        packing = Order.objects.filter(status=Order.Status.PACKING)
-        ready = Order.objects.filter(status=Order.Status.READY_FOR_DELIVERY)
+        all_orders = Order.objects.all().select_related('customer', 'assigned_delivery_driver', 'assigned_laundry_staff').prefetch_related('items').order_by('-created_at')
+        all_orders_data = OrderSerializer(all_orders, many=True).data
 
-        incoming_data = OrderSerializer(incoming, many=True).data
-        received_data = OrderSerializer(received, many=True).data
-        washing_data = OrderSerializer(washing, many=True).data
-        drying_data = OrderSerializer(drying, many=True).data
-        ironing_data = OrderSerializer(ironing, many=True).data
-        qc_data = OrderSerializer(qc, many=True).data
-        packing_data = OrderSerializer(packing, many=True).data
-        ready_data = OrderSerializer(ready, many=True).data
-
-        seen_ids = set()
-        all_orders = []
-        for stage_list in [incoming_data, received_data, washing_data, drying_data, ironing_data, qc_data, packing_data, ready_data]:
-            for o in stage_list:
-                if o['id'] not in seen_ids:
-                    seen_ids.add(o['id'])
-                    all_orders.append(o)
+        incoming = [o for o in all_orders_data if o.get('status') in [Order.Status.PICKED_UP, Order.Status.DROPPED_OFF_AT_LAUNDRY]]
+        received = [o for o in all_orders_data if o.get('status') in [Order.Status.RECEIVED_BY_LAUNDRY, Order.Status.PENDING_REVIEW, Order.Status.ACCEPTED]]
+        inspection = [o for o in all_orders_data if o.get('status') == Order.Status.INSPECTION]
+        washing = [o for o in all_orders_data if o.get('status') == Order.Status.WASHING]
+        drying = [o for o in all_orders_data if o.get('status') == Order.Status.DRYING]
+        ironing = [o for o in all_orders_data if o.get('status') == Order.Status.IRONING]
+        folding = [o for o in all_orders_data if o.get('status') == Order.Status.FOLDING]
+        qc = [o for o in all_orders_data if o.get('status') == Order.Status.QUALITY_CHECK]
+        packing = [o for o in all_orders_data if o.get('status') == Order.Status.PACKING]
+        ready = [o for o in all_orders_data if o.get('status') == Order.Status.READY_FOR_DELIVERY]
+        out_for_delivery = [o for o in all_orders_data if o.get('status') == Order.Status.OUT_FOR_DELIVERY]
+        delivered = [o for o in all_orders_data if o.get('status') == Order.Status.DELIVERED]
 
         return Response({
-            'incoming': incoming_data,
-            'received': received_data,
-            'washing': washing_data,
-            'drying': drying_data,
-            'ironing': ironing_data,
-            'quality_check': qc_data,
-            'packing': packing_data,
-            'ready_for_delivery': ready_data,
-            'results': all_orders,
-            'all_orders': all_orders,
+            'incoming': incoming,
+            'received': received,
+            'inspection': inspection,
+            'washing': washing,
+            'drying': drying,
+            'ironing': ironing,
+            'folding': folding,
+            'quality_check': qc,
+            'packing': packing,
+            'ready_for_delivery': ready,
+            'out_for_delivery': out_for_delivery,
+            'delivered': delivered,
+            'results': all_orders_data,
+            'all_orders': all_orders_data,
         })
 
 
@@ -563,37 +557,103 @@ class LaundryConfirmReceiptView(APIView):
 class LaundryAdvanceStageView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
+    ORDER_LIFECYCLE_STEPS = [
+        Order.Status.RECEIVED_BY_LAUNDRY,
+        Order.Status.INSPECTION,
+        Order.Status.WASHING,
+        Order.Status.DRYING,
+        Order.Status.IRONING,
+        Order.Status.FOLDING,
+        Order.Status.QUALITY_CHECK,
+        Order.Status.PACKING,
+        Order.Status.READY_FOR_DELIVERY,
+        Order.Status.OUT_FOR_DELIVERY,
+        Order.Status.DELIVERED,
+    ]
+
+    STAGE_MAP = {
+        'RECEIVED': Order.Status.RECEIVED_BY_LAUNDRY,
+        'RECEIVED_BY_LAUNDRY': Order.Status.RECEIVED_BY_LAUNDRY,
+        'INSPECTION': Order.Status.INSPECTION,
+        'WASHING': Order.Status.WASHING,
+        'DRYING': Order.Status.DRYING,
+        'IRONING': Order.Status.IRONING,
+        'FOLDING': Order.Status.FOLDING,
+        'QUALITY_CHECK': Order.Status.QUALITY_CHECK,
+        'QUALITY': Order.Status.QUALITY_CHECK,
+        'PACKING': Order.Status.PACKING,
+        'READY_FOR_DELIVERY': Order.Status.READY_FOR_DELIVERY,
+        'OUT_FOR_DELIVERY': Order.Status.OUT_FOR_DELIVERY,
+        'DELIVERED': Order.Status.DELIVERED,
+    }
+
     def post(self, request, pk):
         try:
             order = Order.objects.get(pk=pk)
         except Order.DoesNotExist:
             return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        target_stage = request.data.get('stage') # WASHING, DRYING, IRONING, QUALITY_CHECK
+        raw_stage = request.data.get('stage', '').strip().upper()
+        target_stage = self.STAGE_MAP.get(raw_stage)
         notes = request.data.get('notes', '')
 
-        valid_stages = [
-            Order.Status.INSPECTION,
-            Order.Status.WASHING,
-            Order.Status.DRYING,
-            Order.Status.IRONING,
-            Order.Status.QUALITY_CHECK
-        ]
+        if not target_stage:
+            return Response({'detail': f'Invalid stage: {raw_stage}'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if target_stage not in valid_stages:
-            return Response({'detail': f'Invalid stage: {target_stage}'}, status=status.HTTP_400_BAD_REQUEST)
+        # Determine current stage index in 11-step lifecycle
+        if order.status in self.ORDER_LIFECYCLE_STEPS:
+            curr_idx = self.ORDER_LIFECYCLE_STEPS.index(order.status)
+        else:
+            # If status is an early pickup/pending status, order enters table directly as Received (index 0)
+            curr_idx = 0
+
+        next_required_step = self.ORDER_LIFECYCLE_STEPS[curr_idx + 1] if curr_idx < len(self.ORDER_LIFECYCLE_STEPS) - 1 else None
+
+        # Allow advancing to next step or reverting back to any previous step
+        is_advancing = (next_required_step is not None and target_stage == next_required_step)
+        is_reverting = (target_stage in self.ORDER_LIFECYCLE_STEPS[:curr_idx])
+
+        if not (is_advancing or is_reverting):
+            if curr_idx >= len(self.ORDER_LIFECYCLE_STEPS) - 1 and not is_reverting:
+                return Response({'detail': 'Order is already delivered and completed.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'detail': f'Invalid stage transition. You can advance to {next_required_step} or revert to a previous step.'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         order.status = target_stage
         order.assigned_laundry_staff = request.user
+
+        # Ready for Delivery -> Out for Delivery hands the order to a delivery agent
+        if target_stage == Order.Status.OUT_FOR_DELIVERY:
+            if not order.assigned_delivery_driver:
+                delivery_driver = User.objects.filter(role=User.Role.DELIVERY_STAFF).first()
+                if delivery_driver:
+                    order.assigned_delivery_driver = delivery_driver
+
+        # Delivered orders move to Order History and mark payment as completed
+        if target_stage == Order.Status.DELIVERED:
+            order.payment_status = Order.PaymentStatus.PAID
+            if hasattr(order, 'invoice'):
+                order.invoice.payment_status = Invoice.PaymentStatus.PAID
+                order.invoice.paid_at = timezone.now()
+                order.invoice.save()
+
         order.save()
 
-        LaundryStageLog.objects.create(
-            order=order,
-            staff=request.user,
-            stage=target_stage,
-            status=LaundryStageLog.Status.IN_PROGRESS,
-            notes=notes
-        )
+        stage_log_name = target_stage
+        if stage_log_name in [Order.Status.RECEIVED_BY_LAUNDRY, Order.Status.INSPECTION, Order.Status.OUT_FOR_DELIVERY, Order.Status.DELIVERED]:
+            stage_log_name = 'PROCESSING'
+
+        try:
+            LaundryStageLog.objects.create(
+                order=order,
+                staff=request.user,
+                stage=stage_log_name,
+                status=LaundryStageLog.Status.IN_PROGRESS if target_stage != Order.Status.DELIVERED else LaundryStageLog.Status.PASSED,
+                notes=notes or f"Advanced to {target_stage}"
+            )
+        except Exception:
+            pass
 
         return Response(OrderSerializer(order).data)
 

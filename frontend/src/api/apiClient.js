@@ -1,14 +1,15 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001/api';
+let activeBaseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
 
 /**
- * Universal fetch client with automatic JWT token injection and JSON parsing
+ * Universal fetch client with automatic JWT token injection, JSON parsing,
+ * and resilient multi-port fallback (supporting both 8000 and 8001 Django environments).
  */
 async function request(endpoint, options = {}) {
-  const url = `${API_BASE_URL}${endpoint}`;
   const token = localStorage.getItem('fabricare_token');
+  const isFormData = options.body instanceof FormData;
 
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {})
   };
@@ -22,7 +23,28 @@ async function request(endpoint, options = {}) {
     config.body = JSON.stringify(config.body);
   }
 
-  const response = await fetch(url, config);
+  let response;
+  try {
+    response = await fetch(`${activeBaseUrl}${endpoint}`, config);
+  } catch (fetchErr) {
+    // If the server on activeBaseUrl was not reached, try the alternate port (8000 <-> 8001)
+    const alternateBaseUrl = activeBaseUrl.includes(':8001')
+      ? activeBaseUrl.replace(':8001', ':8000')
+      : activeBaseUrl.includes(':8000')
+      ? activeBaseUrl.replace(':8000', ':8001')
+      : null;
+
+    if (alternateBaseUrl) {
+      try {
+        response = await fetch(`${alternateBaseUrl}${endpoint}`, config);
+        activeBaseUrl = alternateBaseUrl;
+      } catch {
+        throw fetchErr;
+      }
+    } else {
+      throw fetchErr;
+    }
+  }
   
   if (response.status === 204) {
     return { data: null, status: 204 };
@@ -69,6 +91,7 @@ export const authApi = {
   login: (username, password) => apiClient.post('/auth/login/', { username, password }),
   register: (data) => apiClient.post('/auth/register/', data),
   getMe: () => apiClient.get('/auth/me/'),
+  updateProfile: (data) => apiClient.patch('/auth/me/', data),
   getStaffList: (role = '') => apiClient.get(`/staff/${role ? `?role=${role}` : ''}`),
 };
 

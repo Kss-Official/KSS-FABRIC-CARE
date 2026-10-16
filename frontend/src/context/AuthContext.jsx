@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { auth, isFirebaseConfigured } from '../config/firebase';
 import {
   loginUser,
   registerUser,
@@ -52,12 +52,21 @@ export const AuthProvider = ({ children }) => {
                 id: liveUser.id,
                 email: liveUser.email,
                 displayName: liveUser.full_name || liveUser.username || parsedUser.displayName,
+                fullName: liveUser.full_name || '',
                 username: liveUser.username,
                 phoneNumber: liveUser.phone || '',
                 role: normalized,
                 rawRole: liveUser.role,
                 isStaff: liveUser.is_staff || false,
                 avatar: (liveUser.full_name || liveUser.username || 'CU').substring(0, 2).toUpperCase(),
+                profilePicture: liveUser.profile_picture_url || liveUser.profile_picture || null,
+                profilePictureUrl: liveUser.profile_picture_url || null,
+                dob: liveUser.dob || '',
+                drivingLicenceNumber: liveUser.driving_licence_number || '',
+                aadhaarNumber: liveUser.aadhaar_number || '',
+                aadhaarDocumentUrl: liveUser.aadhaar_document_url || null,
+                panNumber: liveUser.pan_number || '',
+                panDocumentUrl: liveUser.pan_document_url || null,
                 provider: 'backend'
               };
               setCurrentUser(updatedProfile);
@@ -90,37 +99,39 @@ export const AuthProvider = ({ children }) => {
 
     restoreSession();
 
-    // Firebase Auth listener (supports dual authentication)
+    // Firebase Auth listener (only active when genuine Firebase API key is configured)
     let unsubscribeFirebase = () => {};
-    try {
-      unsubscribeFirebase = onAuthStateChanged(auth, async (firebaseUser) => {
-        if (firebaseUser) {
-          try {
-            const profile = await getUserProfile(firebaseUser.uid);
-            const normalized = normalizeRole(profile?.role || 'customer');
-            const fullProfile = {
-              uid: firebaseUser.uid,
-              id: firebaseUser.uid,
-              email: firebaseUser.email,
-              displayName: profile?.displayName || firebaseUser.displayName || 'Customer',
-              phoneNumber: profile?.phoneNumber || firebaseUser.phoneNumber || '',
-              role: normalized,
-              rawRole: profile?.role || 'customer',
-              avatar: (profile?.displayName || firebaseUser.displayName || 'CU').substring(0, 2).toUpperCase(),
-              provider: 'firebase'
-            };
-            if (isMounted) {
-              setCurrentUser(fullProfile);
-              setUserProfile(fullProfile);
-              localStorage.setItem('fabricare_user', JSON.stringify(fullProfile));
+    if (isFirebaseConfigured && auth) {
+      try {
+        unsubscribeFirebase = onAuthStateChanged(auth, async (firebaseUser) => {
+          if (firebaseUser) {
+            try {
+              const profile = await getUserProfile(firebaseUser.uid);
+              const normalized = normalizeRole(profile?.role || 'customer');
+              const fullProfile = {
+                uid: firebaseUser.uid,
+                id: firebaseUser.uid,
+                email: firebaseUser.email,
+                displayName: profile?.displayName || firebaseUser.displayName || 'Customer',
+                phoneNumber: profile?.phoneNumber || firebaseUser.phoneNumber || '',
+                role: normalized,
+                rawRole: profile?.role || 'customer',
+                avatar: (profile?.displayName || firebaseUser.displayName || 'CU').substring(0, 2).toUpperCase(),
+                provider: 'firebase'
+              };
+              if (isMounted) {
+                setCurrentUser(fullProfile);
+                setUserProfile(fullProfile);
+                localStorage.setItem('fabricare_user', JSON.stringify(fullProfile));
+              }
+            } catch (err) {
+              console.warn('Failed to load Firestore profile:', err);
             }
-          } catch (err) {
-            console.warn('Failed to load Firestore profile:', err);
           }
-        }
-      });
-    } catch (fbErr) {
-      console.warn('Firebase onAuthStateChanged not active:', fbErr.message);
+        });
+      } catch (fbErr) {
+        console.warn('Firebase onAuthStateChanged not active:', fbErr.message);
+      }
     }
 
     return () => {
@@ -161,12 +172,21 @@ export const AuthProvider = ({ children }) => {
           id: user.id,
           email: user.email,
           displayName: user.full_name || user.username,
+          fullName: user.full_name || '',
           username: user.username,
           phoneNumber: user.phone || '',
           role: normalized,
           rawRole: user.role,
           isStaff: user.is_staff || false,
           avatar: (user.full_name || user.username || 'CU').substring(0, 2).toUpperCase(),
+          profilePicture: user.profile_picture_url || user.profile_picture || null,
+          profilePictureUrl: user.profile_picture_url || null,
+          dob: user.dob || '',
+          drivingLicenceNumber: user.driving_licence_number || '',
+          aadhaarNumber: user.aadhaar_number || '',
+          aadhaarDocumentUrl: user.aadhaar_document_url || null,
+          panNumber: user.pan_number || '',
+          panDocumentUrl: user.pan_document_url || null,
           provider: 'backend'
         };
 
@@ -189,8 +209,8 @@ export const AuthProvider = ({ children }) => {
       const isBadCredentials = backendErr?.response?.status === 401 || backendErr?.response?.status === 400;
       const isForbidden = backendErr?.response?.status === 403;
 
-      // 2. If backend was unreachable or if user used email, attempt Firebase as fallback
-      if (identifier.includes('@') && !isForbidden) {
+      // 2. If backend was unreachable or if user used email, attempt Firebase as fallback (only if configured)
+      if (isFirebaseConfigured && auth && identifier.includes('@') && !isForbidden) {
         try {
           const { user: fbUser, profile: fbProfile } = await loginUser(identifier, password);
           const normalized = normalizeRole(fbProfile?.role || 'customer');
@@ -240,6 +260,12 @@ export const AuthProvider = ({ children }) => {
   const loginWithGoogle = async () => {
     setLoading(true);
     setAuthError(null);
+    if (!isFirebaseConfigured || !auth) {
+      const msg = 'Google Sign-In is only active when a valid Firebase configuration is present. Please sign in using your account credentials.';
+      setAuthError(msg);
+      setLoading(false);
+      throw new Error(msg);
+    }
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
@@ -323,25 +349,31 @@ export const AuthProvider = ({ children }) => {
         console.warn('Backend register failed, trying Firebase:', backendErr.message);
       }
 
-      // 2. Fallback to Firebase Registration
-      const { user, profile } = await registerUser(userData);
-      const normalized = normalizeRole(profile.role);
-      const profileData = {
-        uid: user.uid,
-        id: user.uid,
-        email: user.email,
-        displayName: profile.displayName,
-        phoneNumber: profile.phoneNumber || '',
-        role: normalized,
-        rawRole: profile.role,
-        avatar: profile.avatar || 'CU',
-        provider: 'firebase'
-      };
-      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
-      setCurrentUser(profileData);
-      setUserProfile(profileData);
-      setIsAuthModalOpen(false);
-      return { user: profileData, profile: profileData, role: normalized };
+      // 2. Fallback to Firebase Registration (only if configured)
+      if (isFirebaseConfigured && auth) {
+        try {
+          const { user, profile } = await registerUser(userData);
+          const normalized = normalizeRole(profile.role);
+          const profileData = {
+            uid: user.uid,
+            id: user.uid,
+            email: user.email,
+            displayName: profile.displayName,
+            phoneNumber: profile.phoneNumber || '',
+            role: normalized,
+            rawRole: profile.role,
+            avatar: profile.avatar || 'CU',
+            provider: 'firebase'
+          };
+          localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+          setCurrentUser(profileData);
+          setUserProfile(profileData);
+          setIsAuthModalOpen(false);
+          return { user: profileData, profile: profileData, role: normalized };
+        } catch (fbErr) {
+          console.warn('Firebase register notice:', fbErr.message);
+        }
+      }
     } catch (err) {
       setAuthError(err.message);
       throw err;
@@ -362,11 +394,13 @@ export const AuthProvider = ({ children }) => {
       sessionStorage.removeItem('fabricare_refresh_token');
       sessionStorage.removeItem('fabricare_user');
 
-      // Firebase signOut attempt
-      try {
-        await logoutUser();
-      } catch (fbErr) {
-        // Ignored if not firebase
+      // Firebase signOut attempt (if configured)
+      if (isFirebaseConfigured && auth) {
+        try {
+          await logoutUser();
+        } catch (fbErr) {
+          // Ignored if not firebase
+        }
       }
 
       setCurrentUser(null);
@@ -403,6 +437,56 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
   };
 
+  const updateCurrentUserProfile = (updatedFields) => {
+    setCurrentUser(prev => {
+      const merged = { ...prev, ...updatedFields };
+      localStorage.setItem('fabricare_user', JSON.stringify(merged));
+      return merged;
+    });
+    setUserProfile(prev => {
+      const merged = { ...prev, ...updatedFields };
+      return merged;
+    });
+  };
+
+  const refreshUserProfile = async () => {
+    try {
+      const meRes = await authApi.getMe();
+      if (meRes?.data) {
+        const liveUser = meRes.data;
+        const normalized = normalizeRole(liveUser.role);
+        const updated = {
+          uid: String(liveUser.id),
+          id: liveUser.id,
+          email: liveUser.email,
+          displayName: liveUser.full_name || liveUser.username,
+          fullName: liveUser.full_name || '',
+          username: liveUser.username,
+          phoneNumber: liveUser.phone || '',
+          role: normalized,
+          rawRole: liveUser.role,
+          isStaff: liveUser.is_staff || false,
+          avatar: (liveUser.full_name || liveUser.username || 'CU').substring(0, 2).toUpperCase(),
+          profilePicture: liveUser.profile_picture_url || liveUser.profile_picture || null,
+          profilePictureUrl: liveUser.profile_picture_url || null,
+          dob: liveUser.dob || '',
+          drivingLicenceNumber: liveUser.driving_licence_number || '',
+          aadhaarNumber: liveUser.aadhaar_number || '',
+          aadhaarDocumentUrl: liveUser.aadhaar_document_url || null,
+          panNumber: liveUser.pan_number || '',
+          panDocumentUrl: liveUser.pan_document_url || null,
+          provider: 'backend'
+        };
+        setCurrentUser(updated);
+        setUserProfile(updated);
+        localStorage.setItem('fabricare_user', JSON.stringify(updated));
+        return updated;
+      }
+    } catch (err) {
+      console.warn('Failed to refresh user profile:', err);
+    }
+  };
+
   const rawRole = userProfile?.role || currentUser?.role || 'customer';
   const userRole = normalizeRole(rawRole);
   const isAdmin = userRole === 'admin';
@@ -430,6 +514,8 @@ export const AuthProvider = ({ children }) => {
         register,
         logout,
         sendPasswordReset,
+        updateCurrentUserProfile,
+        refreshUserProfile,
         isAuthModalOpen,
         authModalMode,
         setAuthModalMode,
