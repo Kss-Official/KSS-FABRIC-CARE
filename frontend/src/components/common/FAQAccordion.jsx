@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ChevronDown,
   HelpCircle,
@@ -28,6 +28,25 @@ const HangerIcon = ({ size = 20, color = 'currentColor' }) => (
 
 export const FAQAccordion = ({ items, customTitle, customTag }) => {
   const [openIndex, setOpenIndex] = useState(0);
+  const accordionRef = useRef(null);
+
+  useEffect(() => {
+    if (openIndex === -1) return;
+
+    const handleClickOutside = (event) => {
+      if (accordionRef.current && !accordionRef.current.contains(event.target)) {
+        setOpenIndex(-1);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [openIndex]);
 
   const defaultItems = [
     {
@@ -109,7 +128,7 @@ export const FAQAccordion = ({ items, customTitle, customTag }) => {
           </p>
         </div>
 
-        <div className="faq-accordion-list">
+        <div className="faq-accordion-list" ref={accordionRef}>
           {faqList.map((faq, index) => {
             const isOpen = openIndex === index;
             return (

@@ -163,8 +163,16 @@ export const PaymentsInvoices = () => {
       const timer1 = setTimeout(resetScrollToTop, 25);
       const timer2 = setTimeout(resetScrollToTop, 80);
 
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          setIsModalOpen(false);
+        }
+      };
+      document.addEventListener('keydown', handleKeyDown);
+
       return () => {
         document.body.style.overflow = prevOverflow || '';
+        document.removeEventListener('keydown', handleKeyDown);
         cancelAnimationFrame(animFrame);
         clearTimeout(timer1);
         clearTimeout(timer2);
@@ -1581,9 +1589,8 @@ export const PaymentsInvoices = () => {
           top: 0;
           left: 0;
           right: 0;
-          bottom: 0;
-          width: 100vw;
-          height: 100vh;
+          width: 100%;
+          height: 100%;
           background: rgba(15, 23, 42, 0.65);
           backdrop-filter: blur(8px);
           -webkit-backdrop-filter: blur(8px);

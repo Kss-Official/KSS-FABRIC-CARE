@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth, isFirebaseConfigured } from '../config/firebase';
+import { auth, isFirebaseConfigured, isRealApiKey } from '../config/firebase';
+
 import {
   loginUser,
   registerUser,
@@ -10,8 +11,6 @@ import {
 } from '../services/authService';
 import { authApi } from '../api/apiClient';
 import { normalizeRole, getPortalForRole } from '../utils/roleUtils';
-
-export { normalizeRole, getPortalForRole };
 
 const AuthContext = createContext();
 
@@ -99,9 +98,10 @@ export const AuthProvider = ({ children }) => {
 
     restoreSession();
 
-    // Firebase Auth listener (only active when genuine Firebase API key is configured)
+    // Firebase Auth listener (active only when genuine Firebase API key is configured)
     let unsubscribeFirebase = () => {};
     if (isFirebaseConfigured && auth) {
+
       try {
         unsubscribeFirebase = onAuthStateChanged(auth, async (firebaseUser) => {
           if (firebaseUser) {
@@ -211,6 +211,7 @@ export const AuthProvider = ({ children }) => {
 
       // 2. If backend was unreachable or if user used email, attempt Firebase as fallback (only if configured)
       if (isFirebaseConfigured && auth && identifier.includes('@') && !isForbidden) {
+
         try {
           const { user: fbUser, profile: fbProfile } = await loginUser(identifier, password);
           const normalized = normalizeRole(fbProfile?.role || 'customer');
@@ -262,6 +263,7 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     if (!isFirebaseConfigured || !auth) {
       const msg = 'Google Sign-In is only active when a valid Firebase configuration is present. Please sign in using your account credentials.';
+
       setAuthError(msg);
       setLoading(false);
       throw new Error(msg);
@@ -374,6 +376,9 @@ export const AuthProvider = ({ children }) => {
           console.warn('Firebase register notice:', fbErr.message);
         }
       }
+
+      throw new Error('Registration failed. Unable to connect to the backend server.');
+
     } catch (err) {
       setAuthError(err.message);
       throw err;
@@ -396,6 +401,7 @@ export const AuthProvider = ({ children }) => {
 
       // Firebase signOut attempt (if configured)
       if (isFirebaseConfigured && auth) {
+
         try {
           await logoutUser();
         } catch (fbErr) {

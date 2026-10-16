@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { AdminProvider } from './context/AdminContext';
@@ -17,7 +17,10 @@ import { AdminPortal } from './pages/admin/AdminPortal';
 import { CustomerAuthModal } from './components/common/CustomerAuthModal';
 
 import { LoginPage } from './pages/LoginPage';
-import { useAuth, getPortalForRole } from './context/AuthContext';
+import { SignupPage } from './pages/SignupPage';
+import { useAuth } from './context/AuthContext';
+import { getPortalForRole } from './utils/roleUtils';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
 // Customer Portal Pages
@@ -29,6 +32,7 @@ import { SavedAddresses } from './customer/SavedAddresses';
 import { HelpSupport } from './customer/HelpSupport';
 import { Profile } from './customer/Profile';
 import { Notifications as CustomerNotifications } from './customer/Notifications';
+import { CustomerReports } from './customer/CustomerReports';
 
 // Delivery & Laundry Staff Portals
 import { DeliveryPortal } from './delivery/DeliveryPortal';
@@ -36,16 +40,34 @@ import { LaundryPortal } from './laundry-staff/LaundryPortal';
 
 // Portal wrapper (no navbar/footer - self-contained)
 const FULL_SCREEN_PAGES = [
-  'admin', 'delivery-portal', 'laundry-portal', 'login', 'orders',
+  'admin', 'delivery-portal', 'laundry-portal', 'login', 'signup', 'orders',
   'dashboard', 'incoming', 'processing', 'quality-check', 'ready-for-delivery', 'history',
   'received-clothes', 'inspection', 'washing', 'drying', 'ironing', 'packing', 'ready'
+];
+
+const LAUNDRY_STAFF_ROUTES = [
+  'laundry-portal',
+  'dashboard',
+  'orders',
+  'history',
+  'incoming',
+  'processing',
+  'quality-check',
+  'ready-for-delivery',
+  'received-clothes',
+  'inspection',
+  'washing',
+  'drying',
+  'ironing',
+  'packing',
+  'ready'
 ];
 
 // Customer portal pages (with sidebar layout)
 const CUSTOMER_PORTAL_PAGES = [
   'customer-dashboard', 'customer-orders', 'customer-track',
-  'customer-invoices', 'customer-addresses', 'customer-support',
-  'customer-profile', 'customer-notifications'
+  'customer-reports', 'customer-invoices', 'customer-addresses',
+  'customer-support', 'customer-profile', 'customer-notifications'
 ];
 
 const CustomerAccountLayout = ({ children }) => {
@@ -54,6 +76,7 @@ const CustomerAccountLayout = ({ children }) => {
   const accountTabs = [
     { id: 'customer-orders', label: 'My Orders', icon: '📦' },
     { id: 'customer-track', label: 'Track Order', icon: '🚚' },
+    { id: 'customer-reports', label: 'Reports', icon: '📋' },
     { id: 'customer-invoices', label: 'Invoices & Bills', icon: '🧾' },
     { id: 'customer-notifications', label: 'Notifications', icon: '🔔' },
     { id: 'customer-profile', label: 'My Profile', icon: '👤' },
@@ -63,9 +86,9 @@ const CustomerAccountLayout = ({ children }) => {
   const displayName = userProfile?.displayName || currentUser?.displayName || currentUser?.full_name || currentUser?.first_name || 'Customer';
 
   return (
-    <div className="customer-account-wrapper" style={{ background: '#F8FAFC', minHeight: 'auto', paddingBottom: '24px' }}>
+    <div className="customer-account-wrapper" style={{ background: '#F8FAFC', flex: 1, display: 'flex', flexDirection: 'column', margin: 0, paddingBottom: '24px' }}>
       {/* Account Header Banner */}
-      <div className="customer-account-banner no-print" style={{ background: 'linear-gradient(135deg, #0D7A75 0%, #0E4B56 100%)', color: '#fff', padding: '36px 0 24px' }}>
+      <div className="customer-account-banner no-print" style={{ background: 'linear-gradient(135deg, #0D7A75 0%, #0E4B56 100%)', color: '#fff', margin: 0, padding: '36px 0 24px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <div>
@@ -143,6 +166,40 @@ const AppContent = () => {
   const { currentPage, navigateTo } = useBooking();
   const { isAuthenticated, userRole, loading } = useAuth();
 
+  const normalizedRoute = String(currentPage || 'home').replace(/^#\/?/, '').trim().toLowerCase();
+  const cleanPageName = (currentPage || '').split('?')[0].replace(/^#\/?/, '').replace(/^\//, '').toLowerCase();
+  const isLaundryRoute = LAUNDRY_STAFF_ROUTES.includes(cleanPageName) || 
+    ((cleanPageName === 'notifications' || cleanPageName === 'profile') && (userRole === 'laundry_staff' || userRole === 'admin'));
+
+  // Protected route redirects inside useEffect to avoid updating BookingProvider during render
+  useEffect(() => {
+    if (loading) return;
+
+    if (normalizedRoute === 'admin') {
+      if (!isAuthenticated) {
+        navigateTo('login', null, { replace: true });
+      } else if (userRole !== 'admin') {
+        navigateTo(getPortalForRole(userRole), null, { replace: true });
+      }
+    } else if (normalizedRoute === 'delivery-portal') {
+      if (!isAuthenticated) {
+        navigateTo('login', null, { replace: true });
+      } else if (userRole !== 'delivery_agent' && userRole !== 'admin') {
+        navigateTo(getPortalForRole(userRole), null, { replace: true });
+      }
+    } else if (isLaundryRoute) {
+      if (!isAuthenticated) {
+        navigateTo('login', null, { replace: true });
+      } else if (userRole !== 'laundry_staff' && userRole !== 'admin') {
+        navigateTo(getPortalForRole(userRole), null, { replace: true });
+      }
+    } else if (CUSTOMER_PORTAL_PAGES.includes(normalizedRoute)) {
+      if (!isAuthenticated) {
+        navigateTo('login', null, { replace: true });
+      }
+    }
+  }, [normalizedRoute, isLaundryRoute, isAuthenticated, userRole, loading, navigateTo]);
+
   // Show subtle loader while session is being verified from storage
   if (loading) {
     return (
@@ -161,85 +218,59 @@ const AppContent = () => {
   }
 
   // Route 1: Dedicated Login Page
-  if (currentPage === 'login') {
+  if (normalizedRoute === 'login') {
     return <LoginPage />;
   }
 
+  // Route 1b: Dedicated Signup Page
+  if (normalizedRoute === 'signup') {
+    return <SignupPage />;
+  }
+
   // Route 2: Admin Portal (Strictly Protected: role === 'admin')
-  if (currentPage === 'admin') {
-    if (!isAuthenticated) {
-      navigateTo('login', null, { replace: true });
-      return null;
-    }
-    if (userRole !== 'admin') {
-      navigateTo(getPortalForRole(userRole), null, { replace: true });
+  if (normalizedRoute === 'admin') {
+    if (!isAuthenticated || userRole !== 'admin') {
       return null;
     }
     return <AdminPortal />;
   }
 
-  // Route 3: Delivery Portal (Protected: requires active session)
-  if (currentPage === 'delivery-portal') {
-    if (!isAuthenticated) {
-      navigateTo('login', null, { replace: true });
+  // Route 3: Delivery Portal (Strictly Protected: role === 'delivery_agent' or 'admin')
+  if (normalizedRoute === 'delivery-portal') {
+    if (!isAuthenticated || (userRole !== 'delivery_agent' && userRole !== 'admin')) {
       return null;
     }
     return <DeliveryPortal />;
   }
 
   // Route 4: Laundry Hub Portal (Strictly Protected: role === 'laundry_staff' or 'admin')
-  const LAUNDRY_STAFF_ROUTES = [
-    'laundry-portal',
-    'dashboard',
-    'orders',
-    'history',
-    'incoming',
-    'processing',
-    'quality-check',
-    'ready-for-delivery',
-    'received-clothes',
-    'inspection',
-    'washing',
-    'drying',
-    'ironing',
-    'packing',
-    'ready'
-  ];
-  const cleanPageName = (currentPage || '').split('?')[0].replace(/^#\/?/, '').replace(/^\//, '');
-  const isLaundryRoute = LAUNDRY_STAFF_ROUTES.includes(cleanPageName) || 
-    ((cleanPageName === 'notifications' || cleanPageName === 'profile') && (userRole === 'laundry_staff' || userRole === 'admin'));
-
   if (isLaundryRoute) {
-    if (!isAuthenticated) {
-      navigateTo('login', null, { replace: true });
-      return null;
-    }
-    if (userRole !== 'laundry_staff' && userRole !== 'admin') {
-      navigateTo(getPortalForRole(userRole), null, { replace: true });
+    if (!isAuthenticated || (userRole !== 'laundry_staff' && userRole !== 'admin')) {
       return null;
     }
     return <LaundryPortal />;
   }
 
   // Route 5: Customer Account Pages (Protected: requires customer/user authentication)
-  if (CUSTOMER_PORTAL_PAGES.includes(currentPage)) {
+  if (CUSTOMER_PORTAL_PAGES.includes(normalizedRoute)) {
     if (!isAuthenticated) {
-      navigateTo('login', null, { replace: true });
       return null;
     }
+
     return (
       <div className="app-layout">
         <Navbar />
         <main className="main-content">
           <CustomerAccountLayout>
-            {currentPage === 'customer-dashboard' && <CustomerDashboard />}
-            {currentPage === 'customer-orders' && <MyOrders />}
-            {currentPage === 'customer-track' && <TrackOrder />}
-            {currentPage === 'customer-invoices' && <PaymentsInvoices />}
-            {currentPage === 'customer-addresses' && <Profile />}
-            {currentPage === 'customer-support' && <HelpSupport />}
-            {currentPage === 'customer-profile' && <Profile />}
-            {currentPage === 'customer-notifications' && <CustomerNotifications />}
+            {normalizedRoute === 'customer-dashboard' && <CustomerDashboard />}
+            {normalizedRoute === 'customer-orders' && <MyOrders />}
+            {normalizedRoute === 'customer-track' && <TrackOrder />}
+            {normalizedRoute === 'customer-reports' && <CustomerReports />}
+            {normalizedRoute === 'customer-invoices' && <PaymentsInvoices />}
+            {normalizedRoute === 'customer-addresses' && <Profile />}
+            {normalizedRoute === 'customer-support' && <HelpSupport />}
+            {normalizedRoute === 'customer-profile' && <Profile />}
+            {normalizedRoute === 'customer-notifications' && <CustomerNotifications />}
           </CustomerAccountLayout>
         </main>
         <Footer />
@@ -249,19 +280,24 @@ const AppContent = () => {
   }
 
   // Route 6: Public Main Site (Home, Dedicated Pages, Booking, Confirmed)
+  const isKnownPublicPage = [
+    'home', 'about', 'services', 'why-us', 'pricing',
+    'how-it-works', 'service-detail', 'booking', 'confirmed'
+  ].includes(normalizedRoute);
+
   return (
     <div className="app-layout">
       <Navbar />
       <main className="main-content">
-        {currentPage === 'home' && <HomePage />}
-        {currentPage === 'about' && <AboutPage />}
-        {currentPage === 'services' && <ServicesPage />}
-        {currentPage === 'why-us' && <WhyUsPage />}
-        {currentPage === 'pricing' && <PricingPage />}
-        {currentPage === 'how-it-works' && <HowItWorksPage />}
-        {currentPage === 'service-detail' && <ServiceDetailPage />}
-        {currentPage === 'booking' && <BookingPage />}
-        {currentPage === 'confirmed' && <OrderConfirmedPage />}
+        {(normalizedRoute === 'home' || !isKnownPublicPage) && <HomePage />}
+        {normalizedRoute === 'about' && <AboutPage />}
+        {normalizedRoute === 'services' && <ServicesPage />}
+        {normalizedRoute === 'why-us' && <WhyUsPage />}
+        {normalizedRoute === 'pricing' && <PricingPage />}
+        {normalizedRoute === 'how-it-works' && <HowItWorksPage />}
+        {normalizedRoute === 'service-detail' && <ServiceDetailPage />}
+        {normalizedRoute === 'booking' && <BookingPage />}
+        {normalizedRoute === 'confirmed' && <OrderConfirmedPage />}
       </main>
       <Footer />
       <CustomerAuthModal />
@@ -271,13 +307,15 @@ const AppContent = () => {
 
 export const App = () => {
   return (
-    <AuthProvider>
-      <BookingProvider>
-        <AdminProvider>
-          <AppContent />
-        </AdminProvider>
-      </BookingProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <BookingProvider>
+          <AdminProvider>
+            <AppContent />
+          </AdminProvider>
+        </BookingProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 };
 

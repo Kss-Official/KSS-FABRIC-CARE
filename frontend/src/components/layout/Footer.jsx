@@ -215,25 +215,7 @@ export const Footer = () => {
                   className="footer-nav-link"
                   onClick={() => handleLinkClick('services')}
                 >
-                  Shoe Laundry
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  className="footer-nav-link"
-                  onClick={() => handleLinkClick('services')}
-                >
-                  Curtain Cleaning
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  className="footer-nav-link"
-                  onClick={() => handleLinkClick('services')}
-                >
-                  Premium Laundry
+                  Express Laundry
                 </button>
               </li>
             </ul>
@@ -323,8 +305,13 @@ export const Footer = () => {
           font-family: 'Poppins', sans-serif;
           width: 100%;
           margin-top: auto;
+          margin-bottom: 0 !important;
+          padding-bottom: 0 !important;
           position: relative;
           z-index: 10;
+          flex-shrink: 0;
+          overflow: hidden;
+          contain: paint;
         }
 
         .footer-inner-container {
@@ -542,6 +529,8 @@ export const Footer = () => {
           border-top: 1px solid rgba(255, 255, 255, 0.08);
           margin-top: 56px;
           padding-top: 24px;
+          margin-bottom: 0;
+          padding-bottom: 0;
           display: flex;
           align-items: center;
           justify-content: space-between;

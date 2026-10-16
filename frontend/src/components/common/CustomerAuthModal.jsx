@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useBooking } from '../../context/BookingContext';
 import { X, Mail, Lock, User, Phone, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const CustomerAuthModal = () => {
+  const { navigateTo } = useBooking();
   const {
     isAuthModalOpen,
     closeAuthModal,
@@ -22,6 +24,18 @@ export const CustomerAuthModal = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
   const [localError, setLocalError] = useState(null);
+
+  // Lock background scroll when auth modal is open
+  React.useEffect(() => {
+    if (isAuthModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isAuthModalOpen]);
 
   if (!isAuthModalOpen) return null;
 
@@ -61,7 +75,7 @@ export const CustomerAuthModal = () => {
 
         <div className="auth-modal-header">
           <div className="auth-modal-logo">
-            <span className="logo-text">Laund<span className="logo-accent">rix</span></span>
+            <span className="logo-text">Fabri<span className="logo-accent">Care</span></span>
           </div>
           <h3 className="auth-modal-title">
             {authModalMode === 'login' && 'Welcome Back'}
@@ -193,7 +207,14 @@ export const CustomerAuthModal = () => {
               {authModalMode === 'login' ? (
                 <p>
                   Don't have an account?{' '}
-                  <button type="button" className="auth-switch-link" onClick={() => setAuthModalMode('register')}>
+                  <button 
+                    type="button" 
+                    className="auth-switch-link" 
+                    onClick={() => {
+                      closeAuthModal();
+                      navigateTo('signup');
+                    }}
+                  >
                     Sign Up
                   </button>
                 </p>
@@ -224,6 +245,8 @@ export const CustomerAuthModal = () => {
           left: 0;
           right: 0;
           bottom: 0;
+          width: 100%;
+          height: 100%;
           background: rgba(15, 23, 42, 0.6);
           backdrop-filter: blur(4px);
           display: flex;
@@ -231,6 +254,8 @@ export const CustomerAuthModal = () => {
           justify-content: center;
           z-index: 9999;
           padding: 20px;
+          overscroll-behavior: contain;
+          box-sizing: border-box;
         }
 
         .auth-modal-content {
@@ -238,9 +263,14 @@ export const CustomerAuthModal = () => {
           border-radius: 24px;
           max-width: 440px;
           width: 100%;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
+          overflow-y: auto;
+          overscroll-behavior: contain;
           padding: 36px;
           position: relative;
           box-shadow: 0 24px 48px rgba(0, 0, 0, 0.15);
+          box-sizing: border-box;
         }
 
         .auth-modal-close {

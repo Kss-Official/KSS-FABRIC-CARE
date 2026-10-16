@@ -15,6 +15,11 @@ from apps.core.views import (
     AdminRejectOrderView,
     AdminAssignStaffView,
     AdminDashboardStatsView,
+    AdminComplaintReportsView,
+    AdminComplaintDetailView,
+    AdminComplaintRescheduleView,
+    CustomerReportsView,
+    CustomerReportDetailView,
     DeliveryTasksListView,
     DeliveryConfirmPickupView,
     DeliveryDropoffLaundryView,
@@ -71,6 +76,13 @@ api_urlpatterns = [
     path('admin/orders/<int:pk>/accept/', AdminAcceptOrderView.as_view(), name='admin-accept-order'),
     path('admin/orders/<int:pk>/reject/', AdminRejectOrderView.as_view(), name='admin-reject-order'),
     path('admin/orders/<int:pk>/assign-staff/', AdminAssignStaffView.as_view(), name='admin-assign-staff'),
+    path('admin/complaints/', AdminComplaintReportsView.as_view(), name='admin-complaints'),
+    path('admin/complaints/<int:pk>/', AdminComplaintDetailView.as_view(), name='admin-complaint-detail'),
+    path('admin/complaints/<int:pk>/reschedule/', AdminComplaintRescheduleView.as_view(), name='admin-complaint-reschedule'),
+
+    # Customer Reports
+    path('customer/reports/', CustomerReportsView.as_view(), name='customer-reports'),
+    path('customer/reports/<int:pk>/', CustomerReportDetailView.as_view(), name='customer-report-detail'),
 
     # Delivery Staff workflows
     path('delivery/tasks/', DeliveryTasksListView.as_view(), name='delivery-tasks'),

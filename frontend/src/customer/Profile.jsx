@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { addressApi } from '../api/apiClient';
 import { 
@@ -8,6 +8,7 @@ import {
   LogOut, 
   Plus, 
   Trash2, 
+  Edit3,
   Home, 
   Briefcase, 
   RefreshCw 
@@ -18,6 +19,7 @@ export const Profile = () => {
   const [addresses, setAddresses] = useState([]);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState(null);
   const [newAddress, setNewAddress] = useState({
     title: 'Home',
     address_line: '',
@@ -27,6 +29,33 @@ export const Profile = () => {
     is_default: false
   });
   const [saving, setSaving] = useState(false);
+  const modalRef = useRef(null);
+
+  useEffect(() => {
+    if (!showAddModal) return;
+
+    const handleClickOutside = (e) => {
+      if (modalRef.current && !modalRef.current.contains(e.target)) {
+        setShowAddModal(false);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowAddModal(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showAddModal]);
 
   const fetchAddresses = async () => {
     setLoadingAddresses(true);
@@ -45,13 +74,44 @@ export const Profile = () => {
     fetchAddresses();
   }, []);
 
+  const handleOpenAddModal = () => {
+    setEditingAddressId(null);
+    setNewAddress({
+      title: 'Home',
+      address_line: '',
+      landmark: '',
+      city: 'Bengaluru',
+      pincode: '560043',
+      is_default: false
+    });
+    setShowAddModal(true);
+  };
+
+  const handleOpenEditModal = (addr) => {
+    setEditingAddressId(addr.id);
+    setNewAddress({
+      title: addr.title || 'Home',
+      address_line: addr.address_line || addr.address_line1 || '',
+      landmark: addr.landmark || addr.address_line2 || '',
+      city: addr.city || 'Bengaluru',
+      pincode: addr.pincode || '560043',
+      is_default: Boolean(addr.is_default)
+    });
+    setShowAddModal(true);
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (!newAddress.address_line) return;
     setSaving(true);
     try {
-      await addressApi.createAddress(newAddress);
+      if (editingAddressId) {
+        await addressApi.updateAddress(editingAddressId, newAddress);
+      } else {
+        await addressApi.createAddress(newAddress);
+      }
       setShowAddModal(false);
+      setEditingAddressId(null);
       setNewAddress({
         title: 'Home',
         address_line: '',
@@ -62,7 +122,7 @@ export const Profile = () => {
       });
       fetchAddresses();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to save address');
+      alert(err.response?.data?.error || `Failed to ${editingAddressId ? 'update' : 'save'} address`);
     } finally {
       setSaving(false);
     }
@@ -172,7 +232,7 @@ export const Profile = () => {
               </div>
 
               <button 
-                onClick={() => setShowAddModal(true)} 
+                onClick={handleOpenAddModal} 
                 className="btn btn-primary btn-sm flex items-center gap-1.5 self-start sm:self-auto"
               >
                 <Plus size={16} />
@@ -192,7 +252,7 @@ export const Profile = () => {
                 <p className="text-xs text-muted max-w-sm mx-auto mt-1 mb-4">
                   Add your home or office address to make scheduling pickups even faster.
                 </p>
-                <button onClick={() => setShowAddModal(true)} className="btn btn-primary btn-sm">
+                <button onClick={handleOpenAddModal} className="btn btn-primary btn-sm">
                   Add Address Now
                 </button>
               </div>
@@ -213,14 +273,24 @@ export const Profile = () => {
                         </div>
                       </div>
 
-                      <button 
-                        onClick={() => handleDelete(addr.id)}
-                        className="text-slate-400 hover:text-red-600 transition-colors p-1"
-                        title="Delete Address"
-                        aria-label="Delete Address"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={() => handleOpenEditModal(addr)}
+                          className="text-slate-400 hover:text-primary transition-colors p-1 rounded hover:bg-slate-200/50"
+                          title="Edit Address"
+                          aria-label="Edit Address"
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(addr.id)}
+                          className="text-slate-400 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50"
+                          title="Delete Address"
+                          aria-label="Delete Address"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
 
                     <p className="text-xs text-slate-700 mb-1 leading-relaxed">
@@ -244,9 +314,18 @@ export const Profile = () => {
 
       {/* Add Address Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in">
-            <h3 className="text-lg font-bold text-navy mb-4">Add Pickup Address</h3>
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div 
+            ref={modalRef}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-navy mb-4">
+              {editingAddressId ? 'Edit Pickup Address' : 'Add Pickup Address'}
+            </h3>
             <form onSubmit={handleSave} className="space-y-4">
               <div>
                 <label className="form-label">Address Tag</label>
@@ -306,6 +385,18 @@ export const Profile = () => {
                 </div>
               </div>
 
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                  <input 
+                    type="checkbox"
+                    checked={newAddress.is_default}
+                    onChange={(e) => setNewAddress({ ...newAddress, is_default: e.target.checked })}
+                    className="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"
+                  />
+                  <span>Set as default pickup address</span>
+                </label>
+              </div>
+
               <div className="flex justify-end gap-3 pt-3">
                 <button
                   type="button"
@@ -321,7 +412,7 @@ export const Profile = () => {
                   disabled={saving}
                 >
                   {saving ? <RefreshCw size={14} className="animate-spin" /> : null}
-                  <span>Save Address</span>
+                  <span>{editingAddressId ? 'Update Address' : 'Save Address'}</span>
                 </button>
               </div>
             </form>

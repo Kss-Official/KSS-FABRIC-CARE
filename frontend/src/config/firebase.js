@@ -37,6 +37,9 @@ const firebaseConfig = {
   measurementId: getEnv('VITE_FIREBASE_MEASUREMENT_ID', 'G-G7VVZ44JH4')
 };
 
+// Determine whether a genuine Firebase Web API key is configured
+export const isRealApiKey = isFirebaseConfigured;
+
 // Initialize Firebase as a singleton instance ONLY when a genuine API key is present
 export const app = isFirebaseConfigured
   ? (!getApps().length ? initializeApp(firebaseConfig) : getApp())
@@ -47,6 +50,7 @@ export const auth = (isFirebaseConfigured && app) ? getAuth(app) : null;
 
 // Initialize Cloud Firestore Database only when genuine Firebase app exists
 export const db = (isFirebaseConfigured && app) ? getFirestore(app) : null;
+
 
 let analytics = null;
 if (typeof window !== 'undefined' && isFirebaseConfigured && app) {

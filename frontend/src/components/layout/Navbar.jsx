@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useBooking } from '../../context/BookingContext';
 import { useAuth } from '../../context/AuthContext';
 import { Sparkles, Menu, X, ArrowRight, ShieldCheck, PhoneCall, User, LogOut, LayoutDashboard, Truck, Layers, ChevronDown, Package, Clock, FileText, MapPin, Bell, HelpCircle } from 'lucide-react';
@@ -8,6 +8,25 @@ export const Navbar = () => {
   const { currentUser, userProfile, userRole, isAuthenticated, logout, openAuthModal } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const profileMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!profileDropdownOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setProfileDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [profileDropdownOpen]);
 
   const isDeliveryAgent = userRole === 'delivery_agent' || userRole === 'delivery';
   const isLaundryStaff = userRole === 'laundry_staff' || userRole === 'laundry';
@@ -65,7 +84,8 @@ export const Navbar = () => {
   };
 
   return (
-    <header className="navbar-wrapper no-print">
+    <>
+      <header className="navbar-wrapper no-print">
       <div className="container nav-container">
         {/* Brand Logo */}
         <div className="brand-logo" onClick={() => navigateTo('home')}>
@@ -91,8 +111,8 @@ export const Navbar = () => {
 
         {/* Header Action Button */}
         <div className="nav-actions">
-          {isAuthenticated && (
-            <div className="user-profile-menu-wrap">
+          {isAuthenticated ? (
+            <div className="user-profile-menu-wrap" ref={profileMenuRef}>
               <button 
                 className="user-profile-btn"
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
@@ -123,6 +143,10 @@ export const Navbar = () => {
                       <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-track'); }}>
                         <Clock size={15} />
                         <span>Track Order</span>
+                      </button>
+                      <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-reports'); }}>
+                        <FileText size={15} />
+                        <span>Reports</span>
                       </button>
                       <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-invoices'); }}>
                         <FileText size={15} />
@@ -162,6 +186,17 @@ export const Navbar = () => {
                 </div>
               )}
             </div>
+          ) : (
+            <div className="nav-auth-buttons">
+              <button
+                id="nav-signin-btn"
+                type="button"
+                className="nav-auth-btn nav-signin-btn"
+                onClick={() => navigateTo('login')}
+              >
+                Sign In / Sign Up
+              </button>
+            </div>
           )}
 
           <button
@@ -186,8 +221,8 @@ export const Navbar = () => {
 
       {/* Mobile Menu Dropdown */}
       {mobileMenuOpen && (
-        <div className="mobile-menu-overlay animate-fade-in">
-          <div className="mobile-menu-content">
+        <div className="mobile-menu-overlay animate-fade-in" onClick={() => setMobileMenuOpen(false)}>
+          <div className="mobile-menu-content" onClick={(e) => e.stopPropagation()}>
             {navItems.map((item) => (
               <button
                 key={item.id}
@@ -203,16 +238,19 @@ export const Navbar = () => {
             
             <div className="mobile-menu-footer">
               {!isAuthenticated ? (
-                <button
-                  id="mobile-nav-login-btn"
-                  className="btn btn-coral w-full mb-2"
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    navigateTo('login');
-                  }}
-                >
-                  <User size={16} /> Login
-                </button>
+                <div className="mobile-auth-btn-group" style={{ gridTemplateColumns: '1fr' }}>
+                  <button
+                    id="mobile-nav-login-btn"
+                    className="btn btn-outline mobile-auth-btn"
+                    style={{ width: '100%', justifyContent: 'center' }}
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      navigateTo('login');
+                    }}
+                  >
+                    <User size={15} /> Sign In / Sign Up
+                  </button>
+                </div>
               ) : (
                 <button
                   className="btn btn-outline w-full mb-2"
@@ -240,10 +278,11 @@ export const Navbar = () => {
 
       <style>{`
         .navbar-wrapper {
-          position: sticky;
+          position: fixed;
           top: 0;
           left: 0;
           right: 0;
+          width: 100%;
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
@@ -252,7 +291,17 @@ export const Navbar = () => {
           height: 76px;
           display: flex;
           align-items: center;
+          margin: 0;
+          padding: 0;
           transition: all 0.2s ease;
+        }
+
+        .navbar-spacer {
+          height: 76px;
+          width: 100%;
+          margin: 0;
+          padding: 0;
+          flex-shrink: 0;
         }
 
         .nav-container {
@@ -321,28 +370,72 @@ export const Navbar = () => {
         .nav-actions {
           display: flex;
           align-items: center;
-          gap: 16px;
+          gap: 14px;
         }
 
-        .customer-signin-btn {
+        .nav-auth-buttons {
           display: flex;
           align-items: center;
-          gap: 6px;
-          background: none;
-          border: 1.5px solid #CBD5E1;
-          color: #334155;
-          font-size: 0.8125rem;
-          font-weight: 600;
-          padding: 7px 14px;
-          border-radius: 999px;
-          cursor: pointer;
-          transition: all 0.2s ease;
+          gap: 8px;
         }
 
-        .customer-signin-btn:hover {
+        .nav-auth-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-family: inherit;
+          font-size: 0.875rem;
+          font-weight: 600;
+          padding: 8px 18px;
+          border-radius: 999px;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          white-space: nowrap;
+          border: 1.5px solid transparent;
+          line-height: 1.25;
+        }
+
+        .nav-signin-btn {
+          background: #FFFFFF;
+          border-color: #CBD5E1;
+          color: #334155;
+        }
+
+        .nav-signin-btn:hover {
           border-color: #0D7A75;
           color: #0D7A75;
           background: #F0FDFB;
+        }
+
+        .nav-signup-btn {
+          background: #0D7A75;
+          border-color: #0D7A75;
+          color: #FFFFFF;
+          box-shadow: 0 2px 6px rgba(13, 122, 117, 0.18);
+        }
+
+        .nav-signup-btn:hover {
+          background: #09635F;
+          border-color: #09635F;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(13, 122, 117, 0.25);
+        }
+
+        .mobile-auth-btn-group {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .mobile-auth-btn {
+          padding: 10px 12px;
+          font-size: 0.875rem;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
         }
 
         .user-profile-menu-wrap {
@@ -532,7 +625,15 @@ export const Navbar = () => {
             justify-content: center;
           }
         }
+
+        @media (max-width: 680px) {
+          .nav-auth-buttons {
+            display: none;
+          }
+        }
       `}</style>
     </header>
+    <div className="navbar-spacer no-print" aria-hidden="true" />
+  </>
   );
 };

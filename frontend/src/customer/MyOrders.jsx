@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { ordersApi } from '../api/apiClient';
 import { 
@@ -23,6 +23,33 @@ export const MyOrders = () => {
   const [cancellingId, setCancellingId] = useState(null);
   const [cancelModalOrder, setCancelModalOrder] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
+  const cancelModalRef = useRef(null);
+
+  useEffect(() => {
+    if (!cancelModalOrder) return;
+
+    const handleClickOutside = (e) => {
+      if (cancelModalRef.current && !cancelModalRef.current.contains(e.target)) {
+        setCancelModalOrder(null);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setCancelModalOrder(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [cancelModalOrder]);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -228,16 +255,28 @@ export const MyOrders = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 text-sm">
                 <div>
-                  <span className="text-xs text-muted block mb-1">Pickup Schedule</span>
-                  <div className="font-semibold text-navy">{order.pickup_date}</div>
+                  <span className="text-xs text-muted block mb-1">
+                    {order.delivery_date ? 'Schedule Details' : 'Pickup Schedule'}
+                  </span>
+                  <div className="font-semibold text-navy">Pickup: {order.pickup_date}</div>
                   <div className="text-xs text-slate-500">{order.pickup_time_slot}</div>
+                  {order.delivery_date && (
+                    <div className="mt-1.5 pt-1.5 border-t border-slate-100">
+                      <span className="text-[11px] font-semibold text-[#087F8C] block">
+                        Delivery Schedule:
+                      </span>
+                      <div className="font-semibold text-navy text-xs">
+                        {order.delivery_date} {order.delivery_time_slot ? `· ${order.delivery_time_slot}` : ''}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
                   <span className="text-xs text-muted block mb-1">Items & Services</span>
                   <div className="font-medium text-navy">
                     {order.items && order.items.length > 0
-                      ? order.items.map(i => `${i.item_name} ×${i.quantity}`).join(', ')
+                      ? order.items.map(i => `${i.item_name || i.service_name || 'Item'} ×${i.quantity}`).join(', ')
                       : 'General Laundry Service'}
                   </div>
                   <div className="text-xs text-slate-500 truncate max-w-xs">{order.pickup_address}</div>
@@ -258,8 +297,15 @@ export const MyOrders = () => {
 
       {/* Cancel Order Modal */}
       {cancelModalOrder && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in">
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setCancelModalOrder(null)}
+        >
+          <div 
+            ref={cancelModalRef}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 text-red-600 mb-3">
               <AlertCircle size={24} />
               <h3 className="text-lg font-bold">Cancel Order {cancelModalOrder.order_number}?</h3>

@@ -12,7 +12,13 @@ export const PageHeroBanner = ({
   paragraph,
   ctaText,
   onCtaClick,
-  altText
+  altText,
+  aspectRatio,
+  maxHeight,
+  containerStyle,
+  imgStyle,
+  hideBlur = false,
+  fadeOpacity
 }) => {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -22,7 +28,12 @@ export const PageHeroBanner = ({
   return (
     <section
       aria-label={heading || 'Hero Banner'}
-      className="page-hero-banner-container"
+      className={`page-hero-banner-container ${aspectRatio ? 'custom-aspect-ratio' : ''}`}
+      style={{
+        ...(aspectRatio ? { aspectRatio } : {}),
+        ...(maxHeight ? { maxHeight } : {}),
+        ...containerStyle
+      }}
     >
       {/* 1. Background Image */}
       {bgImage && bgImage.trim() !== '' && !imgError && (
@@ -30,6 +41,7 @@ export const PageHeroBanner = ({
           src={bgImage}
           alt={altText || heading || 'FabriCare Garment Care'}
           className={`page-hero-img ${imgLoaded ? 'loaded' : ''}`}
+          style={imgStyle}
           onLoad={() => setImgLoaded(true)}
           onError={() => setImgError(true)}
         />
@@ -57,8 +69,12 @@ export const PageHeroBanner = ({
       )}
 
       {/* 3. Dual White Fade Overlay Layers (Desktop & Mobile) */}
-      <div className="page-hero-fade-overlay" aria-hidden="true" />
-      <div className="page-hero-blur-overlay" aria-hidden="true" />
+      <div
+        className="page-hero-fade-overlay"
+        aria-hidden="true"
+        style={fadeOpacity !== undefined ? { opacity: fadeOpacity } : undefined}
+      />
+      {!hideBlur && <div className="page-hero-blur-overlay" aria-hidden="true" />}
 
       {/* 4. Text Block (Right-aligned container on desktop, centered column) */}
       <div className="page-hero-text-block absolute right-[6%] top-1/2 -translate-y-1/2 flex flex-col items-center text-center w-fit max-w-[46%]">
@@ -97,10 +113,10 @@ export const PageHeroBanner = ({
         .page-hero-banner-container {
           position: relative;
           width: 100%;
+          max-width: 1920px;
+          margin: 0 auto;
           overflow: hidden;
           aspect-ratio: 5120 / 1920;
-          max-height: 520px;
-          min-height: 280px;
           background-color: #FAFCFC;
           touch-action: manipulation;
         }
@@ -116,6 +132,10 @@ export const PageHeroBanner = ({
           opacity: 0;
           transition: opacity 0.7s ease-out;
           display: block;
+          image-rendering: -webkit-optimize-contrast;
+          image-rendering: high-quality;
+          transform: translateZ(0);
+          backface-visibility: hidden;
         }
 
         .page-hero-img.loaded {
@@ -276,6 +296,10 @@ export const PageHeroBanner = ({
         }
 
         /* Responsive Breakpoints */
+        .page-hero-banner-container.custom-aspect-ratio {
+          min-height: unset;
+        }
+
         @media (max-width: 1023px) {
           .page-hero-text-block {
             max-width: 48%;
@@ -289,6 +313,12 @@ export const PageHeroBanner = ({
             height: 280px;
             max-height: 280px;
             min-height: 280px;
+          }
+
+          .page-hero-banner-container.custom-aspect-ratio {
+            height: auto;
+            max-height: none;
+            min-height: 220px;
           }
 
           .page-hero-img {

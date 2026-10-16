@@ -17,8 +17,211 @@ import {
   saveFirestoreSettings,
   seedInitialFirestoreData
 } from '../services/firestoreService';
+import { complaintsApi, supportApi } from '../api/apiClient';
 
 const AdminContext = createContext();
+
+export const INITIAL_SUPPORT_TICKETS = [
+  {
+    id: 1,
+    ticket_id_display: '#SUP-1048',
+    ticket_number: '#SUP-1048',
+    customer_name: 'Priya Sharma',
+    customer_email: 'priya.sharma@example.com',
+    subject: 'Delayed pickup for laundry',
+    priority: 'HIGH',
+    priority_display: 'High',
+    status: 'OPEN',
+    status_display: 'Open',
+    message: "Hi,\nMy order #FC1024 was supposed to be picked up yesterday at 5 PM, but no one came. I'm not sure if there was an issue with the address or the schedule. Please look into this and let me know when the pickup will happen. Thanks!",
+    formatted_created_at: '16 Oct 2026 10:24 AM',
+    created_at: '2026-10-16T10:24:00Z',
+    admin_reply: null,
+    admin_reply_at: null
+  },
+  {
+    id: 2,
+    ticket_id_display: '#SUP-1047',
+    ticket_number: '#SUP-1047',
+    customer_name: 'Rahul Mehta',
+    customer_email: 'rahul.mehta@example.com',
+    subject: 'Question about silk care',
+    priority: 'MEDIUM',
+    priority_display: 'Medium',
+    status: 'IN_PROGRESS',
+    status_display: 'In Progress',
+    message: "I have two pure silk shirts that require gentle dry cleaning. Could you confirm which detergents and pressing techniques you use for delicate silk fabrics?",
+    formatted_created_at: '16 Oct 2026 09:15 AM',
+    created_at: '2026-10-16T09:15:00Z',
+    admin_reply: 'Our laundry specialist is checking the detergent composition for delicate silks and will update you shortly.',
+    admin_reply_at: '2026-10-16T10:00:00Z'
+  },
+  {
+    id: 3,
+    ticket_id_display: '#SUP-1046',
+    ticket_number: '#SUP-1046',
+    customer_name: 'Ananya Rao',
+    customer_email: 'ananya.rao@example.com',
+    subject: 'Payment confirmation',
+    priority: 'LOW',
+    priority_display: 'Low',
+    status: 'RESOLVED',
+    status_display: 'Resolved',
+    message: "I made a payment through UPI for order #FC1019, but the portal still showed payment pending. Please verify and confirm receipt.",
+    formatted_created_at: '15 Oct 2026 04:32 PM',
+    created_at: '2026-10-15T16:32:00Z',
+    admin_reply: 'Payment has been verified and confirmed in our payment gateway. Your order is now marked as Confirmed.',
+    admin_reply_at: '2026-10-15T17:00:00Z'
+  },
+  {
+    id: 4,
+    ticket_id_display: '#SUP-1045',
+    ticket_number: '#SUP-1045',
+    customer_name: 'Vikram Singh',
+    customer_email: 'vikram.singh@example.com',
+    subject: 'Order delivery concern',
+    priority: 'HIGH',
+    priority_display: 'High',
+    status: 'OPEN',
+    status_display: 'Open',
+    message: "The delivery agent marked customer unavailable even though I was at home the entire evening. Kindly reschedule delivery for tomorrow morning.",
+    formatted_created_at: '15 Oct 2026 11:20 AM',
+    created_at: '2026-10-15T11:20:00Z',
+    admin_reply: null,
+    admin_reply_at: null
+  }
+];
+
+export const INITIAL_COMPLAINTS = [
+  {
+    id: 1,
+    order_id: '#FC1024',
+    customer_name: 'Rahul Sharma',
+    customer_phone: '+91 98765 43210',
+    failure_reason: 'Customer Unavailable',
+    reported_by_name: 'Rohit Kumar (Delivery Staff)',
+    formatted_report_date: '16 Oct 2025 10:24 AM',
+    formatted_reschedule_date: '18 Oct 2025 (Requested)',
+    requested_reschedule_date: '2025-10-18',
+    rescheduled_date: null,
+    rescheduled_time_slot: '10:00 AM–12:00 PM',
+    status: 'PENDING_RESCHEDULE',
+    status_display: 'Pending Reschedule',
+    notes: 'Customer did not answer door phone. Security guard stated resident is out of town until 18th Oct.'
+  },
+  {
+    id: 2,
+    order_id: '#FC1023',
+    customer_name: 'Priya Patel',
+    customer_phone: '+91 99887 76655',
+    failure_reason: 'Customer Not Responding',
+    reported_by_name: 'Amit Singh (Delivery Staff)',
+    formatted_report_date: '16 Oct 2025 09:45 AM',
+    formatted_reschedule_date: '19 Oct 2025 (Requested)',
+    requested_reschedule_date: '2025-10-19',
+    rescheduled_date: '2025-10-19',
+    rescheduled_time_slot: '12:00 PM–2:00 PM',
+    status: 'RESCHEDULED',
+    status_display: 'Rescheduled',
+    notes: 'Attempted 3 phone calls. Customer sent SMS requesting delivery on 19th Oct.'
+  },
+  {
+    id: 3,
+    order_id: '#FC1022',
+    customer_name: 'Neha Gupta',
+    customer_phone: '+91 91234 56789',
+    failure_reason: 'Address Issue',
+    reported_by_name: 'Suresh Yadav (Delivery Staff)',
+    formatted_report_date: '15 Oct 2025 05:32 PM',
+    formatted_reschedule_date: '—',
+    requested_reschedule_date: null,
+    rescheduled_date: null,
+    rescheduled_time_slot: null,
+    status: 'UNDER_REVIEW',
+    status_display: 'Under Review',
+    notes: 'House number 42B does not exist on 3rd Main. Landmark unclear.'
+  },
+  {
+    id: 4,
+    order_id: '#FC1021',
+    customer_name: 'Amit Verma',
+    customer_phone: '+91 98111 22334',
+    failure_reason: 'Customer Unavailable',
+    reported_by_name: 'Rohit Kumar (Delivery Staff)',
+    formatted_report_date: '15 Oct 2025 02:18 PM',
+    formatted_reschedule_date: '17 Oct 2025 (Rescheduled)',
+    requested_reschedule_date: null,
+    rescheduled_date: '2025-10-17',
+    rescheduled_time_slot: '2:00 PM–4:00 PM',
+    status: 'RESCHEDULED',
+    status_display: 'Rescheduled',
+    notes: 'Customer requested redelivery on 17th Oct afternoon.'
+  },
+  {
+    id: 5,
+    order_id: '#FC1020',
+    customer_name: 'Sneha Reddy',
+    customer_phone: '+91 97654 32190',
+    failure_reason: 'Customer Not Responding',
+    reported_by_name: 'Pooja Singh (Delivery Staff)',
+    formatted_report_date: '14 Oct 2025 11:07 AM',
+    formatted_reschedule_date: '—',
+    requested_reschedule_date: null,
+    rescheduled_date: null,
+    rescheduled_time_slot: null,
+    status: 'UNDER_REVIEW',
+    status_display: 'Under Review',
+    notes: 'Doorbell out of order, phone unreachable.'
+  },
+  {
+    id: 6,
+    order_id: '#FC1019',
+    customer_name: 'Vikas Mehta',
+    customer_phone: '+91 93456 78901',
+    failure_reason: 'Location Not Found',
+    reported_by_name: 'Amit Kumar (Delivery Staff)',
+    formatted_report_date: '14 Oct 2025 09:55 AM',
+    formatted_reschedule_date: '16 Oct 2025 (Rescheduled)',
+    requested_reschedule_date: null,
+    rescheduled_date: '2025-10-16',
+    rescheduled_time_slot: '10:00 AM–12:00 PM',
+    status: 'RESCHEDULED',
+    status_display: 'Rescheduled',
+    notes: 'Building name incorrect in app. Corrected with customer.'
+  },
+  {
+    id: 7,
+    order_id: '#FC1018',
+    customer_name: 'Anjali Singh',
+    customer_phone: '+91 98712 34567',
+    failure_reason: 'Customer Unavailable',
+    reported_by_name: 'Suresh Yadav (Delivery Staff)',
+    formatted_report_date: '13 Oct 2025 04:24 PM',
+    formatted_reschedule_date: '—',
+    requested_reschedule_date: null,
+    rescheduled_date: null,
+    rescheduled_time_slot: null,
+    status: 'PENDING_RESCHEDULE',
+    status_display: 'Pending Reschedule',
+    notes: 'Flat locked. Need customer reschedule confirmation.'
+  },
+  {
+    id: 8,
+    order_id: '#FC1017',
+    customer_name: 'Karan Malhotra',
+    customer_phone: '+91 99001 12233',
+    failure_reason: 'Customer Not Responding',
+    reported_by_name: 'Rohit Kumar (Delivery Staff)',
+    formatted_report_date: '13 Oct 2025 01:12 PM',
+    formatted_reschedule_date: '15 Oct 2025 (Rescheduled)',
+    requested_reschedule_date: null,
+    rescheduled_date: '2025-10-15',
+    rescheduled_time_slot: '4:00 PM–6:00 PM',
+    status: 'RESCHEDULED',
+    status_display: 'Rescheduled',
+    notes: 'Customer called back to reschedule.'
+  }
+];
 
 export const INITIAL_ORDERS = [
   {
@@ -306,7 +509,8 @@ export const INITIAL_SERVICES_ADMIN = [
     price: 80,
     turnaround: '1–2 days',
     status: 'Active',
-    icon: 'Shirt'
+    icon: 'Shirt',
+    type: 'Standard'
   },
   {
     id: 2,
@@ -316,7 +520,8 @@ export const INITIAL_SERVICES_ADMIN = [
     price: 120,
     turnaround: '1–2 days',
     status: 'Active',
-    icon: 'Layers'
+    icon: 'Jeans',
+    type: 'Standard'
   },
   {
     id: 3,
@@ -326,7 +531,8 @@ export const INITIAL_SERVICES_ADMIN = [
     price: 70,
     turnaround: '1–2 days',
     status: 'Active',
-    icon: 'Shirt'
+    icon: 'TShirt',
+    type: 'Standard'
   },
   {
     id: 4,
@@ -336,7 +542,8 @@ export const INITIAL_SERVICES_ADMIN = [
     price: 250,
     turnaround: '2–3 days',
     status: 'Active',
-    icon: 'Sparkles'
+    icon: 'Suit',
+    type: 'Premium'
   },
   {
     id: 5,
@@ -346,7 +553,8 @@ export const INITIAL_SERVICES_ADMIN = [
     price: 220,
     turnaround: '2–3 days',
     status: 'Active',
-    icon: 'Sparkles'
+    icon: 'Saree',
+    type: 'Premium'
   },
   {
     id: 6,
@@ -356,7 +564,8 @@ export const INITIAL_SERVICES_ADMIN = [
     price: 90,
     turnaround: '1–2 days',
     status: 'Active',
-    icon: 'Flame'
+    icon: 'Bedsheet',
+    type: 'Standard'
   },
   {
     id: 7,
@@ -366,7 +575,8 @@ export const INITIAL_SERVICES_ADMIN = [
     price: 300,
     turnaround: '2–3 days',
     status: 'Inactive',
-    icon: 'BedDouble'
+    icon: 'Blanket',
+    type: 'Premium'
   },
   {
     id: 8,
@@ -376,7 +586,52 @@ export const INITIAL_SERVICES_ADMIN = [
     price: 180,
     turnaround: '2–3 days',
     status: 'Active',
-    icon: 'BedDouble'
+    icon: 'Curtain',
+    type: 'Standard'
+  },
+  {
+    id: 9,
+    name: 'Silk Saree',
+    description: 'Delicate fabric dry cleaning',
+    category: 'Special Care',
+    price: 450,
+    turnaround: '2–3 days',
+    status: 'Active',
+    icon: 'Saree',
+    type: 'Premium'
+  },
+  {
+    id: 10,
+    name: 'Winter Jacket',
+    description: 'Heavy wool dry cleaning & sanitization',
+    category: 'Dry Cleaning',
+    price: 550,
+    turnaround: '3–4 days',
+    status: 'Active',
+    icon: 'Suit',
+    type: 'Premium'
+  },
+  {
+    id: 11,
+    name: 'Carpet Cleaning',
+    description: 'Deep steam sanitization & stain removal',
+    category: 'Special Care',
+    price: 850,
+    turnaround: '3–4 days',
+    status: 'Inactive',
+    icon: 'Blanket',
+    type: 'Premium'
+  },
+  {
+    id: 12,
+    name: 'Cushion Covers',
+    description: 'Gentle wash and steam press',
+    category: 'Wash & Fold',
+    price: 680,
+    turnaround: '1–2 days',
+    status: 'Active',
+    icon: 'Bedsheet',
+    type: 'Standard'
   }
 ];
 
@@ -391,7 +646,7 @@ export const INITIAL_DRIVERS = [
 export const INITIAL_FAQS_ADMIN = [
   {
     id: 1,
-    question: 'How does FabriCare pickup and delivery work?',
+    question: 'How does Laundrix pickup and delivery work?',
     answer: 'Schedule a pickup through our app or website. Our executive will arrive with specialized laundry bags and deliver clean clothes within 24-48 hours.',
     status: 'Active',
     displayOrder: 1
@@ -447,10 +702,149 @@ export const INITIAL_FAQS_ADMIN = [
   }
 ];
 
+export const INITIAL_ADMIN_NOTIFICATIONS = [
+  {
+    id: 'notif-fc-1',
+    type: 'order',
+    title: 'Order Placed Successfully',
+    desc: 'Your booking #FCEB0F4 has been received. Our team will review and assign pickup shortly.',
+    time: '13/10/2026, 1:44:58 pm',
+    timestamp: 1791888898000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#FCEB0F4' }
+  },
+  {
+    id: 'notif-fc-2',
+    type: 'order',
+    title: 'Order Placed Successfully',
+    desc: 'Your booking #FC88B84 has been received. Our team will review and assign pickup shortly.',
+    time: '13/10/2026, 1:14:23 pm',
+    timestamp: 1791887063000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#FC88B84' }
+  },
+  {
+    id: 'notif-fc-3',
+    type: 'order',
+    title: 'Order Placed Successfully',
+    desc: 'Your booking #FC9E22B has been received. Our team will review and assign pickup shortly.',
+    time: '13/10/2026, 1:06:04 pm',
+    timestamp: 1791886564000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#FC9E22B' }
+  },
+  {
+    id: 'notif-fc-4',
+    type: 'order',
+    title: 'Order Placed Successfully',
+    desc: 'Your booking #FC2C5DB has been received. Our team will review and assign pickup shortly.',
+    time: '13/10/2026, 1:05:09 pm',
+    timestamp: 1791886509000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#FC2C5DB' }
+  },
+  {
+    id: 'notif-fc-5',
+    type: 'order',
+    title: 'Order Placed Successfully',
+    desc: 'Your booking #FC66E0E has been received. Our team will review and assign pickup shortly.',
+    time: '13/10/2026, 1:04:28 pm',
+    timestamp: 1791886468000,
+    unread: true,
+    actionTab: 'orders',
+    meta: { orderId: '#FC66E0E' }
+  },
+  {
+    id: 'notif-1',
+    type: 'order',
+    title: 'New Order #LDX10290 Placed',
+    desc: 'Rohan Mehta placed a Pickup order for 4 items (Wash & Fold). Pickup scheduled for today, 09:00 AM – 11:00 AM.',
+    time: '13/10/2026, 12:45:00 pm',
+    timestamp: Date.now() - 5 * 60 * 1000,
+    unread: false,
+    actionTab: 'orders',
+    meta: { orderId: '#LDX1290', customer: 'Rohan Mehta' }
+  },
+  {
+    id: 'notif-2',
+    type: 'driver',
+    title: 'Driver Assigned to Order #LDX10289',
+    desc: 'Ravi Kumar has been assigned for pickup at House #45, HRBR Layout. Status: Driver en route.',
+    time: '13/10/2026, 12:20:00 pm',
+    timestamp: Date.now() - 25 * 60 * 1000,
+    unread: false,
+    actionTab: 'pickup-delivery',
+    meta: { orderId: '#LDX1289', driver: 'Ravi Kumar' }
+  }
+];
+
 export const AdminProvider = ({ children }) => {
-  // Navigation: 'dashboard' | 'orders' | 'pickup-delivery' | 'customers' | 'services' | 'content' | 'settings' | 'login'
-  const [adminTab, setAdminTab] = useState('dashboard');
+  const [adminTab, setAdminTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      if (hash.includes('help-support')) return 'help-support';
+      if (hash.includes('delivery-reports') || hash.includes('complaints') || hash.includes('complaint-reports')) return 'delivery-reports';
+      if (hash.includes('dashboard')) return 'dashboard';
+      if (hash.includes('orders')) return 'orders';
+      if (hash.includes('customers')) return 'customers';
+      if (hash.includes('settings')) return 'settings';
+    }
+    return 'delivery-reports';
+  });
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(true);
+
+  // Notifications State
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_notifications');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return INITIAL_ADMIN_NOTIFICATIONS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fabricare_admin_notifications', JSON.stringify(notifications));
+    } catch (e) {}
+  }, [notifications]);
+
+  const markNotificationAsRead = (id) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, unread: false } : n));
+  };
+
+  const markNotificationAsUnread = (id) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, unread: true } : n));
+  };
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+  };
+
+  const deleteNotification = (id) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const clearAllNotifications = () => {
+    setNotifications([]);
+  };
+
+  const addAdminNotification = (notif) => {
+    const newNotif = {
+      id: `notif-${Date.now()}`,
+      time: 'Just now',
+      timestamp: Date.now(),
+      unread: true,
+      ...notif
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+  };
 
   // Modals & Drawers State
   const [isCreateOrderDrawerOpen, setIsCreateOrderDrawerOpen] = useState(false);
@@ -462,34 +856,52 @@ export const AdminProvider = ({ children }) => {
 
   // Data Store
   const [orders, setOrders] = useState(INITIAL_ORDERS);
-  const [customers, setCustomers] = useState(INITIAL_CUSTOMERS);
+  const [customers, setCustomers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_customers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return INITIAL_CUSTOMERS;
+  });
   const [services, setServices] = useState(INITIAL_SERVICES_ADMIN);
   const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
   const [faqs, setFaqs] = useState(INITIAL_FAQS_ADMIN);
   const [termsContent, setTermsContent] = useState({
     title: 'Terms & Conditions',
-    body: `1. Introduction\nWelcome to FabriCare. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nFabriCare provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.\n\n3. Orders & Pickup\nOrders can be placed through our website, mobile app or by phone. Pickup and delivery timings are subject to availability. Please ensure clothes are securely packed and handed over in clean condition.\n\n4. Pricing & Payment\nPrices are based on the type of garment, fabric and service selected. All charges are transparent with no hidden fees.`
+    body: `1. Introduction\nWelcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nLaundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.\n\n3. Orders & Pickup\n  Orders can be placed through our website, mobile app or by phone.\n  Pickup and delivery timings are subject to availability.\n  Please ensure clothes are securely packed and handed over in clean condition.\n\n4. Pricing & Payment\n  Prices are based on the type of garment, fabric and service selected.`
   });
 
   // Settings
-  const [settings, setSettings] = useState({
-    name: 'Admin',
-    email: 'admin@fabricare.com',
-    phone: '+91 98765 43210',
-    role: 'Administrator',
-    supportEmail: 'support@fabricare.com',
-    supportPhone: '+91 98765 43210',
-    websiteUrl: 'https://www.fabricare.com',
-    instagram: 'https://instagram.com/fabricare',
-    facebook: 'https://facebook.com/fabricare',
-    twitter: 'https://x.com/fabricare',
-    linkedin: 'https://linkedin.com/company/fabricare',
-    notifications: {
-      newOrders: true,
-      customerMessages: true,
-      pickupDelivery: true,
-      systemAnnouncements: false
-    }
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_settings');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return {
+      name: 'Admin',
+      email: 'admin@fabricare.com',
+      phone: '+91 98765 43210',
+      role: 'Administrator',
+      supportEmail: 'support@fabricare.com',
+      supportPhone: '+91 98765 43210',
+      websiteUrl: 'https://www.fabricare.com',
+      instagram: 'https://instagram.com/fabricare',
+      facebook: 'https://facebook.com/fabricare',
+      twitter: 'https://x.com/fabricare',
+      linkedin: 'https://linkedin.com/company/fabricare',
+      photoUrl: '',
+      notifications: {
+        newOrders: true,
+        customerMessages: true,
+        pickupDelivery: true,
+        systemAnnouncements: false
+      }
+    };
   });
 
   // Initialize Firestore Sync & Seeding
@@ -547,20 +959,58 @@ export const AdminProvider = ({ children }) => {
   }, []);
 
   const addCustomer = async (customerData) => {
+    const rawName = (customerData.name || 'New Customer').trim();
+    const initials = rawName
+      .split(/\s+/)
+      .map(n => n[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase() || 'NC';
+
+    const addressParts = [
+      customerData.address1,
+      customerData.address2,
+      customerData.area,
+      customerData.city || 'Bengaluru',
+      customerData.pincode
+    ].filter(Boolean);
+
+    const locationString = addressParts.length > 0 
+      ? addressParts.join(', ')
+      : (customerData.area ? `${customerData.area}, Bengaluru ${customerData.pincode || ''}` : 'Bengaluru');
+
     const newCust = {
       id: `#CUS${Math.floor(1000 + Math.random() * 9000)}`,
-      name: customerData.name || 'New Customer',
+      name: rawName.split(' ')[0] || rawName,
+      fullName: rawName,
       phone: customerData.phone || '+91 98765 00000',
-      email: customerData.email || 'customer@example.com',
-      avatar: (customerData.name || 'NC').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(),
-      location: customerData.area ? `${customerData.area}, Bengaluru ${customerData.pincode || ''}` : 'Bengaluru',
-      totalOrders: 1,
+      email: customerData.email || '',
+      whatsapp: customerData.whatsapp || customerData.phone || '',
+      address1: customerData.address1 || '',
+      address2: customerData.address2 || '',
+      city: customerData.city || 'Bengaluru',
+      area: customerData.area || 'HSR Layout',
+      pincode: customerData.pincode || '560043',
+      locationType: customerData.locationType || 'Home',
+      notes: customerData.notes || '',
+      avatar: initials,
+      avatarBg: '#E0F2FE',
+      avatarColor: '#0284C7',
+      location: locationString,
+      totalOrders: 0,
       totalSpent: '₹0',
       status: customerData.status !== undefined ? (customerData.status ? 'Active' : 'Inactive') : 'Active',
       joinDate: 'Today',
       joinRelative: 'Just now'
     };
-    setCustomers(prev => [newCust, ...prev]);
+
+    setCustomers(prev => {
+      const updated = [newCust, ...prev];
+      try {
+        localStorage.setItem('fabricare_admin_customers', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
     setIsAddCustomerModalOpen(false);
 
     try {
@@ -568,6 +1018,8 @@ export const AdminProvider = ({ children }) => {
     } catch (err) {
       console.warn('Firestore addCustomer sync note:', err.message);
     }
+
+    return newCust;
   };
 
   const addService = async (serviceData) => {
@@ -621,16 +1073,25 @@ export const AdminProvider = ({ children }) => {
   };
 
   const assignDriverToOrder = async (orderId, driverName) => {
-    setOrders(prev => prev.map(o => {
-      if (o.id === orderId) {
-        return {
-          ...o,
-          driver: driverName,
-          status: o.status === 'Pending Pickup' ? 'Pending Pickup' : o.status
-        };
-      }
-      return o;
-    }));
+    setOrders(prev => {
+      const updated = prev.map(o => {
+        const matchesId = o.id === orderId || 
+                          o.id.replace('#LDX12', '#LDX1028') === orderId ||
+                          orderId.replace('#LDX12', '#LDX1028') === o.id;
+        if (matchesId) {
+          return {
+            ...o,
+            driver: driverName,
+            status: 'Assigned'
+          };
+        }
+        return o;
+      });
+      try {
+        localStorage.setItem('fabricare_admin_orders', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
     setIsAssignOrderModalOpen(false);
 
     try {
@@ -668,8 +1129,25 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  const deleteService = async (serviceId) => {
+    setServices(prev => prev.filter(s => s.id !== serviceId));
+  };
+
   const updateSettings = async (newSettings) => {
     setSettings(newSettings);
+    try {
+      localStorage.setItem('fabricare_admin_settings', JSON.stringify(newSettings));
+      // Also update fabricare_user session if present
+      const savedUser = localStorage.getItem('fabricare_user') || sessionStorage.getItem('fabricare_user');
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        parsed.displayName = newSettings.name || parsed.displayName;
+        parsed.email = newSettings.email || parsed.email;
+        localStorage.setItem('fabricare_user', JSON.stringify(parsed));
+      }
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {}
+
     try {
       await saveFirestoreSettings(newSettings);
     } catch (err) {
@@ -685,6 +1163,368 @@ export const AdminProvider = ({ children }) => {
       console.warn('Firestore save terms sync note:', err.message);
     }
   };
+
+  // Complaints State & Operations
+  const [complaints, setComplaints] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_complaints');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return INITIAL_COMPLAINTS;
+  });
+
+  const [complaintsSummary, setComplaintsSummary] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_complaints_summary');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      total_complaints: 28,
+      total_complaints_change: '↑ 12%',
+      pending_reschedule: 7,
+      pending_reschedule_change: '↑ 33%',
+      rescheduled: 13,
+      rescheduled_change: '↑ 25%',
+      resolved: 5,
+      resolved_change: '↑ 20%',
+      under_review: 3
+    };
+  });
+
+  const [complaintsLoading, setComplaintsLoading] = useState(false);
+  const [isRescheduleDrawerOpen, setIsRescheduleDrawerOpen] = useState(false);
+  const [activeRescheduleComplaint, setActiveRescheduleComplaint] = useState(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fabricare_admin_complaints', JSON.stringify(complaints));
+    } catch (e) {}
+  }, [complaints]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fabricare_admin_complaints_summary', JSON.stringify(complaintsSummary));
+    } catch (e) {}
+  }, [complaintsSummary]);
+
+  const fetchComplaints = async (params = {}) => {
+    setComplaintsLoading(true);
+    try {
+      const res = await complaintsApi.getComplaints(params);
+      if (res.data) {
+        if (Array.isArray(res.data.results) && res.data.results.length > 0) {
+          setComplaints(res.data.results);
+        }
+        if (res.data.summary) {
+          setComplaintsSummary(res.data.summary);
+        }
+      }
+    } catch (err) {
+      console.warn('Backend complaints fetch failed, retaining cached data:', err);
+    } finally {
+      setComplaintsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchComplaints();
+  }, []);
+
+  const openRescheduleDrawer = (complaint) => {
+    setActiveRescheduleComplaint(complaint);
+    setIsRescheduleDrawerOpen(true);
+  };
+
+  const closeRescheduleDrawer = () => {
+    setIsRescheduleDrawerOpen(false);
+    setActiveRescheduleComplaint(null);
+  };
+
+  const rescheduleDelivery = async (complaintId, rescheduleData) => {
+    try {
+      const res = await complaintsApi.rescheduleComplaint(complaintId, rescheduleData);
+      
+      setComplaints(prev => prev.map(c => {
+        if (c.id === complaintId) {
+          const dateStr = rescheduleData.delivery_date;
+          return {
+            ...c,
+            status: 'RESCHEDULED',
+            status_display: 'Rescheduled',
+            rescheduled_date: dateStr,
+            rescheduled_time_slot: rescheduleData.delivery_time_slot,
+            formatted_reschedule_date: `${dateStr} (${rescheduleData.delivery_time_slot || 'Rescheduled'})`,
+            notes: rescheduleData.notes ? `${c.notes || ''}\nAdmin Note: ${rescheduleData.notes}`.trim() : c.notes
+          };
+        }
+        return c;
+      }));
+
+      setComplaintsSummary(prev => ({
+        ...prev,
+        pending_reschedule: Math.max(0, (prev.pending_reschedule || 8) - 1),
+        rescheduled: (prev.rescheduled || 10) + 1
+      }));
+
+      addAdminNotification({
+        type: 'delivery',
+        title: 'Delivery Rescheduled',
+        desc: `Order ${activeRescheduleComplaint?.order_id || ''} delivery rescheduled to ${rescheduleData.delivery_date} (${rescheduleData.delivery_time_slot || ''}).`,
+        actionTab: 'reports',
+        meta: { orderId: activeRescheduleComplaint?.order_id }
+      });
+
+      return { success: true, data: res.data };
+    } catch (err) {
+      console.warn('Backend reschedule API error, applying local optimistic update:', err);
+      setComplaints(prev => prev.map(c => {
+        if (c.id === complaintId) {
+          const dateStr = rescheduleData.delivery_date;
+          return {
+            ...c,
+            status: 'RESCHEDULED',
+            status_display: 'Rescheduled',
+            rescheduled_date: dateStr,
+            rescheduled_time_slot: rescheduleData.delivery_time_slot,
+            formatted_reschedule_date: `${dateStr} (${rescheduleData.delivery_time_slot || 'Rescheduled'})`,
+            notes: rescheduleData.notes ? `${c.notes || ''}\nAdmin Note: ${rescheduleData.notes}`.trim() : c.notes
+          };
+        }
+        return c;
+      }));
+
+      setComplaintsSummary(prev => ({
+        ...prev,
+        pending_reschedule: Math.max(0, (prev.pending_reschedule || 8) - 1),
+        rescheduled: (prev.rescheduled || 10) + 1
+      }));
+      return { success: true };
+    }
+  };
+
+  // Support Tickets State
+  const [supportTickets, setSupportTickets] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_support_tickets');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return INITIAL_SUPPORT_TICKETS;
+  });
+
+  const [supportSummary, setSupportSummary] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_support_summary');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      total_tickets: 128,
+      total_tickets_change: '↑ 12%',
+      open: 24,
+      open_change: '↑ 5%',
+      in_progress: 12,
+      in_progress_change: '↑ 8%',
+      resolved: 92,
+      resolved_change: '↑ 15%'
+    };
+  });
+
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [isSupportDrawerOpen, setIsSupportDrawerOpen] = useState(false);
+  const [activeSupportTicket, setActiveSupportTicket] = useState(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fabricare_admin_support_tickets', JSON.stringify(supportTickets));
+    } catch (e) {}
+  }, [supportTickets]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fabricare_admin_support_summary', JSON.stringify(supportSummary));
+    } catch (e) {}
+  }, [supportSummary]);
+
+  const fetchSupportTickets = async (params = {}) => {
+    setSupportLoading(true);
+    try {
+      const res = await supportApi.getTickets(params);
+      if (res.data) {
+        if (Array.isArray(res.data.results) && res.data.results.length > 0) {
+          setSupportTickets(res.data.results);
+        } else if (Array.isArray(res.data) && res.data.length > 0) {
+          setSupportTickets(res.data);
+        }
+        if (res.data.summary) {
+          setSupportSummary(res.data.summary);
+        }
+      }
+    } catch (err) {
+      console.warn('Backend support tickets fetch failed, retaining cached data:', err);
+    } finally {
+      setSupportLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSupportTickets();
+  }, []);
+
+  const openSupportDrawer = (ticket) => {
+    setActiveSupportTicket(ticket);
+    setIsSupportDrawerOpen(true);
+  };
+
+  const closeSupportDrawer = () => {
+    setIsSupportDrawerOpen(false);
+    setActiveSupportTicket(null);
+  };
+
+  const replyToSupportTicket = async (ticketId, replyText, statusVal) => {
+    try {
+      const res = await supportApi.replyTicket(ticketId, {
+        admin_reply: replyText,
+        status: statusVal
+      });
+
+      const updated = res.data?.ticket || res.data;
+      setSupportTickets(prev => prev.map(t => {
+        if (t.id === ticketId || t.ticket_number === ticketId || t.ticket_id_display === ticketId) {
+          return {
+            ...t,
+            admin_reply: replyText,
+            admin_reply_at: new Date().toISOString(),
+            status: statusVal || t.status,
+            status_display: statusVal === 'IN_PROGRESS' ? 'In Progress' : (statusVal === 'RESOLVED' ? 'Resolved' : t.status_display)
+          };
+        }
+        return t;
+      }));
+
+      if (activeSupportTicket && (activeSupportTicket.id === ticketId || activeSupportTicket.ticket_number === ticketId)) {
+        setActiveSupportTicket(prev => ({
+          ...prev,
+          admin_reply: replyText,
+          admin_reply_at: new Date().toISOString(),
+          status: statusVal || prev.status
+        }));
+      }
+
+      addAdminNotification({
+        type: 'order',
+        title: 'Support Response Sent',
+        desc: `Response sent to customer for ticket ${activeSupportTicket?.ticket_id_display || activeSupportTicket?.ticket_number || ''}.`,
+        actionTab: 'help-support'
+      });
+
+      return { success: true, data: updated };
+    } catch (err) {
+      console.warn('Backend reply failed, applying local update:', err);
+      setSupportTickets(prev => prev.map(t => {
+        if (t.id === ticketId || t.ticket_number === ticketId || t.ticket_id_display === ticketId) {
+          return {
+            ...t,
+            admin_reply: replyText,
+            admin_reply_at: new Date().toISOString(),
+            status: statusVal || t.status,
+            status_display: statusVal === 'IN_PROGRESS' ? 'In Progress' : (statusVal === 'RESOLVED' ? 'Resolved' : t.status_display)
+          };
+        }
+        return t;
+      }));
+
+      if (activeSupportTicket && (activeSupportTicket.id === ticketId || activeSupportTicket.ticket_number === ticketId)) {
+        setActiveSupportTicket(prev => ({
+          ...prev,
+          admin_reply: replyText,
+          admin_reply_at: new Date().toISOString(),
+          status: statusVal || prev.status
+        }));
+      }
+
+      return { success: true };
+    }
+  };
+
+  const resolveSupportTicket = async (ticketId, replyText) => {
+    try {
+      const res = await supportApi.resolveTicket(ticketId, {
+        admin_reply: replyText
+      });
+
+      const updated = res.data?.ticket || res.data;
+      setSupportTickets(prev => prev.map(t => {
+        if (t.id === ticketId || t.ticket_number === ticketId || t.ticket_id_display === ticketId) {
+          return {
+            ...t,
+            status: 'RESOLVED',
+            status_display: 'Resolved',
+            admin_reply: replyText || t.admin_reply,
+            admin_reply_at: replyText ? new Date().toISOString() : t.admin_reply_at
+          };
+        }
+        return t;
+      }));
+
+      if (activeSupportTicket && (activeSupportTicket.id === ticketId || activeSupportTicket.ticket_number === ticketId)) {
+        setActiveSupportTicket(prev => ({
+          ...prev,
+          status: 'RESOLVED',
+          status_display: 'Resolved',
+          admin_reply: replyText || prev.admin_reply
+        }));
+      }
+
+      setSupportSummary(prev => ({
+        ...prev,
+        open: Math.max(0, (prev.open || 24) - 1),
+        resolved: (prev.resolved || 92) + 1
+      }));
+
+      addAdminNotification({
+        type: 'order',
+        title: 'Support Ticket Resolved',
+        desc: `Ticket ${activeSupportTicket?.ticket_id_display || activeSupportTicket?.ticket_number || ''} marked as Resolved.`,
+        actionTab: 'help-support'
+      });
+
+      return { success: true, data: updated };
+    } catch (err) {
+      console.warn('Backend resolve failed, applying local update:', err);
+      setSupportTickets(prev => prev.map(t => {
+        if (t.id === ticketId || t.ticket_number === ticketId || t.ticket_id_display === ticketId) {
+          return {
+            ...t,
+            status: 'RESOLVED',
+            status_display: 'Resolved',
+            admin_reply: replyText || t.admin_reply
+          };
+        }
+        return t;
+      }));
+
+      if (activeSupportTicket && (activeSupportTicket.id === ticketId || activeSupportTicket.ticket_number === ticketId)) {
+        setActiveSupportTicket(prev => ({
+          ...prev,
+          status: 'RESOLVED',
+          status_display: 'Resolved',
+          admin_reply: replyText || prev.admin_reply
+        }));
+      }
+
+      setSupportSummary(prev => ({
+        ...prev,
+        open: Math.max(0, (prev.open || 24) - 1),
+        resolved: (prev.resolved || 92) + 1
+      }));
+
+      return { success: true };
+    }
+  };
+
+
 
   return (
     <AdminContext.Provider
@@ -725,13 +1565,51 @@ export const AdminProvider = ({ children }) => {
         createOrder,
         updateOrderStatus,
         assignDriverToOrder,
-        toggleServiceStatus
+        toggleServiceStatus,
+        deleteService,
+        notifications,
+        setNotifications,
+        markNotificationAsRead,
+        markNotificationAsUnread,
+        markAllNotificationsAsRead,
+        deleteNotification,
+        clearAllNotifications,
+        addAdminNotification,
+        unreadNotificationsCount: notifications.filter(n => n.unread).length,
+        complaints,
+        setComplaints,
+        complaintsSummary,
+        setComplaintsSummary,
+        complaintsLoading,
+        isRescheduleDrawerOpen,
+        setIsRescheduleDrawerOpen,
+        activeRescheduleComplaint,
+        setActiveRescheduleComplaint,
+        fetchComplaints,
+        openRescheduleDrawer,
+        closeRescheduleDrawer,
+        rescheduleDelivery,
+        supportTickets,
+        setSupportTickets,
+        supportSummary,
+        setSupportSummary,
+        supportLoading,
+        isSupportDrawerOpen,
+        setIsSupportDrawerOpen,
+        activeSupportTicket,
+        setActiveSupportTicket,
+        fetchSupportTickets,
+        openSupportDrawer,
+        closeSupportDrawer,
+        replyToSupportTicket,
+        resolveSupportTicket
       }}
     >
       {children}
     </AdminContext.Provider>
   );
 };
+
 
 export const useAdmin = () => {
   const context = useContext(AdminContext);

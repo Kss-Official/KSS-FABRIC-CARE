@@ -5,7 +5,8 @@ from rest_framework import serializers
 from .models import (
     ServiceCategory, Service, Order, OrderItem,
     PickupRecord, LaundryHandoverRecord, LaundryStageLog, DeliveryRecord,
-    Invoice, Notification, SupportTicket, ContentFAQ, ContentPolicy
+    Invoice, Notification, SupportTicket, ContentFAQ, ContentPolicy,
+    ComplaintReport
 )
 from apps.users.serializers import UserSerializer
 
@@ -53,9 +54,11 @@ class ServiceSerializer(serializers.ModelSerializer):
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
+    item_name = serializers.CharField(source='service_name', read_only=True)
+
     class Meta:
         model = OrderItem
-        fields = '__all__'
+        fields = ('id', 'order', 'service_name', 'item_name', 'category_name', 'quantity', 'unit_price', 'total_price')
         read_only_fields = ('order',)
 
 
@@ -150,6 +153,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     pickup_city = serializers.CharField(required=False, allow_blank=True, default='Bengaluru')
     pickup_pincode = serializers.CharField(required=False, allow_blank=True, default='560043')
     pickup_date = serializers.CharField(required=False, allow_blank=True)
+    pickup_time_slot = serializers.CharField(required=False, allow_blank=True, default='9:00 AM – 11:00 AM')
     delivery_date = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def validate_pickup_date(self, value):
@@ -192,13 +196,51 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         if not validated_data.get('delivery_address'):
             validated_data['delivery_address'] = validated_data['pickup_address']
 
-        # Calculate total if not set
+        # Calculate total and process items with duplicate wash waiver logic
         calculated_total = 0.0
+        processed_items = []
         if items_payload:
+            wash_counts = {}
             for it in items_payload:
-                qty = it.get('quantity', 1)
-                rate = float(it.get('unit_price', 100))
-                calculated_total += (rate * qty)
+                c_name = str(it.get('service_category') or it.get('category_name') or '').lower()
+                s_name = str(it.get('item_name') or it.get('service_name') or '').strip().lower()
+                if 'fold' in c_name or 'express' in c_name:
+                    wash_counts[s_name] = wash_counts.get(s_name, 0) + int(it.get('quantity') or 1)
+
+            iron_applied = {}
+            for it in items_payload:
+                s_name = it.get('item_name') or it.get('service_name') or 'Laundry Service'
+                s_name_norm = str(s_name).strip().lower()
+                c_name = it.get('service_category') or it.get('category_name') or 'General Care'
+                c_name_norm = str(c_name).lower()
+                qty = int(it.get('quantity') or 1)
+                u_price = float(it.get('unit_price') or 100.0)
+
+                is_wash_iron = 'iron' in c_name_norm and ('wash' in c_name_norm or 'iron' in c_name_norm)
+                wash_available = wash_counts.get(s_name_norm, 0) - iron_applied.get(s_name_norm, 0)
+
+                if it.get('total_price') is not None:
+                    t_price = float(it.get('total_price'))
+                    eff_u_price = u_price
+                elif is_wash_iron and wash_available > 0:
+                    discounted_qty = min(qty, wash_available)
+                    iron_applied[s_name_norm] = iron_applied.get(s_name_norm, 0) + discounted_qty
+                    ironing_rate = round(u_price / 2.0)
+                    rem_qty = qty - discounted_qty
+                    t_price = (discounted_qty * ironing_rate) + (rem_qty * u_price)
+                    eff_u_price = round(t_price / qty, 2)
+                else:
+                    t_price = float(u_price * qty)
+                    eff_u_price = u_price
+
+                calculated_total += t_price
+                processed_items.append({
+                    'service_name': s_name,
+                    'category_name': c_name,
+                    'quantity': qty,
+                    'unit_price': eff_u_price,
+                    'total_price': t_price
+                })
         
         total_amount = float(validated_data.get('total_amount') or calculated_total or 300.00)
         validated_data['total_amount'] = total_amount
@@ -210,16 +252,16 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
-        # Create order items from payload or services_list
-        if items_payload:
-            for it in items_payload:
+        # Create order items from processed payload or services_list
+        if processed_items:
+            for item_dict in processed_items:
                 OrderItem.objects.create(
                     order=order,
-                    service_name=it.get('item_name', 'Laundry Service'),
-                    category_name=it.get('service_category', 'General Care'),
-                    quantity=it.get('quantity', 1),
-                    unit_price=it.get('unit_price', 100.00),
-                    total_price=it.get('total_price', float(it.get('unit_price', 100)) * it.get('quantity', 1))
+                    service_name=item_dict['service_name'],
+                    category_name=item_dict['category_name'],
+                    quantity=item_dict['quantity'],
+                    unit_price=item_dict['unit_price'],
+                    total_price=item_dict['total_price']
                 )
         elif services_list:
             for item_name in services_list:
@@ -275,11 +317,47 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 class SupportTicketSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    ticket_id_display = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    customer_email = serializers.SerializerMethodField()
+    formatted_created_at = serializers.SerializerMethodField()
+    formatted_admin_reply_at = serializers.SerializerMethodField()
 
     class Meta:
         model = SupportTicket
         fields = '__all__'
         read_only_fields = ('customer', 'created_at', 'updated_at')
+
+    def get_ticket_id_display(self, obj):
+        if obj.ticket_number:
+            return obj.ticket_number
+        return f"#SUP-{1040 + obj.id}"
+
+    def get_customer_name(self, obj):
+        if obj.customer_name:
+            return obj.customer_name
+        if obj.customer:
+            return obj.customer.full_name or obj.customer.username
+        return "Customer"
+
+    def get_customer_email(self, obj):
+        if obj.customer_email:
+            return obj.customer_email
+        if obj.customer:
+            return obj.customer.email
+        return ""
+
+    def get_formatted_created_at(self, obj):
+        if not obj.created_at:
+            return ""
+        return obj.created_at.strftime("%d %b %Y %I:%M %p")
+
+    def get_formatted_admin_reply_at(self, obj):
+        if not obj.admin_reply_at:
+            return ""
+        return obj.admin_reply_at.strftime("%d %b %Y %I:%M %p")
+
 
 
 class ContentFAQSerializer(serializers.ModelSerializer):
@@ -292,3 +370,107 @@ class ContentPolicySerializer(serializers.ModelSerializer):
     class Meta:
         model = ContentPolicy
         fields = '__all__'
+
+
+class ComplaintReportSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    order_id = serializers.SerializerMethodField()
+    order_details = serializers.SerializerMethodField()
+    formatted_report_date = serializers.SerializerMethodField()
+    report_date_only = serializers.SerializerMethodField()
+    formatted_reschedule_date = serializers.SerializerMethodField()
+    original_schedule = serializers.SerializerMethodField()
+    new_delivery_date_formatted = serializers.SerializerMethodField()
+    timeline = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ComplaintReport
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at')
+
+    def get_order_id(self, obj):
+        if obj.order_id_display:
+            return obj.order_id_display
+        if obj.order:
+            return obj.order.order_id
+        return f"#FC{obj.id}"
+
+    def get_order_details(self, obj):
+        if not obj.order:
+            return None
+        return {
+            'id': obj.order.id,
+            'order_id': obj.order.order_id,
+            'status': obj.order.status,
+            'delivery_address': obj.order.delivery_address or obj.order.pickup_address,
+            'delivery_date': str(obj.order.delivery_date) if obj.order.delivery_date else None,
+            'delivery_time_slot': obj.order.delivery_time_slot,
+            'total_amount': str(obj.order.total_amount),
+        }
+
+    def get_formatted_report_date(self, obj):
+        if not obj.report_date:
+            return ""
+        return obj.report_date.strftime("%d %b %Y, %I:%M %p")
+
+    def get_report_date_only(self, obj):
+        if not obj.report_date:
+            return ""
+        return obj.report_date.strftime("%d %b %Y")
+
+    def get_formatted_reschedule_date(self, obj):
+        if obj.rescheduled_date:
+            time_part = f" ({obj.rescheduled_time_slot})" if obj.rescheduled_time_slot else " (Rescheduled)"
+            return f"{obj.rescheduled_date.strftime('%d %b %Y')}{time_part}"
+        if obj.requested_reschedule_date:
+            return f"{obj.requested_reschedule_date.strftime('%d %b %Y')} (Requested)"
+        return "—"
+
+    def get_new_delivery_date_formatted(self, obj):
+        if obj.rescheduled_date:
+            return obj.rescheduled_date.strftime('%d %b %Y')
+        return None
+
+    def get_original_schedule(self, obj):
+        if obj.order and obj.order.pickup_date:
+            time_slot = obj.order.pickup_time_slot or "09:00 AM - 11:00 AM"
+            return f"{obj.order.pickup_date.strftime('%d %b %Y')}, {time_slot}"
+        if obj.report_date:
+            return f"{obj.report_date.strftime('%d %b %Y')}, 09:00 AM - 11:00 AM"
+        return "16 Oct 2025, 09:00 AM - 11:00 AM"
+
+    def get_timeline(self, obj):
+        events = []
+        if obj.report_date:
+            events.append({
+                'title': 'Complaint reported by delivery staff',
+                'description': f"Reason: {obj.failure_reason}",
+                'time': obj.report_date.strftime("%d %b %Y, %I:%M %p"),
+                'status': 'reported'
+            })
+            step2_time = obj.report_date + datetime.timedelta(minutes=46)
+            events.append({
+                'title': 'Reschedule requested by admin',
+                'description': 'Reschedule request queued for processing',
+                'time': step2_time.strftime("%d %b %Y, %I:%M %p"),
+                'status': 'review'
+            })
+        if obj.rescheduled_date:
+            step3_time = obj.updated_at if obj.updated_at else (obj.report_date + datetime.timedelta(days=1, hours=2) if obj.report_date else timezone.now())
+            events.append({
+                'title': 'Delivery rescheduled',
+                'description': f"New delivery date set to {obj.rescheduled_date.strftime('%d %b %Y')} ({obj.rescheduled_time_slot or 'Standard Slot'})",
+                'time': step3_time.strftime("%d %b %Y, %I:%M %p"),
+                'status': 'rescheduled'
+            })
+        if obj.status in [ComplaintReport.Status.DELIVERED, ComplaintReport.Status.RESOLVED]:
+            step4_time = obj.updated_at if obj.updated_at else timezone.now()
+            events.append({
+                'title': 'Delivery completed successfully',
+                'description': 'Order delivered and closed',
+                'time': step4_time.strftime("%d %b %Y, %I:%M %p"),
+                'status': 'resolved'
+            })
+        return events
+
+

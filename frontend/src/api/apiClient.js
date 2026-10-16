@@ -115,7 +115,23 @@ export const adminApi = {
   acceptOrder: (orderId, notes = '') => apiClient.post(`/admin/orders/${orderId}/accept/`, { notes }),
   rejectOrder: (orderId, reason = '') => apiClient.post(`/admin/orders/${orderId}/reject/`, { reason }),
   assignStaff: (orderId, data) => apiClient.post(`/admin/orders/${orderId}/assign-staff/`, data),
+  getComplaints: (params = {}) => apiClient.get('/admin/complaints/', { params }),
+  getComplaintById: (id) => apiClient.get(`/admin/complaints/${id}/`),
+  rescheduleComplaint: (id, data) => apiClient.post(`/admin/complaints/${id}/reschedule/`, data),
 };
+
+// COMPLAINTS & REPORTS APIS
+export const complaintsApi = {
+  getReports: (params = {}) => apiClient.get('/customer/reports/', { params }),
+  getReportById: (id) => apiClient.get(`/customer/reports/${id}/`),
+  getAdminReports: (params = {}) => apiClient.get('/admin/complaints/', { params }),
+  getAdminReportById: (id) => apiClient.get(`/admin/complaints/${id}/`),
+  rescheduleReport: (id, data) => apiClient.post(`/admin/complaints/${id}/reschedule/`, data),
+  getComplaints: (params = {}) => apiClient.get('/admin/complaints/', { params }),
+  getComplaintById: (id) => apiClient.get(`/admin/complaints/${id}/`),
+  rescheduleComplaint: (id, data) => apiClient.post(`/admin/complaints/${id}/reschedule/`, data),
+};
+
 
 // DELIVERY STAFF APIS
 export const deliveryApi = {
@@ -139,7 +155,7 @@ export const laundryApi = {
 export const addressApi = {
   getAddresses: () => apiClient.get('/addresses/'),
   createAddress: (data) => apiClient.post('/addresses/', data),
-  updateAddress: (id, data) => apiClient.put(`/addresses/${id}/`, data),
+  updateAddress: (id, data) => apiClient.patch(`/addresses/${id}/`, data),
   deleteAddress: (id) => apiClient.delete(`/addresses/${id}/`),
 };
 
@@ -158,9 +174,14 @@ export const notificationsApi = {
 
 // SUPPORT APIS
 export const supportApi = {
-  getTickets: () => apiClient.get('/support/'),
+  getTickets: (params) => apiClient.get('/support/', { params }),
+  getTicketById: (id) => apiClient.get(`/support/${id}/`),
   createTicket: (data) => apiClient.post('/support/', data),
+  updateTicket: (id, data) => apiClient.patch(`/support/${id}/`, data),
+  replyTicket: (id, data) => apiClient.post(`/support/${id}/reply/`, data),
+  resolveTicket: (id, data) => apiClient.post(`/support/${id}/resolve/`, data),
 };
+
 
 // CONTENT APIS
 export const contentApi = {
@@ -169,3 +190,4 @@ export const contentApi = {
 };
 
 export default apiClient;
+

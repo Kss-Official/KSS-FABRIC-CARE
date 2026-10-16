@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { PageHeroBanner } from '../components/hero/PageHeroBanner';
 import {
@@ -37,6 +37,25 @@ const HangerIcon = ({ size = 20, color = '#087F8C' }) => (
 export const WhyUsPage = () => {
   const { startBooking, navigateTo } = useBooking();
   const [openFaq, setOpenFaq] = useState(0);
+  const faqListRef = useRef(null);
+
+  useEffect(() => {
+    if (openFaq === null) return;
+
+    const handleClickOutside = (event) => {
+      if (faqListRef.current && !faqListRef.current.contains(event.target)) {
+        setOpenFaq(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [openFaq]);
 
   const faqItems = [
     {
@@ -219,7 +238,7 @@ export const WhyUsPage = () => {
             </p>
           </div>
 
-          <div className="faq-accordion-list">
+          <div className="faq-accordion-list" ref={faqListRef}>
             {faqItems.map((item, index) => {
               const isOpen = openFaq === index;
               return (
@@ -288,7 +307,10 @@ export const WhyUsPage = () => {
       <style>{`
         .why-us-page-wrapper {
           background-color: #FAFCFC;
-          min-height: 100vh;
+          width: 100%;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
 
         /* ==========================================================================
@@ -313,7 +335,7 @@ export const WhyUsPage = () => {
         /* BENTO SECTION */
         .why-us-bento-section {
           padding: 90px 0;
-          background: #FFFFFF;
+          background: #EEF2F2;
         }
 
         .why-us-bento-container {
