@@ -1,16 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth, isFirebaseConfigured, isRealApiKey } from '../config/firebase';
-
 import {
-  loginUser,
-  registerUser,
-  logoutUser,
-  resetPassword,
-  getUserProfile
-} from '../services/authService';
+  signInWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail,
+  onAuthStateChanged
+} from 'firebase/auth';
+import { auth } from '../config/firebase';
 import { authApi } from '../api/apiClient';
 import { normalizeRole, getPortalForRole } from '../utils/roleUtils';
+import { getInitials } from '../utils/helpers';
 
 const AuthContext = createContext();
 
@@ -19,287 +17,136 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
-  
-  // UI Modal State for customer quick authentication
+
+  // UI Modal State for customer quick authentication if used
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalMode, setAuthModalMode] = useState('login'); // 'login' | 'register' | 'forgot'
-
-  // Restore authenticated session from localStorage on initial load
-  useEffect(() => {
-    let isMounted = true;
-
-    const restoreSession = async () => {
-      try {
-        const storedToken = localStorage.getItem('fabricare_token') || sessionStorage.getItem('fabricare_token');
-        const storedUser = localStorage.getItem('fabricare_user') || sessionStorage.getItem('fabricare_user');
-
-        if (storedToken && storedUser) {
-          const parsedUser = JSON.parse(storedUser);
-          if (isMounted) {
-            setCurrentUser(parsedUser);
-            setUserProfile(parsedUser);
-          }
-
-          // Verify token validity against backend API
-          try {
-            const meRes = await authApi.getMe();
-            if (meRes?.data && isMounted) {
-              const liveUser = meRes.data;
-              const normalized = normalizeRole(liveUser.role);
-              const updatedProfile = {
-                uid: String(liveUser.id),
-                id: liveUser.id,
-                email: liveUser.email,
-                displayName: liveUser.full_name || liveUser.username || parsedUser.displayName,
-                fullName: liveUser.full_name || '',
-                username: liveUser.username,
-                phoneNumber: liveUser.phone || '',
-                role: normalized,
-                rawRole: liveUser.role,
-                isStaff: liveUser.is_staff || false,
-                avatar: (liveUser.full_name || liveUser.username || 'CU').substring(0, 2).toUpperCase(),
-                profilePicture: liveUser.profile_picture_url || liveUser.profile_picture || null,
-                profilePictureUrl: liveUser.profile_picture_url || null,
-                dob: liveUser.dob || '',
-                drivingLicenceNumber: liveUser.driving_licence_number || '',
-                aadhaarNumber: liveUser.aadhaar_number || '',
-                aadhaarDocumentUrl: liveUser.aadhaar_document_url || null,
-                panNumber: liveUser.pan_number || '',
-                panDocumentUrl: liveUser.pan_document_url || null,
-                provider: 'backend'
-              };
-              setCurrentUser(updatedProfile);
-              setUserProfile(updatedProfile);
-              localStorage.setItem('fabricare_user', JSON.stringify(updatedProfile));
-            }
-          } catch (err) {
-            // If token is invalid (401), clear invalid session
-            if (err?.response?.status === 401) {
-              console.warn('Stored token is expired or invalid, clearing session.');
-              localStorage.removeItem('fabricare_token');
-              localStorage.removeItem('fabricare_user');
-              sessionStorage.removeItem('fabricare_token');
-              sessionStorage.removeItem('fabricare_user');
-              if (isMounted) {
-                setCurrentUser(null);
-                setUserProfile(null);
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Error restoring session from storage:', err);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    restoreSession();
-
-    // Firebase Auth listener (active only when genuine Firebase API key is configured)
-    let unsubscribeFirebase = () => {};
-    if (isFirebaseConfigured && auth) {
-
-      try {
-        unsubscribeFirebase = onAuthStateChanged(auth, async (firebaseUser) => {
-          if (firebaseUser) {
-            try {
-              const profile = await getUserProfile(firebaseUser.uid);
-              const normalized = normalizeRole(profile?.role || 'customer');
-              const fullProfile = {
-                uid: firebaseUser.uid,
-                id: firebaseUser.uid,
-                email: firebaseUser.email,
-                displayName: profile?.displayName || firebaseUser.displayName || 'Customer',
-                phoneNumber: profile?.phoneNumber || firebaseUser.phoneNumber || '',
-                role: normalized,
-                rawRole: profile?.role || 'customer',
-                avatar: (profile?.displayName || firebaseUser.displayName || 'CU').substring(0, 2).toUpperCase(),
-                provider: 'firebase'
-              };
-              if (isMounted) {
-                setCurrentUser(fullProfile);
-                setUserProfile(fullProfile);
-                localStorage.setItem('fabricare_user', JSON.stringify(fullProfile));
-              }
-            } catch (err) {
-              console.warn('Failed to load Firestore profile:', err);
-            }
-          }
-        });
-      } catch (fbErr) {
-        console.warn('Firebase onAuthStateChanged not active:', fbErr.message);
-      }
-    }
-
-    return () => {
-      isMounted = false;
-      unsubscribeFirebase();
-    };
-  }, []);
+  const [authModalMode, setAuthModalMode] = useState('login');
 
   const clearError = () => setAuthError(null);
 
-  /**
-   * Unified real authentication supporting backend API and Firebase
-   */
-  const login = async (emailOrUsername, password, rememberMe = true) => {
-    setLoading(true);
-    setAuthError(null);
-    const identifier = (emailOrUsername || '').trim();
-    const storage = rememberMe ? localStorage : sessionStorage;
+  // Sync session with Firebase onAuthStateChanged and backend GET /me
+  useEffect(() => {
+    let isMounted = true;
 
-    let backendSuccess = false;
-    let authResult = null;
-
-    // 1. Attempt Backend API Login first (authenticates real PostgreSQL/SQLite DB records)
-    try {
-      const res = await authApi.login(identifier, password);
-      if (res?.data && res.data.tokens) {
-        const { user, tokens } = res.data;
-        const normalized = normalizeRole(user.role);
-
-        // Store active JWT access token for all portal apiClient requests
-        storage.setItem('fabricare_token', tokens.access);
-        if (tokens.refresh) {
-          storage.setItem('fabricare_refresh_token', tokens.refresh);
-        }
-
-        const profileData = {
-          uid: String(user.id),
-          id: user.id,
-          email: user.email,
-          displayName: user.full_name || user.username,
-          fullName: user.full_name || '',
-          username: user.username,
-          phoneNumber: user.phone || '',
-          role: normalized,
-          rawRole: user.role,
-          isStaff: user.is_staff || false,
-          avatar: (user.full_name || user.username || 'CU').substring(0, 2).toUpperCase(),
-          profilePicture: user.profile_picture_url || user.profile_picture || null,
-          profilePictureUrl: user.profile_picture_url || null,
-          dob: user.dob || '',
-          drivingLicenceNumber: user.driving_licence_number || '',
-          aadhaarNumber: user.aadhaar_number || '',
-          aadhaarDocumentUrl: user.aadhaar_document_url || null,
-          panNumber: user.pan_number || '',
-          panDocumentUrl: user.pan_document_url || null,
-          provider: 'backend'
-        };
-
-        storage.setItem('fabricare_user', JSON.stringify(profileData));
-        setCurrentUser(profileData);
-        setUserProfile(profileData);
-        setIsAuthModalOpen(false);
-        backendSuccess = true;
-        authResult = {
-          user: profileData,
-          profile: profileData,
-          role: normalized,
-          portal: getPortalForRole(normalized)
-        };
-        return authResult;
-      }
-    } catch (backendErr) {
-      console.warn('Backend login attempt notice:', backendErr.message || backendErr);
-      // If backend returned explicit 401/400 credentials error or disabled
-      const isBadCredentials = backendErr?.response?.status === 401 || backendErr?.response?.status === 400;
-      const isForbidden = backendErr?.response?.status === 403;
-
-      // 2. If backend was unreachable or if user used email, attempt Firebase as fallback (only if configured)
-      if (isFirebaseConfigured && auth && identifier.includes('@') && !isForbidden) {
-
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
         try {
-          const { user: fbUser, profile: fbProfile } = await loginUser(identifier, password);
-          const normalized = normalizeRole(fbProfile?.role || 'customer');
+          const token = await fbUser.getIdToken();
+          localStorage.setItem('fabricare_token', token);
+
+          // Fetch full user profile from FastAPI backend GET /me
+          const meRes = await authApi.getMe();
+          const meData = meRes.data;
+          const role = normalizeRole(meData.role || 'customer');
+
           const profileData = {
             uid: fbUser.uid,
-            id: fbUser.uid,
-            email: fbUser.email,
-            displayName: fbProfile?.displayName || fbUser.displayName || 'Customer',
-            phoneNumber: fbProfile?.phoneNumber || '',
-            role: normalized,
-            rawRole: fbProfile?.role || 'customer',
-            avatar: (fbProfile?.displayName || fbUser.displayName || 'CU').substring(0, 2).toUpperCase(),
-            provider: 'firebase'
+            id: meData.id || fbUser.uid,
+            name: meData.name || fbUser.displayName || 'User',
+            displayName: meData.name || fbUser.displayName || 'User',
+            fullName: meData.name || '',
+            email: meData.email || fbUser.email,
+            phone: meData.phone || '',
+            phoneNumber: meData.phone || '',
+            role: role,
+            rawRole: meData.role,
+            avatar_url: meData.avatar_url || null,
+            initials: meData.initials || getInitials(meData.name || fbUser.displayName),
+            agent_profile: meData.agent_profile || null,
+            staff_profile: meData.staff_profile || null
           };
 
-          storage.setItem('fabricare_user', JSON.stringify(profileData));
-          setCurrentUser(profileData);
-          setUserProfile(profileData);
-          setIsAuthModalOpen(false);
-          return {
-            user: profileData,
-            profile: profileData,
-            role: normalized,
-            portal: getPortalForRole(normalized)
-          };
-        } catch (fbErr) {
-          console.warn('Firebase login attempt notice:', fbErr.message);
+          if (isMounted) {
+            setCurrentUser(profileData);
+            setUserProfile(profileData);
+            localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+          }
+        } catch (err) {
+          console.warn('Failed to load profile on auth state change:', err);
+          if (err.status === 401 || err.status === 403) {
+            try {
+              await signOut(auth);
+            } catch (_) {}
+            localStorage.removeItem('fabricare_token');
+            localStorage.removeItem('fabricare_user');
+            if (isMounted) {
+              setCurrentUser(null);
+              setUserProfile(null);
+            }
+          }
+        }
+      } else {
+        localStorage.removeItem('fabricare_token');
+        localStorage.removeItem('fabricare_user');
+        if (isMounted) {
+          setCurrentUser(null);
+          setUserProfile(null);
         }
       }
 
-      const errMsg = backendErr?.response?.data?.detail || 
-                     backendErr?.response?.data?.error || 
-                     (isBadCredentials ? 'Invalid email/username or password. Please check your credentials and try again.' : null) ||
-                     (backendErr.message === 'Failed to fetch' ? 'Unable to connect to backend server. Please make sure the backend is running at http://127.0.0.1:8000.' : backendErr.message) || 
-                     'Unable to sign in. Please verify your credentials and network connection.';
+      if (isMounted) {
+        setLoading(false);
+      }
+    });
 
-      setAuthError(errMsg);
-      throw new Error(errMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   /**
-   * Google Sign-In via Firebase (if configured in environment)
+   * Firebase Auth sign-in with email & password
    */
-  const loginWithGoogle = async () => {
+  const login = async (email, password) => {
     setLoading(true);
     setAuthError(null);
-    if (!isFirebaseConfigured || !auth) {
-      const msg = 'Google Sign-In is only active when a valid Firebase configuration is present. Please sign in using your account credentials.';
+    const identifier = (email || '').trim();
 
-      setAuthError(msg);
-      setLoading(false);
-      throw new Error(msg);
-    }
     try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      const profile = await getUserProfile(user.uid);
-      const normalized = normalizeRole(profile?.role || 'customer');
+      const userCredential = await signInWithEmailAndPassword(auth, identifier, password);
+      const fbUser = userCredential.user;
+      const tokenResult = await fbUser.getIdTokenResult();
+      const token = tokenResult.token;
+      localStorage.setItem('fabricare_token', token);
+
+      // Verify and fetch profile from FastAPI backend GET /me
+      const meRes = await authApi.getMe();
+      const meData = meRes.data;
+      const role = normalizeRole(meData.role || tokenResult.claims?.role || 'customer');
+
       const profileData = {
-        uid: user.uid,
-        id: user.uid,
-        email: user.email,
-        displayName: profile?.displayName || user.displayName || 'Customer',
-        phoneNumber: profile?.phoneNumber || user.phoneNumber || '',
-        role: normalized,
-        rawRole: profile?.role || 'customer',
-        avatar: (user.displayName || 'CU').substring(0, 2).toUpperCase(),
-        provider: 'firebase_google'
+        uid: fbUser.uid,
+        id: meData.id || fbUser.uid,
+        name: meData.name || fbUser.displayName || 'User',
+        displayName: meData.name || fbUser.displayName || 'User',
+        fullName: meData.name || '',
+        email: meData.email || fbUser.email,
+        phone: meData.phone || '',
+        phoneNumber: meData.phone || '',
+        role: role,
+        rawRole: meData.role,
+        avatar_url: meData.avatar_url || null,
+        initials: meData.initials || getInitials(meData.name),
+        agent_profile: meData.agent_profile || null,
+        staff_profile: meData.staff_profile || null
       };
 
-      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
       setCurrentUser(profileData);
       setUserProfile(profileData);
+      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+      setIsAuthModalOpen(false);
+
       return {
         user: profileData,
         profile: profileData,
-        role: normalized,
-        portal: getPortalForRole(normalized)
+        role: role,
+        portal: getPortalForRole(role)
       };
     } catch (err) {
-      console.warn('Google sign-in error:', err);
-      const msg = err.code === 'auth/popup-closed-by-user' 
-        ? 'Google sign-in window was closed.'
-        : 'Google sign-in is not configured or failed. Please use email/username and password.';
+      console.warn('Login error:', err);
+      // Hard rule in Section 5.1: "Wrong email or password shows the same message 'Invalid email or password' on the login page."
+      const msg = 'Invalid email or password';
       setAuthError(msg);
       throw new Error(msg);
     } finally {
@@ -307,198 +154,97 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (userData) => {
+  /**
+   * Customer public registration via FastAPI POST /api/v1/auth/register
+   */
+  const register = async ({ name, fullName, email, phone, password }) => {
     setLoading(true);
     setAuthError(null);
     try {
-      // 1. Try Backend API registration
-      try {
-        const username = userData.username || userData.email.split('@')[0];
-        const res = await authApi.register({
-          username,
-          email: userData.email,
-          password: userData.password,
-          first_name: userData.fullName ? userData.fullName.split(' ')[0] : '',
-          last_name: userData.fullName ? userData.fullName.split(' ').slice(1).join(' ') : '',
-          phone: userData.phone || ''
-        });
+      const personName = (name || fullName || '').trim();
+      // 1. Call backend to create Auth user + users doc + phone_index in transaction
+      await authApi.register({
+        name: personName,
+        email: email.trim(),
+        phone: phone.trim(),
+        password: password
+      });
 
-        if (res?.data && res.data.tokens) {
-          const { user, tokens } = res.data;
-          const normalized = normalizeRole(user.role);
-          localStorage.setItem('fabricare_token', tokens.access);
-          if (tokens.refresh) localStorage.setItem('fabricare_refresh_token', tokens.refresh);
-
-          const profileData = {
-            uid: String(user.id),
-            id: user.id,
-            email: user.email,
-            displayName: user.full_name || user.username,
-            username: user.username,
-            phoneNumber: user.phone || '',
-            role: normalized,
-            rawRole: user.role,
-            avatar: (user.full_name || user.username || 'CU').substring(0, 2).toUpperCase(),
-            provider: 'backend'
-          };
-          localStorage.setItem('fabricare_user', JSON.stringify(profileData));
-          setCurrentUser(profileData);
-          setUserProfile(profileData);
-          setIsAuthModalOpen(false);
-          return { user: profileData, profile: profileData, role: normalized };
-        }
-      } catch (backendErr) {
-        console.warn('Backend register failed, trying Firebase:', backendErr.message);
-      }
-
-      // 2. Fallback to Firebase Registration (only if configured)
-      if (isFirebaseConfigured && auth) {
-        try {
-          const { user, profile } = await registerUser(userData);
-          const normalized = normalizeRole(profile.role);
-          const profileData = {
-            uid: user.uid,
-            id: user.uid,
-            email: user.email,
-            displayName: profile.displayName,
-            phoneNumber: profile.phoneNumber || '',
-            role: normalized,
-            rawRole: profile.role,
-            avatar: profile.avatar || 'CU',
-            provider: 'firebase'
-          };
-          localStorage.setItem('fabricare_user', JSON.stringify(profileData));
-          setCurrentUser(profileData);
-          setUserProfile(profileData);
-          setIsAuthModalOpen(false);
-          return { user: profileData, profile: profileData, role: normalized };
-        } catch (fbErr) {
-          console.warn('Firebase register notice:', fbErr.message);
-        }
-      }
-
-      throw new Error('Registration failed. Unable to connect to the backend server.');
-
+      // 2. Automatically log in via Firebase client SDK
+      return await login(email.trim(), password);
     } catch (err) {
-      setAuthError(err.message);
+      const msg = err.message || 'Registration failed. Please check your details.';
+      setAuthError(msg);
       throw err;
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Sign out
+   */
   const logout = async () => {
-    setLoading(true);
-    setAuthError(null);
     try {
-      // Clear all stored tokens and sessions
+      await signOut(auth);
+    } catch (err) {
+      console.warn('SignOut error:', err);
+    } finally {
       localStorage.removeItem('fabricare_token');
-      localStorage.removeItem('fabricare_refresh_token');
       localStorage.removeItem('fabricare_user');
-      sessionStorage.removeItem('fabricare_token');
-      sessionStorage.removeItem('fabricare_refresh_token');
-      sessionStorage.removeItem('fabricare_user');
-
-      // Firebase signOut attempt (if configured)
-      if (isFirebaseConfigured && auth) {
-
-        try {
-          await logoutUser();
-        } catch (fbErr) {
-          // Ignored if not firebase
-        }
-      }
-
       setCurrentUser(null);
       setUserProfile(null);
-    } catch (err) {
-      setAuthError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
+      window.location.hash = '#login';
     }
   };
 
+  /**
+   * Password reset
+   */
   const sendPasswordReset = async (email) => {
-    setLoading(true);
-    setAuthError(null);
     try {
-      await resetPassword(email);
+      await sendPasswordResetEmail(auth, email.trim());
+      return true;
     } catch (err) {
-      setAuthError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
+      console.warn('Password reset error:', err);
+      throw new Error(err.message || 'Failed to send password reset email.');
     }
   };
 
-  const openAuthModal = (mode = 'login') => {
-    setAuthModalMode(mode);
-    setAuthError(null);
-    setIsAuthModalOpen(true);
-  };
-
-  const closeAuthModal = () => {
-    setIsAuthModalOpen(false);
-    setAuthError(null);
-  };
-
-  const updateCurrentUserProfile = (updatedFields) => {
-    setCurrentUser(prev => {
-      const merged = { ...prev, ...updatedFields };
-      localStorage.setItem('fabricare_user', JSON.stringify(merged));
-      return merged;
-    });
-    setUserProfile(prev => {
-      const merged = { ...prev, ...updatedFields };
-      return merged;
-    });
-  };
-
-  const refreshUserProfile = async () => {
+  /**
+   * Refresh profile from backend GET /me
+   */
+  const refreshProfile = async () => {
     try {
       const meRes = await authApi.getMe();
-      if (meRes?.data) {
-        const liveUser = meRes.data;
-        const normalized = normalizeRole(liveUser.role);
-        const updated = {
-          uid: String(liveUser.id),
-          id: liveUser.id,
-          email: liveUser.email,
-          displayName: liveUser.full_name || liveUser.username,
-          fullName: liveUser.full_name || '',
-          username: liveUser.username,
-          phoneNumber: liveUser.phone || '',
-          role: normalized,
-          rawRole: liveUser.role,
-          isStaff: liveUser.is_staff || false,
-          avatar: (liveUser.full_name || liveUser.username || 'CU').substring(0, 2).toUpperCase(),
-          profilePicture: liveUser.profile_picture_url || liveUser.profile_picture || null,
-          profilePictureUrl: liveUser.profile_picture_url || null,
-          dob: liveUser.dob || '',
-          drivingLicenceNumber: liveUser.driving_licence_number || '',
-          aadhaarNumber: liveUser.aadhaar_number || '',
-          aadhaarDocumentUrl: liveUser.aadhaar_document_url || null,
-          panNumber: liveUser.pan_number || '',
-          panDocumentUrl: liveUser.pan_document_url || null,
-          provider: 'backend'
-        };
-        setCurrentUser(updated);
-        setUserProfile(updated);
-        localStorage.setItem('fabricare_user', JSON.stringify(updated));
-        return updated;
-      }
+      const meData = meRes.data;
+      const role = normalizeRole(meData.role || 'customer');
+      const updated = {
+        ...currentUser,
+        name: meData.name,
+        displayName: meData.name,
+        fullName: meData.name,
+        phone: meData.phone,
+        phoneNumber: meData.phone,
+        role: role,
+        rawRole: meData.role,
+        avatar_url: meData.avatar_url,
+        initials: meData.initials || getInitials(meData.name),
+        agent_profile: meData.agent_profile,
+        staff_profile: meData.staff_profile
+      };
+      setCurrentUser(updated);
+      setUserProfile(updated);
+      localStorage.setItem('fabricare_user', JSON.stringify(updated));
+      return updated;
     } catch (err) {
-      console.warn('Failed to refresh user profile:', err);
+      console.warn('Error refreshing profile:', err);
+      return null;
     }
   };
 
-  const rawRole = userProfile?.role || currentUser?.role || 'customer';
-  const userRole = normalizeRole(rawRole);
-  const isAdmin = userRole === 'admin';
-  const isDeliveryAgent = userRole === 'delivery_agent';
-  const isLaundryStaff = userRole === 'laundry_staff';
-  const isCustomer = userRole === 'customer';
+  const userRole = normalizeRole(currentUser?.role || userProfile?.role || 'customer');
+  const isAuthenticated = Boolean(currentUser && auth.currentUser);
 
   return (
     <AuthContext.Provider
@@ -506,27 +252,19 @@ export const AuthProvider = ({ children }) => {
         currentUser,
         userProfile,
         userRole,
-        rawRole,
-        isAdmin,
-        isDeliveryAgent,
-        isLaundryStaff,
-        isCustomer,
-        isAuthenticated: !!currentUser,
+        isAuthenticated,
         loading,
         authError,
         clearError,
         login,
-        loginWithGoogle,
         register,
         logout,
         sendPasswordReset,
-        updateCurrentUserProfile,
-        refreshUserProfile,
+        refreshProfile,
         isAuthModalOpen,
+        setIsAuthModalOpen,
         authModalMode,
-        setAuthModalMode,
-        openAuthModal,
-        closeAuthModal
+        setAuthModalMode
       }}
     >
       {children}
@@ -542,3 +280,4 @@ export const useAuth = () => {
   return context;
 };
 
+export default AuthContext;

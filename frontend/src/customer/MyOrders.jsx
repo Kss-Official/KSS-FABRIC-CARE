@@ -55,7 +55,7 @@ export const MyOrders = () => {
     setLoading(true);
     try {
       const res = await ordersApi.getOrders();
-      const list = Array.isArray(res.data) ? res.data : res.data?.results || [];
+      const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
       setOrders(list);
     } catch (err) {
       console.error('Failed to load orders:', err);

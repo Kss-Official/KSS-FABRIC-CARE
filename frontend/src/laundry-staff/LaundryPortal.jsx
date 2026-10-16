@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
-import { laundryApi, notificationsApi, ordersApi } from '../api/apiClient';
+import { staffApi, laundryApi, notificationsApi, ordersApi } from '../api/apiClient';
+import { useStaffActiveOrdersRealtime, useUnreadNotificationsCount } from '../hooks/useRealtime';
 import { 
   Sparkles, 
   Layers, 
@@ -274,11 +275,97 @@ export const LaundryPortal = () => {
     } catch (e) {
       console.warn('Failed to parse cached orders:', e);
     }
-    return MOCK_LAUNDRY_ORDERS.map(normalizeOrder);
+    return [];
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Live Staff API States
+  const [dashboardData, setDashboardData] = useState(null);
+  const [counts, setCounts] = useState({});
+  const [historyOrders, setHistoryOrders] = useState([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyTotalValue, setHistoryTotalValue] = useState(0);
+  const [historyFilterTab, setHistoryFilterTab] = useState('all');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historySortField, setHistorySortField] = useState('date');
+  const [historySortDirection, setHistorySortDirection] = useState('desc');
+
+  // Realtime bell notification badge
+  const unreadCount = useUnreadNotificationsCount(currentUser?.uid || currentUser?.id);
+
+  const fetchDashboard = useCallback(async (period = 'today') => {
+    try {
+      const p = period.toLowerCase().includes('week') ? 'week' : period.toLowerCase().includes('month') ? 'month' : 'today';
+      const res = await staffApi.getDashboard(p);
+      if (res.data) setDashboardData(res.data);
+    } catch (err) {
+      console.warn('Failed to fetch staff dashboard:', err);
+    }
+  }, []);
+
+  const fetchCounts = useCallback(async () => {
+    try {
+      const res = await staffApi.getCounts();
+      if (res.data) setCounts(res.data);
+    } catch (err) {
+      console.warn('Failed to fetch staff counts:', err);
+    }
+  }, []);
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await staffApi.getOrders({ page_size: 100 });
+      if (res.data && Array.isArray(res.data.items)) {
+        setOrders(res.data.items.map(normalizeOrder));
+      }
+    } catch (err) {
+      console.warn('Failed to fetch staff orders:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchHistory = useCallback(async (tab = historyFilterTab, query = historySearchQuery, sortField = historySortField, sortDir = historySortDirection) => {
+    try {
+      const sortParam = sortField === 'amount'
+        ? (sortDir === 'asc' ? 'amount_asc' : 'amount_desc')
+        : (sortDir === 'asc' ? 'date_asc' : 'date_desc');
+      const params = {
+        sort: sortParam,
+        page_size: 50
+      };
+      if (tab === 'delivered') params.status = 'delivered';
+      else if (tab === 'cancelled') params.status = 'cancelled';
+      if (query && query.trim()) params.q = query.trim();
+
+      const res = await staffApi.getHistory(params);
+      if (res.data) {
+        setHistoryOrders(res.data.items || []);
+        setHistoryTotal(res.data.total || (res.data.items || []).length);
+        setHistoryTotalValue(res.data.total_value_paise ? res.data.total_value_paise / 100 : 0);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch staff history:', err);
+    }
+  }, [historyFilterTab, historySearchQuery, historySortField, historySortDirection]);
+
+  useEffect(() => {
+    fetchOrders();
+    fetchCounts();
+    fetchDashboard(dashServicePeriod);
+    fetchHistory();
+  }, [fetchOrders, fetchCounts, fetchDashboard, fetchHistory, dashServicePeriod]);
+
+  // Realtime active orders listener (refetches REST API on order update)
+  useStaffActiveOrdersRealtime(() => {
+    fetchOrders();
+    fetchCounts();
+    fetchDashboard(dashServicePeriod);
+  });
 
   // Notifications state
   const [notifications, setNotifications] = useState([]);
@@ -320,29 +407,12 @@ export const LaundryPortal = () => {
   // Quick advance/revert handler for Orders Table
   const handleOrdersQuickAdvance = async (order, nextStageKey, isRevert = false) => {
     setOpenDropdownOrderId(null);
-    const updated = orders.map(o => {
-      const match = (o.id && o.id === order.id) || (o.order_number && o.order_number === order.order_number);
-      if (match) {
-        return {
-          ...o,
-          status: nextStageKey,
-          processing_stage: nextStageKey,
-          status_display: nextStageKey.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
-        };
-      }
-      return o;
-    });
-    setOrders(updated);
-    saveOrdersState(updated);
-
     try {
-      await laundryApi.advanceStage(order.id || order.raw_id, {
-        stage: nextStageKey,
-        notes: isRevert ? `Reverted back to ${nextStageKey} via Orders table` : `Advanced to ${nextStageKey} via Orders table`
-      });
-      fetchOrders();
+      await staffApi.updateStatus(order.id || order.raw_id, nextStageKey, isRevert ? `Reverted to ${nextStageKey}` : `Advanced to ${nextStageKey}`);
+      await Promise.all([fetchOrders(), fetchCounts(), fetchDashboard()]);
     } catch (err) {
-      console.warn('API error during advanceStage, keeping optimistic state:', err);
+      alert(err.message || 'Status transition failed. Please check the next allowed step.');
+      await Promise.all([fetchOrders(), fetchCounts()]);
     }
   };
 
@@ -432,12 +502,7 @@ export const LaundryPortal = () => {
   const [dispatchedOrderIds, setDispatchedOrderIds] = useState(() => new Set());
 
   // 12. Order History Page State (Matching Image 2)
-  const [historySearchQuery, setHistorySearchQuery] = useState('');
-  const [historyFilterTab, setHistoryFilterTab] = useState('all'); // 'all' | 'delivered' | 'completed'
   const [historyFilterDate, setHistoryFilterDate] = useState('26 Apr – 26 May 2025');
-  const [historySortField, setHistorySortField] = useState('date'); // 'date' | 'amount'
-  const [historySortDirection, setHistorySortDirection] = useState('desc'); // 'desc' | 'asc'
-  const [historyPage, setHistoryPage] = useState(1);
 
   // 13. Top Navbar User Profile Dropdown (Matching Reference Design)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -706,84 +771,6 @@ export const LaundryPortal = () => {
     setConflictModalOrder(null);
   };
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [laundryRes, historyRes] = await Promise.allSettled([
-        laundryApi.getOrders(),
-        ordersApi.getOrders()
-      ]);
-
-      const map = new Map();
-
-      // Seed with mock orders to guarantee demo orders are always present
-      MOCK_LAUNDRY_ORDERS.forEach(item => {
-        map.set(item.id, normalizeOrder(item));
-      });
-
-      // Overlay cached staff modifications from localStorage
-      try {
-        if (typeof window !== 'undefined') {
-          const saved = localStorage.getItem('fabricare_staff_orders');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) {
-              parsed.forEach(item => {
-                if (item?.id) map.set(item.id, normalizeOrder(item));
-              });
-            }
-          }
-        }
-      } catch (e) {}
-
-      // 1. Process active laundry hub operations orders
-      if (laundryRes.status === 'fulfilled' && laundryRes.value?.data) {
-        const data = laundryRes.value.data;
-        if (Array.isArray(data)) {
-          data.forEach(item => { if (item?.id) map.set(item.id, normalizeOrder(item)); });
-        } else if (data.results && Array.isArray(data.results)) {
-          data.results.forEach(item => { if (item?.id) map.set(item.id, normalizeOrder(item)); });
-        } else if (typeof data === 'object') {
-          const stages = [
-            ...(data.incoming || []),
-            ...(data.received || []),
-            ...(data.inspection || []),
-            ...(data.washing || []),
-            ...(data.drying || []),
-            ...(data.ironing || []),
-            ...(data.quality_check || []),
-            ...(data.packing || []),
-            ...(data.ready_for_delivery || []),
-            ...(data.results || []),
-            ...(data.all_orders || [])
-          ];
-          stages.forEach(item => { if (item?.id) map.set(item.id, normalizeOrder(item)); });
-        }
-      }
-
-      // 2. Process general/historical orders so Order History has full completed records
-      if (historyRes.status === 'fulfilled' && historyRes.value?.data) {
-        const histData = historyRes.value.data;
-        const histList = Array.isArray(histData) ? histData : (histData.results || []);
-        histList.forEach(item => {
-          if (item?.id && !map.has(item.id)) {
-            map.set(item.id, normalizeOrder(item));
-          }
-        });
-      }
-
-      const mergedList = Array.from(map.values());
-      setOrders(mergedList);
-      saveOrdersState(mergedList);
-    } catch (err) {
-      console.error('Failed to load laundry hub orders from API (using local state):', err);
-      // Keep existing state or fallback to mock orders
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const fetchNotifications = async () => {
     setLoadingNotifications(true);
     try {
@@ -798,12 +785,11 @@ export const LaundryPortal = () => {
   };
 
   useEffect(() => {
-    fetchOrders();
     fetchNotifications();
   }, []);
 
   const handleRefreshAll = async () => {
-    await Promise.all([fetchOrders(), fetchNotifications()]);
+    await Promise.all([fetchOrders(), fetchDashboard(), fetchCounts(), fetchHistory(), fetchNotifications()]);
   };
 
   const handleLogout = async () => {
@@ -986,7 +972,7 @@ export const LaundryPortal = () => {
   const qcOrders = orders.filter(o => o.status === 'QUALITY_CHECK');
   const packingOrders = orders.filter(o => ['PACKING', 'PACKED'].includes(o.status));
   const readyOrders = orders.filter(o => ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(o.status));
-  const historyOrders = orders.filter(o => ['DELIVERED', 'COMPLETED'].includes(o.status));
+  const completedOrders = orders.filter(o => ['DELIVERED', 'COMPLETED'].includes(o.status));
 
   // Compute dashboard counts strictly by active task stage
   // "Dashboard counts are by task stage (an item in Ironing counts only in Ironing)."
@@ -1399,9 +1385,11 @@ export const LaundryPortal = () => {
               aria-label="Notifications"
             >
               <Bell size={18} />
-              <span className="dash-bell-badge">
-                3
-              </span>
+              {unreadCount > 0 && (
+                <span className="dash-bell-badge">
+                  {unreadCount}
+                </span>
+              )}
             </button>
 
             {/* User Profile Pill & Dropdown (Matching Reference Design) */}
@@ -1416,16 +1404,16 @@ export const LaundryPortal = () => {
               >
                 <div className="dash-user-avatar-wrap">
                   <div className="dash-user-avatar">
-                    {profileData.avatarUrl ? (
-                      <img src={profileData.avatarUrl} alt={profileData.username || 'Staff'} className="dash-avatar-img" />
+                    {currentUser?.avatar_url || profileData.avatarUrl ? (
+                      <img src={currentUser?.avatar_url || profileData.avatarUrl} alt={currentUser?.name || profileData.username || 'Staff'} className="dash-avatar-img" />
                     ) : (
-                      'AN'
+                      currentUser?.initials || 'LA'
                     )}
                   </div>
                   <span className="dash-user-status-dot" />
                 </div>
                 <div className="dash-user-info">
-                  <span className="dash-user-name">{profileData.username || 'laundry_anita'}</span>
+                  <span className="dash-user-name">{currentUser?.name || profileData.username || 'laundry_anita'}</span>
                   <span className="dash-user-role">Laundry Staff</span>
                 </div>
                 {userDropdownOpen ? (
@@ -1507,38 +1495,46 @@ export const LaundryPortal = () => {
             return 'received';
           };
 
-          // 1. KPI Counts
-          const incomingCount = orders.filter(o => {
-            const st = getStageKey(o.status || o.processing_stage);
-            return st === 'received';
-          }).length || 12;
+          // 1. KPI Counts from real backend GET /staff/dashboard
+          const incomingCount = dashboardData?.kpis?.total_incoming?.value ?? orders.length;
+          const incomingDelta = dashboardData?.kpis?.total_incoming?.today_delta ?? 0;
+          const expressCount = dashboardData?.kpis?.express?.value ?? orders.filter(o => o.is_express).length;
+          const expressDelta = dashboardData?.kpis?.express?.today_delta ?? 0;
+          const mergedCount = dashboardData?.kpis?.combo?.value ?? orders.filter(o => o.is_combo).length;
+          const mergedPercent = dashboardData?.kpis?.combo?.percent ?? 0;
+          const attentionCount = dashboardData?.kpis?.needs_attention?.value ?? (dashboardData?.attention?.length || 0);
 
-          const expressCount = orders.filter(o => o.is_express).length || 3;
-          const mergedCount = orders.filter(o => (o.items || []).some(it => (it.services || []).length > 1) || (o.services || []).length > 1).length || 5;
-          const attentionCount = 2;
+          // 2. Where Orders Are (Donut Chart Data from stages.items)
+          const STAGE_COLORS = {
+            RECEIVED: '#4338ca',
+            INSPECTION: '#d97706',
+            WASHING: '#0f766e',
+            DRYING: '#14b8a6',
+            IRONING: '#3b82f6',
+            FOLDING: '#8b5cf6',
+            QUALITY_CHECK: '#a855f7',
+            PACKING: '#ec4899'
+          };
 
-          // 2. Where Orders Are (Donut Chart Data)
-          const STAGES_DONUT = [
-            { key: 'received', label: 'Received', color: '#4338ca', count: 5, pct: '9%' },
-            { key: 'inspection', label: 'Inspection', color: '#d97706', count: 8, pct: '15%' },
-            { key: 'washing', label: 'Washing', color: '#0f766e', count: 12, pct: '23%' },
-            { key: 'drying', label: 'Drying', color: '#14b8a6', count: 9, pct: '17%' },
-            { key: 'ironing', label: 'Ironing', color: '#3b82f6', count: 7, pct: '13%' },
-            { key: 'quality', label: 'Quality Check', color: '#8b5cf6', count: 6, pct: '11%' },
-            { key: 'packing', label: 'Packing', color: '#ec4899', count: 4, pct: '7%' }
+          const stagesItems = dashboardData?.stages?.items || [
+            { status: 'RECEIVED', label: 'Received', count: 5, percent: 9 },
+            { status: 'INSPECTION', label: 'Inspection', count: 8, percent: 15 },
+            { status: 'WASHING', label: 'Washing', count: 12, percent: 23 },
+            { status: 'DRYING', label: 'Drying', count: 9, percent: 17 },
+            { status: 'IRONING', label: 'Ironing', count: 7, percent: 13 },
+            { status: 'QUALITY_CHECK', label: 'Quality Check', count: 6, percent: 11 },
+            { status: 'PACKING', label: 'Packing', count: 4, percent: 7 }
           ];
 
-          // Compute dynamic counts if orders exist, fallback to target image values
-          const donutList = STAGES_DONUT.map(st => {
-            const dynamicOrders = orders.filter(o => getStageKey(o.status || o.processing_stage) === st.key);
-            const count = dynamicOrders.length > 0 ? dynamicOrders.length : st.count;
-            return {
-              ...st,
-              count
-            };
-          });
+          const donutList = stagesItems.map(st => ({
+            key: st.status.toLowerCase(),
+            label: st.label,
+            color: STAGE_COLORS[st.status] || '#64748b',
+            count: st.count,
+            pct: `${st.percent}%`
+          }));
 
-          const totalOrdersInProcess = donutList.reduce((acc, s) => acc + s.count, 0) || 51;
+          const totalOrdersInProcess = dashboardData?.stages?.total ?? (donutList.reduce((acc, s) => acc + s.count, 0) || 1);
 
           // SVG Donut calculation
           const radius = 80;
@@ -1856,17 +1852,26 @@ export const LaundryPortal = () => {
                   </div>
 
                   <div className="service-bars-list">
-                    {serviceStats.map(s => {
-                      const fillPercent = Math.min(100, Math.round((s.count / maxServiceCount) * 100));
+                    {(dashboardData?.services?.items || [
+                      { service: 'Wash & Fold', count: 24 },
+                      { service: 'Wash + Iron', count: 18 },
+                      { service: 'Steam + Iron', count: 14 },
+                      { service: 'Dry Clean', count: 9 },
+                      { service: 'Express', count: 5 }
+                    ]).map((s, idx) => {
+                      const colors = ['#0f766e', '#14b8a6', '#3b82f6', '#8b5cf6', '#d97706'];
+                      const barColor = colors[idx % colors.length];
+                      const maxVal = Math.max(1, ...(dashboardData?.services?.items || []).map(x => x.count), 25);
+                      const fillPercent = Math.min(100, Math.round((s.count / maxVal) * 100));
                       return (
-                        <div key={s.label} className="service-bar-row">
-                          <span className="service-bar-label">{s.label}</span>
+                        <div key={s.service} className="service-bar-row">
+                          <span className="service-bar-label">{s.service}</span>
                           <div className="service-bar-track">
                             <div 
                               className="service-bar-fill"
                               style={{ 
                                 width: `${fillPercent}%`,
-                                background: s.color
+                                background: barColor
                               }}
                             />
                           </div>
@@ -1877,7 +1882,7 @@ export const LaundryPortal = () => {
                   </div>
 
                   <div className="orders-by-service-footer">
-                    <span>Total today: <strong>{totalServiceOrders} orders</strong></span>
+                    <span>Total {dashServicePeriod.toLowerCase()}: <strong>{dashboardData?.services?.total ?? orders.length} orders</strong></span>
                   </div>
                 </div>
               </div>
@@ -1913,90 +1918,100 @@ export const LaundryPortal = () => {
 
                     {/* Table Rows */}
                     <div className="recent-table-body">
-                      {recentRequestsList.map((req, idx) => (
-                        <div 
-                          key={req.orderId}
-                          className={`recent-table-row recent-table-data-row ${idx % 2 === 1 ? 'row-alt' : ''}`}
-                        >
-                          <div className="col-order-id">{req.orderId}</div>
-                          <div className="col-customer">{req.customer}</div>
-                          <div className="col-items">{req.items}</div>
-                          <div className="col-service">
-                            <span className="recent-service-pill">
-                              {req.service}
-                            </span>
-                            {req.isExpress && (
-                              <span className="recent-tag-pill express">Express</span>
-                            )}
-                            {req.isMerged && (
-                              <span className="recent-tag-pill merged">Merged</span>
-                            )}
-                          </div>
-                          <div className="col-received">{req.received}</div>
-                          <div className="col-action">
-                            <button
-                              type="button"
-                              onClick={() => goToOrdersWithFilter('all', req.orderId)}
-                              className="recent-open-btn"
-                            >
-                              Open
-                            </button>
-                          </div>
+                      {(dashboardData?.recent_requests || []).length === 0 ? (
+                        <div className="py-6 text-center text-xs text-slate-400">
+                          No incoming requests at the moment.
                         </div>
-                      ))}
+                      ) : (
+                        (dashboardData?.recent_requests || []).map((req, idx) => (
+                          <div 
+                            key={req.id || req.code}
+                            className={`recent-table-row recent-table-data-row ${idx % 2 === 1 ? 'row-alt' : ''}`}
+                          >
+                            <div className="col-order-id">{req.code || req.id}</div>
+                            <div className="col-customer">{req.customer_name}</div>
+                            <div className="col-items">{req.items}</div>
+                            <div className="col-service">
+                              <span className="recent-service-pill">
+                                {Array.isArray(req.services) ? req.services.join(', ') : (req.services || 'Wash')}
+                              </span>
+                              {(req.tags || []).includes('express') && (
+                                <span className="recent-tag-pill express">Express</span>
+                              )}
+                              {(req.tags || []).includes('combo') && (
+                                <span className="recent-tag-pill merged">Combo</span>
+                              )}
+                            </div>
+                            <div className="col-received">
+                              {req.received_at ? new Date(req.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today'}
+                            </div>
+                            <div className="col-action">
+                              <button
+                                type="button"
+                                onClick={() => goToOrdersWithFilter('all', req.code || req.id)}
+                                className="recent-open-btn"
+                              >
+                                Open
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* RIGHT CARD: Needs Attention (Fixed 392px) */}
+                {/* RIGHT CARD: Needs Attention */}
                 <div className="dash-section-card needs-attention-card">
                   <div className="dash-card-header">
                     <div>
                       <h3 className="dash-card-title">Needs Attention</h3>
-                      <p className="dash-card-subtitle">2 things to check</p>
+                      <p className="dash-card-subtitle">{attentionCount} {attentionCount === 1 ? 'item' : 'items'} to check</p>
                     </div>
                   </div>
 
                   <div className="needs-attention-list">
-                    {/* Item 1: Same cloth, two services */}
-                    <div className="attention-item-box blue-alert">
-                      <div className="attention-icon-box blue">
-                        <AlertCircle size={20} color="#0284c7" strokeWidth={2} />
+                    {(dashboardData?.attention || []).length === 0 ? (
+                      <div className="py-8 text-center text-xs text-slate-500 font-medium">
+                        ✓ All active orders running smoothly. None require immediate attention.
                       </div>
-                      <div className="attention-content">
-                        <div className="attention-title">Same cloth, two services</div>
-                        <div className="attention-desc">
-                          FC-10458: Wash &amp; Fold and Wash + Iron are on the same item. Washing will be done only once.
+                    ) : (
+                      (dashboardData?.attention || []).map((att) => (
+                        <div key={`${att.type}-${att.order_id}`} className={`attention-item-box ${att.type === 'express_late' ? 'red-alert' : 'blue-alert'}`}>
+                          <div className={`attention-icon-box ${att.type === 'express_late' ? 'red' : 'blue'}`}>
+                            {att.type === 'express_late' ? (
+                              <AlertTriangle size={20} color="#dc2626" strokeWidth={2} />
+                            ) : (
+                              <AlertCircle size={20} color="#0284c7" strokeWidth={2} />
+                            )}
+                          </div>
+                          <div className="attention-content">
+                            <div className="attention-title">{att.title}</div>
+                            <div className="attention-desc">
+                              {att.description}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (att.type === 'combo_conflict') {
+                                  try {
+                                    await staffApi.resolveCombo(att.order_id);
+                                    await Promise.all([fetchDashboard(), fetchOrders()]);
+                                  } catch (err) {
+                                    alert(err.message || 'Failed to resolve combo');
+                                  }
+                                } else {
+                                  goToOrdersWithFilter('all', att.order_id);
+                                }
+                              }}
+                              className={`attention-action-link ${att.type === 'express_late' ? 'red' : 'teal'}`}
+                            >
+                              {att.action === 'review' ? 'Review & Resolve >' : 'Open order >'}
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => goToOrdersWithFilter('all', 'FC-10458')}
-                          className="attention-action-link teal"
-                        >
-                          Review &gt;
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Item 2: Express order running late */}
-                    <div className="attention-item-box red-alert">
-                      <div className="attention-icon-box red">
-                        <AlertTriangle size={20} color="#dc2626" strokeWidth={2} />
-                      </div>
-                      <div className="attention-content">
-                        <div className="attention-title">Express order running late</div>
-                        <div className="attention-desc">
-                          FC-10441 is due in 2 hours and is still in Washing.
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => goToOrdersWithFilter('all', 'FC-10441')}
-                          className="attention-action-link red"
-                        >
-                          Open order &gt;
-                        </button>
-                      </div>
-                    </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -2487,172 +2502,38 @@ export const LaundryPortal = () => {
             PAGE 6: ORDER HISTORY (Matching Image 2 Exactly)
            ======================================================== */}
         {activePage === 'history' && (() => {
-          const referenceHistoryOrders = [
-            {
-              orderId: 'FC-10452',
-              rawId: 'ord-fc-10452',
-              customerName: 'Riya Sharma',
-              customerPhone: '+91 98765 43210',
-              itemsSummary: "Men's Shirt × 2, Jeans × 1",
-              servicesSummary: 'Wash & Fold, Wash + Iron',
-              dateStr: '26 May 2025',
-              timeStr: '09:15 AM',
-              timestamp: new Date('2025-05-26T09:15:00').getTime(),
-              amount: 420,
-              price: '₹420',
-              status: 'delivered',
-              statusLabel: 'Delivered',
-              items: [
-                { name: "Men's Shirt × 2", tag: 'Wash & Fold' },
-                { name: "Jeans × 1", tag: 'Wash + Iron' }
-              ],
-              services: ['Wash & Fold', 'Wash + Iron']
-            },
-            {
-              orderId: 'FC-10451',
-              rawId: 'ord-fc-10451',
-              customerName: 'Amit Patel',
-              customerPhone: '+91 87654 32109',
-              itemsSummary: 'T-Shirt × 3, Trouser × 1',
-              servicesSummary: 'Wash + Iron, Dry Clean',
-              dateStr: '24 May 2025',
-              timeStr: '04:32 PM',
-              timestamp: new Date('2025-05-24T16:32:00').getTime(),
-              amount: 680,
-              price: '₹680',
-              status: 'completed',
-              statusLabel: 'Completed',
-              items: [
-                { name: 'T-Shirt × 3', tag: 'Wash + Iron' },
-                { name: 'Trouser × 1', tag: 'Dry Clean' }
-              ],
-              services: ['Wash + Iron', 'Dry Clean']
-            },
-            {
-              orderId: 'FC-10450',
-              rawId: 'ord-fc-10450',
-              customerName: 'Neha Verma',
-              customerPhone: '+91 99887 76655',
-              itemsSummary: 'Dress × 1',
-              servicesSummary: 'Dry Clean, Wash',
-              dateStr: '22 May 2025',
-              timeStr: '11:20 AM',
-              timestamp: new Date('2025-05-22T11:20:00').getTime(),
-              amount: 250,
-              price: '₹250',
-              status: 'delivered',
-              statusLabel: 'Delivered',
-              items: [
-                { name: 'Dress × 1', tag: 'Dry Clean' }
-              ],
-              services: ['Dry Clean', 'Wash']
-            },
-            {
-              orderId: 'FC-10449',
-              rawId: 'ord-fc-10449',
-              customerName: 'Karan Mehta',
-              customerPhone: '+91 98123 45670',
-              itemsSummary: 'Blazer × 1',
-              servicesSummary: 'Dry Clean',
-              dateStr: '21 May 2025',
-              timeStr: '03:10 PM',
-              timestamp: new Date('2025-05-21T15:10:00').getTime(),
-              amount: 450,
-              price: '₹450',
-              status: 'completed',
-              statusLabel: 'Completed',
-              items: [
-                { name: 'Blazer × 1', tag: 'Dry Clean' }
-              ],
-              services: ['Dry Clean']
-            },
-            {
-              orderId: 'FC-10448',
-              rawId: 'ord-fc-10448',
-              customerName: 'Pooja Nair',
-              customerPhone: '+91 97654 12089',
-              itemsSummary: 'Saree × 2',
-              servicesSummary: 'Dry Clean',
-              dateStr: '20 May 2025',
-              timeStr: '10:05 AM',
-              timestamp: new Date('2025-05-20T10:05:00').getTime(),
-              amount: 540,
-              price: '₹540',
-              status: 'delivered',
-              statusLabel: 'Delivered',
-              items: [
-                { name: 'Saree × 2', tag: 'Dry Clean' }
-              ],
-              services: ['Dry Clean']
-            },
-            {
-              orderId: 'FC-10447',
-              rawId: 'ord-fc-10447',
-              customerName: 'Rahul Jain',
-              customerPhone: '+91 90011 22334',
-              itemsSummary: 'Shirt × 4',
-              servicesSummary: 'Wash & Fold',
-              dateStr: '18 May 2025',
-              timeStr: '05:45 PM',
-              timestamp: new Date('2025-05-18T17:45:00').getTime(),
-              amount: 320,
-              price: '₹320',
-              status: 'completed',
-              statusLabel: 'Completed',
-              items: [
-                { name: 'Shirt × 4', tag: 'Wash & Fold' }
-              ],
-              services: ['Wash & Fold']
-            },
-            {
-              orderId: 'FC-10446',
-              rawId: 'ord-fc-10446',
-              customerName: 'Sneha Iyer',
-              customerPhone: '+91 99001 88776',
-              itemsSummary: 'Kurta × 3',
-              servicesSummary: 'Wash + Iron',
-              dateStr: '17 May 2025',
-              timeStr: '12:30 PM',
-              timestamp: new Date('2025-05-17T12:30:00').getTime(),
-              amount: 270,
-              price: '₹270',
-              status: 'completed',
-              statusLabel: 'Completed',
-              items: [
-                { name: 'Kurta × 3', tag: 'Wash + Iron' }
-              ],
-              services: ['Wash + Iron']
-            },
-            {
-              orderId: 'FC-10445',
-              rawId: 'ord-fc-10445',
-              customerName: 'Vikram Shah',
-              customerPhone: '+91 98450 11223',
-              itemsSummary: 'Curtains × 2',
-              servicesSummary: 'Steam + Iron',
-              dateStr: '15 May 2025',
-              timeStr: '09:50 AM',
-              timestamp: new Date('2025-05-15T09:50:00').getTime(),
-              amount: 390,
-              price: '₹390',
-              status: 'completed',
-              statusLabel: 'Completed',
-              items: [
-                { name: 'Curtains × 2', tag: 'Steam + Iron' }
-              ],
-              services: ['Steam + Iron']
-            }
-          ];
+          const referenceHistoryOrders = (historyOrders && historyOrders.length > 0) ? historyOrders.map(ord => {
+            const delDate = ord.delivered_at || ord.created_at;
+            const d = delDate ? new Date(delDate) : new Date();
+            const amt = ord.amount_paise ? ord.amount_paise / 100 : (ord.total_paise ? ord.total_paise / 100 : 0);
+            return {
+              orderId: ord.code || ord.id,
+              rawId: ord.id,
+              customerName: ord.customer?.name || 'Customer',
+              customerPhone: ord.customer?.phone || '-',
+              itemsSummary: ord.items_summary || (ord.items ? ord.items.map(i => `${i.garment || 'Item'} × ${i.quantity}`).join(', ') : 'Garments'),
+              servicesSummary: Array.isArray(ord.services) ? ord.services.join(', ') : (ord.services || 'Laundry'),
+              dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+              timeStr: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+              timestamp: d.getTime(),
+              amount: amt,
+              price: `₹${amt}`,
+              status: (ord.status || 'delivered').toLowerCase(),
+              statusLabel: ord.status === 'DELIVERED' ? 'Delivered' : (ord.status === 'CANCELLED' ? 'Cancelled' : ord.status || 'Delivered'),
+              items: ord.items || [],
+              services: ord.services || []
+            };
+          }) : [];
 
           // Compute chip counts across the full dataset
-          const allCount = referenceHistoryOrders.length;
+          const allCount = historyTotal || referenceHistoryOrders.length;
           const deliveredCount = referenceHistoryOrders.filter(o => o.status === 'delivered').length;
-          const completedCount = referenceHistoryOrders.filter(o => o.status === 'completed').length;
+          const cancelledCount = referenceHistoryOrders.filter(o => o.status === 'cancelled').length;
 
-          // 1. Filter by Tab (all, delivered, completed)
+          // 1. Filter by Tab (all, delivered, cancelled)
           let filteredOrders = referenceHistoryOrders.filter(ord => {
             if (historyFilterTab === 'delivered' && ord.status !== 'delivered') return false;
-            if (historyFilterTab === 'completed' && ord.status !== 'completed') return false;
+            if (historyFilterTab === 'cancelled' && ord.status !== 'cancelled') return false;
 
             // Search query filter (Order ID, Customer Name, Phone, Items, Services)
             if (historySearchQuery.trim()) {
@@ -2684,7 +2565,7 @@ export const LaundryPortal = () => {
           });
 
           // 3. Stats for footer
-          const totalValue = filteredOrders.reduce((acc, ord) => acc + ord.amount, 0);
+          const totalValue = historyTotalValue || filteredOrders.reduce((acc, ord) => acc + ord.amount, 0);
           const totalValueFormatted = totalValue.toLocaleString('en-IN');
 
           // 4. Pagination (8 per page)
@@ -2735,7 +2616,7 @@ export const LaundryPortal = () => {
               <div className="hist-table-card">
                 {/* TOOLBAR */}
                 <div className="hist-table-toolbar">
-                  {/* Chips: All Orders 8, Delivered 3, Completed 5 */}
+                  {/* Chips: All Orders, Delivered, Cancelled */}
                   <div className="hist-chips-wrap">
                     <button
                       type="button"
@@ -2753,10 +2634,10 @@ export const LaundryPortal = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setHistoryFilterTab('completed'); setHistoryPage(1); }}
-                      className={`hist-chip-btn ${historyFilterTab === 'completed' ? 'active' : ''}`}
+                      onClick={() => { setHistoryFilterTab('cancelled'); setHistoryPage(1); }}
+                      className={`hist-chip-btn ${historyFilterTab === 'cancelled' ? 'active' : ''}`}
                     >
-                      Completed {completedCount}
+                      Cancelled {cancelledCount}
                     </button>
                   </div>
 

@@ -55,9 +55,9 @@ export const LoginPage = () => {
         setIsAdminAuthenticated(true);
         setAdminTab('dashboard');
         navigateTo('admin');
-      } else if (role === 'delivery') {
+      } else if (role === 'agent' || role === 'delivery' || role === 'delivery_agent') {
         navigateTo('delivery-portal');
-      } else if (role === 'laundry_staff') {
+      } else if (role === 'staff' || role === 'laundry_staff' || role === 'laundry') {
         navigateTo('laundry-portal');
       } else {
         const intended = sessionStorage.getItem('fabricare_intended_destination');

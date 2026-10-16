@@ -12,13 +12,11 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../config/firebase';
-import {
-  INITIAL_ORDERS,
-  INITIAL_CUSTOMERS,
-  INITIAL_SERVICES_ADMIN,
-  INITIAL_DRIVERS,
-  INITIAL_FAQS_ADMIN
-} from '../context/AdminContext';
+const INITIAL_ORDERS = [];
+const INITIAL_CUSTOMERS = [];
+const INITIAL_SERVICES_ADMIN = [];
+const INITIAL_DRIVERS = [];
+const INITIAL_FAQS_ADMIN = [];
 
 // ===============================================================
 // ORDERS COLLECTION

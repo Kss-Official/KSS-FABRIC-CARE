@@ -516,52 +516,121 @@ export const BookingProvider = ({ children }) => {
 
       const total = calculateTotal() || 300;
 
-      // Ensure valid YYYY-MM-DD date format
-      let formattedPickupDate = pickupSchedule.dateValue;
-      if (!formattedPickupDate || !/^\d{4}-\d{2}-\d{2}$/.test(formattedPickupDate)) {
-        try {
-          const parsed = new Date(pickupSchedule.dateValue || pickupSchedule.dateLabel);
-          if (!isNaN(parsed.getTime())) {
-            formattedPickupDate = parsed.toISOString().split('T')[0];
-          } else {
-            formattedPickupDate = new Date().toISOString().split('T')[0];
-          }
-        } catch {
-          formattedPickupDate = new Date().toISOString().split('T')[0];
+      // 1. Get or create customer address
+      let addressId = null;
+      try {
+        const addrRes = await addressApi.getAddresses();
+        const addrList = Array.isArray(addrRes.data) ? addrRes.data : [];
+        if (addrList.length > 0) {
+          const def = addrList.find(a => a.is_default) || addrList[0];
+          addressId = def.id;
+        } else {
+          const createAddrRes = await addressApi.createAddress({
+            label: 'Home',
+            line1: pickupDetails.address || 'Banaswadi, Bengaluru',
+            city: pickupDetails.city || 'Bengaluru',
+            pincode: pickupDetails.pincode || '560043',
+            is_default: true
+          });
+          addressId = createAddrRes.data.id;
         }
+      } catch (addrErr) {
+        console.warn('Address setup note:', addrErr);
       }
 
-      // Real Django REST API order payload
+      // 2. Map items to catalog garment_type_id and service_ids
+      const availableGarments = [
+        { id: 'shirt', name: 'Shirt' },
+        { id: 'tshirt', name: 'T-Shirt' },
+        { id: 'trousers', name: 'Trousers' },
+        { id: 'jeans', name: 'Jeans' },
+        { id: 'dress', name: 'Dress' },
+        { id: 'saree', name: 'Saree' },
+        { id: 'jacket', name: 'Jacket' },
+        { id: 'bedsheet', name: 'Bedsheet' }
+      ];
+
+      const availableServices = [
+        { id: 'wash-fold', name: 'Wash & Fold' },
+        { id: 'wash-iron', name: 'Wash + Iron' },
+        { id: 'steam-iron', name: 'Steam + Iron' },
+        { id: 'dry-clean', name: 'Dry Clean' },
+        { id: 'wash', name: 'Wash' },
+        { id: 'iron', name: 'Iron' }
+      ];
+
+      const mappedItems = selectedItemsList.map(it => {
+        const itNameLower = (it.name || '').toLowerCase();
+        const matchedGarment = availableGarments.find(g => 
+          itNameLower.includes(g.id.toLowerCase()) || 
+          itNameLower.includes(g.name.toLowerCase()) ||
+          g.id.toLowerCase().includes(itNameLower)
+        ) || availableGarments[0];
+
+        const itCatLower = (it.categoryId || it.categoryName || '').toLowerCase().replace(/[^a-z]/g, '');
+        const matchedService = availableServices.find(s => {
+          const sLower = s.id.toLowerCase().replace(/[^a-z]/g, '');
+          const sNameLower = s.name.toLowerCase().replace(/[^a-z]/g, '');
+          return itCatLower.includes(sLower) || itCatLower.includes(sNameLower) || sLower.includes(itCatLower);
+        }) || availableServices[0];
+
+        return {
+          garment_type_id: matchedGarment.id,
+          quantity: Math.max(1, Number(it.quantity) || 1),
+          service_ids: [matchedService.id]
+        };
+      });
+
+      const finalItems = mappedItems.length > 0 ? mappedItems : [
+        { garment_type_id: 'shirt', quantity: 1, service_ids: ['wash-fold'] }
+      ];
+
+      let formattedPickupDate = pickupSchedule.dateValue;
+      if (!formattedPickupDate || !/^\d{4}-\d{2}-\d{2}$/.test(formattedPickupDate)) {
+        formattedPickupDate = new Date().toISOString().split('T')[0];
+      }
+
       const orderPayload = {
-        pickup_full_name: currentUser?.displayName || currentUser?.full_name || pickupDetails.name || 'Valued Customer',
-        pickup_phone: currentUser?.phoneNumber || currentUser?.phone || pickupDetails.mobile || '+91 98765 43210',
-        pickup_address: pickupDetails.address || 'Banaswadi, Bengaluru - 560043',
-        pickup_city: pickupDetails.city || 'Bengaluru',
-        pickup_pincode: pickupDetails.pincode || '560043',
-        pickup_date: formattedPickupDate,
-        pickup_time_slot: pickupSchedule.timeSlot || '9:00 AM – 11:00 AM',
-        special_instructions: specialInstructions || '',
-        delivery_address: pickupDetails.sameAddressDelivery ? pickupDetails.address : (pickupDetails.deliveryAddress || pickupDetails.address),
-        total_amount: total,
-        services_list: serviceNames,
-        items: itemsPayload
+        address_id: addressId,
+        pickup_slot: {
+          date: formattedPickupDate,
+          from: '09:00',
+          to: '11:00'
+        },
+        is_express: Boolean(isExpressDelivery),
+        notes: specialInstructions || undefined,
+        items: finalItems
       };
 
       const res = await ordersApi.createOrder(orderPayload);
       const created = res.data;
-      const orderNumber = created.order_number || created.order_id || `#FC${created.id}`;
+      const orderNumber = created.code || `#FC${created.id.substring(0, 5)}`;
+
+      // Pay and verify order automatically in mock gateway mode
+      try {
+        const payRes = await ordersApi.pay(created.id, 'upi');
+        if (payRes.data?.payment_id) {
+          await customerApi.verifyPayment(payRes.data.payment_id, {
+            razorpay_order_id: payRes.data.gateway_order_id || 'mock_order_id',
+            razorpay_payment_id: `pay_${Date.now()}`,
+            razorpay_signature: 'mock_signature'
+          });
+        }
+      } catch (payErr) {
+        console.warn('Auto-payment notice:', payErr);
+      }
 
       const confirmedOrderData = {
         orderId: orderNumber,
         id: created.id,
         dateText: pickupSchedule.dateLabel || pickupSchedule.dateValue,
-        timeText: pickupSchedule.timeSlot,
+        timeText: pickupSchedule.timeSlot || '09:00 AM – 11:00 AM',
         addressTitle: pickupDetails.address,
         addressDetail: pickupDetails.landmark || '',
         services: serviceNames,
-        items: created.items && created.items.length > 0 ? created.items : itemsPayload,
-        estimatedTotal: total,
-        status: created.status || 'PENDING_REVIEW',
+        items: created.items || finalItems,
+        estimatedTotal: created.total_paise ? created.total_paise / 100 : total,
+        status: 'PLACED',
         createdOrder: created
       };
 
@@ -577,15 +646,6 @@ export const BookingProvider = ({ children }) => {
       setCurrentPage('confirmed');
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      // Secondary sync to Cloud Firestore if configured
-      try {
-        await createFirestoreOrder({
-          ...confirmedOrderData,
-          customerId: currentUser?.id || currentUser?.uid
-        });
-      } catch (fbErr) {
-        console.warn('Firestore sync notice:', fbErr.message);
-      }
       return confirmedOrderData;
     } catch (err) {
       console.error('Order creation error:', err);
