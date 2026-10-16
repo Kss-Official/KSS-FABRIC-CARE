@@ -10,7 +10,8 @@ import {
   MoreVertical, 
   Eye, 
   RefreshCw,
-  FileText
+  FileText,
+  Search
 } from 'lucide-react';
 import { SupportTicketDrawer } from '../../components/admin/SupportTicketDrawer';
 
@@ -23,7 +24,8 @@ export const AdminHelpSupportPage = () => {
     openSupportDrawer 
   } = useAdmin();
 
-  // Filters state (No search bar per requirements)
+  // Filters and search state
+  const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [dateRangeFilter, setDateRangeFilter] = useState('ALL');
@@ -62,6 +64,18 @@ export const AdminHelpSupportPage = () => {
   // Filtered tickets
   const filteredTickets = useMemo(() => {
     return supportTickets.filter((item) => {
+      // Search query filter (matches ticket_number, customer, subject, message)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesId = String(item.ticket_number || item.id || '').toLowerCase().includes(q);
+        const matchesCustomer = String(item.customer_name || item.customer || '').toLowerCase().includes(q);
+        const matchesSubject = String(item.subject || item.issue_subject || '').toLowerCase().includes(q);
+        const matchesMessage = String(item.message || item.description || '').toLowerCase().includes(q);
+        if (!matchesId && !matchesCustomer && !matchesSubject && !matchesMessage) {
+          return false;
+        }
+      }
+
       // Priority filter
       if (priorityFilter !== 'ALL') {
         const itemP = String(item.priority || '').toUpperCase();
@@ -83,7 +97,7 @@ export const AdminHelpSupportPage = () => {
 
       return true;
     });
-  }, [supportTickets, priorityFilter, statusFilter, dateRangeFilter]);
+  }, [supportTickets, searchQuery, priorityFilter, statusFilter, dateRangeFilter]);
 
   // Pagination calculation
   const totalItems = filteredTickets.length;
@@ -182,9 +196,25 @@ export const AdminHelpSupportPage = () => {
         </div>
       </div>
 
-      {/* 3. Filter Bar matching Reference Image 4 (No Search Bar) */}
+      {/* 3. Filter Bar with Search on Left and Filter Controls on Right */}
       <div className="hs-filter-card">
         <div className="hs-filter-row">
+          {/* Search Bar on Left matching portal design */}
+          <div className="hs-search-box">
+            <Search size={16} className="hs-search-icon" />
+            <input
+              type="text"
+              placeholder="Search tickets by ID, customer, or subject..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="hs-search-input"
+            />
+          </div>
+
+          {/* Filter Controls Group Shifted to Right */}
           <div className="hs-filter-actions-group">
             {/* Priority Select */}
             <div className="hs-select-wrapper">
@@ -237,7 +267,6 @@ export const AdminHelpSupportPage = () => {
                 <option value="ALL">Select Date Range</option>
                 <option value="TODAY">Today</option>
                 <option value="7DAYS">Last 7 Days</option>
-                <option value="30DAYS">Last 30 Days</option>
               </select>
               <ChevronDown size={14} className="hs-select-chevron" />
             </div>
@@ -524,11 +553,52 @@ export const AdminHelpSupportPage = () => {
           margin-bottom: 20px;
           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
         }
+        .hs-filter-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        .hs-search-box {
+          position: relative;
+          flex: 1;
+          min-width: 240px;
+          max-width: 380px;
+        }
+        .hs-search-icon {
+          position: absolute;
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #94A3B8;
+          pointer-events: none;
+        }
+        .hs-search-input {
+          width: 100%;
+          height: 38px;
+          padding: 0 14px 0 36px;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 8px;
+          font-size: 13px;
+          color: #1E293B;
+          background: #FFFFFF;
+          outline: none;
+          box-sizing: border-box;
+          transition: border-color 0.15s ease;
+        }
+        .hs-search-input::placeholder {
+          color: #94A3B8;
+        }
+        .hs-search-input:focus {
+          border-color: #0D7A75;
+        }
         .hs-filter-actions-group {
           display: flex;
           align-items: center;
           gap: 12px;
           flex-wrap: wrap;
+          margin-left: auto;
         }
         .hs-select-wrapper {
           position: relative;
@@ -578,7 +648,6 @@ export const AdminHelpSupportPage = () => {
           font-size: 13px;
           font-weight: 500;
           cursor: pointer;
-          margin-left: auto;
           transition: all 0.15s;
         }
         .hs-refresh-btn:hover {
@@ -769,12 +838,24 @@ export const AdminHelpSupportPage = () => {
           .hs-summary-grid {
             grid-template-columns: 1fr;
           }
+          .hs-search-box {
+            max-width: 100%;
+            width: 100%;
+          }
           .hs-filter-actions-group {
             flex-direction: column;
+            width: 100%;
+            margin-left: 0;
+          }
+          .hs-select-wrapper {
             width: 100%;
           }
           .hs-filter-select {
             width: 100%;
+          }
+          .hs-refresh-btn {
+            width: 100%;
+            justify-content: center;
           }
         }
       `}</style>

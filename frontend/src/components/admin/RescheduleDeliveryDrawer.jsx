@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   Calendar as CalendarIcon, 
@@ -32,6 +33,19 @@ export const RescheduleDeliveryDrawer = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Lock background scroll when Reschedule Drawer is open (matching Services & Pricing edit modal behavior)
+  useEffect(() => {
+    const wrapper = document.querySelector('.admin-main-wrapper');
+    if (isRescheduleDrawerOpen) {
+      if (wrapper) wrapper.classList.add('admin-scroll-locked');
+    } else {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    }
+    return () => {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    };
+  }, [isRescheduleDrawerOpen]);
 
   // Set default date when complaint opens (default to tomorrow or requested date)
   useEffect(() => {
@@ -114,7 +128,9 @@ export const RescheduleDeliveryDrawer = () => {
     ? activeRescheduleComplaint.formatted_reschedule_date
     : activeRescheduleComplaint.requested_reschedule_date || '18 Oct 2025';
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <>
       {/* Backdrop for mobile/tablet */}
       <div 
@@ -288,41 +304,46 @@ export const RescheduleDeliveryDrawer = () => {
       {/* Reschedule Drawer Styles matching Reference Image */}
       <style>{`
         .reschedule-backdrop {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(15, 23, 42, 0.45);
-          backdrop-filter: blur(2px);
-          z-index: 1040;
+          position: fixed !important;
+          inset: 0 !important;
+          background: rgba(15, 23, 42, 0.45) !important;
+          backdrop-filter: blur(2px) !important;
+          -webkit-backdrop-filter: blur(2px) !important;
+          z-index: 99999 !important;
+          overflow: hidden !important;
+          overscroll-behavior: none !important;
         }
 
         .reschedule-panel-drawer {
-          position: fixed;
-          top: 70px;
-          right: 24px;
-          bottom: 24px;
-          width: 380px;
-          max-width: calc(100vw - 32px);
-          background: #FFFFFF;
-          border-radius: 16px;
-          box-shadow: 0 20px 40px -8px rgba(15, 23, 42, 0.2), 0 0 1px 1px rgba(226, 232, 240, 0.8);
-          z-index: 1050;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
+          position: fixed !important;
+          top: 24px !important;
+          right: 24px !important;
+          bottom: 24px !important;
+          width: 400px !important;
+          max-width: calc(100vw - 32px) !important;
+          max-height: calc(100vh - 48px) !important;
+          max-height: calc(100dvh - 48px) !important;
+          background: #FFFFFF !important;
+          border-radius: 16px !important;
+          box-shadow: 0 20px 40px -8px rgba(15, 23, 42, 0.2), 0 0 1px 1px rgba(226, 232, 240, 0.8) !important;
+          z-index: 100000 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
+          overscroll-behavior: contain !important;
           transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         @media (max-width: 768px) {
           .reschedule-panel-drawer {
-            top: 0;
-            right: 0;
-            bottom: 0;
-            width: 100%;
-            max-width: 100%;
-            border-radius: 0;
+            top: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            max-height: 100vh !important;
+            max-height: 100dvh !important;
+            border-radius: 0 !important;
           }
         }
 
@@ -332,6 +353,7 @@ export const RescheduleDeliveryDrawer = () => {
           justify-content: space-between;
           padding: 20px 24px;
           border-bottom: 1px solid #F1F5F9;
+          flex-shrink: 0 !important;
         }
 
         .header-title-wrap {
@@ -378,8 +400,11 @@ export const RescheduleDeliveryDrawer = () => {
 
         .reschedule-panel-body {
           padding: 24px;
-          overflow-y: auto;
-          flex: 1;
+          overflow-y: auto !important;
+          overscroll-behavior: contain !important;
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          -webkit-overflow-scrolling: touch !important;
         }
 
         .reschedule-meta-group {
@@ -604,6 +629,7 @@ export const RescheduleDeliveryDrawer = () => {
           cursor: not-allowed;
         }
       `}</style>
-    </>
+    </>,
+    document.body
   );
 };

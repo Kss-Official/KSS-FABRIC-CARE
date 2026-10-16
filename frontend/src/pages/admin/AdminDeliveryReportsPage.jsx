@@ -204,11 +204,7 @@ export const AdminDeliveryReportsPage = () => {
 
       {/* 3. Filter Bar matching Reference Image 3 (Without search bar per requirements) */}
       <div className="cr-filter-card">
-        <div className="cr-filter-row flex items-center justify-between">
-          <div className="cr-filter-lead-text text-sm font-semibold text-slate-700">
-            Filtered Complaints View
-          </div>
-
+        <div className="cr-filter-row flex items-center justify-end">
           <div className="cr-filter-actions flex items-center gap-3">
             {/* Status Select */}
             <div className="cr-select-wrapper">
@@ -244,8 +240,6 @@ export const AdminDeliveryReportsPage = () => {
                 <option value="ALL">Select Date Range</option>
                 <option value="TODAY">Today</option>
                 <option value="7DAYS">Last 7 Days</option>
-                <option value="30DAYS">Last 30 Days</option>
-                <option value="OCT2026">October 2026</option>
               </select>
               <ChevronDown size={14} className="cr-select-chevron" />
             </div>
@@ -896,7 +890,7 @@ export const AdminDeliveryReportsPage = () => {
         }
 
         .modal-box-card {
-          background: #FFFFFF;
+          background: #FFFFFF !important;
           border-radius: 16px;
           width: 100%;
           max-width: 540px;
@@ -968,9 +962,11 @@ export const AdminDeliveryReportsPage = () => {
           display: flex;
           flex-direction: column;
           gap: 16px;
-          overflow-y: auto;
-          overscroll-behavior: contain;
-          flex: 1;
+          overflow-y: auto !important;
+          overscroll-behavior: contain !important;
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          -webkit-overflow-scrolling: touch !important;
         }
 
         .detail-meta-grid {
