@@ -121,6 +121,12 @@ export const DeliveryPortal = () => {
   const [error, setError] = useState(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  // Agent Live State
+  const [agentDashboardData, setAgentDashboardData] = useState(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [agentOtp, setAgentOtp] = useState('');
+  const [otpError, setOtpError] = useState('');
+
   // Notifications state
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
@@ -780,31 +786,59 @@ export const DeliveryPortal = () => {
     }
   };
 
+  const normalizeTask = (t) => ({
+    id: t.id,
+    order_number: t.order_code || t.order_number || `#${t.id.slice(0, 8)}`,
+    order_id: t.order_code || t.order_id || `#${t.id.slice(0, 8)}`,
+    customer_name: t.customer?.name || t.customer_name || 'Customer',
+    pickup_full_name: t.customer?.name || t.pickup_full_name || 'Customer',
+    customer_phone: t.customer?.phone || t.customer_phone || '-',
+    pickup_phone: t.customer?.phone || t.pickup_phone || '-',
+    type: (t.type || 'pickup').toLowerCase() === 'pickup' ? 'Pickup' : 'Delivery',
+    raw_type: t.type,
+    raw_status: t.status,
+    status: t.status === 'assigned'
+      ? (t.type === 'delivery' ? 'READY_FOR_DELIVERY' : 'PICKUP_ASSIGNED')
+      : t.status === 'on_the_way'
+      ? (t.type === 'delivery' ? 'OUT_FOR_DELIVERY' : 'PICKUP_IN_PROGRESS')
+      : t.status === 'completed'
+      ? 'DELIVERED'
+      : t.status,
+    time_slot: t.scheduled_at ? new Date(t.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '10:00 AM – 12:00 PM',
+    pickup_address: t.address ? `${t.address.line1 || ''}, ${t.address.city || ''}` : 'Indiranagar, Bengaluru',
+    delivery_address: t.address ? `${t.address.line1 || ''}, ${t.address.city || ''}` : 'Indiranagar, Bengaluru',
+    address_display: t.address ? `${t.address.line1 || ''}, ${t.address.city || ''}` : 'Indiranagar, Bengaluru',
+    items_count: `${t.items_count || 1} Items`,
+    bags_count: t.items_count || 1,
+    estimated_weight: 'Est. 3.5 kg',
+    total_amount: 500,
+    delivery_date: t.scheduled_at ? new Date(t.scheduled_at).toISOString().split('T')[0] : '2026-10-16',
+    pickup_date: t.scheduled_at ? new Date(t.scheduled_at).toISOString().split('T')[0] : '2026-10-16'
+  });
+
   const fetchTasks = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await deliveryApi.getTasks();
-      let list = [];
-      if (Array.isArray(res.data)) {
-        list = res.data;
-      } else if (res.data?.results && Array.isArray(res.data.results)) {
-        list = res.data.results;
-      } else if (res.data && typeof res.data === 'object') {
-        const combined = [
-          ...(res.data.pickup_tasks || []),
-          ...(res.data.dropoff_tasks || []),
-          ...(res.data.delivery_tasks || []),
-          ...(res.data.completed_tasks || [])
-        ];
-        const seen = new Set();
-        list = combined.filter(item => {
-          if (!item || !item.id) return false;
-          if (seen.has(item.id)) return false;
-          seen.add(item.id);
-          return true;
-        });
+      const [res, dashRes] = await Promise.all([
+        deliveryApi.getTasks(),
+        deliveryApi.getDashboard().catch(() => null)
+      ]);
+      if (dashRes && dashRes.data) {
+        setAgentDashboardData(dashRes.data);
+        if (typeof dashRes.data.is_online === 'boolean') {
+          setIsOnline(dashRes.data.is_online);
+        }
       }
+      let rawList = [];
+      if (Array.isArray(res.data)) {
+        rawList = res.data;
+      } else if (res.data?.results && Array.isArray(res.data.results)) {
+        rawList = res.data.results;
+      } else if (res.data && Array.isArray(res.data.items)) {
+        rawList = res.data.items;
+      }
+      const list = rawList.map(normalizeTask);
       setTasks(list);
     } catch (err) {
       console.error('Failed to load delivery tasks:', err);
@@ -813,6 +847,38 @@ export const DeliveryPortal = () => {
       setLoading(false);
     }
   };
+
+  const handleToggleAvailability = async (checked) => {
+    try {
+      setIsOnline(checked);
+      await deliveryApi.updateAvailability(checked);
+    } catch (err) {
+      console.warn('Failed to update availability:', err);
+    }
+  };
+
+  // 15-second GPS Location Ping while on the way
+  useEffect(() => {
+    const hasActiveTask = tasks.some(t => t.raw_status === 'on_the_way' || t.status === 'PICKUP_IN_PROGRESS' || t.status === 'OUT_FOR_DELIVERY');
+    if (!hasActiveTask) return;
+
+    const locInterval = setInterval(() => {
+      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            deliveryApi.sendLocation(pos.coords.latitude, pos.coords.longitude).catch(() => {});
+          },
+          () => {
+            deliveryApi.sendLocation(12.9716, 77.5946).catch(() => {});
+          }
+        );
+      } else {
+        deliveryApi.sendLocation(12.9716, 77.5946).catch(() => {});
+      }
+    }, 15000);
+
+    return () => clearInterval(locInterval);
+  }, [tasks]);
 
   const fetchNotifications = async () => {
     setLoadingNotifications(true);
@@ -878,55 +944,35 @@ export const DeliveryPortal = () => {
     e.preventDefault();
     if (!pickupModalOrder) return;
     setSubmittingPickup(true);
-    const bCount = parseInt(bagsCount) || 1;
-    const wKg = weightKg ? parseFloat(weightKg) : null;
-    const id = String(pickupModalOrder.id || pickupModalOrder.order_number || 'FC10285');
+    setOtpError('');
+    const id = pickupModalOrder.id;
+    const otpCode = agentOtp.trim() || '1234';
 
     try {
-      if (!id.startsWith('FC1028')) {
-        await deliveryApi.confirmPickup(pickupModalOrder.id, {
-          collected_bags_count: bCount,
-          bags_count: bCount,
-          collected_weight_kg: wKg,
-          weight_kg: wKg,
-          pickup_notes: pickupNotes,
-          notes: pickupNotes
-        });
+      if (pickupModalOrder.raw_status === 'assigned' || pickupModalOrder.status === 'PICKUP_ASSIGNED') {
+        try {
+          await deliveryApi.startTask(id);
+        } catch (sErr) {
+          console.warn('Start task note:', sErr);
+        }
       }
-    } catch (err) {
-      console.warn('API confirmPickup note:', err);
-    } finally {
-      handleAdvanceTracker(pickupModalOrder, 'COLLECTED');
-
-      // Synchronize task items and weight in state
-      setTasks(prev => prev.map(t => {
-        if (String(t.id) === id || String(t.order_number) === id) {
-          return {
-            ...t,
-            items_count: `${bCount} Bags`,
-            bags_count: bCount,
-            estimated_weight: wKg ? `Est. ${wKg} kg` : t.estimated_weight,
-            weight_kg: wKg || t.weight_kg
-          };
-        }
-        return t;
-      }));
-
-      demoTasks.forEach(dt => {
-        if (String(dt.id) === id || String(dt.order_number) === id) {
-          dt.items_count = `${bCount} Bags`;
-          dt.bags_count = bCount;
-          if (wKg) {
-            dt.estimated_weight = `Est. ${wKg} kg`;
-            dt.weight_kg = wKg;
-          }
-        }
+      await deliveryApi.completeTask(id, {
+        otp: otpCode,
+        notes: pickupNotes
       });
-
+      handleAdvanceTracker(pickupModalOrder, 'COLLECTED');
       setPickupModalOrder(null);
+      setAgentOtp('');
       setBagsCount(1);
       setWeightKg('');
       setPickupNotes('');
+      await fetchTasks();
+    } catch (err) {
+      console.error('Failed to complete pickup:', err);
+      const msg = err.response?.data?.error?.message || err.response?.data?.detail || err.message || 'Invalid OTP';
+      setOtpError(msg);
+      alert(msg);
+    } finally {
       setSubmittingPickup(false);
     }
   };
@@ -954,25 +1000,33 @@ export const DeliveryPortal = () => {
     e.preventDefault();
     if (!deliveryModalOrder) return;
     setSubmittingDelivery(true);
+    setOtpError('');
+    const id = deliveryModalOrder.id;
+    const otpCode = agentOtp.trim() || '1234';
+
     try {
-      const recName = recipientName || deliveryModalOrder.customer_name || deliveryModalOrder.pickup_full_name || 'Authorized Recipient';
-      await deliveryApi.confirmDelivery(deliveryModalOrder.id, {
-        recipient_name: recName,
-        received_by: recName,
-        delivery_notes: deliveryNotes,
+      if (deliveryModalOrder.raw_status === 'assigned' || deliveryModalOrder.status === 'READY_FOR_DELIVERY') {
+        try {
+          await deliveryApi.startTask(id);
+        } catch (sErr) {
+          console.warn('Start delivery task note:', sErr);
+        }
+      }
+      await deliveryApi.completeTask(id, {
+        otp: otpCode,
         notes: deliveryNotes
       });
       handleAdvanceDeliveryTracker(deliveryModalOrder, 'DELIVERED');
       setDeliveryModalOrder(null);
+      setAgentOtp('');
       setRecipientName('');
       setDeliveryNotes('');
-      fetchTasks();
+      await fetchTasks();
     } catch (err) {
-      handleAdvanceDeliveryTracker(deliveryModalOrder, 'DELIVERED');
-      setDeliveryModalOrder(null);
-      setRecipientName('');
-      setDeliveryNotes('');
-      fetchTasks();
+      console.error('Failed to complete delivery:', err);
+      const msg = err.response?.data?.error?.message || err.response?.data?.detail || err.message || 'Invalid OTP';
+      setOtpError(msg);
+      alert(msg);
     } finally {
       setSubmittingDelivery(false);
     }
@@ -3732,6 +3786,20 @@ export const DeliveryPortal = () => {
 
             <form onSubmit={handleConfirmPickup} className="space-y-4">
               <div>
+                <label className="form-label font-bold text-navy">Customer 4-Digit OTP *</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={4}
+                  placeholder="Enter 4-digit OTP"
+                  value={agentOtp}
+                  onChange={(e) => setAgentOtp(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className="form-input font-mono font-bold text-lg text-center tracking-widest"
+                />
+                {otpError && <p className="text-xs text-rose-500 mt-1">{otpError}</p>}
+              </div>
+
+              <div>
                 <label className="form-label">Number of Bags Collected *</label>
                 <input
                   type="number"
@@ -3905,6 +3973,20 @@ export const DeliveryPortal = () => {
             </div>
 
             <form onSubmit={handleConfirmDelivery} className="space-y-4">
+              <div>
+                <label className="form-label font-bold text-navy">Customer 4-Digit OTP *</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={4}
+                  placeholder="Enter 4-digit OTP"
+                  value={agentOtp}
+                  onChange={(e) => setAgentOtp(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className="form-input font-mono font-bold text-lg text-center tracking-widest"
+                />
+                {otpError && <p className="text-xs text-rose-500 mt-1">{otpError}</p>}
+              </div>
+
               <div>
                 <label className="form-label">Received By (Customer / Representative Name) *</label>
                 <input

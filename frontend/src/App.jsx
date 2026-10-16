@@ -169,7 +169,7 @@ const AppContent = () => {
   const normalizedRoute = String(currentPage || 'home').replace(/^#\/?/, '').trim().toLowerCase();
   const cleanPageName = (currentPage || '').split('?')[0].replace(/^#\/?/, '').replace(/^\//, '').toLowerCase();
   const isLaundryRoute = LAUNDRY_STAFF_ROUTES.includes(cleanPageName) || 
-    ((cleanPageName === 'notifications' || cleanPageName === 'profile') && (userRole === 'laundry_staff' || userRole === 'admin'));
+    ((cleanPageName === 'notifications' || cleanPageName === 'profile') && (userRole === 'staff' || userRole === 'laundry_staff' || userRole === 'admin'));
 
   // Protected route redirects inside useEffect to avoid updating BookingProvider during render
   useEffect(() => {
@@ -184,13 +184,13 @@ const AppContent = () => {
     } else if (normalizedRoute === 'delivery-portal') {
       if (!isAuthenticated) {
         navigateTo('login', null, { replace: true });
-      } else if (userRole !== 'delivery_agent' && userRole !== 'admin') {
+      } else if (userRole !== 'agent' && userRole !== 'delivery_agent' && userRole !== 'admin') {
         navigateTo(getPortalForRole(userRole), null, { replace: true });
       }
     } else if (isLaundryRoute) {
       if (!isAuthenticated) {
         navigateTo('login', null, { replace: true });
-      } else if (userRole !== 'laundry_staff' && userRole !== 'admin') {
+      } else if (userRole !== 'staff' && userRole !== 'laundry_staff' && userRole !== 'admin') {
         navigateTo(getPortalForRole(userRole), null, { replace: true });
       }
     } else if (CUSTOMER_PORTAL_PAGES.includes(normalizedRoute)) {
@@ -235,17 +235,17 @@ const AppContent = () => {
     return <AdminPortal />;
   }
 
-  // Route 3: Delivery Portal (Strictly Protected: role === 'delivery_agent' or 'admin')
+  // Route 3: Delivery Portal (Strictly Protected: role === 'agent' or 'delivery_agent' or 'admin')
   if (normalizedRoute === 'delivery-portal') {
-    if (!isAuthenticated || (userRole !== 'delivery_agent' && userRole !== 'admin')) {
+    if (!isAuthenticated || (userRole !== 'agent' && userRole !== 'delivery_agent' && userRole !== 'admin')) {
       return null;
     }
     return <DeliveryPortal />;
   }
 
-  // Route 4: Laundry Hub Portal (Strictly Protected: role === 'laundry_staff' or 'admin')
+  // Route 4: Laundry Hub Portal (Strictly Protected: role === 'staff' or 'laundry_staff' or 'admin')
   if (isLaundryRoute) {
-    if (!isAuthenticated || (userRole !== 'laundry_staff' && userRole !== 'admin')) {
+    if (!isAuthenticated || (userRole !== 'staff' && userRole !== 'laundry_staff' && userRole !== 'admin')) {
       return null;
     }
     return <LaundryPortal />;

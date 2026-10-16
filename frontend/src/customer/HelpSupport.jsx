@@ -52,7 +52,7 @@ export const HelpSupport = () => {
     setLoading(true);
     try {
       const ticketsRes = await supportApi.getTickets().catch(() => ({ data: [] }));
-      const list = Array.isArray(ticketsRes.data) ? ticketsRes.data : (ticketsRes.data?.results || []);
+      const list = Array.isArray(ticketsRes.data) ? ticketsRes.data : (ticketsRes.data?.items || ticketsRes.data?.results || []);
       setTickets(list);
     } catch (err) {
       console.error('Failed to load support data:', err);

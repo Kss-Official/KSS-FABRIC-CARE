@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Deny all client-side writes globally
+    match /{document=**} {
+      allow write: if false;
+    }
+    
+    // Notifications: read allowed only if user owns the notification
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null && resource.data.user_id == request.auth.uid;
+    }
+    
+    // Orders: customer reads their own; staff and admin read non-pending orders
+    match /orders/{orderId} {
+      allow read: if request.auth != null && (
+        resource.data.customer_id == request.auth.uid ||
+        (
+          (request.auth.token.role == 'staff' || request.auth.token.role == 'admin') &&
+          resource.data.status != 'PAYMENT_PENDING'
+        )
+      );
+      
+      // Order history subcollection
+      match /history/{historyId} {
+        allow read: if request.auth != null && (
+          get(/databases/$(database)/documents/orders/$(orderId)).data.customer_id == request.auth.uid ||
+          request.auth.token.role == 'staff' ||
+          request.auth.token.role == 'admin'
+        );
+      }
+    }
+    
+    // Tasks: read if assigned to agent or if admin
+    match /tasks/{taskId} {
+      allow read: if request.auth != null && (
+        resource.data.agent_id == request.auth.uid ||
+        request.auth.token.role == 'admin'
+      );
+    }
+    
+    // All other collections deny direct client read (handled via FastAPI backend)
+    match /users/{userId} {
+      allow read: if false;
+    }
+    match /users/{userId}/{allChildren=**} {
+      allow read: if false;
+    }
+    match /garment_types/{id} {
+      allow read: if false;
+    }
+    match /services/{id} {
+      allow read: if false;
+    }
+    match /prices/{id} {
+      allow read: if false;
+    }
+    match /payments/{id} {
+      allow read: if false;
+    }
+    match /invoices/{id} {
+      allow read: if false;
+    }
+    match /support_tickets/{id} {
+      allow read: if false;
+    }
+    match /support_tickets/{id}/{allChildren=**} {
+      allow read: if false;
+    }
+    match /audit_logs/{id} {
+      allow read: if false;
+    }
+    match /stats/{id} {
+      allow read: if false;
+    }
+    match /counters/{id} {
+      allow read: if false;
+    }
+  }
+}

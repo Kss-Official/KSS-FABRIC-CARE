@@ -1,21 +1,21 @@
 /**
- * Normalizes backend / firebase roles into canonical role identifiers:
- * 'admin' | 'delivery_agent' | 'laundry_staff' | 'customer'
+ * Normalizes backend / Firebase custom claim roles into canonical role identifiers:
+ * 'admin' | 'agent' | 'staff' | 'customer'
  */
 export const normalizeRole = (role) => {
   if (!role) return 'customer';
   const r = String(role).trim().toLowerCase();
   if (r === 'admin' || r === 'super_admin') return 'admin';
-  if (r === 'delivery_staff' || r === 'delivery_agent' || r === 'delivery' || r === 'driver') return 'delivery_agent';
-  if (r === 'laundry_staff' || r === 'laundry' || r === 'staff') return 'laundry_staff';
+  if (r === 'agent' || r === 'delivery_agent' || r === 'delivery' || r === 'delivery_staff' || r === 'driver') return 'agent';
+  if (r === 'staff' || r === 'laundry_staff' || r === 'laundry') return 'staff';
   return 'customer';
 };
 
 /**
  * Returns the destination portal page id based on canonical role:
  * - admin -> 'admin'
- * - delivery_agent -> 'delivery-portal'
- * - laundry_staff -> 'laundry-portal'
+ * - agent -> 'delivery-portal'
+ * - staff -> 'laundry-portal'
  * - customer -> 'customer-dashboard'
  */
 export const getPortalForRole = (role) => {
@@ -23,12 +23,12 @@ export const getPortalForRole = (role) => {
   switch (norm) {
     case 'admin':
       return 'admin';
-    case 'delivery_agent':
+    case 'agent':
       return 'delivery-portal';
-    case 'laundry_staff':
+    case 'staff':
       return 'laundry-portal';
     case 'customer':
     default:
-      return 'home';
+      return 'customer-dashboard';
   }
 };
