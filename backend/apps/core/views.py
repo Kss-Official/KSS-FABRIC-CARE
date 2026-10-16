@@ -2,7 +2,8 @@ import datetime
 from django.utils import timezone
 from django.db.models import Sum, Count, Q
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
@@ -177,6 +178,31 @@ class OrderViewSet(viewsets.ModelViewSet):
                 pass
         return Response(OrderSerializer(order).data)
 
+    def get_object(self):
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_val = self.kwargs.get(lookup_url_kwarg) or self.kwargs.get('pk')
+        if not lookup_val:
+            return super().get_object()
+
+        lookup_str = str(lookup_val).strip()
+        obj = None
+        if lookup_str.isdigit():
+            obj = queryset.filter(pk=int(lookup_str)).first()
+        if not obj:
+            obj = queryset.filter(order_id__iexact=lookup_str).first()
+        if not obj and lookup_str.startswith('#'):
+            obj = queryset.filter(order_id__iexact=lookup_str[1:]).first()
+        if not obj and not lookup_str.startswith('#'):
+            obj = queryset.filter(order_id__iexact=f"#{lookup_str}").first()
+
+        if not obj:
+            from rest_framework.exceptions import NotFound
+            raise NotFound(f"Order '{lookup_val}' not found.")
+
+        self.check_object_permissions(self.request, obj)
+        return obj
+
     @action(detail=True, methods=['post'], url_path='pay')
     def pay_order(self, request, pk=None):
         order = self.get_object()
@@ -185,7 +211,21 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.save()
         if hasattr(order, 'invoice'):
             order.invoice.payment_status = 'PAID'
+            order.invoice.payment_method = order.payment_method
+            order.invoice.paid_at = timezone.now()
             order.invoice.save()
+
+        if order.customer:
+            Notification.objects.get_or_create(
+                user=order.customer,
+                order=order,
+                type=Notification.Type.PAYMENT,
+                defaults={
+                    'title': "Payment Confirmed",
+                    'message': f"Payment for Order {order.order_id} of ₹{order.total_amount} was successfully received via {order.payment_method}."
+                }
+            )
+
         return Response({
             'status': 'PAID',
             'payment_id': f'pay_{order.id}',
@@ -207,6 +247,53 @@ class OrderViewSet(viewsets.ModelViewSet):
             'pickup': {'driver': order.assigned_pickup_driver.full_name if order.assigned_pickup_driver else None},
             'delivery': {'driver': order.assigned_delivery_driver.full_name if order.assigned_delivery_driver else None}
         })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def payment_verify_view(request):
+    payment_id = str(request.data.get('payment_id', '')).strip()
+    gateway_payload = request.data.get('gateway_payload', {})
+
+    order = None
+    if payment_id and 'pay_' in payment_id:
+        pk_val = payment_id.replace('pay_', '')
+        if pk_val.isdigit():
+            order = Order.objects.filter(pk=int(pk_val)).first()
+
+    if not order and payment_id:
+        clean_id = payment_id.strip()
+        if clean_id.isdigit():
+            order = Order.objects.filter(pk=int(clean_id)).first()
+        else:
+            order = Order.objects.filter(order_id__iexact=clean_id).first()
+
+    if order:
+        order.payment_status = Order.PaymentStatus.PAID
+        order.save()
+        if hasattr(order, 'invoice'):
+            order.invoice.payment_status = 'PAID'
+            if not order.invoice.paid_at:
+                order.invoice.paid_at = timezone.now()
+            order.invoice.save()
+
+        if order.customer:
+            Notification.objects.get_or_create(
+                user=order.customer,
+                order=order,
+                type=Notification.Type.PAYMENT,
+                defaults={
+                    'title': "Payment Confirmed",
+                    'message': f"Payment for Order {order.order_id} of ₹{order.total_amount} was successfully verified."
+                }
+            )
+
+    return Response({
+        "status": "success",
+        "payment_status": "PAID",
+        "detail": "Payment verified successfully.",
+        "order": OrderSerializer(order).data if order else None
+    })
 
 
 # ===============================================================

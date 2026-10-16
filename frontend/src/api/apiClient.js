@@ -431,7 +431,10 @@ export const adminApi = {
   getTickets: (params = {}) => apiClient.get('/admin/support/tickets', { params }),
   getTicket: (id) => apiClient.get(`/admin/support/tickets/${id}`),
   replyTicket: (id, message) => apiClient.post(`/admin/support/tickets/${id}/reply`, { message }),
-  updateTicketStatus: (id, status) => apiClient.patch(`/admin/support/tickets/${id}/status`, { status })
+  updateTicketStatus: (id, status) => apiClient.patch(`/admin/support/tickets/${id}/status`, { status }),
+  getComplaints: (params = {}) => apiClient.get('/admin/complaints', { params }),
+  getComplaint: (id) => apiClient.get(`/admin/complaints/${id}`),
+  rescheduleDelivery: (id, data) => apiClient.post(`/admin/complaints/${id}/reschedule`, data)
 };
 
 export default apiClient;

@@ -77,7 +77,7 @@ export const AdminDeliveryReportsPage = () => {
 
   // Filter complaints based on search query, status, and date range
   const filteredComplaints = useMemo(() => {
-    return complaints.filter((item) => {
+    return (complaints || []).filter((item) => {
       // Search Query filter (matches Order ID, Customer Name, Failure Reason, Phone, Address, Executive)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();

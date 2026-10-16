@@ -62,7 +62,7 @@ export const AdminComplaintReportsPage = () => {
 
   // Filter complaints based on search and filters
   const filteredComplaints = useMemo(() => {
-    return complaints.filter((item) => {
+    return (complaints || []).filter((item) => {
       // Search
       const query = searchQuery.trim().toLowerCase();
       if (query) {

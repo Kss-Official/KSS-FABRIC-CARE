@@ -615,7 +615,10 @@ export const BookingProvider = ({ children }) => {
 
       const res = await ordersApi.createOrder(orderPayload);
       const created = res.data;
-      const orderNumber = created.code || `#FC${created.id.substring(0, 5)}`;
+      const rawOrderId = created.order_id || created.order_number || created.code;
+      const orderNumber = rawOrderId
+        ? (String(rawOrderId).startsWith('#') ? String(rawOrderId) : `#${rawOrderId}`)
+        : (created.id != null ? `#FC${String(created.id).padStart(5, '0')}` : '#FC00001');
 
       // Pay and verify order automatically in mock gateway mode
       try {
@@ -634,14 +637,17 @@ export const BookingProvider = ({ children }) => {
       const confirmedOrderData = {
         orderId: orderNumber,
         id: created.id,
+        order_number: orderNumber,
+        order_id: created.order_id || orderNumber,
         dateText: pickupSchedule.dateLabel || pickupSchedule.dateValue,
         timeText: pickupSchedule.timeSlot || '09:00 AM – 11:00 AM',
         addressTitle: pickupDetails.address,
         addressDetail: pickupDetails.landmark || '',
         services: serviceNames,
         items: created.items || finalItems,
-        estimatedTotal: created.total_paise ? created.total_paise / 100 : total,
-        status: 'PLACED',
+        estimatedTotal: created.total_paise ? created.total_paise / 100 : (created.total_amount ? Number(created.total_amount) : total),
+        status: created.status || 'PLACED',
+        payment_status: created.payment_status || 'PAID',
         createdOrder: created
       };
 

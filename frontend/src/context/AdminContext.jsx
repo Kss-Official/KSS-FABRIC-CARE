@@ -37,6 +37,19 @@ export const AdminProvider = ({ children }) => {
   const [dashboardPeriod, setDashboardPeriod] = useState('today');
   const [notifications, setNotifications] = useState([]);
 
+  // Complaints & Reschedule Delivery States
+  const [complaints, setComplaints] = useState([]);
+  const [complaintsSummary, setComplaintsSummary] = useState({
+    total_complaints: 0,
+    pending_reschedule: 0,
+    rescheduled: 0,
+    delivered: 0,
+    resolved: 0
+  });
+  const [complaintsLoading, setComplaintsLoading] = useState(false);
+  const [isRescheduleDrawerOpen, setIsRescheduleDrawerOpen] = useState(false);
+  const [activeRescheduleComplaint, setActiveRescheduleComplaint] = useState(null);
+
   const [loading, setLoading] = useState(false);
   const [supportLoading, setSupportLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -84,19 +97,24 @@ export const AdminProvider = ({ children }) => {
     try {
       const res = await adminApi.getOrders({ page_size: 50, ...params });
       const raw = Array.isArray(res.data) ? res.data : (res.data?.items || []);
-      const normalized = raw.map(o => ({
-        ...o,
-        id: o.id,
-        order_number: o.code || `#${o.id.substring(0, 7).toUpperCase()}`,
-        order_id: o.code || `#${o.id.substring(0, 7).toUpperCase()}`,
-        amount: o.total_paise ? o.total_paise / 100 : 0,
-        total_amount: o.total_paise ? o.total_paise / 100 : 0,
-        pickup_address: o.address?.line1 || (typeof o.address === 'string' ? o.address : 'Bengaluru'),
-        pickup_time_slot: o.pickup ? `${o.pickup.from || '09:00'} - ${o.pickup.to || '11:00'}` : '09:00 AM - 11:00 AM',
-        customer_name: o.customer?.name || 'Customer',
-        customer_phone: o.customer?.phone || '',
-        status_display: o.status?.replace(/_/g, ' ')
-      }));
+      const normalized = raw.map(o => {
+        const idStr = String(o.id || '');
+        const orderCode = o.code || o.order_id || o.order_number || `#${idStr.padStart(5, '0')}`;
+        const totalVal = o.total_amount ? Number(o.total_amount) : (o.total_paise ? o.total_paise / 100 : (o.amount || 0));
+        return {
+          ...o,
+          id: o.id,
+          order_number: orderCode,
+          order_id: orderCode,
+          amount: totalVal,
+          total_amount: totalVal,
+          pickup_address: o.pickup_address || o.address?.line1 || (typeof o.address === 'string' ? o.address : 'Bengaluru'),
+          pickup_time_slot: o.pickup_time_slot || (o.pickup ? `${o.pickup.from || '09:00'} - ${o.pickup.to || '11:00'}` : '09:00 AM - 11:00 AM'),
+          customer_name: o.pickup_full_name || o.customer_name || o.customer?.name || 'Customer',
+          customer_phone: o.pickup_phone || o.customer_phone || o.customer?.phone || '',
+          status_display: o.status_display || o.status?.replace(/_/g, ' ')
+        };
+      });
       setOrders(normalized);
     } catch (err) {
       console.warn('Admin fetchOrders error:', err);
@@ -183,17 +201,20 @@ export const AdminProvider = ({ children }) => {
     try {
       const res = await adminApi.getTickets(params);
       const raw = Array.isArray(res.data) ? res.data : (res.data?.items || []);
-      const normalized = raw.map(t => ({
-        ...t,
-        id: t.id,
-        ticket_id_display: `#TICK-${t.id.substring(0, 5).toUpperCase()}`,
-        customer_name: t.customer_name || 'Customer',
-        subject: t.subject,
-        status: t.status?.toUpperCase(),
-        status_display: t.status?.toUpperCase() === 'OPEN' ? 'Open' : 'Resolved',
-        priority: 'MEDIUM',
-        created_at: t.created_at || t.updated_at
-      }));
+      const normalized = raw.map(t => {
+        const idStr = String(t.id || '');
+        return {
+          ...t,
+          id: t.id,
+          ticket_id_display: t.ticket_number || `#TICK-${idStr.padStart(5, '0').toUpperCase()}`,
+          customer_name: t.customer_name || 'Customer',
+          subject: t.subject,
+          status: t.status?.toUpperCase(),
+          status_display: t.status?.toUpperCase() === 'OPEN' ? 'Open' : 'Resolved',
+          priority: t.priority || 'MEDIUM',
+          created_at: t.created_at || t.updated_at
+        };
+      });
       setSupportTickets(normalized);
     } catch (err) {
       console.warn('Admin fetchSupportTickets error:', err);
@@ -213,6 +234,39 @@ export const AdminProvider = ({ children }) => {
     }
   }, []);
 
+  // 8. Fetch Complaints
+  const fetchComplaints = useCallback(async (params = {}) => {
+    setComplaintsLoading(true);
+    try {
+      const res = await adminApi.getComplaints(params);
+      const data = res.data || {};
+      const list = Array.isArray(data) ? data : (data.complaints || data.items || data.results || []);
+      setComplaints(list);
+      if (data.summary) {
+        setComplaintsSummary(data.summary);
+      }
+    } catch (err) {
+      console.warn('Admin fetchComplaints error:', err);
+    } finally {
+      setComplaintsLoading(false);
+    }
+  }, []);
+
+  const openRescheduleDrawer = useCallback((complaint) => {
+    setActiveRescheduleComplaint(complaint);
+    setIsRescheduleDrawerOpen(true);
+  }, []);
+
+  const closeRescheduleDrawer = useCallback(() => {
+    setIsRescheduleDrawerOpen(false);
+    setActiveRescheduleComplaint(null);
+  }, []);
+
+  const rescheduleDelivery = useCallback(async (id, data) => {
+    await adminApi.rescheduleDelivery(id, data);
+    await Promise.all([fetchComplaints(), fetchOrders()]);
+  }, [fetchComplaints, fetchOrders]);
+
   // Initial Load - only fetch if authenticated as admin
   useEffect(() => {
     if (!isAuthenticated || userRole !== 'admin') {
@@ -226,11 +280,12 @@ export const AdminProvider = ({ children }) => {
       fetchUsers(),
       fetchCatalog(),
       fetchSupportTickets(),
-      fetchNotifications()
+      fetchNotifications(),
+      fetchComplaints()
     ]).finally(() => {
       setLoading(false);
     });
-  }, [isAuthenticated, userRole, fetchDashboard, fetchOrders, fetchTasks, fetchUsers, fetchCatalog, fetchSupportTickets, fetchNotifications]);
+  }, [isAuthenticated, userRole, fetchDashboard, fetchOrders, fetchTasks, fetchUsers, fetchCatalog, fetchSupportTickets, fetchNotifications, fetchComplaints]);
 
   // Actions
   const updateOrderStatus = async (orderId, toStatus, note = 'Admin status update') => {
@@ -393,7 +448,20 @@ export const AdminProvider = ({ children }) => {
         replySupportTicket,
         updateTicketStatus,
         markNotificationAsRead,
-        markAllNotificationsAsRead
+        markAllNotificationsAsRead,
+        complaints,
+        setComplaints,
+        complaintsSummary,
+        setComplaintsSummary,
+        complaintsLoading,
+        fetchComplaints,
+        isRescheduleDrawerOpen,
+        setIsRescheduleDrawerOpen,
+        activeRescheduleComplaint,
+        setActiveRescheduleComplaint,
+        openRescheduleDrawer,
+        closeRescheduleDrawer,
+        rescheduleDelivery
       }}
     >
       {children}

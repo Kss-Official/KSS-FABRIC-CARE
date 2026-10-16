@@ -46,7 +46,8 @@ from apps.core.views import (
     AdminPricesView,
     AdminGarmentsView,
     AdminGarmentDetailView,
-    AdminBroadcastNotificationView
+    AdminBroadcastNotificationView,
+    payment_verify_view
 )
 
 router = DefaultRouter()
@@ -108,8 +109,11 @@ api_urlpatterns = [
     path('admin/orders/<int:pk>/accept/', AdminAcceptOrderView.as_view(), name='admin-accept-order'),
     path('admin/orders/<int:pk>/reject/', AdminRejectOrderView.as_view(), name='admin-reject-order'),
     path('admin/orders/<int:pk>/assign-staff/', AdminAssignStaffView.as_view(), name='admin-assign-staff'),
+    path('admin/complaints', AdminComplaintReportsView.as_view(), name='admin-complaints-no-slash'),
     path('admin/complaints/', AdminComplaintReportsView.as_view(), name='admin-complaints'),
+    path('admin/complaints/<int:pk>', AdminComplaintDetailView.as_view(), name='admin-complaint-detail-no-slash'),
     path('admin/complaints/<int:pk>/', AdminComplaintDetailView.as_view(), name='admin-complaint-detail'),
+    path('admin/complaints/<int:pk>/reschedule', AdminComplaintRescheduleView.as_view(), name='admin-complaint-reschedule-no-slash'),
     path('admin/complaints/<int:pk>/reschedule/', AdminComplaintRescheduleView.as_view(), name='admin-complaint-reschedule'),
 
     # Admin Tasks & Agents
@@ -144,20 +148,29 @@ api_urlpatterns = [
     path('admin/notifications/broadcast', AdminBroadcastNotificationView.as_view(), name='admin-broadcast-no-slash'),
     path('admin/notifications/broadcast/', AdminBroadcastNotificationView.as_view(), name='admin-broadcast-slash'),
 
+    # Payment verification
+    path('payments/verify', payment_verify_view, name='payments-verify-no-slash'),
+    path('payments/verify/', payment_verify_view, name='payments-verify-slash'),
+
     # Customer orders, addresses, notifications non-slash & slash paths
     path('customer/orders', OrderViewSet.as_view({'get': 'list', 'post': 'create'}), name='customer-orders-no-slash'),
     path('customer/orders/', OrderViewSet.as_view({'get': 'list', 'post': 'create'}), name='customer-orders-slash'),
-    path('customer/orders/<int:pk>', OrderViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='customer-order-detail-no-slash'),
-    path('customer/orders/<int:pk>/', OrderViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='customer-order-detail-slash'),
-    path('customer/orders/<int:pk>/cancel', OrderViewSet.as_view({'post': 'cancel_order'}), name='customer-order-cancel-no-slash'),
-    path('customer/orders/<int:pk>/cancel/', OrderViewSet.as_view({'post': 'cancel_order'}), name='customer-order-cancel-slash'),
-    path('customer/orders/<int:pk>/pay', OrderViewSet.as_view({'post': 'pay_order'}), name='customer-order-pay-no-slash'),
-    path('customer/orders/<int:pk>/pay/', OrderViewSet.as_view({'post': 'pay_order'}), name='customer-order-pay-slash'),
-    path('customer/orders/<int:pk>/tracking', OrderViewSet.as_view({'get': 'get_tracking'}), name='customer-order-tracking-no-slash'),
-    path('customer/orders/<int:pk>/tracking/', OrderViewSet.as_view({'get': 'get_tracking'}), name='customer-order-tracking-slash'),
+    path('customer/orders/<str:pk>', OrderViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='customer-order-detail-no-slash'),
+    path('customer/orders/<str:pk>/', OrderViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='customer-order-detail-slash'),
+    path('customer/orders/<str:pk>/cancel', OrderViewSet.as_view({'post': 'cancel_order'}), name='customer-order-cancel-no-slash'),
+    path('customer/orders/<str:pk>/cancel/', OrderViewSet.as_view({'post': 'cancel_order'}), name='customer-order-cancel-slash'),
+    path('customer/orders/<str:pk>/pay', OrderViewSet.as_view({'post': 'pay_order'}), name='customer-order-pay-no-slash'),
+    path('customer/orders/<str:pk>/pay/', OrderViewSet.as_view({'post': 'pay_order'}), name='customer-order-pay-slash'),
+    path('customer/orders/<str:pk>/tracking', OrderViewSet.as_view({'get': 'get_tracking'}), name='customer-order-tracking-no-slash'),
+    path('customer/orders/<str:pk>/tracking/', OrderViewSet.as_view({'get': 'get_tracking'}), name='customer-order-tracking-slash'),
     path('customer/addresses', AddressViewSet.as_view({'get': 'list', 'post': 'create'}), name='customer-addresses-no-slash'),
     path('customer/addresses/', AddressViewSet.as_view({'get': 'list', 'post': 'create'}), name='customer-addresses-slash'),
+    path('customer/invoices', InvoiceViewSet.as_view({'get': 'list'}), name='customer-invoices-no-slash'),
+    path('customer/invoices/', InvoiceViewSet.as_view({'get': 'list'}), name='customer-invoices-slash'),
+    path('customer/invoices/<str:pk>', InvoiceViewSet.as_view({'get': 'retrieve'}), name='customer-invoice-detail-no-slash'),
+    path('customer/invoices/<str:pk>/', InvoiceViewSet.as_view({'get': 'retrieve'}), name='customer-invoice-detail-slash'),
     path('notifications', NotificationViewSet.as_view({'get': 'list', 'post': 'create'}), name='notifications-no-slash'),
+    path('notifications/', NotificationViewSet.as_view({'get': 'list', 'post': 'create'}), name='notifications-slash'),
 
     # Customer Reports
     path('customer/reports/', CustomerReportsView.as_view(), name='customer-reports'),
