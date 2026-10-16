@@ -53,7 +53,7 @@ export const AdminPortal = () => {
       case 'help-support':
         return <AdminHelpSupportPage />;
       default:
-        return <AdminDeliveryReportsPage />;
+        return <AdminDashboardPage />;
     }
   };
 
