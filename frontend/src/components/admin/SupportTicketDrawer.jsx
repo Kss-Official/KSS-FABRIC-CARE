@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   X, 
@@ -29,6 +30,19 @@ export const SupportTicketDrawer = () => {
   const [selectedStatus, setSelectedStatus] = useState('IN_PROGRESS');
   const [submitting, setSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+
+  // Lock background scroll when Support Ticket Drawer is open (matching Services & Pricing edit modal behavior)
+  useEffect(() => {
+    const wrapper = document.querySelector('.admin-main-wrapper');
+    if (isSupportDrawerOpen) {
+      if (wrapper) wrapper.classList.add('admin-scroll-locked');
+    } else {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    }
+    return () => {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    };
+  }, [isSupportDrawerOpen]);
 
   useEffect(() => {
     if (activeSupportTicket) {
@@ -99,7 +113,9 @@ export const SupportTicketDrawer = () => {
 
   const ticketId = activeSupportTicket.ticket_id_display || activeSupportTicket.ticket_number || `#SUP-${activeSupportTicket.id}`;
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <div className="drawer-backdrop animate-fade-in" onClick={closeSupportDrawer}>
       <aside 
         className="support-drawer animate-slide-left"
@@ -298,24 +314,33 @@ export const SupportTicketDrawer = () => {
       {/* Scoped CSS Styles matching Reference Image 4 */}
       <style>{`
         .drawer-backdrop {
-          position: fixed;
-          inset: 0;
-          background: rgba(15, 23, 42, 0.4);
-          backdrop-filter: blur(2px);
-          z-index: 99990;
-          display: flex;
-          justify-content: flex-end;
+          position: fixed !important;
+          inset: 0 !important;
+          background: rgba(15, 23, 42, 0.45) !important;
+          backdrop-filter: blur(2px) !important;
+          -webkit-backdrop-filter: blur(2px) !important;
+          z-index: 99999 !important;
+          display: flex !important;
+          justify-content: flex-end !important;
+          overflow: hidden !important;
+          overscroll-behavior: none !important;
         }
         .support-drawer {
           width: 440px;
           max-width: 95vw;
-          height: 100vh;
-          background: #FFFFFF;
-          display: flex;
-          flex-direction: column;
-          box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
-          overflow: hidden;
+          height: 100vh !important;
+          height: 100dvh !important;
+          max-height: 100vh !important;
+          max-height: 100dvh !important;
+          background: #FFFFFF !important;
+          display: flex !important;
+          flex-direction: column !important;
+          box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12) !important;
+          overflow: hidden !important;
+          overscroll-behavior: contain !important;
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          position: relative !important;
+          z-index: 100000 !important;
         }
 
         .drawer-header {
@@ -324,6 +349,7 @@ export const SupportTicketDrawer = () => {
           align-items: center;
           justify-content: space-between;
           border-bottom: 1px solid #F1F5F9;
+          flex-shrink: 0 !important;
         }
         .drawer-title-wrap {
           display: flex;
@@ -361,8 +387,11 @@ export const SupportTicketDrawer = () => {
         }
 
         .drawer-body {
-          flex: 1;
-          overflow-y: auto;
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          overflow-y: auto !important;
+          overscroll-behavior: contain !important;
+          -webkit-overflow-scrolling: touch !important;
           padding: 24px;
           display: flex;
           flex-direction: column;
@@ -578,6 +607,7 @@ export const SupportTicketDrawer = () => {
           cursor: not-allowed;
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };

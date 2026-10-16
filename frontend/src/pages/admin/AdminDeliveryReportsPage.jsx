@@ -18,7 +18,8 @@ import {
   ArrowUpRight,
   TrendingUp,
   CalendarCheck,
-  RotateCcw
+  RotateCcw,
+  Search
 } from 'lucide-react';
 import { RescheduleDeliveryDrawer } from '../../components/admin/RescheduleDeliveryDrawer';
 
@@ -31,7 +32,8 @@ export const AdminDeliveryReportsPage = () => {
     openRescheduleDrawer 
   } = useAdmin();
 
-  // Filters state (Search bar removed per requirements)
+  // Filters state with search support
+  const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [dateRangeFilter, setDateRangeFilter] = useState('ALL');
   const [currentPage, setCurrentPage] = useState(1);
@@ -73,9 +75,24 @@ export const AdminDeliveryReportsPage = () => {
     }
   };
 
-  // Filter complaints based on status and date range
+  // Filter complaints based on search query, status, and date range
   const filteredComplaints = useMemo(() => {
     return complaints.filter((item) => {
+      // Search Query filter (matches Order ID, Customer Name, Failure Reason, Phone, Address, Executive)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesId = String(item.order_id_display || item.order_id || item.id || '').toLowerCase().includes(q);
+        const matchesCustomer = String(item.customer_name || '').toLowerCase().includes(q);
+        const matchesReason = String(item.failure_reason || '').toLowerCase().includes(q);
+        const matchesPhone = String(item.customer_phone || '').toLowerCase().includes(q);
+        const matchesAddress = String(item.customer_address || '').toLowerCase().includes(q);
+        const matchesExecutive = String(item.reported_by_name || item.delivery_executive_name || '').toLowerCase().includes(q);
+
+        if (!matchesId && !matchesCustomer && !matchesReason && !matchesPhone && !matchesAddress && !matchesExecutive) {
+          return false;
+        }
+      }
+
       // Status filter
       if (statusFilter !== 'ALL') {
         const itemStatus = String(item.status || '').toUpperCase().replace(/\s+/g, '_');
@@ -88,13 +105,18 @@ export const AdminDeliveryReportsPage = () => {
       // Date Range Filter
       if (dateRangeFilter === 'TODAY') {
         const today = new Date().toISOString().split('T')[0];
-        const itemDate = (item.report_date || '').split('T')[0];
+        const itemDate = (item.report_date || item.created_at || '').split('T')[0];
         if (itemDate && itemDate !== today) return false;
+      } else if (dateRangeFilter === '7DAYS') {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const itemDate = new Date(item.report_date || item.created_at || Date.now());
+        if (itemDate < sevenDaysAgo) return false;
       }
 
       return true;
     });
-  }, [complaints, statusFilter, dateRangeFilter]);
+  }, [complaints, searchQuery, statusFilter, dateRangeFilter]);
 
   // Pagination calculation
   const totalItems = filteredComplaints.length;
@@ -202,14 +224,38 @@ export const AdminDeliveryReportsPage = () => {
         </div>
       </div>
 
-      {/* 3. Filter Bar matching Reference Image 3 (Without search bar per requirements) */}
+      {/* 3. Filter Bar with Search on Left and Filter Controls on Right */}
       <div className="cr-filter-card">
-        <div className="cr-filter-row flex items-center justify-between">
-          <div className="cr-filter-lead-text text-sm font-semibold text-slate-700">
-            Filtered Complaints View
+        <div className="cr-filter-row">
+          {/* Search Bar on Left matching portal design */}
+          <div className="cr-search-box">
+            <Search size={16} className="cr-search-icon" />
+            <input
+              type="text"
+              placeholder="Search by Order ID, customer, or reason..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="cr-search-input"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setCurrentPage(1);
+                }}
+                className="cr-search-clear-btn"
+                title="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
 
-          <div className="cr-filter-actions flex items-center gap-3">
+          <div className="cr-filter-actions">
             {/* Status Select */}
             <div className="cr-select-wrapper">
               <select
@@ -244,8 +290,6 @@ export const AdminDeliveryReportsPage = () => {
                 <option value="ALL">Select Date Range</option>
                 <option value="TODAY">Today</option>
                 <option value="7DAYS">Last 7 Days</option>
-                <option value="30DAYS">Last 30 Days</option>
-                <option value="OCT2026">October 2026</option>
               </select>
               <ChevronDown size={14} className="cr-select-chevron" />
             </div>
@@ -256,8 +300,9 @@ export const AdminDeliveryReportsPage = () => {
               className="cr-filter-btn"
               onClick={() => fetchComplaints()}
               title="Refresh complaints"
+              disabled={complaintsLoading}
             >
-              <RotateCcw size={15} />
+              <RotateCcw size={15} className={complaintsLoading ? 'animate-spin' : ''} />
               <span>Refresh</span>
             </button>
           </div>
@@ -535,9 +580,10 @@ export const AdminDeliveryReportsPage = () => {
       {/* Scoped CSS Styles matching Reference Image 3 */}
       <style>{`
         .cr-page-container {
-          padding: 24px 32px 48px;
-          background-color: #F8FAFC;
-          min-height: 100vh;
+          padding: 0 0 40px 0;
+          width: 100%;
+          box-sizing: border-box;
+          margin: 0;
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
@@ -652,6 +698,73 @@ export const AdminDeliveryReportsPage = () => {
           padding: 14px 20px;
           margin-bottom: 20px;
           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+        }
+        .cr-filter-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        .cr-search-box {
+          position: relative;
+          flex: 1;
+          min-width: 240px;
+          max-width: 400px;
+        }
+        .cr-search-icon {
+          position: absolute;
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #94A3B8;
+          pointer-events: none;
+        }
+        .cr-search-input {
+          width: 100%;
+          height: 38px;
+          padding: 0 34px 0 36px;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 8px;
+          font-size: 13px;
+          color: #1E293B;
+          background: #FFFFFF;
+          outline: none;
+          box-sizing: border-box;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .cr-search-input::placeholder {
+          color: #94A3B8;
+        }
+        .cr-search-input:focus {
+          border-color: #0D7A75;
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.1);
+        }
+        .cr-search-clear-btn {
+          position: absolute;
+          right: 10px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: transparent;
+          border: none;
+          color: #94A3B8;
+          cursor: pointer;
+          padding: 2px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 4px;
+        }
+        .cr-search-clear-btn:hover {
+          color: #475569;
+          background: #F1F5F9;
+        }
+        .cr-filter-actions {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-left: auto;
         }
         .cr-select-wrapper {
           position: relative;
@@ -896,7 +1009,7 @@ export const AdminDeliveryReportsPage = () => {
         }
 
         .modal-box-card {
-          background: #FFFFFF;
+          background: #FFFFFF !important;
           border-radius: 16px;
           width: 100%;
           max-width: 540px;
@@ -968,9 +1081,11 @@ export const AdminDeliveryReportsPage = () => {
           display: flex;
           flex-direction: column;
           gap: 16px;
-          overflow-y: auto;
-          overscroll-behavior: contain;
-          flex: 1;
+          overflow-y: auto !important;
+          overscroll-behavior: contain !important;
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          -webkit-overflow-scrolling: touch !important;
         }
 
         .detail-meta-grid {
@@ -1068,7 +1183,7 @@ export const AdminDeliveryReportsPage = () => {
         }
         @media (max-width: 640px) {
           .cr-page-container {
-            padding: 16px;
+            padding: 0 0 24px 0;
           }
           .cr-summary-grid {
             grid-template-columns: 1fr;
@@ -1078,8 +1193,16 @@ export const AdminDeliveryReportsPage = () => {
             gap: 12px;
             align-items: stretch;
           }
+          .cr-search-box {
+            max-width: 100%;
+            width: 100%;
+          }
           .cr-filter-actions {
             flex-direction: column;
+            width: 100%;
+            margin-left: 0;
+          }
+          .cr-select-wrapper {
             width: 100%;
           }
           .cr-filter-select, .cr-filter-btn {

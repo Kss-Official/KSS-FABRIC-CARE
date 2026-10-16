@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { complaintsApi } from '../api/apiClient';
@@ -12,7 +13,16 @@ import {
   Calendar,
   X,
   Loader2,
-  Info
+  Info,
+  Download,
+  Printer,
+  User,
+  Receipt,
+  CreditCard,
+  Check,
+  Shirt,
+  MapPin,
+  Phone
 } from 'lucide-react';
 
 // Exact default reports fallback matching Image 1 UI reference
@@ -99,63 +109,307 @@ export const CustomerReports = () => {
   const { navigateTo } = useBooking();
 
   // State
-  const [reports, setReports] = useState(DEFAULT_REPORTS);
+  const [reports, setReports] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_customer_reports');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_REPORTS.map(r => ({ ...r }));
+  });
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState(null);
 
-  // Selected report for Details Modal
+  // Selected report for Details Modal (matching Invoice View Modal)
   const [selectedReport, setSelectedReport] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const modalRef = useRef(null);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const modalScrollRef = useRef(null);
 
-  // Handle outside click and ESC for modal
-  useEffect(() => {
-    if (!isModalOpen) return;
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') setIsModalOpen(false);
+  // Helper to normalize and ensure all expected fields exist
+  const normalizeReport = (item) => {
+    const orderId = item.order_id || item.order_id_display || `#FC${item.id}`;
+    const reportDate =
+      item.report_date_only ||
+      (item.report_date ? String(item.report_date).split('T')[0] : '16 Oct 2026');
+    const reschedDate =
+      item.new_delivery_date_formatted ||
+      (item.rescheduled_date ? String(item.rescheduled_date).split('T')[0] : null);
+
+    return {
+      ...item,
+      id: item.id || orderId,
+      order_id: orderId,
+      order_id_display: item.order_id_display || orderId,
+      report_date_only: reportDate,
+      formatted_report_date: item.formatted_report_date || reportDate,
+      failure_reason: item.failure_reason || 'Customer Unavailable',
+      rescheduled_date: item.rescheduled_date || null,
+      new_delivery_date_formatted: reschedDate,
+      rescheduled_time_slot: item.rescheduled_time_slot || item.time_slot || '',
+      status: item.status || 'UNDER_REVIEW',
+      customer_name: item.customer_name || 'Rohan Mehta',
+      customer_phone: item.customer_phone || '+91 98765 43210',
+      reported_by_name: item.reported_by_name || 'Rajesh Kumar (Delivery Executive)'
     };
-    const handleClickOutside = (e) => {
-      if (modalRef.current && !modalRef.current.contains(e.target)) {
-        setIsModalOpen(false);
+  };
+
+  // Synchronize reports across Backend API, Admin Context complaints, and localStorage
+  const syncReportsData = (backendData = null) => {
+    let baseList = [];
+    try {
+      const savedCustomerReports = localStorage.getItem('fabricare_customer_reports');
+      if (savedCustomerReports) {
+        const parsed = JSON.parse(savedCustomerReports);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          baseList = parsed;
+        }
       }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isModalOpen]);
+    } catch (e) {}
 
-  // Fetch reports from backend API
+    if (baseList.length === 0) {
+      baseList = DEFAULT_REPORTS.map(r => ({ ...r }));
+    }
+
+    // Merge backend API records if available
+    if (backendData && Array.isArray(backendData) && backendData.length > 0) {
+      const backendMap = new Map();
+      backendData.forEach(item => {
+        const key = String(item.order_id || item.order_id_display || item.id);
+        backendMap.set(key, item);
+      });
+
+      const merged = baseList.map(item => {
+        const key = String(item.order_id || item.order_id_display || item.id);
+        if (backendMap.has(key)) {
+          const b = backendMap.get(key);
+          backendMap.delete(key);
+          return normalizeReport({ ...item, ...b });
+        }
+        return normalizeReport(item);
+      });
+
+      backendMap.forEach(item => {
+        merged.unshift(normalizeReport(item));
+      });
+
+      baseList = merged;
+    }
+
+    // Merge any live reschedules from Admin Context / Delivery Portal (fabricare_admin_complaints)
+    try {
+      const savedAdminComplaints = localStorage.getItem('fabricare_admin_complaints');
+      if (savedAdminComplaints) {
+        const adminComplaints = JSON.parse(savedAdminComplaints);
+        if (Array.isArray(adminComplaints)) {
+          const adminMap = new Map();
+          adminComplaints.forEach(ac => {
+            const code = String(ac.order_id_display || ac.order_id || ac.id);
+            adminMap.set(code, ac);
+          });
+
+          baseList = baseList.map(rep => {
+            const code = String(rep.order_id_display || rep.order_id || rep.id);
+            if (adminMap.has(code)) {
+              const ac = adminMap.get(code);
+              return normalizeReport({
+                ...rep,
+                status: ac.status || rep.status,
+                rescheduled_date: ac.rescheduled_date || rep.rescheduled_date,
+                new_delivery_date_formatted:
+                  ac.new_delivery_date_formatted ||
+                  ac.new_delivery_date ||
+                  ac.rescheduled_date ||
+                  rep.new_delivery_date_formatted,
+                rescheduled_time_slot:
+                  ac.rescheduled_time_slot || ac.time_slot || rep.rescheduled_time_slot,
+                failure_reason: ac.failure_reason || rep.failure_reason,
+                admin_reply: ac.admin_notes || ac.notes || rep.admin_reply
+              });
+            }
+            return normalizeReport(rep);
+          });
+        }
+      }
+    } catch (e) {}
+
+    // Persist to localStorage for persistence across reloads
+    try {
+      localStorage.setItem('fabricare_customer_reports', JSON.stringify(baseList));
+    } catch (e) {}
+
+    return baseList;
+  };
+
+  // Lock background page scroll while report modal is open, and reset modal scroll to top (matching invoice-view behavior)
+  useEffect(() => {
+    if (isModalOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+
+      const resetScrollToTop = () => {
+        if (modalScrollRef.current) {
+          modalScrollRef.current.scrollTop = 0;
+        }
+      };
+
+      resetScrollToTop();
+      const animFrame = requestAnimationFrame(resetScrollToTop);
+      const timer1 = setTimeout(resetScrollToTop, 25);
+      const timer2 = setTimeout(resetScrollToTop, 80);
+
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          setIsModalOpen(false);
+        }
+      };
+      document.addEventListener('keydown', handleKeyDown);
+
+      return () => {
+        document.body.style.overflow = prevOverflow || '';
+        document.removeEventListener('keydown', handleKeyDown);
+        cancelAnimationFrame(animFrame);
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+      };
+    }
+  }, [isModalOpen, selectedReport]);
+
+  const handleViewReportClick = (report) => {
+    setSelectedReport(report);
+    setIsModalOpen(true);
+    if (modalScrollRef.current) {
+      modalScrollRef.current.scrollTop = 0;
+    }
+  };
+
+  const handlePrint = () => {
+    const orderNum = (selectedReport?.order_id_display || selectedReport?.order_id || 'Report').replace(/^#/, '');
+    const prevTitle = document.title;
+    document.title = `FabriCare_Report_${orderNum}`;
+    window.print();
+    setTimeout(() => {
+      document.title = prevTitle;
+    }, 1500);
+  };
+
+  const handleDownload = async () => {
+    const orderNum = (selectedReport?.order_id_display || selectedReport?.order_id || 'Report').replace(/^#/, '');
+    const element = document.getElementById('delivery-report-document-card');
+    if (!element) return;
+
+    setIsDownloadingPdf(true);
+    try {
+      const html2pdfModule = await import('html2pdf.js');
+      const html2pdf = html2pdfModule.default || html2pdfModule;
+
+      const opt = {
+        margin: [6, 8, 6, 8],
+        filename: `FabriCare_Report_${orderNum}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          scrollY: 0
+        },
+        jsPDF: {
+          unit: 'mm',
+          format: 'a4',
+          orientation: 'portrait'
+        }
+      };
+
+      await html2pdf().set(opt).from(element).save();
+    } catch (err) {
+      console.error('PDF download notice, running print fallback:', err);
+      handlePrint();
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
+  // Status badge renderer for Report Card Header matching Invoice Paid badge style
+  const renderModalStatusBadge = (status) => {
+    const st = (status || '').toUpperCase();
+    if (st.includes('RESCHEDULED')) {
+      return (
+        <span className="paid-pill-badge resched-pill">
+          <Check size={11} strokeWidth={3} />
+          <span>Rescheduled</span>
+        </span>
+      );
+    }
+    if (st.includes('RESOLVED')) {
+      return (
+        <span className="paid-pill-badge resolved-pill">
+          <Check size={11} strokeWidth={3} />
+          <span>Resolved</span>
+        </span>
+      );
+    }
+    if (st.includes('REVIEW')) {
+      return (
+        <span className="paid-pill-badge review-pill">
+          <Clock size={11} />
+          <span>Under Review</span>
+        </span>
+      );
+    }
+    return (
+      <span className="paid-pill-badge pending-pill">
+        <Clock size={11} />
+        <span>Pending</span>
+      </span>
+    );
+  };
+
+  // Fetch reports from backend API & local cache
   const fetchReports = async (isManualRefresh = false) => {
-    if (isManualRefresh) setRefreshing(true);
-    else setLoading(true);
+    if (isManualRefresh) {
+      setRefreshing(true);
+      setRefreshSuccess(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
+    const startTime = Date.now();
+
     try {
-      const params = {};
-      if (searchQuery.trim()) {
-        params.search = searchQuery.trim();
+      let backendList = null;
+      try {
+        const res = await complaintsApi.getReports({});
+        const data = res.data;
+        if (data && data.results && Array.isArray(data.results) && data.results.length > 0) {
+          backendList = data.results;
+        } else if (Array.isArray(data) && data.length > 0) {
+          backendList = data;
+        }
+      } catch (err) {
+        console.warn('Backend complaints fetch notice (falling back to synchronized storage):', err);
       }
 
-      const res = await complaintsApi.getReports(params);
-      const data = res.data;
+      const synced = syncReportsData(backendList);
+      setReports(synced);
 
-      if (data && data.results && data.results.length > 0) {
-        setReports(data.results);
-      } else if (Array.isArray(data) && data.length > 0) {
-        setReports(data);
-      } else {
-        // Fallback to default reference items if API returns empty
-        setReports(DEFAULT_REPORTS);
+      if (isManualRefresh) {
+        const elapsed = Date.now() - startTime;
+        if (elapsed < 450) {
+          await new Promise(r => setTimeout(r, 450 - elapsed));
+        }
+        setRefreshSuccess(true);
+        setTimeout(() => setRefreshSuccess(false), 2000);
       }
     } catch (err) {
-      console.error('Error fetching reports from backend:', err);
-      // Fallback on error to ensure user sees reference reports
-      setReports(DEFAULT_REPORTS);
+      console.error('Error fetching reports:', err);
+      const synced = syncReportsData(null);
+      setReports(synced);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -164,6 +418,16 @@ export const CustomerReports = () => {
 
   useEffect(() => {
     fetchReports();
+
+    // Listen for storage changes from admin portal or delivery portal
+    const handleStorageChange = (e) => {
+      if (e.key === 'fabricare_admin_complaints' || e.key === 'fabricare_customer_reports') {
+        const synced = syncReportsData(null);
+        setReports(synced);
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   // Filtered reports in memory for instant typing feedback
@@ -239,20 +503,9 @@ export const CustomerReports = () => {
 
   return (
     <div className="reports-portal-page animate-fade-in">
-      {/* 1. Breadcrumbs and Page Title Header matching Customer Portal layout */}
+      {/* 1. Page Title Header matching Customer Portal layout */}
       <div className="reports-header-row mb-6 no-print">
         <div className="header-breadcrumbs-col">
-          <div className="breadcrumbs-nav">
-            <span
-              onClick={() => navigateTo('home')}
-              className="breadcrumb-link"
-            >
-              Home
-            </span>
-            <span className="breadcrumb-slash">&gt;</span>
-            <span className="breadcrumb-active">Reports</span>
-          </div>
-
           <h1 className="reports-page-title">Reports</h1>
           <p className="reports-page-subtitle">
             View delivery and complaint reports for your laundry orders.
@@ -281,13 +534,13 @@ export const CustomerReports = () => {
               </span>
               <button
                 type="button"
-                className={`refresh-reports-btn ${refreshing ? 'loading' : ''}`}
+                className={`refresh-reports-btn ${refreshing ? 'loading' : ''} ${refreshSuccess ? 'success' : ''}`}
                 onClick={() => fetchReports(true)}
                 disabled={refreshing}
                 title="Refresh report records"
               >
                 <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-                <span>Refresh</span>
+                <span>{refreshing ? 'Refreshing...' : refreshSuccess ? 'Refreshed!' : 'Refresh'}</span>
               </button>
             </div>
 
@@ -413,10 +666,7 @@ export const CustomerReports = () => {
                         <button
                           type="button"
                           className="btn-view-report-action"
-                          onClick={() => {
-                            setSelectedReport(report);
-                            setIsModalOpen(true);
-                          }}
+                          onClick={() => handleViewReportClick(report)}
                         >
                           <FileText size={14} className="btn-doc-icon" />
                           <span>View Report</span>
@@ -431,135 +681,228 @@ export const CustomerReports = () => {
         </div>
       </div>
 
-      {/* 4. VIEW REPORT DETAILS MODAL */}
-      {isModalOpen && selectedReport && (
-        <div className="fc-modal-overlay">
-          <div className="fc-modal-dialog" ref={modalRef}>
-            {/* Modal Header */}
-            <div className="fc-modal-header">
-              <div className="fc-modal-header-left">
-                <div className="fc-modal-icon-wrap">
-                  <FileText size={20} className="text-teal" />
-                </div>
-                <div>
-                  <h3 className="fc-modal-title">Delivery Report Details</h3>
-                  <p className="fc-modal-sub">
-                    {selectedReport.order_id || selectedReport.order_id_display || `#FC${selectedReport.id}`}
-                  </p>
-                </div>
+      {/* 4. VIEW REPORT DETAILS MODAL (Matching exact Invoice View Design & Blurred Background Behavior) */}
+      {isModalOpen && selectedReport && typeof document !== 'undefined' && createPortal(
+        <div className="invoice-modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="invoice-modal-container" onClick={(e) => e.stopPropagation()}>
+            {/* Top Navigation Bar with Actions */}
+            <div className="invoice-modal-top-bar no-print">
+              <div className="modal-header-title-wrap">
+                <FileText size={18} className="text-teal" />
+                <span className="modal-header-title">
+                  Official Delivery Report &bull; {selectedReport.order_id_display || selectedReport.order_id || `#FC${selectedReport.id}`}
+                </span>
               </div>
-              <button
-                type="button"
-                className="fc-modal-close-btn"
-                onClick={() => setIsModalOpen(false)}
-                title="Close modal"
-              >
-                <X size={18} />
-              </button>
+              <div className="invoice-modal-actions">
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  className="modal-action-pill btn-download-pdf-pill"
+                  disabled={isDownloadingPdf}
+                  title="Download Official Report PDF"
+                >
+                  <Download size={14} className={isDownloadingPdf ? 'animate-bounce' : ''} />
+                  <span>{isDownloadingPdf ? 'Downloading PDF...' : 'Download PDF'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="modal-action-pill btn-print-pill"
+                  title="Print Official Report"
+                >
+                  <Printer size={14} />
+                  <span>Print</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="modal-close-circle-btn"
+                  title="Close Report"
+                  aria-label="Close Report"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
-            {/* Modal Body */}
-            <div className="fc-modal-body">
-              {/* Order & Status Card */}
-              <div className="fc-modal-meta-grid">
-                <div className="fc-modal-meta-item">
-                  <span className="fc-meta-label">Order ID</span>
-                  <span className="fc-meta-val-bold">
-                    {selectedReport.order_id || selectedReport.order_id_display || `#FC${selectedReport.id}`}
-                  </span>
-                </div>
-                <div className="fc-modal-meta-item">
-                  <span className="fc-meta-label">Current Status</span>
-                  <div>{renderStatusBadge(selectedReport.status)}</div>
-                </div>
-                <div className="fc-modal-meta-item">
-                  <span className="fc-meta-label">Customer Name</span>
-                  <span className="fc-meta-val">
-                    {selectedReport.customer_name || displayName}
-                  </span>
-                </div>
-                <div className="fc-modal-meta-item">
-                  <span className="fc-meta-label">Customer Phone</span>
-                  <span className="fc-meta-val">
-                    {selectedReport.customer_phone || '+91 98765 43210'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Delivery Failure Reason Card */}
-              <div className="fc-modal-reason-box">
-                <div className="fc-reason-icon-col">
-                  <AlertTriangle size={18} className="text-amber-500" />
-                </div>
-                <div>
-                  <span className="fc-reason-box-label">Delivery Failure Reason</span>
-                  <p className="fc-reason-box-val">
-                    {selectedReport.failure_reason || 'Customer Unavailable'}
-                  </p>
-                  <p className="fc-reason-box-sub">
-                    Reported by {selectedReport.reported_by_name || 'Delivery Executive'} on{' '}
-                    {selectedReport.formatted_report_date || selectedReport.report_date_only || '16 Oct 2026'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Updated Rescheduled Delivery Schedule */}
-              <div className="fc-modal-sched-card">
-                <div className="fc-sched-card-head">
-                  <Calendar size={16} className="text-teal" />
-                  <span className="fc-sched-card-title">Rescheduled Delivery Schedule</span>
-                </div>
-
-                {selectedReport.rescheduled_date || selectedReport.new_delivery_date_formatted ? (
-                  <div className="fc-sched-card-body">
-                    <div className="fc-sched-row">
-                      <div className="fc-sched-col">
-                        <span className="fc-sched-col-lbl">New Delivery Date</span>
-                        <span className="fc-sched-col-val">
-                          {selectedReport.new_delivery_date_formatted || selectedReport.rescheduled_date}
-                        </span>
-                      </div>
-                      <div className="fc-sched-col">
-                        <span className="fc-sched-col-lbl">New Time Slot</span>
-                        <span className="fc-sched-col-val">
-                          {selectedReport.rescheduled_time_slot || '10:00 AM – 12:00 PM'}
-                        </span>
-                      </div>
+            {/* Scrollable Content Container */}
+            <div 
+              ref={modalScrollRef}
+              key={selectedReport.id || selectedReport.order_id}
+              className="invoice-modal-content-scroll"
+            >
+              <div id="delivery-report-document-card" className="content-card tax-invoice-document-card">
+                {/* Brand Logo & Report Header */}
+                <div className="invoice-doc-header">
+                  <div className="brand-logo-stack">
+                    <div className="brand-circle-logo">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+                        <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+                      </svg>
                     </div>
-
-                    <div className="fc-sched-notice-banner">
-                      <Info size={16} className="fc-notice-icon" />
-                      <p className="fc-notice-text">
-                        Your delivery has been rescheduled by the admin. We will deliver your order on the new date and time.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="fc-pending-resched-box">
-                    <Clock size={18} className="text-amber-500" />
                     <div>
-                      <p className="fc-pending-title">Reschedule Pending</p>
-                      <p className="fc-pending-desc">
-                        Our support team is reviewing the delivery failure report and will assign a new delivery slot shortly.
-                      </p>
+                      <h2 className="brand-name">FabriCare</h2>
+                      <span className="brand-sub">Laundry &amp; Dry Cleaning Services</span>
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
 
-            {/* Modal Footer */}
-            <div className="fc-modal-footer">
-              <button
-                type="button"
-                className="fc-modal-done-btn"
-                onClick={() => setIsModalOpen(false)}
-              >
-                Close
-              </button>
+                  <div className="invoice-tax-meta text-right">
+                    <h3 className="tax-invoice-heading">DELIVERY REPORT</h3>
+                    <div className="tax-order-number">
+                      {selectedReport.order_id_display || selectedReport.order_id || `#FC${selectedReport.id}`}
+                    </div>
+                    <div className="invoice-paid-badge-wrap">
+                      {renderModalStatusBadge(selectedReport.status)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bill To & Report Details Grid matching exact Invoice layout */}
+                <div className="bill-to-meta-grid">
+                  {/* Left Column: Customer Details */}
+                  <div className="bill-to-section">
+                    <div className="bill-to-title-row">
+                      <User size={16} className="text-teal" />
+                      <span className="bill-to-title">Bill To (Customer Details)</span>
+                    </div>
+                    <div className="bill-customer-info-grid">
+                      <div className="bill-info-cell">
+                        <span className="cell-heading-label">Customer Name</span>
+                        <span className="cell-data-value font-bold text-navy">
+                          {selectedReport.customer_name || displayName}
+                        </span>
+                      </div>
+                      <div className="bill-info-cell">
+                        <span className="cell-heading-label">Contact Details</span>
+                        <span className="cell-data-value">
+                          {selectedReport.customer_phone || '+91 98765 43210'} &bull; {selectedReport.customer_email || 'rohan.mehta@gmail.com'}
+                        </span>
+                      </div>
+                      <div className="bill-info-cell">
+                        <span className="cell-heading-label">Service &amp; Delivery Address</span>
+                        <span className="cell-data-value">
+                          {selectedReport.delivery_address || selectedReport.order_details?.delivery_address || 'Flat 402, Sunshine Residency, Indiranagar, Bengaluru - 560038, Madhya Pradesh - 456001'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Report & Order Details */}
+                  <div className="invoice-meta-section">
+                    <div className="invoice-meta-title-row">
+                      <Receipt size={16} className="text-teal" />
+                      <span className="invoice-meta-title">Report &amp; Delivery Details</span>
+                    </div>
+
+                    <div className="invoice-details-grid">
+                      {/* Row 1, Col 1: Report Date */}
+                      <div className="meta-field-cell">
+                        <div className="meta-label-wrap">
+                          <FileText size={13} className="text-teal" />
+                          <span>Report Date</span>
+                        </div>
+                        <div className="meta-val-text">
+                          {selectedReport.formatted_report_date || selectedReport.report_date_only || '16 Oct 2026, 11:30 AM'}
+                        </div>
+                      </div>
+
+                      {/* Row 1, Col 2: Order ID */}
+                      <div className="meta-field-cell">
+                        <div className="meta-label-wrap">
+                          <Receipt size={13} className="text-teal" />
+                          <span>Order ID</span>
+                        </div>
+                        <div className="meta-val-text font-mono font-bold">
+                          {selectedReport.order_id_display || selectedReport.order_id || `#FC${selectedReport.id}`}
+                        </div>
+                      </div>
+
+                      {/* Row 2, Col 1: Failure Reason */}
+                      <div className="meta-field-cell">
+                        <div className="meta-label-wrap">
+                          <AlertTriangle size={13} className="text-amber-500" />
+                          <span>Failure Reason</span>
+                        </div>
+                        <div className="meta-val-text font-semibold text-amber-700">
+                          {selectedReport.failure_reason || 'Customer Unavailable'}
+                        </div>
+                      </div>
+
+                      {/* Row 2, Col 2: Reported By */}
+                      <div className="meta-field-cell">
+                        <div className="meta-label-wrap">
+                          <User size={13} className="text-teal" />
+                          <span>Reported By</span>
+                        </div>
+                        <div className="meta-val-text">
+                          {selectedReport.reported_by_name || 'Rajesh Kumar (Delivery Executive)'}
+                        </div>
+                      </div>
+
+                      {/* Row 3, Col 1: Rescheduled Date */}
+                      <div className="meta-field-cell">
+                        <div className="meta-label-wrap">
+                          <Calendar size={13} className="text-teal" />
+                          <span>Rescheduled Date</span>
+                        </div>
+                        <div className="meta-val-text font-semibold">
+                          {selectedReport.new_delivery_date_formatted || selectedReport.rescheduled_date || '—'}
+                        </div>
+                      </div>
+
+                      {/* Row 3, Col 2: Rescheduled Slot */}
+                      <div className="meta-field-cell">
+                        <div className="meta-label-wrap">
+                          <Clock size={13} className="text-teal" />
+                          <span>Rescheduled Slot</span>
+                        </div>
+                        <div className="meta-val-text">
+                          {selectedReport.rescheduled_time_slot || '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Delivery Notes / Status Callout */}
+                <div className="report-notes-callout">
+                  <div className="notes-icon-col">
+                    <Info size={16} className="text-teal" />
+                  </div>
+                  <div className="notes-content-col">
+                    <span className="notes-title">Delivery Status &amp; Action Notes</span>
+                    <p className="notes-desc">
+                      {selectedReport.admin_reply || selectedReport.notes || (
+                        selectedReport.status === 'RESCHEDULED'
+                          ? `Delivery was successfully rescheduled for ${selectedReport.new_delivery_date_formatted || selectedReport.rescheduled_date || 'the requested slot'}. Our delivery executive will arrive during ${selectedReport.rescheduled_time_slot || 'your scheduled delivery window'}.`
+                          : 'Our operations team has recorded this delivery report and is reviewing order status for immediate resolution.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Thank You Mint Banner matching invoice */}
+                <div className="thank-you-mint-banner">
+                  <div className="banner-left-msg">
+                    <div className="banner-shirt-icon">
+                      <Shirt size={22} />
+                    </div>
+                    <div>
+                      <h4 className="banner-title">Thank you for choosing FabriCare!</h4>
+                      <p className="banner-desc">Your clothes are in good hands. We hope you loved our service.</p>
+                    </div>
+                  </div>
+                  <div className="banner-script-text">
+                    <span>Fresh Clothes,</span>
+                    <span className="script-happier">Happier You &hearts;</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Component Scoped CSS Matching Image 2 and Image 1 Design System */}
@@ -716,15 +1059,27 @@ export const CustomerReports = () => {
           transition: all 0.2s ease;
         }
 
-        .refresh-reports-btn:hover {
+        .refresh-reports-btn:hover:not(:disabled) {
           background: #F8FAFC;
           color: #0D7A75;
           border-color: #0D7A75;
         }
 
+        .refresh-reports-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.75;
+        }
+
         .refresh-reports-btn.loading {
           border-color: #0D7A75;
           background: #F4FBFA;
+          color: #0D7A75;
+        }
+
+        .refresh-reports-btn.success {
+          border-color: #16A34A;
+          background: #F0FDF4;
+          color: #16A34A;
         }
 
         /* Search Input */
@@ -1010,297 +1365,544 @@ export const CustomerReports = () => {
           color: #ffffff;
         }
 
-        /* 4. Modal Styles */
-        .fc-modal-overlay {
+        /* 4. Modal Styles with visible blurred background & scrollable content matching Invoice View */
+        .invoice-modal-overlay {
           position: fixed;
           top: 0;
           left: 0;
           right: 0;
-          bottom: 0;
-          background: rgba(15, 23, 42, 0.55);
-          backdrop-filter: blur(4px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 100;
-          padding: 20px;
-        }
-
-        .fc-modal-dialog {
-          background: #ffffff;
-          border-radius: 18px;
           width: 100%;
-          max-width: 540px;
-          box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.2);
-          overflow: hidden;
-          animation: modalPop 0.2s ease-out;
+          height: 100%;
+          background: rgba(15, 23, 42, 0.65);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          z-index: 999999 !important;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: flex-start;
+          padding: 24px 16px;
+          overflow: hidden !important;
+          overscroll-behavior: contain;
+          box-sizing: border-box;
         }
 
-        @keyframes modalPop {
-          from {
-            opacity: 0;
-            transform: scale(0.96) translateY(8px);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
+        .invoice-modal-container {
+          background: #ffffff;
+          border-radius: 20px;
+          max-width: 900px;
+          width: 100%;
+          height: calc(100vh - 48px);
+          max-height: calc(100vh - 48px);
+          overflow: hidden !important;
+          box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.08);
+          display: flex;
+          flex-direction: column;
+          margin: 0 auto;
+          position: relative;
+          box-sizing: border-box;
+          animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        .fc-modal-header {
-          padding: 20px 24px;
+        .invoice-modal-top-bar {
+          flex: 0 0 auto;
+          min-height: 62px;
+          background: #ffffff;
+          border-bottom: 1.5px solid #E2E8F0;
+          padding: 12px 24px;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          border-bottom: 1.5px solid #F1F5F9;
+          gap: 16px;
+          z-index: 20;
+          position: relative;
+          box-sizing: border-box;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
         }
 
-        .fc-modal-header-left {
+        .modal-header-title-wrap {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 8px;
         }
 
-        .fc-modal-icon-wrap {
-          width: 40px;
-          height: 40px;
-          border-radius: 10px;
-          background: #E8FAF6;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .fc-modal-title {
-          font-size: 1.05rem;
-          font-weight: 700;
+        .modal-header-title {
+          font-size: 0.9375rem;
+          font-weight: 800;
           color: #0F172A;
-          margin: 0;
+          letter-spacing: -0.01em;
         }
 
-        .fc-modal-sub {
+        .invoice-modal-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .modal-action-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 7px 15px;
+          border-radius: 999px;
           font-size: 0.8125rem;
-          color: #64748B;
-          margin: 2px 0 0 0;
-          font-weight: 600;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          white-space: nowrap;
+          text-decoration: none;
+          border: 1.5px solid #0D7A75;
+          background: #ffffff;
+          color: #0D7A75;
         }
 
-        .fc-modal-close-btn {
-          width: 32px;
-          height: 32px;
+        .modal-action-pill:hover {
+          background: #0D7A75;
+          color: #ffffff;
+          transform: translateY(-1px);
+        }
+
+        .modal-action-pill:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .modal-close-circle-btn {
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
-          border: 1px solid #E2E8F0;
-          background: #ffffff;
+          border: 1.5px solid #E2E8F0;
+          background: #F8FAFC;
           color: #64748B;
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
           transition: all 0.15s ease;
+          flex-shrink: 0;
         }
 
-        .fc-modal-close-btn:hover {
-          background: #F1F5F9;
+        .modal-close-circle-btn:hover {
+          background: #E2E8F0;
           color: #0F172A;
+          border-color: #CBD5E1;
         }
 
-        .fc-modal-body {
-          padding: 20px 24px;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          max-height: 70vh;
-          overflow-y: auto;
+        .invoice-modal-content-scroll {
+          flex: 1 1 0% !important;
+          min-height: 0 !important;
+          overflow-y: auto !important;
+          overflow-x: hidden;
+          overscroll-behavior: contain;
+          padding: 24px 28px 48px;
+          scrollbar-width: thin;
+          scrollbar-color: #CBD5E1 #F8FAFC;
+          box-sizing: border-box;
+          scroll-behavior: auto !important;
         }
 
-        .fc-modal-meta-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 12px;
+        .invoice-modal-content-scroll::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .invoice-modal-content-scroll::-webkit-scrollbar-track {
           background: #F8FAFC;
-          border-radius: 12px;
-          padding: 14px 16px;
-          border: 1px solid #E2E8F0;
         }
 
-        .fc-modal-meta-item {
+        .invoice-modal-content-scroll::-webkit-scrollbar-thumb {
+          background-color: #CBD5E1;
+          border-radius: 999px;
+        }
+
+        .invoice-modal-content-scroll::-webkit-scrollbar-thumb:hover {
+          background-color: #94A3B8;
+        }
+
+        /* Document Card Matching Invoice View */
+        .tax-invoice-document-card {
+          background: #ffffff;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 20px;
+          padding: 34px 38px;
+          max-width: 820px;
+          margin: 0 auto;
+        }
+
+        .invoice-doc-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          padding-bottom: 24px;
+          border-bottom: 1.5px solid #F1F5F9;
+        }
+
+        .brand-logo-stack {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .brand-circle-logo {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: #0D7A75;
+          color: #ffffff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .brand-name {
+          font-size: 1.5rem;
+          font-weight: 800;
+          color: #0D7A75;
+          letter-spacing: -0.02em;
+          line-height: 1.1;
+          margin: 0;
+        }
+
+        .brand-sub {
+          font-size: 0.8125rem;
+          color: #64748B;
+          font-weight: 500;
+        }
+
+        .invoice-tax-meta {
+          text-align: right;
+        }
+
+        .tax-invoice-heading {
+          font-size: 0.9375rem;
+          font-weight: 800;
+          color: #0D7A75;
+          letter-spacing: 0.05em;
+          margin: 0 0 2px 0;
+        }
+
+        .tax-order-number {
+          font-size: 1.5rem;
+          font-weight: 900;
+          color: #0F172A;
+          letter-spacing: -0.02em;
+          margin-bottom: 6px;
+        }
+
+        .invoice-paid-badge-wrap {
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .paid-pill-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 12px;
+          border-radius: 999px;
+          font-size: 0.8125rem;
+          font-weight: 700;
+        }
+
+        .paid-pill-badge.resched-pill {
+          background: #F3E8FF;
+          color: #7E22CE;
+          border: 1px solid #E9D5FF;
+        }
+
+        .paid-pill-badge.resolved-pill {
+          background: #E6FBF2;
+          color: #059669;
+          border: 1px solid #A7F3D0;
+        }
+
+        .paid-pill-badge.review-pill {
+          background: #E0F2FE;
+          color: #0369A1;
+          border: 1px solid #BAE6FD;
+        }
+
+        .paid-pill-badge.pending-pill {
+          background: #FEF3C7;
+          color: #B45309;
+          border: 1px solid #FDE68A;
+        }
+
+        /* Bill To & Meta Data Section */
+        .bill-to-meta-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+          margin-top: 24px;
+          margin-bottom: 24px;
+        }
+
+        .bill-to-section, .invoice-meta-section {
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 14px;
+          padding: 18px 20px;
+        }
+
+        .bill-to-title-row, .invoice-meta-title-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 14px;
+        }
+
+        .bill-to-title, .invoice-meta-title {
+          font-size: 0.8125rem;
+          font-weight: 700;
+          color: #0F172A;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .bill-customer-info-grid {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 10px;
         }
 
-        .fc-meta-label {
-          font-size: 0.72rem;
+        .bill-info-cell {
+          background: #ffffff;
+          border: 1px solid #E2E8F0;
+          border-radius: 10px;
+          padding: 10px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+
+        .cell-heading-label {
+          font-size: 0.6875rem;
           font-weight: 700;
           color: #8FA0B5;
           text-transform: uppercase;
           letter-spacing: 0.04em;
         }
 
-        .fc-meta-val-bold {
+        .cell-data-value {
           font-size: 0.875rem;
-          font-weight: 700;
-          color: #0F172A;
-        }
-
-        .fc-meta-val {
-          font-size: 0.84rem;
-          color: #334155;
-          font-weight: 500;
-        }
-
-        .fc-modal-reason-box {
-          display: flex;
-          gap: 12px;
-          padding: 14px 16px;
-          border-radius: 12px;
-          background: #FFFBEB;
-          border: 1px solid #FDE68A;
-        }
-
-        .fc-reason-icon-col {
-          padding-top: 2px;
-        }
-
-        .fc-reason-box-label {
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: #92400E;
-          text-transform: uppercase;
-          letter-spacing: 0.03em;
-        }
-
-        .fc-reason-box-val {
-          font-size: 0.9rem;
-          font-weight: 700;
-          color: #78350F;
-          margin: 2px 0 4px 0;
-        }
-
-        .fc-reason-box-sub {
-          font-size: 0.75rem;
-          color: #B45309;
-          margin: 0;
-        }
-
-        .fc-modal-sched-card {
-          background: #FFFFFF;
-          border: 1.5px solid #E2E8F0;
-          border-radius: 12px;
-          overflow: hidden;
-        }
-
-        .fc-sched-card-head {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          background: #F8FAFC;
-          padding: 10px 16px;
-          border-bottom: 1px solid #E2E8F0;
-        }
-
-        .fc-sched-card-title {
-          font-size: 0.8125rem;
-          font-weight: 700;
-          color: #0F172A;
-        }
-
-        .fc-sched-card-body {
-          padding: 14px 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .fc-sched-row {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 12px;
-        }
-
-        .fc-sched-col {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-
-        .fc-sched-col-lbl {
-          font-size: 0.72rem;
-          font-weight: 700;
-          color: #8FA0B5;
-          text-transform: uppercase;
-        }
-
-        .fc-sched-col-val {
-          font-size: 0.875rem;
-          font-weight: 700;
-          color: #0D7A75;
-        }
-
-        .fc-sched-notice-banner {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          background: #F0FDF4;
-          border: 1px solid #DCFCE7;
-          border-radius: 8px;
-          padding: 10px 12px;
-        }
-
-        .fc-notice-icon {
-          color: #16A34A;
-          flex-shrink: 0;
-        }
-
-        .fc-notice-text {
-          font-size: 0.78rem;
-          color: #166534;
-          margin: 0;
+          font-weight: 600;
+          color: #1E293B;
           line-height: 1.35;
         }
 
-        .fc-pending-resched-box {
+        .text-navy {
+          color: #0F172A !important;
+        }
+
+        .invoice-details-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+
+        .meta-field-cell {
+          background: #ffffff;
+          border: 1px solid #E2E8F0;
+          border-radius: 10px;
+          padding: 10px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .meta-label-wrap {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 16px;
+          gap: 5px;
+          font-size: 0.6875rem;
+          font-weight: 700;
+          color: #8FA0B5;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
-        .fc-pending-title {
+        .meta-val-text {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #0F172A;
+          line-height: 1.3;
+        }
+
+        /* Report Notes Callout */
+        .report-notes-callout {
+          background: #F0FDFA;
+          border: 1.5px solid #CCFBF1;
+          border-radius: 14px;
+          padding: 16px 20px;
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 24px;
+        }
+
+        .notes-icon-col {
+          padding-top: 2px;
+          flex-shrink: 0;
+        }
+
+        .notes-title {
+          display: block;
           font-size: 0.875rem;
           font-weight: 700;
-          color: #92400E;
-          margin: 0 0 2px 0;
+          color: #0D7A75;
+          margin-bottom: 4px;
         }
 
-        .fc-pending-desc {
-          font-size: 0.78rem;
-          color: #64748B;
+        .notes-desc {
+          font-size: 0.8125rem;
+          color: #334155;
+          line-height: 1.45;
           margin: 0;
         }
 
-        .fc-modal-footer {
-          padding: 14px 24px;
+        /* Mint Thank You Banner matching invoice */
+        .thank-you-mint-banner {
+          background: #E8FAF6;
+          border-radius: 14px;
+          padding: 16px 20px;
           display: flex;
-          justify-content: flex-end;
-          border-top: 1.5px solid #F1F5F9;
-          background: #FAFCFD;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 14px;
         }
 
-        .fc-modal-done-btn {
-          padding: 8px 22px;
-          border-radius: 999px;
-          background: #0D7A75;
-          color: #ffffff;
-          border: none;
-          font-size: 0.8125rem;
+        .banner-left-msg {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .banner-shirt-icon {
+          width: 42px;
+          height: 42px;
+          border-radius: 12px;
+          background: #CCFBF1;
+          color: #0D7A75;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .banner-title {
+          font-size: 0.9375rem;
           font-weight: 700;
-          cursor: pointer;
-          transition: background 0.15s ease;
+          color: #0D7A75;
+          margin: 0;
         }
 
-        .fc-modal-done-btn:hover {
-          background: #0A605C;
+        .banner-desc {
+          font-size: 0.8125rem;
+          color: #64748B;
+          margin: 2px 0 0;
+        }
+
+        .banner-script-text {
+          display: flex;
+          flex-direction: column;
+          text-align: right;
+          color: #0D7A75;
+          font-weight: 700;
+          font-size: 0.9375rem;
+          line-height: 1.25;
+        }
+
+        .script-happier {
+          font-size: 0.875rem;
+          font-weight: 800;
+        }
+
+        @keyframes modalFadeIn {
+          from {
+            opacity: 0;
+            transform: scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        @media (max-width: 768px) {
+          .invoice-modal-overlay {
+            padding: 12px 8px;
+          }
+          .invoice-modal-container {
+            height: calc(100vh - 24px);
+            max-height: calc(100vh - 24px);
+            border-radius: 16px;
+          }
+          .invoice-modal-top-bar {
+            padding: 10px 14px;
+          }
+          .invoice-modal-content-scroll {
+            padding: 16px 14px 32px;
+          }
+          .tax-invoice-document-card {
+            padding: 20px 16px;
+            border-radius: 14px;
+          }
+          .bill-to-meta-grid {
+            grid-template-columns: 1fr;
+          }
+          .invoice-details-grid {
+            grid-template-columns: 1fr;
+          }
+          .thank-you-mint-banner {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .banner-script-text {
+            text-align: left;
+          }
+        }
+
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 8mm 10mm;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body > *:not(.invoice-modal-overlay),
+          header,
+          footer,
+          nav,
+          .no-print,
+          .invoice-modal-top-bar,
+          button {
+            display: none !important;
+          }
+          .invoice-modal-overlay,
+          .invoice-modal-container,
+          .invoice-modal-content-scroll {
+            position: static !important;
+            display: block !important;
+            width: 100% !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            background: transparent !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
         }
       `}</style>
     </div>

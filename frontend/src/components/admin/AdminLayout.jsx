@@ -910,6 +910,9 @@ export const AdminLayout = ({ children }) => {
           width: 100vw !important;
           height: 100vh !important;
           height: 100dvh !important;
+          background: rgba(15, 23, 42, 0.45) !important;
+          backdrop-filter: blur(3px) !important;
+          -webkit-backdrop-filter: blur(3px) !important;
           z-index: 99999 !important;
           display: flex !important;
           align-items: center !important;
@@ -927,6 +930,9 @@ export const AdminLayout = ({ children }) => {
           width: 100vw !important;
           height: 100vh !important;
           height: 100dvh !important;
+          background: rgba(15, 23, 42, 0.45) !important;
+          backdrop-filter: blur(3px) !important;
+          -webkit-backdrop-filter: blur(3px) !important;
           z-index: 99999 !important;
           display: flex !important;
           justify-content: flex-end !important;
@@ -944,6 +950,9 @@ export const AdminLayout = ({ children }) => {
         .details-modal-card,
         .notif-modal-card,
         .order-details-modal {
+          background: #FFFFFF !important;
+          border-radius: 16px !important;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
           max-height: calc(100vh - 40px) !important;
           max-height: calc(100dvh - 40px) !important;
           display: flex !important;
@@ -954,10 +963,15 @@ export const AdminLayout = ({ children }) => {
           position: relative !important;
         }
 
-        .drawer-panel {
+        .drawer-panel,
+        .support-drawer,
+        .reschedule-panel-drawer {
+          background: #FFFFFF !important;
+          box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12) !important;
           height: 100vh !important;
           height: 100dvh !important;
           max-height: 100vh !important;
+          max-height: 100dvh !important;
           display: flex !important;
           flex-direction: column !important;
           overflow: hidden !important;
@@ -966,6 +980,7 @@ export const AdminLayout = ({ children }) => {
 
         .modal-body-form,
         .modal-body,
+        .modal-body-scrollable,
         .add-service-form,
         .manage-modal-body,
         .manage-services-list-body,
@@ -975,7 +990,8 @@ export const AdminLayout = ({ children }) => {
         .ac-modal-body,
         .details-modal-body,
         .notif-modal-form,
-        .drawer-body {
+        .drawer-body,
+        .reschedule-panel-body {
           overflow-y: auto !important;
           overscroll-behavior: contain !important;
           flex: 1 1 auto !important;
@@ -991,11 +1007,13 @@ export const AdminLayout = ({ children }) => {
         .ac-modal-header,
         .details-modal-header,
         .notif-modal-header,
-        .drawer-header {
+        .drawer-header,
+        .reschedule-panel-header {
           flex-shrink: 0 !important;
         }
 
         .modal-actions-bar,
+        .modal-box-footer,
         .modal-footer-actions,
         .add-service-footer,
         .add-service-actions,
@@ -1003,7 +1021,8 @@ export const AdminLayout = ({ children }) => {
         .assign-order-footer,
         .ac-modal-footer,
         .ac-form-footer,
-        .drawer-footer {
+        .drawer-footer,
+        .reschedule-form-actions {
           flex-shrink: 0 !important;
         }
 
