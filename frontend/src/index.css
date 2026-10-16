@@ -82,16 +82,39 @@ html {
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  touch-action: manipulation;
+  min-height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
 }
 
 body {
+  min-height: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   line-height: 1.5;
-  overflow-x: clip;
-  touch-action: manipulation;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  background-color: #FAFCFC;
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  margin: 0;
+  padding: 0;
 }
 
 a {
@@ -300,26 +323,72 @@ img {
    ============================================================ */
 .app-layout {
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+  margin: 0;
+  padding: 0;
+  flex: 1 0 auto;
 }
 .main-content {
-  flex: 1;
+  flex: 1 0 auto;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+.main-content > * {
+  margin-top: 0;
 }
 
-/* Full-screen portal container (delivery / laundry portals) */
+/* Full-screen & Customer Portal container */
 .portal-container {
-  min-height: 100vh;
+  flex: 1;
+  width: 100%;
   background: #F8FAFC;
   padding: 28px 32px;
   max-width: 1400px;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
   .portal-container {
     padding: 16px;
   }
+}
+
+/* Modal and Drawer Nested Scroll Containment */
+.modal-backdrop-overlay,
+.manage-modal-backdrop,
+.add-service-backdrop,
+.assign-order-modal-backdrop,
+.assign-order-backdrop,
+.ac-modal-backdrop,
+.modal-backdrop,
+.auth-modal-overlay,
+.drawer-overlay {
+  overscroll-behavior: contain !important;
+  touch-action: pan-y !important;
+}
+
+.modal-box-card,
+.manage-modal-card,
+.add-service-modal-card,
+.assign-order-modal-card,
+.ac-modal-container,
+.modal-container,
+.auth-modal-content,
+.drawer-panel,
+.drawer-body,
+.ac-form-body,
+.manage-services-list-body {
+  overscroll-behavior: contain !important;
 }
 
 /* ============================================================
@@ -716,12 +785,12 @@ img {
    ANIMATIONS
    ============================================================ */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.92); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes spinAnim {
   to { transform: rotate(360deg); }
@@ -731,8 +800,8 @@ img {
   50% { opacity: 1; }
 }
 
-.animate-fade-in { animation: fadeIn 0.35s ease-out forwards; }
-.animate-scale-in { animation: scaleIn 0.25s ease-out forwards; }
+.animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
+.animate-scale-in { animation: scaleIn 0.2s ease-out forwards; }
 .animate-spin { animation: spinAnim 0.8s linear infinite; }
 .animate-pulse { animation: pulseGlow 2s ease-in-out infinite; }
 
@@ -741,4 +810,20 @@ img {
 
 /* Background opacity */
 .bg-black\/50 { background: rgba(0,0,0,.5); }
+
+/* Admin modal scroll lock - strictly scoped to admin main wrapper */
+.admin-main-wrapper.admin-scroll-locked {
+  overflow: hidden !important;
+}
+
+/* Admin Portal root isolation - guarantee zero window scrollbar appearance */
+html:has(.admin-root-layout),
+body:has(.admin-root-layout) {
+  overflow: hidden !important;
+  height: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
 

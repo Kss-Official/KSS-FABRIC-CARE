@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   X, 
@@ -116,7 +117,7 @@ export const CreateOrderDrawer = () => {
     }
   };
 
-  return (
+  return createPortal(
     <div className="drawer-backdrop animate-fade-in" onClick={() => setIsCreateOrderDrawerOpen(false)}>
       <div className="drawer-panel" onClick={(e) => e.stopPropagation()}>
         {/* Drawer Header */}
@@ -348,27 +349,33 @@ export const CreateOrderDrawer = () => {
         .drawer-backdrop {
           position: fixed;
           inset: 0;
+          width: 100%;
+          height: 100%;
           background: rgba(15, 23, 42, 0.5);
           backdrop-filter: blur(4px);
           z-index: 1000;
           display: flex;
           justify-content: flex-end;
+          overflow: hidden;
+          overscroll-behavior: contain;
         }
 
         .drawer-panel {
           width: 540px;
           max-width: 100%;
           height: 100vh;
+          height: 100dvh;
           background: #FFFFFF;
           display: flex;
           flex-direction: column;
           box-shadow: -10px 0 40px rgba(0,0,0,0.15);
           animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          overscroll-behavior: contain;
         }
 
         @keyframes slideInRight {
           from { transform: translateX(100%); }
-          to { transform: translateX(0); }
+          to { transform: none; }
         }
 
         .drawer-header {
@@ -861,6 +868,7 @@ export const CreateOrderDrawer = () => {
           padding: 10px 24px;
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };

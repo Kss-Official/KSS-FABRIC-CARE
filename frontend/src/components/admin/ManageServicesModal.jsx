@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   X, 
@@ -107,7 +108,7 @@ export const ManageServicesModal = () => {
     }
   };
 
-  return (
+  return createPortal(
     <div className="manage-modal-backdrop animate-fade-in" onClick={() => setIsManageServicesModalOpen(false)}>
       <div className="manage-modal-card" onClick={(e) => e.stopPropagation()}>
         {/* Modal Header */}
@@ -291,13 +292,19 @@ export const ManageServicesModal = () => {
         .manage-modal-backdrop {
           position: fixed;
           inset: 0;
+          width: 100vw;
+          height: 100vh;
+          height: 100dvh;
           background: rgba(15, 23, 42, 0.45);
           backdrop-filter: blur(4px);
-          z-index: 1050;
+          -webkit-backdrop-filter: blur(4px);
+          z-index: 99999;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
+          padding: 20px 16px;
+          overflow: hidden;
+          overscroll-behavior: none;
         }
 
         .manage-modal-card {
@@ -309,8 +316,12 @@ export const ManageServicesModal = () => {
           padding: 28px 32px 24px 32px;
           display: flex;
           flex-direction: column;
-          animation: modalFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-          max-height: 90vh;
+          animation: modalFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
+          overflow: hidden;
+          overscroll-behavior: contain;
+          position: relative;
         }
 
         @keyframes modalFadeIn {
@@ -320,7 +331,7 @@ export const ManageServicesModal = () => {
           }
           to {
             opacity: 1;
-            transform: scale(1) translateY(0);
+            transform: none;
           }
         }
 
@@ -516,6 +527,7 @@ export const ManageServicesModal = () => {
           gap: 10px;
           max-height: 380px;
           overflow-y: auto;
+          overscroll-behavior: contain;
           padding-right: 4px;
         }
 
@@ -761,6 +773,7 @@ export const ManageServicesModal = () => {
           background: #066761;
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -117,7 +117,7 @@ export const BookingProvider = ({ children }) => {
 
   // Booking Flow State
   const [currentStep, setCurrentStep] = useState(1);
-  const [selectedServices, setSelectedServices] = useState(['wash-fold', 'dry-cleaning']);
+  const [selectedServices, setSelectedServices] = useState([]);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [orderError, setOrderError] = useState(null);
 
@@ -135,6 +135,16 @@ export const BookingProvider = ({ children }) => {
     try {
       sessionStorage.setItem('fabricare_selected_clothing_items', JSON.stringify(selectedItems));
     } catch (e) {}
+
+    // Automatically synchronize selectedServices with active categories that have selected items
+    const activeCategoryIds = Array.from(
+      new Set(
+        Object.values(selectedItems)
+          .filter(it => it && it.quantity > 0)
+          .map(it => it.categoryId)
+      )
+    );
+    setSelectedServices(activeCategoryIds);
   }, [selectedItems]);
 
   const addItem = (item, categoryId, subcategoryId, qty = 1) => {
@@ -235,6 +245,10 @@ export const BookingProvider = ({ children }) => {
 
   const clearAllItems = () => {
     setSelectedItems({});
+    setSelectedServices([]);
+    try {
+      sessionStorage.removeItem('fabricare_selected_clothing_items');
+    } catch (e) {}
   };
 
   const selectedItemsList = Object.values(selectedItems);

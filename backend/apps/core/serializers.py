@@ -5,7 +5,8 @@ from rest_framework import serializers
 from .models import (
     ServiceCategory, Service, Order, OrderItem,
     PickupRecord, LaundryHandoverRecord, LaundryStageLog, DeliveryRecord,
-    Invoice, Notification, SupportTicket, ContentFAQ, ContentPolicy
+    Invoice, Notification, SupportTicket, ContentFAQ, ContentPolicy,
+    ComplaintReport
 )
 from apps.users.serializers import UserSerializer
 
@@ -316,11 +317,47 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 class SupportTicketSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    ticket_id_display = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    customer_email = serializers.SerializerMethodField()
+    formatted_created_at = serializers.SerializerMethodField()
+    formatted_admin_reply_at = serializers.SerializerMethodField()
 
     class Meta:
         model = SupportTicket
         fields = '__all__'
         read_only_fields = ('customer', 'created_at', 'updated_at')
+
+    def get_ticket_id_display(self, obj):
+        if obj.ticket_number:
+            return obj.ticket_number
+        return f"#SUP-{1040 + obj.id}"
+
+    def get_customer_name(self, obj):
+        if obj.customer_name:
+            return obj.customer_name
+        if obj.customer:
+            return obj.customer.full_name or obj.customer.username
+        return "Customer"
+
+    def get_customer_email(self, obj):
+        if obj.customer_email:
+            return obj.customer_email
+        if obj.customer:
+            return obj.customer.email
+        return ""
+
+    def get_formatted_created_at(self, obj):
+        if not obj.created_at:
+            return ""
+        return obj.created_at.strftime("%d %b %Y %I:%M %p")
+
+    def get_formatted_admin_reply_at(self, obj):
+        if not obj.admin_reply_at:
+            return ""
+        return obj.admin_reply_at.strftime("%d %b %Y %I:%M %p")
+
 
 
 class ContentFAQSerializer(serializers.ModelSerializer):
@@ -333,3 +370,107 @@ class ContentPolicySerializer(serializers.ModelSerializer):
     class Meta:
         model = ContentPolicy
         fields = '__all__'
+
+
+class ComplaintReportSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    order_id = serializers.SerializerMethodField()
+    order_details = serializers.SerializerMethodField()
+    formatted_report_date = serializers.SerializerMethodField()
+    report_date_only = serializers.SerializerMethodField()
+    formatted_reschedule_date = serializers.SerializerMethodField()
+    original_schedule = serializers.SerializerMethodField()
+    new_delivery_date_formatted = serializers.SerializerMethodField()
+    timeline = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ComplaintReport
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at')
+
+    def get_order_id(self, obj):
+        if obj.order_id_display:
+            return obj.order_id_display
+        if obj.order:
+            return obj.order.order_id
+        return f"#FC{obj.id}"
+
+    def get_order_details(self, obj):
+        if not obj.order:
+            return None
+        return {
+            'id': obj.order.id,
+            'order_id': obj.order.order_id,
+            'status': obj.order.status,
+            'delivery_address': obj.order.delivery_address or obj.order.pickup_address,
+            'delivery_date': str(obj.order.delivery_date) if obj.order.delivery_date else None,
+            'delivery_time_slot': obj.order.delivery_time_slot,
+            'total_amount': str(obj.order.total_amount),
+        }
+
+    def get_formatted_report_date(self, obj):
+        if not obj.report_date:
+            return ""
+        return obj.report_date.strftime("%d %b %Y, %I:%M %p")
+
+    def get_report_date_only(self, obj):
+        if not obj.report_date:
+            return ""
+        return obj.report_date.strftime("%d %b %Y")
+
+    def get_formatted_reschedule_date(self, obj):
+        if obj.rescheduled_date:
+            time_part = f" ({obj.rescheduled_time_slot})" if obj.rescheduled_time_slot else " (Rescheduled)"
+            return f"{obj.rescheduled_date.strftime('%d %b %Y')}{time_part}"
+        if obj.requested_reschedule_date:
+            return f"{obj.requested_reschedule_date.strftime('%d %b %Y')} (Requested)"
+        return "—"
+
+    def get_new_delivery_date_formatted(self, obj):
+        if obj.rescheduled_date:
+            return obj.rescheduled_date.strftime('%d %b %Y')
+        return None
+
+    def get_original_schedule(self, obj):
+        if obj.order and obj.order.pickup_date:
+            time_slot = obj.order.pickup_time_slot or "09:00 AM - 11:00 AM"
+            return f"{obj.order.pickup_date.strftime('%d %b %Y')}, {time_slot}"
+        if obj.report_date:
+            return f"{obj.report_date.strftime('%d %b %Y')}, 09:00 AM - 11:00 AM"
+        return "16 Oct 2025, 09:00 AM - 11:00 AM"
+
+    def get_timeline(self, obj):
+        events = []
+        if obj.report_date:
+            events.append({
+                'title': 'Complaint reported by delivery staff',
+                'description': f"Reason: {obj.failure_reason}",
+                'time': obj.report_date.strftime("%d %b %Y, %I:%M %p"),
+                'status': 'reported'
+            })
+            step2_time = obj.report_date + datetime.timedelta(minutes=46)
+            events.append({
+                'title': 'Reschedule requested by admin',
+                'description': 'Reschedule request queued for processing',
+                'time': step2_time.strftime("%d %b %Y, %I:%M %p"),
+                'status': 'review'
+            })
+        if obj.rescheduled_date:
+            step3_time = obj.updated_at if obj.updated_at else (obj.report_date + datetime.timedelta(days=1, hours=2) if obj.report_date else timezone.now())
+            events.append({
+                'title': 'Delivery rescheduled',
+                'description': f"New delivery date set to {obj.rescheduled_date.strftime('%d %b %Y')} ({obj.rescheduled_time_slot or 'Standard Slot'})",
+                'time': step3_time.strftime("%d %b %Y, %I:%M %p"),
+                'status': 'rescheduled'
+            })
+        if obj.status in [ComplaintReport.Status.DELIVERED, ComplaintReport.Status.RESOLVED]:
+            step4_time = obj.updated_at if obj.updated_at else timezone.now()
+            events.append({
+                'title': 'Delivery completed successfully',
+                'description': 'Order delivered and closed',
+                'time': step4_time.strftime("%d %b %Y, %I:%M %p"),
+                'status': 'resolved'
+            })
+        return events
+
+

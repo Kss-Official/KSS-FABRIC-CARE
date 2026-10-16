@@ -12,7 +12,7 @@ export const INITIAL_SERVICES = [
     price: 120,
     icon: 'Shirt',
     image: '/assets/service-wash.jpg',
-    checked: true,
+    checked: false,
     popular: true
   },
   {
@@ -35,7 +35,7 @@ export const INITIAL_SERVICES = [
     price: 220,
     icon: 'Sparkles',
     image: '/assets/service-dryclean.jpg',
-    checked: true,
+    checked: false,
     popular: true
   },
   {
@@ -50,26 +50,16 @@ export const INITIAL_SERVICES = [
     checked: false
   },
   {
-    id: 'shoe-laundry',
-    name: 'Shoe Laundry',
-    subtitle: 'Clean shoes, step brighter.',
-    pricePerPair: 250,
-    unit: 'pair',
-    price: 250,
-    icon: 'Footprints',
-    image: '/assets/service-shoe.jpg',
-    checked: false
-  },
-  {
-    id: 'home-care',
-    name: 'Home Care',
-    subtitle: 'Curtains, bed sheets and more.',
-    pricePerItem: 150,
+    id: 'express-laundry',
+    name: 'Express Laundry',
+    subtitle: 'Superfast 24-hour priority laundry service.',
+    pricePerPiece: 200,
     unit: 'item',
     price: 200,
-    icon: 'BedDouble',
-    image: '/assets/service-curtain.jpg',
-    checked: false
+    icon: 'Zap',
+    image: '/assets/service-wash.jpg',
+    checked: false,
+    popular: true
   }
 ];
 

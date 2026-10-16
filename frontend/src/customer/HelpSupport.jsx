@@ -26,7 +26,9 @@ export const HelpSupport = () => {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [expandedFaq, setExpandedFaq] = useState(null);
+  const [expandedTicketId, setExpandedTicketId] = useState(null);
   const faqCardRef = useRef(null);
+
 
   useEffect(() => {
     if (expandedFaq === null) return;
@@ -123,13 +125,18 @@ export const HelpSupport = () => {
   const displayTickets = tickets.length > 0 
     ? tickets.map(t => ({
         id: t.id,
-        ticket_number: t.ticket_number || `FC-${1000 + t.id}`,
+        ticket_number: t.ticket_number || t.ticket_id_display || `FC-${1000 + t.id}`,
         subject: t.subject || 'Garment inquiry',
-        status: t.status === 'IN_REVIEW' || t.status === 'PENDING' ? 'In Review' : (t.status === 'RESOLVED' ? 'Resolved' : t.status),
-        statusColor: t.status === 'RESOLVED' ? 'green' : 'yellow',
+        message: t.message,
+        admin_reply: t.admin_reply,
+        admin_reply_at: t.admin_reply_at || t.formatted_admin_reply_at,
+        priority: t.priority,
+        status: t.status === 'RESOLVED' ? 'Resolved' : (t.status === 'IN_PROGRESS' ? 'In Progress' : (t.status === 'OPEN' ? 'Open' : t.status)),
+        statusColor: t.status === 'RESOLVED' ? 'green' : (t.status === 'IN_PROGRESS' ? 'blue' : 'yellow'),
         updatedText: t.created_at ? `Last updated ${new Date(t.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Last updated today'
       }))
     : defaultTickets;
+
 
   return (
     <div className="portal-container help-support-portal animate-fade-in">
@@ -326,33 +333,73 @@ export const HelpSupport = () => {
             </div>
 
             <div className="tickets-list">
-              {displayTickets.map((t) => (
-                <div key={t.id} className="ticket-item-box" onClick={focusTicketForm} title="Click to view ticket details">
-                  <div className="ticket-avatar-circle">
-                    <Headphones size={18} />
-                  </div>
-
-                  <div className="ticket-text-stack">
-                    <div className="ticket-top-row">
-                      <h4 className="ticket-subject-title">{t.subject}</h4>
-                      <span className={`ticket-status-pill ${t.statusColor || 'yellow'}`}>
-                        <Clock size={11} strokeWidth={2.5} />
-                        <span>{t.status}</span>
-                      </span>
+              {displayTickets.map((t) => {
+                const isExpanded = expandedTicketId === t.id;
+                return (
+                  <div 
+                    key={t.id} 
+                    className={`ticket-item-box ${isExpanded ? 'expanded' : ''}`} 
+                    onClick={() => setExpandedTicketId(isExpanded ? null : t.id)} 
+                    title="Click to view ticket status and response"
+                  >
+                    <div className="ticket-avatar-circle">
+                      <Headphones size={18} />
                     </div>
 
-                    <div className="ticket-bottom-row">
-                      <div className="ticket-meta-info">
-                        <span className="ticket-meta-subtitle">Ticket #{t.ticket_number}</span>
-                        <span className="ticket-meta-dot">•</span>
-                        <span className="ticket-updated-time">{t.updatedText}</span>
+                    <div className="ticket-text-stack">
+                      <div className="ticket-top-row">
+                        <h4 className="ticket-subject-title">{t.subject}</h4>
+                        <span className={`ticket-status-pill ${t.statusColor || 'yellow'}`}>
+                          <Clock size={11} strokeWidth={2.5} />
+                          <span>{t.status}</span>
+                        </span>
                       </div>
-                      <ChevronRight size={15} className="ticket-chevron-icon" />
+
+                      <div className="ticket-bottom-row">
+                        <div className="ticket-meta-info">
+                          <span className="ticket-meta-subtitle">Ticket #{t.ticket_number}</span>
+                          <span className="ticket-meta-dot">•</span>
+                          <span className="ticket-updated-time">{t.updatedText}</span>
+                        </div>
+                        <ChevronRight 
+                          size={15} 
+                          className={`ticket-chevron-icon transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} 
+                        />
+                      </div>
+
+                      {/* Expanded View with Admin Response */}
+                      {isExpanded && (
+                        <div className="ticket-expanded-content mt-3 pt-3 border-t border-slate-100 text-xs">
+                          {t.message && (
+                            <div className="mb-2">
+                              <span className="font-semibold text-slate-600 block mb-0.5">Your Message:</span>
+                              <p className="text-slate-700 bg-slate-50 p-2 rounded">{t.message}</p>
+                            </div>
+                          )}
+
+                          {t.admin_reply ? (
+                            <div className="mt-2 bg-emerald-50 border border-emerald-200 p-2.5 rounded-md">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-semibold text-emerald-800">Support Team Response:</span>
+                                {t.admin_reply_at && (
+                                  <span className="text-[10px] text-emerald-600">
+                                    {new Date(t.admin_reply_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-emerald-950 font-medium">{t.admin_reply}</p>
+                            </div>
+                          ) : (
+                            <p className="text-slate-400 italic mt-1">Our support team is currently reviewing your ticket.</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+
           </div>
         </div>
       </div>

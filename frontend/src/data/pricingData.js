@@ -13,7 +13,7 @@ export const PRICING_CATEGORIES = [
   {
     id: 'wash-fold',
     name: 'Wash & Fold',
-    desc: 'Everyday clothes, fresh and clean.',
+    desc: 'Everyday essentials fresh and clean.',
     price: '₹ 85 / kg',
     isPriceEnabled: true,
     icon: 'Shirt'
@@ -21,7 +21,7 @@ export const PRICING_CATEGORIES = [
   {
     id: 'wash-iron',
     name: 'Wash & Iron',
-    desc: 'Cleaned and neatly ironed.',
+    desc: 'Clean clothes, ready to wear.',
     price: '₹ 120 / kg',
     isPriceEnabled: true,
     icon: 'Layers'
@@ -29,7 +29,7 @@ export const PRICING_CATEGORIES = [
   {
     id: 'dry-cleaning',
     name: 'Dry Cleaning',
-    desc: 'For premium and delicate fabrics.',
+    desc: 'For your delicate and premium wear.',
     price: '₹ 120 / item',
     isPriceEnabled: false, // Item prices hidden as per spec
     icon: 'Sparkles'
@@ -37,7 +37,7 @@ export const PRICING_CATEGORIES = [
   {
     id: 'steam-iron',
     name: 'Steam Iron',
-    desc: 'Quick and perfect finish.',
+    desc: 'Crisp and perfectly pressed.',
     price: '₹ 20 / item',
     isPriceEnabled: false, // Item prices hidden as per spec
     icon: 'Flame'
@@ -45,7 +45,7 @@ export const PRICING_CATEGORIES = [
   {
     id: 'express-laundry',
     name: 'Express Laundry',
-    desc: 'Superfast 24-hour turnaround for urgent laundry care.',
+    desc: 'Superfast 24-hour priority laundry service.',
     price: '₹ 200 / item',
     isPriceEnabled: true,
     icon: 'Zap'

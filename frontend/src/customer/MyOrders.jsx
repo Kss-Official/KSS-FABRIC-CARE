@@ -255,9 +255,21 @@ export const MyOrders = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 text-sm">
                 <div>
-                  <span className="text-xs text-muted block mb-1">Pickup Schedule</span>
-                  <div className="font-semibold text-navy">{order.pickup_date}</div>
+                  <span className="text-xs text-muted block mb-1">
+                    {order.delivery_date ? 'Schedule Details' : 'Pickup Schedule'}
+                  </span>
+                  <div className="font-semibold text-navy">Pickup: {order.pickup_date}</div>
                   <div className="text-xs text-slate-500">{order.pickup_time_slot}</div>
+                  {order.delivery_date && (
+                    <div className="mt-1.5 pt-1.5 border-t border-slate-100">
+                      <span className="text-[11px] font-semibold text-[#087F8C] block">
+                        Delivery Schedule:
+                      </span>
+                      <div className="font-semibold text-navy text-xs">
+                        {order.delivery_date} {order.delivery_time_slot ? `· ${order.delivery_time_slot}` : ''}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>

@@ -586,8 +586,11 @@ export const AdminSettingsPage = () => {
           display: flex;
           flex-direction: column;
           gap: 24px;
+          width: 100%;
           max-width: 100%;
-          padding-bottom: 40px;
+          box-sizing: border-box;
+          margin: 0;
+          padding-bottom: 24px;
         }
 
         .as-header-block {

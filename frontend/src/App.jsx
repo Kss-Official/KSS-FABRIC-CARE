@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { AdminProvider } from './context/AdminContext';
@@ -17,6 +17,7 @@ import { AdminPortal } from './pages/admin/AdminPortal';
 import { CustomerAuthModal } from './components/common/CustomerAuthModal';
 
 import { LoginPage } from './pages/LoginPage';
+import { SignupPage } from './pages/SignupPage';
 import { useAuth } from './context/AuthContext';
 import { getPortalForRole } from './utils/roleUtils';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
@@ -31,6 +32,7 @@ import { SavedAddresses } from './customer/SavedAddresses';
 import { HelpSupport } from './customer/HelpSupport';
 import { Profile } from './customer/Profile';
 import { Notifications as CustomerNotifications } from './customer/Notifications';
+import { CustomerReports } from './customer/CustomerReports';
 
 // Delivery & Laundry Staff Portals
 import { DeliveryPortal } from './delivery/DeliveryPortal';
@@ -38,14 +40,14 @@ import { LaundryPortal } from './laundry-staff/LaundryPortal';
 
 // Portal wrapper (no navbar/footer - self-contained)
 const FULL_SCREEN_PAGES = [
-  'admin', 'delivery-portal', 'laundry-portal', 'login'
+  'admin', 'delivery-portal', 'laundry-portal', 'login', 'signup'
 ];
 
 // Customer portal pages (with sidebar layout)
 const CUSTOMER_PORTAL_PAGES = [
   'customer-dashboard', 'customer-orders', 'customer-track',
-  'customer-invoices', 'customer-addresses', 'customer-support',
-  'customer-profile', 'customer-notifications'
+  'customer-reports', 'customer-invoices', 'customer-addresses',
+  'customer-support', 'customer-profile', 'customer-notifications'
 ];
 
 const CustomerAccountLayout = ({ children }) => {
@@ -54,6 +56,7 @@ const CustomerAccountLayout = ({ children }) => {
   const accountTabs = [
     { id: 'customer-orders', label: 'My Orders', icon: '📦' },
     { id: 'customer-track', label: 'Track Order', icon: '🚚' },
+    { id: 'customer-reports', label: 'Reports', icon: '📋' },
     { id: 'customer-invoices', label: 'Invoices & Bills', icon: '🧾' },
     { id: 'customer-notifications', label: 'Notifications', icon: '🔔' },
     { id: 'customer-profile', label: 'My Profile', icon: '👤' },
@@ -63,9 +66,9 @@ const CustomerAccountLayout = ({ children }) => {
   const displayName = userProfile?.displayName || currentUser?.displayName || currentUser?.full_name || currentUser?.first_name || 'Customer';
 
   return (
-    <div className="customer-account-wrapper" style={{ background: '#F8FAFC', minHeight: 'auto', paddingBottom: '24px' }}>
+    <div className="customer-account-wrapper" style={{ background: '#F8FAFC', flex: 1, display: 'flex', flexDirection: 'column', margin: 0, paddingBottom: '24px' }}>
       {/* Account Header Banner */}
-      <div className="customer-account-banner no-print" style={{ background: 'linear-gradient(135deg, #0D7A75 0%, #0E4B56 100%)', color: '#fff', padding: '36px 0 24px' }}>
+      <div className="customer-account-banner no-print" style={{ background: 'linear-gradient(135deg, #0D7A75 0%, #0E4B56 100%)', color: '#fff', margin: 0, padding: '36px 0 24px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             <div>
@@ -145,6 +148,35 @@ const AppContent = () => {
 
   const normalizedRoute = String(currentPage || 'home').replace(/^#\/?/, '').trim().toLowerCase();
 
+  // Protected route redirects inside useEffect to avoid updating BookingProvider during render
+  useEffect(() => {
+    if (loading) return;
+
+    if (normalizedRoute === 'admin') {
+      if (!isAuthenticated) {
+        navigateTo('login');
+      } else if (userRole !== 'admin') {
+        navigateTo(getPortalForRole(userRole));
+      }
+    } else if (normalizedRoute === 'delivery-portal') {
+      if (!isAuthenticated) {
+        navigateTo('login');
+      } else if (userRole !== 'delivery_agent' && userRole !== 'admin') {
+        navigateTo(getPortalForRole(userRole));
+      }
+    } else if (normalizedRoute === 'laundry-portal') {
+      if (!isAuthenticated) {
+        navigateTo('login');
+      } else if (userRole !== 'laundry_staff' && userRole !== 'admin') {
+        navigateTo(getPortalForRole(userRole));
+      }
+    } else if (CUSTOMER_PORTAL_PAGES.includes(normalizedRoute)) {
+      if (!isAuthenticated) {
+        navigateTo('login');
+      }
+    }
+  }, [normalizedRoute, isAuthenticated, userRole, loading, navigateTo]);
+
   // Show subtle loader while session is being verified from storage
   if (loading) {
     return (
@@ -167,14 +199,14 @@ const AppContent = () => {
     return <LoginPage />;
   }
 
+  // Route 1b: Dedicated Signup Page
+  if (normalizedRoute === 'signup') {
+    return <SignupPage />;
+  }
+
   // Route 2: Admin Portal (Strictly Protected: role === 'admin')
   if (normalizedRoute === 'admin') {
-    if (!isAuthenticated) {
-      navigateTo('login');
-      return null;
-    }
-    if (userRole !== 'admin') {
-      navigateTo(getPortalForRole(userRole));
+    if (!isAuthenticated || userRole !== 'admin') {
       return null;
     }
     return <AdminPortal />;
@@ -182,12 +214,7 @@ const AppContent = () => {
 
   // Route 3: Delivery Portal (Strictly Protected: role === 'delivery_agent' or 'admin')
   if (normalizedRoute === 'delivery-portal') {
-    if (!isAuthenticated) {
-      navigateTo('login');
-      return null;
-    }
-    if (userRole !== 'delivery_agent' && userRole !== 'admin') {
-      navigateTo(getPortalForRole(userRole));
+    if (!isAuthenticated || (userRole !== 'delivery_agent' && userRole !== 'admin')) {
       return null;
     }
     return <DeliveryPortal />;
@@ -195,12 +222,7 @@ const AppContent = () => {
 
   // Route 4: Laundry Hub Portal (Strictly Protected: role === 'laundry_staff' or 'admin')
   if (normalizedRoute === 'laundry-portal') {
-    if (!isAuthenticated) {
-      navigateTo('login');
-      return null;
-    }
-    if (userRole !== 'laundry_staff' && userRole !== 'admin') {
-      navigateTo(getPortalForRole(userRole));
+    if (!isAuthenticated || (userRole !== 'laundry_staff' && userRole !== 'admin')) {
       return null;
     }
     return <LaundryPortal />;
@@ -209,9 +231,9 @@ const AppContent = () => {
   // Route 5: Customer Account Pages (Protected: requires customer/user authentication)
   if (CUSTOMER_PORTAL_PAGES.includes(normalizedRoute)) {
     if (!isAuthenticated) {
-      navigateTo('login');
       return null;
     }
+
     return (
       <div className="app-layout">
         <Navbar />
@@ -220,6 +242,7 @@ const AppContent = () => {
             {normalizedRoute === 'customer-dashboard' && <CustomerDashboard />}
             {normalizedRoute === 'customer-orders' && <MyOrders />}
             {normalizedRoute === 'customer-track' && <TrackOrder />}
+            {normalizedRoute === 'customer-reports' && <CustomerReports />}
             {normalizedRoute === 'customer-invoices' && <PaymentsInvoices />}
             {normalizedRoute === 'customer-addresses' && <Profile />}
             {normalizedRoute === 'customer-support' && <HelpSupport />}

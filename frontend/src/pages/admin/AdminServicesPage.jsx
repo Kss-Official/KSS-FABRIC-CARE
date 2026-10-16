@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   LayoutGrid,
@@ -115,6 +116,19 @@ export const AdminServicesPage = () => {
     status: 'Active',
     description: ''
   });
+
+  // Lock background scroll when Edit Service modal is open
+  useEffect(() => {
+    const wrapper = document.querySelector('.admin-main-wrapper');
+    if (editingService) {
+      if (wrapper) wrapper.classList.add('admin-scroll-locked');
+    } else {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    }
+    return () => {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    };
+  }, [editingService]);
 
   // Dynamic Metrics Calculation
   const totalServices = services.length;
@@ -686,7 +700,7 @@ export const AdminServicesPage = () => {
       </div>
 
       {/* Edit Service Modal */}
-      {editingService && (
+      {editingService && typeof document !== 'undefined' && createPortal(
         <div className="modal-backdrop-overlay animate-fade-in" onClick={() => setEditingService(null)}>
           <div className="modal-box-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-box-header">
@@ -801,7 +815,8 @@ export const AdminServicesPage = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Scoped CSS Styles for Pixel-Perfect Alignment */}
@@ -810,6 +825,9 @@ export const AdminServicesPage = () => {
           display: flex;
           flex-direction: column;
           width: 100%;
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
           color: #0F172A;
         }
 
@@ -1357,11 +1375,14 @@ export const AdminServicesPage = () => {
           inset: 0;
           background: rgba(15, 23, 42, 0.45);
           backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 100;
-          padding: 16px;
+          z-index: 99999;
+          padding: 20px 16px;
+          overflow: hidden;
+          overscroll-behavior: none;
         }
 
         .modal-box-card {
@@ -1369,8 +1390,14 @@ export const AdminServicesPage = () => {
           border-radius: 16px;
           width: 100%;
           max-width: 520px;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
           box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
           overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          position: relative;
+          overscroll-behavior: contain;
         }
 
         .modal-box-header {
@@ -1379,6 +1406,7 @@ export const AdminServicesPage = () => {
           align-items: center;
           padding: 20px 24px;
           border-bottom: 1px solid #F1F5F9;
+          flex-shrink: 0;
         }
 
         .modal-title-wrap {
@@ -1429,6 +1457,10 @@ export const AdminServicesPage = () => {
           display: flex;
           flex-direction: column;
           gap: 16px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          flex: 1 1 auto;
+          min-height: 0;
         }
 
         .form-grid-2col {
@@ -1479,6 +1511,7 @@ export const AdminServicesPage = () => {
           margin-top: 8px;
           padding-top: 16px;
           border-top: 1px solid #F1F5F9;
+          flex-shrink: 0;
         }
 
         .btn-modal-cancel {

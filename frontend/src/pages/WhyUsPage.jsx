@@ -307,7 +307,10 @@ export const WhyUsPage = () => {
       <style>{`
         .why-us-page-wrapper {
           background-color: #FAFCFC;
-          min-height: 100vh;
+          width: 100%;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
 
         /* ==========================================================================
@@ -332,7 +335,7 @@ export const WhyUsPage = () => {
         /* BENTO SECTION */
         .why-us-bento-section {
           padding: 90px 0;
-          background: #FFFFFF;
+          background: #EEF2F2;
         }
 
         .why-us-bento-container {

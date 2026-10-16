@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   HelpCircle, 
@@ -75,17 +76,18 @@ Laundrix provides professional laundry and dry cleaning services, including pick
     return () => document.removeEventListener('click', handleOutsideClick);
   }, []);
 
-  // Sync state when termsContent updates from Firestore or context
+  // Lock background scroll when FAQ modal is open
   useEffect(() => {
-    if (termsContent) {
-      if (termsContent.title) setEditingTitle(termsContent.title);
-      if (termsContent.body) {
-        setEditingBody(termsContent.body);
-        setHistory([termsContent.body]);
-        setHistoryIndex(0);
-      }
+    const wrapper = document.querySelector('.admin-main-wrapper');
+    if (isFaqModalOpen) {
+      if (wrapper) wrapper.classList.add('admin-scroll-locked');
+    } else {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
     }
-  }, [termsContent]);
+    return () => {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    };
+  }, [isFaqModalOpen]);
 
   const handleBodyChange = (e) => {
     const newVal = e.target.value;
@@ -722,78 +724,91 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         </div>
       )}
 
-      {/* ADD / EDIT FAQ MODAL */}
-      {isFaqModalOpen && (
+      {/* ADD / EDIT FAQ MODAL - EXACT REPRODUCTION OF SECOND REFERENCE IMAGE */}
+      {isFaqModalOpen && typeof document !== 'undefined' && createPortal(
         <div className="modal-backdrop" onClick={() => setIsFaqModalOpen(false)}>
           <div className="modal-container animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">{editingFaq ? 'Edit FAQ' : 'Add New FAQ'}</h3>
-              <button className="modal-close-btn" onClick={() => setIsFaqModalOpen(false)}>
+              <button 
+                type="button" 
+                className="modal-close-btn" 
+                onClick={() => setIsFaqModalOpen(false)}
+                aria-label="Close modal"
+              >
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleSaveFaq} className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Question *</label>
+              <div className="modal-form-group">
+                <label className="modal-form-label">
+                  Question <span className="modal-req-star">*</span>
+                </label>
                 <input 
                   type="text" 
                   required 
-                  className="modal-input" 
-                  placeholder="e.g. How does Laundrix pickup and delivery work?"
+                  className="modal-field-input" 
+                  placeholder="How does Laundryx pick..."
                   value={faqForm.question}
                   onChange={(e) => setFaqForm({ ...faqForm, question: e.target.value })}
                 />
               </div>
 
-              <div className="form-group mt-3">
-                <label className="form-label">Answer *</label>
+              <div className="modal-form-group">
+                <label className="modal-form-label">
+                  Answer <span className="modal-req-star">*</span>
+                </label>
                 <textarea 
                   rows="4"
                   required
-                  className="modal-input"
-                  placeholder="Enter detailed answer..."
+                  className="modal-field-textarea"
+                  placeholder="Schedule a pickup through our app or website. Our executive will arrive..."
                   value={faqForm.answer}
                   onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })}
                 />
               </div>
 
-              <div className="form-row-2 mt-3">
-                <div className="form-group">
-                  <label className="form-label">Status</label>
-                  <select 
-                    className="modal-input"
-                    value={faqForm.status}
-                    onChange={(e) => setFaqForm({ ...faqForm, status: e.target.value })}
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
+              <div className="modal-form-grid-2col">
+                <div className="modal-form-group">
+                  <label className="modal-form-label">Status</label>
+                  <div className="modal-select-wrapper">
+                    <select 
+                      className="modal-field-select"
+                      value={faqForm.status}
+                      onChange={(e) => setFaqForm({ ...faqForm, status: e.target.value })}
+                    >
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
+                    <ChevronDown size={16} className="modal-select-chevron" />
+                  </div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Display Order</label>
+                <div className="modal-form-group">
+                  <label className="modal-form-label">Display Order</label>
                   <input 
                     type="number"
                     min="1"
-                    className="modal-input"
+                    className="modal-field-input"
                     value={faqForm.displayOrder}
                     onChange={(e) => setFaqForm({ ...faqForm, displayOrder: Number(e.target.value) || 1 })}
                   />
                 </div>
               </div>
 
-              <div className="modal-footer mt-4">
-                <button type="button" className="btn btn-outline" onClick={() => setIsFaqModalOpen(false)}>
+              <div className="modal-footer-actions">
+                <button type="button" className="btn-modal-cancel" onClick={() => setIsFaqModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-teal">
+                <button type="submit" className="btn-modal-submit">
                   {editingFaq ? 'Update FAQ' : 'Add FAQ'}
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* STYLES MATCHING THE REFERENCE DESIGNS */}
@@ -802,6 +817,10 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           display: flex;
           flex-direction: column;
           gap: 24px;
+          width: 100%;
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
           color: #0F172A;
           font-family: inherit;
         }
@@ -1211,7 +1230,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 24px;
-          align-items: stretch;
+          align-items: start;
         }
 
         .terms-card {
@@ -1222,6 +1241,23 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
           display: flex;
           flex-direction: column;
+        }
+
+        .terms-editor-card {
+          max-height: calc(100vh - 190px);
+          max-height: calc(100dvh - 190px);
+          overflow-y: auto;
+          overscroll-behavior: contain;
+        }
+
+        .terms-preview-card {
+          position: sticky;
+          top: 16px;
+          max-height: calc(100vh - 190px);
+          max-height: calc(100dvh - 190px);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
         }
 
         .card-header-block {
@@ -1388,6 +1424,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           resize: vertical;
           font-family: inherit;
           box-sizing: border-box;
+          overscroll-behavior: contain;
         }
 
         /* EDITOR FOOTER */
@@ -1468,7 +1505,9 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         .live-preview-box {
           display: flex;
           flex-direction: column;
-          gap: 24px;
+          gap: 16px;
+          overflow: hidden;
+          flex: 1;
         }
 
         .preview-banner {
@@ -1480,6 +1519,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           justify-content: space-between;
           gap: 20px;
           overflow: hidden;
+          flex-shrink: 0;
         }
 
         .preview-banner-content {
@@ -1532,6 +1572,10 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           display: flex;
           flex-direction: column;
           gap: 18px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          flex: 1;
+          padding-right: 4px;
         }
 
         .preview-block {
@@ -1560,29 +1604,52 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           position: relative;
         }
 
-        /* MODAL */
+        /* MODAL - EXACT MATCH TO SECOND REFERENCE IMAGE */
         .modal-backdrop {
           position: fixed;
           top: 0;
           left: 0;
           right: 0;
-          bottom: 0;
+          width: 100%;
+          height: 100%;
           background: rgba(15, 23, 42, 0.45);
           backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 9999;
-          padding: 20px;
+          z-index: 99999;
+          padding: 20px 16px;
+          overflow: hidden;
+          overscroll-behavior: none;
         }
 
         .modal-container {
           background: #FFFFFF;
-          border-radius: 16px;
-          max-width: 520px;
+          border-radius: 20px;
+          max-width: 580px;
           width: 100%;
-          padding: 28px;
-          box-shadow: 0 20px 45px rgba(0, 0, 0, 0.12);
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
+          padding: 32px 34px 28px 34px;
+          box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.22), 0 0 1px 1px rgba(0, 0, 0, 0.04);
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          overscroll-behavior: contain;
+          animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes modalPop {
+          from {
+            opacity: 0;
+            transform: scale(0.96) translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: none;
+          }
         }
 
         .modal-header {
@@ -1590,27 +1657,29 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           align-items: center;
           justify-content: space-between;
           margin-bottom: 20px;
+          flex-shrink: 0;
         }
 
         .modal-title {
-          font-size: 1.25rem;
-          font-weight: 700;
+          font-size: 1.375rem;
+          font-weight: 800;
           color: #0F172A;
+          letter-spacing: -0.01em;
           margin: 0;
         }
 
         .modal-close-btn {
           background: #F1F5F9;
           border: none;
-          width: 32px;
-          height: 32px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           color: #64748B;
           cursor: pointer;
-          transition: background 0.15s;
+          transition: background 0.15s, color 0.15s;
         }
 
         .modal-close-btn:hover {
@@ -1618,16 +1687,191 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           color: #0F172A;
         }
 
-        .form-row-2 {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
+        .modal-body {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          flex: 1 1 auto;
+          min-height: 0;
         }
 
-        .modal-footer {
+        .modal-form-group {
           display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .modal-form-label {
+          font-size: 0.875rem;
+          font-weight: 700;
+          color: #0F172A;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .modal-req-star {
+          color: #F43F5E;
+          font-weight: 800;
+          font-size: 0.9375rem;
+        }
+
+        .modal-field-input {
+          width: 100%;
+          height: 48px;
+          padding: 0 16px;
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+          border-radius: 10px;
+          font-size: 0.875rem;
+          font-family: inherit;
+          color: #0F172A;
+          outline: none;
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .modal-field-input:hover {
+          border-color: #94A3B8;
+        }
+
+        .modal-field-input:focus {
+          border-color: #0D7A75;
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.12);
+        }
+
+        .modal-field-input::placeholder {
+          color: #94A3B8;
+        }
+
+        .modal-field-textarea {
+          width: 100%;
+          min-height: 115px;
+          padding: 14px 16px;
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+          border-radius: 10px;
+          font-size: 0.875rem;
+          font-family: inherit;
+          color: #0F172A;
+          line-height: 1.5;
+          outline: none;
+          resize: vertical;
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .modal-field-textarea:hover {
+          border-color: #94A3B8;
+        }
+
+        .modal-field-textarea:focus {
+          border-color: #0D7A75;
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.12);
+        }
+
+        .modal-field-textarea::placeholder {
+          color: #94A3B8;
+        }
+
+        .modal-form-grid-2col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+        }
+
+        .modal-select-wrapper {
+          position: relative;
+          width: 100%;
+        }
+
+        .modal-field-select {
+          width: 100%;
+          height: 48px;
+          padding: 0 40px 0 16px;
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+          border-radius: 10px;
+          font-size: 0.875rem;
+          font-family: inherit;
+          font-weight: 500;
+          color: #0F172A;
+          appearance: none;
+          -webkit-appearance: none;
+          cursor: pointer;
+          outline: none;
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .modal-field-select:hover {
+          border-color: #94A3B8;
+        }
+
+        .modal-field-select:focus {
+          border-color: #0D7A75;
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.12);
+        }
+
+        .modal-select-chevron {
+          position: absolute;
+          right: 14px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #64748B;
+          pointer-events: none;
+        }
+
+        .modal-footer-actions {
+          display: flex;
+          align-items: center;
           justify-content: flex-end;
           gap: 12px;
+          margin-top: 12px;
+        }
+
+        .btn-modal-cancel {
+          padding: 11px 26px;
+          border-radius: 9999px;
+          background: #F1F5F9;
+          border: none;
+          color: #0F172A;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: inherit;
+          transition: background-color 0.15s;
+        }
+
+        .btn-modal-cancel:hover {
+          background: #E2E8F0;
+        }
+
+        .btn-modal-submit {
+          padding: 11px 28px;
+          border-radius: 9999px;
+          background: #0D7A75;
+          border: none;
+          color: #FFFFFF;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: inherit;
+          transition: all 0.15s ease;
+        }
+
+        .btn-modal-submit:hover {
+          background: #0B6B67;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 14px rgba(13, 122, 117, 0.25);
+        }
+
+        @media (max-width: 580px) {
+          .modal-form-grid-2col {
+            grid-template-columns: 1fr;
+          }
+          .modal-container {
+            padding: 24px 20px;
+          }
         }
 
         @media (max-width: 1024px) {

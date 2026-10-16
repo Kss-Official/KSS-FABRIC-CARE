@@ -1022,6 +1022,9 @@ export const AdminPickupDeliveryPage = () => {
           flex-direction: column;
           gap: 24px;
           padding-bottom: 40px;
+          width: 100%;
+          box-sizing: border-box;
+          margin: 0;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         }
 

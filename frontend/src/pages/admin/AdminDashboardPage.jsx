@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   Package, 
@@ -808,7 +809,7 @@ export const AdminDashboardPage = () => {
       </div>
 
       {/* Order Details Modal */}
-      {selectedOrderDetails && (
+      {selectedOrderDetails && typeof document !== 'undefined' && createPortal(
         <div className="modal-backdrop animate-fade-in" onClick={() => setSelectedOrderDetails(null)}>
           <div className="order-details-modal animate-scale-up" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
@@ -912,7 +913,8 @@ export const AdminDashboardPage = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <style>{`
@@ -920,6 +922,10 @@ export const AdminDashboardPage = () => {
           display: flex;
           flex-direction: column;
           gap: 28px;
+          width: 100%;
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
         }
 
         .dash-header-row {
@@ -1779,13 +1785,19 @@ export const AdminDashboardPage = () => {
         .modal-backdrop {
           position: fixed;
           inset: 0;
+          width: 100vw;
+          height: 100vh;
+          height: 100dvh;
           background: rgba(15, 23, 42, 0.45);
           backdrop-filter: blur(4px);
-          z-index: 999;
+          -webkit-backdrop-filter: blur(4px);
+          z-index: 99999;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
+          padding: 20px 16px;
+          overflow: hidden;
+          overscroll-behavior: none;
         }
 
         .order-details-modal {
@@ -1793,11 +1805,15 @@ export const AdminDashboardPage = () => {
           border-radius: 20px;
           width: 100%;
           max-width: 540px;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          animation: modalSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          position: relative;
+          overscroll-behavior: contain;
+          animation: modalSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         @keyframes modalSlideIn {
@@ -1807,7 +1823,7 @@ export const AdminDashboardPage = () => {
           }
           to {
             opacity: 1;
-            transform: scale(1) translateY(0);
+            transform: none;
           }
         }
 

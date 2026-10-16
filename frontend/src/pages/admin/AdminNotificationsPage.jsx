@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   Bell, 
@@ -567,9 +568,9 @@ export const AdminNotificationsPage = () => {
       </div>
 
       {/* Broadcast Announcement Modal */}
-      {isBroadcastModalOpen && (
-        <div className="notif-modal-backdrop">
-          <div className="notif-modal-card animate-scale-up">
+      {isBroadcastModalOpen && typeof document !== 'undefined' && createPortal(
+        <div className="notif-modal-backdrop" onClick={() => setIsBroadcastModalOpen(false)}>
+          <div className="notif-modal-card animate-scale-up" onClick={e => e.stopPropagation()}>
             <div className="notif-modal-header">
               <div className="modal-title-wrap">
                 <div className="modal-title-icon">
@@ -660,13 +661,14 @@ export const AdminNotificationsPage = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Clear All Confirmation Modal */}
-      {showClearConfirm && (
-        <div className="notif-modal-backdrop">
-          <div className="notif-modal-card confirm-modal animate-scale-up">
+      {showClearConfirm && typeof document !== 'undefined' && createPortal(
+        <div className="notif-modal-backdrop" onClick={() => setShowClearConfirm(false)}>
+          <div className="notif-modal-card confirm-modal animate-scale-up" onClick={e => e.stopPropagation()}>
             <div className="confirm-icon-wrap">
               <Trash2 size={28} />
             </div>
@@ -695,18 +697,20 @@ export const AdminNotificationsPage = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Scoped Styles */}
       <style>{`
         .admin-notifs-page-container {
-          max-width: 1280px;
-          margin: 0 auto;
+          width: 100%;
           display: flex;
           flex-direction: column;
           gap: 24px;
           position: relative;
+          box-sizing: border-box;
+          margin: 0;
         }
 
         /* FLOATING TOAST */
@@ -1509,17 +1513,20 @@ export const AdminNotificationsPage = () => {
         /* MODALS */
         .notif-modal-backdrop {
           position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
+          inset: 0;
+          width: 100vw;
+          height: 100vh;
+          height: 100dvh;
           background: rgba(15, 23, 42, 0.45);
           backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
-          z-index: 2000;
+          padding: 20px 16px;
+          z-index: 99999;
+          overflow: hidden;
+          overscroll-behavior: none;
         }
 
         .notif-modal-card {
@@ -1527,8 +1534,14 @@ export const AdminNotificationsPage = () => {
           border-radius: 20px;
           width: 100%;
           max-width: 540px;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
           box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
           overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          overscroll-behavior: contain;
+          position: relative;
         }
 
         .notif-modal-header {
@@ -1537,6 +1550,7 @@ export const AdminNotificationsPage = () => {
           align-items: flex-start;
           justify-content: space-between;
           border-bottom: 1px solid #F1F5F9;
+          flex-shrink: 0;
         }
 
         .modal-title-wrap {
@@ -1589,6 +1603,10 @@ export const AdminNotificationsPage = () => {
           display: flex;
           flex-direction: column;
           gap: 18px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          flex: 1 1 auto;
+          min-height: 0;
         }
 
         .form-group {

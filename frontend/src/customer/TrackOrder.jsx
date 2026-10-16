@@ -19,7 +19,9 @@ import {
   ClipboardList,
   WashingMachine,
   IndianRupee,
-  Shirt
+  Shirt,
+  Sparkles,
+  Home
 } from 'lucide-react';
 
 export const TrackOrder = () => {
@@ -113,7 +115,113 @@ export const TrackOrder = () => {
   const pickedUpTime = `${formattedPickupDate} · 10:15 AM`;
   const facilityTime = `${formattedPickupDate} · 11:30 AM`;
   const cleaningEstTime = `${formattedPickupDate} · 02:00 PM (est.)`;
-  const estimatedDeliveryDate = '14 Oct 2026';
+
+  const formatDeliveryDate = (dateStr) => {
+    if (!dateStr) return null;
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const deliveryDateFormatted = formatDeliveryDate(order.delivery_date) || '14 Oct 2026';
+  const isRescheduled = Boolean(order.delivery_date && (order.status === 'READY_FOR_DELIVERY' || order.status === 'FAILED_DELIVERY' || order.delivery_time_slot));
+
+  const formatStepTimestamp = (timestamp, fallbackDayMonth, fallbackTime) => {
+    if (timestamp) {
+      try {
+        const d = new Date(timestamp);
+        if (!isNaN(d.getTime())) {
+          const dayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          return `${dayMonth}, ${time}`;
+        }
+      } catch {
+        // fallback
+      }
+    }
+    let baseDayMonth = fallbackDayMonth || '13 Oct';
+    if (order?.pickup_date) {
+      try {
+        const d = new Date(order.pickup_date);
+        if (!isNaN(d.getTime())) {
+          baseDayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        }
+      } catch {}
+    } else if (order?.created_at) {
+      try {
+        const d = new Date(order.created_at);
+        if (!isNaN(d.getTime())) {
+          baseDayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        }
+      } catch {}
+    }
+    return `${baseDayMonth}, ${fallbackTime}`;
+  };
+
+  const getActiveStepIndex = (status) => {
+    if (!status) return 3; // Step 4 (Processing) by default
+    const s = String(status).toUpperCase();
+    if (['DELIVERED', 'COMPLETED'].includes(s)) return 6;
+    if (['OUT_FOR_DELIVERY', 'IN_TRANSIT'].includes(s)) return 5;
+    if (['READY_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'READY', 'PACKED'].includes(s)) return 4;
+    if (['IN_PROCESS', 'PROCESSING', 'WASHING', 'DRYING', 'IRONING', 'QUALITY_CHECK', 'INSPECTION'].includes(s)) return 3;
+    if (['DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'AT_FACILITY'].includes(s)) return 2;
+    if (['PICKED_UP', 'PICKUP_IN_PROGRESS'].includes(s)) return 1;
+    if (['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED'].includes(s)) return 0;
+    return 3;
+  };
+
+  const isDelivered = order.status === 'DELIVERED' || order.status === 'COMPLETED';
+  const activeStepIndex = isDelivered ? 6 : getActiveStepIndex(order.status);
+
+  const trackingSteps = [
+    {
+      id: 'placed',
+      title: 'Order placed',
+      icon: ClipboardList,
+      time: formatStepTimestamp(order.created_at, '13 Oct', '9:12 AM')
+    },
+    {
+      id: 'picked',
+      title: 'Picked up',
+      icon: Truck,
+      time: formatStepTimestamp(order.pickup_completed_at, '13 Oct', '11:05 AM')
+    },
+    {
+      id: 'laundry',
+      title: 'At laundry',
+      icon: WashingMachine,
+      time: formatStepTimestamp(order.facility_received_at, '13 Oct', '1:30 PM')
+    },
+    {
+      id: 'processing',
+      title: 'Processing',
+      icon: Sparkles,
+      time: formatStepTimestamp(order.processing_started_at, '13 Oct', '3:45 PM')
+    },
+    {
+      id: 'ready',
+      title: 'Ready',
+      icon: Package,
+      time: formatStepTimestamp(order.ready_at, '14 Oct', '10:00 AM')
+    },
+    {
+      id: 'delivery',
+      title: 'Out for delivery',
+      icon: Truck,
+      time: formatStepTimestamp(order.out_for_delivery_at, '14 Oct', '1:15 PM')
+    },
+    {
+      id: 'delivered',
+      title: 'Delivered',
+      icon: Home,
+      time: formatStepTimestamp(order.delivered_at, '14 Oct', '3:00 PM')
+    }
+  ];
 
   const orderItems = order.items && order.items.length > 0 
     ? order.items.map(it => ({
@@ -229,89 +337,72 @@ export const TrackOrder = () => {
         </div>
       </div>
 
-      {/* 3. Horizontal Step Progression Card */}
+      {/* 3. Horizontal Step Progression Card (Matches Reference Image 1) */}
       <div className="content-card tracking-progress-card mb-6">
-        <div className="horizontal-stepper">
-          {/* Step 1: Order Placed */}
-          <div className="horizontal-step-item completed">
-            <div className="step-circle-badge">
-              <div className="circle-check-bubble">
-                <Check size={11} strokeWidth={3} />
-              </div>
-              <div className="circle-icon-inner">
-                <ClipboardList size={20} />
-              </div>
-            </div>
-            <div className="step-label-group">
-              <h4 className="step-label-title">Order Placed</h4>
-              <span className="step-label-completed">Completed</span>
-            </div>
+        <div className="tracker-card-header">
+          <div className="tracker-header-left">
+            <span className="tracker-title-tag">ORDER PROGRESS</span>
+            <span className="tracker-live-badge">
+              <span className="tracker-live-dot"></span>
+              <span>{isDelivered ? 'Completed' : 'Live'}</span>
+            </span>
           </div>
-
-          <div className="stepper-connecting-line completed"></div>
-
-          {/* Step 2: Picked Up */}
-          <div className="horizontal-step-item completed">
-            <div className="step-circle-badge">
-              <div className="circle-check-bubble">
-                <Check size={11} strokeWidth={3} />
-              </div>
-              <div className="circle-icon-inner">
-                <Truck size={20} />
-              </div>
-            </div>
-            <div className="step-label-group">
-              <h4 className="step-label-title">Picked Up</h4>
-              <span className="step-label-completed">Completed</span>
-            </div>
+          <div className="tracker-step-counter">
+            Step {isDelivered ? 7 : Math.min(activeStepIndex + 1, 7)} of 7
           </div>
+        </div>
 
-          <div className="stepper-connecting-line completed"></div>
+        <div className="horizontal-stepper-scroll-container">
+          <div className="horizontal-stepper">
+            {trackingSteps.map((step, idx) => {
+              const isCompleted = isDelivered || idx < activeStepIndex;
+              const isActive = !isDelivered && idx === activeStepIndex;
+              const isPending = !isDelivered && idx > activeStepIndex;
+              const IconComp = step.icon;
 
-          {/* Step 3: Cleaning & Care (Active Highlight) */}
-          <div className="horizontal-step-item active">
-            <div className="step-circle-badge active-glow">
-              <div className="circle-icon-inner">
-                <WashingMachine size={22} />
-              </div>
-            </div>
-            <div className="step-label-group active-group">
-              <h4 className="step-label-title active-title">Cleaning & Care</h4>
-              <span className="active-tag-badge">In Progress</span>
-              <p className="step-active-desc">
-                Your clothes are being washed, dried and ironed with care.
-              </p>
-            </div>
-          </div>
+              return (
+                <React.Fragment key={step.id}>
+                  <div className={`horizontal-step-item ${isCompleted ? 'completed' : isActive ? 'active' : 'pending'}`}>
+                    <div className={`step-node-bubble ${isCompleted ? 'completed' : isActive ? 'active' : 'pending'}`}>
+                      {isActive && <div className="step-active-outer-halo" />}
+                      <div className="step-node-inner">
+                        {isCompleted ? (
+                          <Check size={18} strokeWidth={2.6} className="text-white" />
+                        ) : (
+                          <IconComp size={18} strokeWidth={1.8} />
+                        )}
+                      </div>
+                    </div>
+                    <div className="step-label-group">
+                      <h4 className={`step-label-title ${isActive ? 'active-title' : isPending ? 'pending-title' : ''}`}>
+                        {step.title}
+                      </h4>
+                      <span className={`step-label-subtitle ${isCompleted ? 'time-sub' : isActive ? 'active-sub' : 'pending-sub'}`}>
+                        {isCompleted 
+                          ? step.time 
+                          : isActive 
+                            ? 'In progress' 
+                            : 'Pending'}
+                      </span>
+                    </div>
+                  </div>
 
-          <div className="stepper-connecting-line pending"></div>
-
-          {/* Step 4: Ready for Delivery */}
-          <div className="horizontal-step-item pending">
-            <div className="step-circle-badge pending-circle">
-              <div className="circle-icon-inner">
-                <Package size={20} />
-              </div>
-            </div>
-            <div className="step-label-group">
-              <h4 className="step-label-title pending-title">Ready for Delivery</h4>
-              <span className="step-label-pending">Pending</span>
-            </div>
-          </div>
-
-          <div className="stepper-connecting-line pending"></div>
-
-          {/* Step 5: Delivery */}
-          <div className="horizontal-step-item pending">
-            <div className="step-circle-badge pending-circle">
-              <div className="circle-icon-inner">
-                <Truck size={20} />
-              </div>
-            </div>
-            <div className="step-label-group">
-              <h4 className="step-label-title pending-title">Delivery</h4>
-              <span className="step-label-pending">Pending</span>
-            </div>
+                  {idx < trackingSteps.length - 1 && (
+                    <div 
+                      className={`stepper-connecting-line ${
+                        isDelivered || idx < activeStepIndex - 1
+                          ? 'completed'
+                          : idx === activeStepIndex - 1
+                            ? 'completed'
+                            : idx === activeStepIndex
+                              ? 'half-active'
+                              : 'pending'
+                      }`} 
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -452,17 +543,29 @@ export const TrackOrder = () => {
               <span className="text-slate-300 font-bold">—</span>
             </div>
 
-            {/* Estimated Delivery */}
+            {/* Estimated / Rescheduled Delivery */}
             <div className="delivery-detail-box">
               <div className="detail-box-left">
-                <div className="detail-icon-circle">
+                <div className={`detail-icon-circle ${isRescheduled ? 'bg-amber-50 text-amber-600' : ''}`}>
                   <Calendar size={17} />
                 </div>
                 <div className="detail-text-stack">
-                  <span className="detail-box-label">Estimated Delivery</span>
+                  <div className="flex items-center gap-2">
+                    <span className="detail-box-label">
+                      {isRescheduled ? 'Rescheduled Delivery' : 'Estimated Delivery'}
+                    </span>
+                    {isRescheduled && (
+                      <span className="badge badge-warning text-[10px] px-1.5 py-0.5 rounded">Rescheduled</span>
+                    )}
+                  </div>
                   <span className="detail-box-value bold">
-                    {estimatedDeliveryDate}
+                    {deliveryDateFormatted}
                   </span>
+                  {order.delivery_time_slot && (
+                    <span className="text-xs text-slate-500 font-medium">
+                      Slot: {order.delivery_time_slot}
+                    </span>
+                  )}
                 </div>
               </div>
               <span className="text-slate-300 font-bold">—</span>
@@ -783,12 +886,69 @@ export const TrackOrder = () => {
           background: #F4FBFA;
         }
 
-        /* 3. Horizontal Progression Card */
+        /* 3. Horizontal Progression Card (Matches Reference Image 1) */
         .tracking-progress-card {
           background: #ffffff;
           border: 1.5px solid #E2E8F0;
           border-radius: 20px;
-          padding: 32px 36px 28px;
+          padding: 24px 32px 28px;
+        }
+
+        .tracker-card-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 24px;
+        }
+
+        .tracker-header-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .tracker-title-tag {
+          font-size: 0.82rem;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          color: #0E4B56;
+          text-transform: uppercase;
+        }
+
+        .tracker-live-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #E6F7F0;
+          color: #0E4B56;
+          font-size: 0.76rem;
+          font-weight: 700;
+          padding: 3px 10px;
+          border-radius: 9999px;
+        }
+
+        .tracker-live-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #10B981;
+          display: inline-block;
+        }
+
+        .tracker-step-counter {
+          font-size: 0.84rem;
+          font-weight: 600;
+          color: #475569;
+        }
+
+        .horizontal-stepper-scroll-container {
+          width: 100%;
+          overflow-x: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .horizontal-stepper-scroll-container::-webkit-scrollbar {
+          display: none;
         }
 
         .horizontal-stepper {
@@ -797,6 +957,7 @@ export const TrackOrder = () => {
           justify-content: space-between;
           position: relative;
           width: 100%;
+          min-width: 680px;
         }
 
         .horizontal-step-item {
@@ -806,128 +967,135 @@ export const TrackOrder = () => {
           text-align: center;
           position: relative;
           z-index: 2;
-          flex: 1;
+          flex: 0 0 auto;
+          width: 90px;
         }
 
-        .step-circle-badge {
-          width: 48px;
-          height: 48px;
-          border-radius: 14px;
-          background: #E8FAF6;
-          border: 1.5px solid #BCEAE6;
-          color: #0D7A75;
+        .step-node-bubble {
+          position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
-          position: relative;
+          width: 44px;
+          height: 44px;
           margin-bottom: 12px;
-          transition: all 0.2s;
         }
 
-        .circle-check-bubble {
-          position: absolute;
-          top: -6px;
-          left: -6px;
-          width: 18px;
-          height: 18px;
+        .step-node-bubble.completed .step-node-inner {
+          width: 42px;
+          height: 42px;
           border-radius: 50%;
-          background: #0D7A75;
+          background: #0E4B56;
           color: #ffffff;
           display: flex;
           align-items: center;
           justify-content: center;
+          box-shadow: 0 2px 4px rgba(14, 75, 86, 0.12);
         }
 
-        .circle-icon-inner {
+        .step-node-bubble.active {
+          width: 52px;
+          height: 52px;
+          margin-top: -4px;
+          margin-bottom: 8px;
+        }
+
+        .step-active-outer-halo {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          background: #D8F3ED;
+          z-index: 1;
+        }
+
+        .step-node-bubble.active .step-node-inner {
+          position: relative;
+          z-index: 2;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: #ffffff;
+          border: 2px solid #0E4B56;
+          color: #0E4B56;
           display: flex;
           align-items: center;
           justify-content: center;
         }
 
-        .step-circle-badge.active-glow {
-          width: 56px;
-          height: 56px;
+        .step-node-bubble.pending .step-node-inner {
+          width: 42px;
+          height: 42px;
           border-radius: 50%;
-          background: #E8FAF6;
-          border: 3px solid #0D7A75;
-          box-shadow: 0 0 0 6px rgba(13, 122, 117, 0.12);
-          color: #0D7A75;
-        }
-
-        .step-circle-badge.pending-circle {
-          background: #F8FAFC;
+          background: #F0F4F8;
           border: 1.5px solid #E2E8F0;
-          color: #94A3B8;
+          color: #8EA4B8;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .step-label-group {
           display: flex;
           flex-direction: column;
           align-items: center;
+          width: 100%;
         }
 
         .step-label-title {
-          font-size: 0.9375rem;
+          font-size: 0.88rem;
           font-weight: 700;
           color: #0F172A;
           margin: 0;
-        }
-
-        .step-label-time {
-          font-size: 0.75rem;
-          color: #64748B;
-          margin-top: 3px;
-        }
-
-        .step-label-completed {
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: #0D7A75;
-          margin-top: 3px;
+          white-space: nowrap;
         }
 
         .step-label-title.active-title {
-          color: #0D7A75;
-          font-size: 1rem;
-        }
-
-        .active-tag-badge {
-          display: inline-block;
-          font-size: 0.72rem;
-          font-weight: 700;
-          color: #0D7A75;
-          margin-top: 2px;
-        }
-
-        .step-active-desc {
-          font-size: 0.75rem;
-          color: #64748B;
-          max-width: 200px;
-          line-height: 1.35;
-          margin-top: 4px;
+          font-weight: 800;
+          color: #0F172A;
         }
 
         .step-label-title.pending-title {
-          color: #64748B;
           font-weight: 600;
+          color: #8EA4B8;
         }
 
-        .step-label-pending {
-          font-size: 0.75rem;
-          color: #94A3B8;
-          margin-top: 3px;
+        .step-label-subtitle {
+          font-size: 0.74rem;
+          margin-top: 4px;
+          white-space: nowrap;
+        }
+
+        .step-label-subtitle.time-sub {
+          color: #64748B;
+          font-weight: 500;
+        }
+
+        .step-label-subtitle.active-sub {
+          color: #0E4B56;
+          font-weight: 700;
+        }
+
+        .step-label-subtitle.pending-sub {
+          color: #8EA4B8;
+          font-weight: 500;
         }
 
         .stepper-connecting-line {
           flex: 1;
-          height: 3px;
-          margin: 24px 8px 0;
+          height: 2.5px;
+          margin: 21px 2px 0;
           position: relative;
           z-index: 1;
+          min-width: 12px;
+          border-radius: 2px;
         }
 
         .stepper-connecting-line.completed {
-          background: #0D7A75;
+          background: #0E4B56;
+        }
+
+        .stepper-connecting-line.half-active {
+          background: linear-gradient(to right, #0E4B56 50%, #E2E8F0 50%);
         }
 
         .stepper-connecting-line.pending {
@@ -1401,34 +1569,16 @@ export const TrackOrder = () => {
           .summary-metric-divider {
             display: none;
           }
+          .tracking-progress-card {
+            padding: 20px 16px 24px;
+          }
+          .horizontal-stepper-scroll-container {
+            overflow-x: auto;
+            padding-bottom: 8px;
+            -webkit-overflow-scrolling: touch;
+          }
           .horizontal-stepper {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 18px;
-          }
-          .horizontal-step-item {
-            flex-direction: row;
-            align-items: center;
-            text-align: left;
-            gap: 16px;
-            width: 100%;
-          }
-          .step-circle-badge {
-            margin-bottom: 0;
-            flex-shrink: 0;
-          }
-          .step-label-group {
-            align-items: flex-start;
-            text-align: left;
-          }
-          .step-active-desc {
-            max-width: 100%;
-          }
-          .stepper-connecting-line {
-            width: 2px;
-            height: 18px;
-            margin: 0 0 0 24px;
-            align-self: flex-start;
+            min-width: 680px;
           }
           .help-towels-img {
             max-width: 275px;

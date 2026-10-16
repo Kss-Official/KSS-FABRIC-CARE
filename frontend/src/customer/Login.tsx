@@ -19,6 +19,7 @@ export const Login = () => {
     clearError();
     try {
       const res = await login(username, password);
+      const role = res?.role || 'customer';
       const intended = sessionStorage.getItem('fabricare_intended_destination');
       if (role === 'customer' && intended) {
         sessionStorage.removeItem('fabricare_intended_destination');

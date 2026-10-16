@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   X, 
@@ -98,7 +99,7 @@ export const AssignOrderModal = () => {
     window.open(`https://maps.google.com/?q=${query}`, '_blank');
   };
 
-  return (
+  return createPortal(
     <div 
       className="assign-order-modal-backdrop animate-fade-in"
       onClick={() => setIsAssignOrderModalOpen(false)}
@@ -299,15 +300,20 @@ export const AssignOrderModal = () => {
         .assign-order-modal-backdrop {
           position: fixed;
           inset: 0;
+          width: 100vw;
+          height: 100vh;
+          height: 100dvh;
           background: rgba(15, 23, 42, 0.45);
           backdrop-filter: blur(4px);
           -webkit-backdrop-filter: blur(4px);
-          z-index: 999999;
+          z-index: 99999;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
+          padding: 20px 16px;
           box-sizing: border-box;
+          overflow: hidden;
+          overscroll-behavior: none;
           animation: modalFadeIn 0.2s ease-out;
         }
 
@@ -321,19 +327,22 @@ export const AssignOrderModal = () => {
           border-radius: 20px;
           width: 100%;
           max-width: 530px;
-          max-height: 92vh;
-          overflow-y: auto;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
+          overflow: hidden;
+          overscroll-behavior: contain;
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.04);
           display: flex;
           flex-direction: column;
           box-sizing: border-box;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          animation: modalScaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+          animation: modalScaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          position: relative;
         }
 
         @keyframes modalScaleUp {
           from { transform: scale(0.96); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
+          to { transform: none; opacity: 1; }
         }
 
         /* 1. Header */
@@ -597,6 +606,7 @@ export const AssignOrderModal = () => {
           gap: 8px;
           max-height: 250px;
           overflow-y: auto;
+          overscroll-behavior: contain;
           padding-right: 2px;
         }
 
@@ -795,7 +805,8 @@ export const AssignOrderModal = () => {
           box-shadow: 0 4px 10px rgba(13, 122, 117, 0.3);
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };
 export default AssignOrderModal;

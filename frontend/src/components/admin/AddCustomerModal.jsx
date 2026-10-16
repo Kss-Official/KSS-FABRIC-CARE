@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   X, 
@@ -134,7 +135,7 @@ export const AddCustomerModal = () => {
     }
   };
 
-  return (
+  return createPortal(
     <div className="ac-modal-backdrop" onClick={handleClose}>
       <div className="ac-modal-container" onClick={(e) => e.stopPropagation()}>
         {/* Modal Header */}
@@ -455,14 +456,19 @@ export const AddCustomerModal = () => {
         .ac-modal-backdrop {
           position: fixed;
           inset: 0;
+          width: 100vw;
+          height: 100vh;
+          height: 100dvh;
           background: rgba(15, 23, 42, 0.45);
           backdrop-filter: blur(4px);
           -webkit-backdrop-filter: blur(4px);
-          z-index: 1100;
+          z-index: 99999;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
+          padding: 20px 16px;
+          overflow: hidden;
+          overscroll-behavior: none;
           animation: acFadeIn 0.2s ease-out;
         }
 
@@ -476,17 +482,20 @@ export const AddCustomerModal = () => {
           border-radius: 20px;
           width: 672px;
           max-width: 100%;
-          max-height: 92vh;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
           display: flex;
           flex-direction: column;
           box-shadow: 0 20px 48px -10px rgba(15, 23, 42, 0.18), 0 0 1px 1px rgba(0, 0, 0, 0.04);
-          animation: acScaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          animation: acScaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           overflow: hidden;
+          overscroll-behavior: contain;
+          position: relative;
         }
 
         @keyframes acScaleUp {
           from { transform: scale(0.97); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
+          to { transform: none; opacity: 1; }
         }
 
         /* Header */
@@ -562,6 +571,7 @@ export const AddCustomerModal = () => {
         .ac-form-body {
           padding: 22px 28px 26px 28px;
           overflow-y: auto;
+          overscroll-behavior: contain;
           display: flex;
           flex-direction: column;
           gap: 22px;
@@ -908,6 +918,7 @@ export const AddCustomerModal = () => {
           }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   X, 
@@ -24,8 +25,6 @@ export const AddServiceModal = () => {
 
   const [imagePreview, setImagePreview] = useState(null);
 
-  if (!isAddServiceModalOpen) return null;
-
   const handleSubmit = (e) => {
     e.preventDefault();
     addService({
@@ -42,7 +41,9 @@ export const AddServiceModal = () => {
     }
   };
 
-  return (
+  if (!isAddServiceModalOpen || typeof document === 'undefined') return null;
+
+  return createPortal(
     <div className="add-service-backdrop animate-fade-in" onClick={() => setIsAddServiceModalOpen(false)}>
       <div className="add-service-modal-card" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
@@ -233,13 +234,18 @@ export const AddServiceModal = () => {
         .add-service-backdrop {
           position: fixed;
           inset: 0;
+          width: 100%;
+          height: 100%;
           background: rgba(15, 23, 42, 0.45);
           backdrop-filter: blur(4px);
-          z-index: 1060;
+          -webkit-backdrop-filter: blur(4px);
+          z-index: 99999;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
+          padding: 20px 16px;
+          overflow: hidden;
+          overscroll-behavior: none;
         }
 
         .add-service-modal-card {
@@ -251,9 +257,12 @@ export const AddServiceModal = () => {
           padding: 28px 32px 24px 32px;
           display: flex;
           flex-direction: column;
-          animation: modalScaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-          max-height: 92vh;
-          overflow-y: auto;
+          animation: modalScaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
+          overflow: hidden;
+          overscroll-behavior: contain;
+          position: relative;
         }
 
         @keyframes modalScaleUp {
@@ -263,7 +272,7 @@ export const AddServiceModal = () => {
           }
           to {
             opacity: 1;
-            transform: scale(1) translateY(0);
+            transform: none;
           }
         }
 
@@ -272,6 +281,7 @@ export const AddServiceModal = () => {
           align-items: center;
           justify-content: space-between;
           margin-bottom: 22px;
+          flex-shrink: 0;
         }
 
         .add-service-header-left {
@@ -330,6 +340,11 @@ export const AddServiceModal = () => {
         .add-service-form {
           display: flex;
           flex-direction: column;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          flex: 1 1 auto;
+          min-height: 0;
+          padding-right: 4px;
         }
 
         .add-service-field-group {
@@ -561,6 +576,7 @@ export const AddServiceModal = () => {
           padding-top: 18px;
           border-top: 1px solid #F1F5F9;
           margin-top: 8px;
+          flex-shrink: 0;
         }
 
         .add-service-cancel-btn {
@@ -596,6 +612,7 @@ export const AddServiceModal = () => {
           background: #066761;
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };

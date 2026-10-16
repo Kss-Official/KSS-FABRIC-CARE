@@ -323,10 +323,7 @@ export const AdminCustomersPage = () => {
           </div>
           <div className="metric-text-stack">
             <div className="metric-numeric-value">{metrics.total}</div>
-            <div className="metric-sublabel">
-              <span>Total</span>
-              <span>Customers</span>
-            </div>
+            <div className="metric-label">Total Customers</div>
           </div>
         </div>
 
@@ -337,10 +334,7 @@ export const AdminCustomersPage = () => {
           </div>
           <div className="metric-text-stack">
             <div className="metric-numeric-value">{metrics.active}</div>
-            <div className="metric-sublabel">
-              <span>Active</span>
-              <span>Customers</span>
-            </div>
+            <div className="metric-label">Active Customers</div>
           </div>
         </div>
 
@@ -351,10 +345,7 @@ export const AdminCustomersPage = () => {
           </div>
           <div className="metric-text-stack">
             <div className="metric-numeric-value">{metrics.inactive}</div>
-            <div className="metric-sublabel">
-              <span>Inactive</span>
-              <span>Customers</span>
-            </div>
+            <div className="metric-label">Inactive Customers</div>
           </div>
         </div>
 
@@ -365,10 +356,7 @@ export const AdminCustomersPage = () => {
           </div>
           <div className="metric-text-stack">
             <div className="metric-numeric-value">{metrics.rating}</div>
-            <div className="metric-sublabel">
-              <span>Average</span>
-              <span>Rating</span>
-            </div>
+            <div className="metric-label">Average Rating</div>
           </div>
         </div>
       </div>
@@ -711,6 +699,9 @@ export const AdminCustomersPage = () => {
           flex-direction: column;
           gap: 24px;
           padding-bottom: 40px;
+          width: 100%;
+          box-sizing: border-box;
+          margin: 0;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         }
 
@@ -772,10 +763,10 @@ export const AdminCustomersPage = () => {
           background: #FFFFFF;
           border: 1px solid #E2E8F0;
           border-radius: 16px;
-          padding: 20px 24px;
+          padding: 14px 18px;
           display: flex;
           align-items: center;
-          gap: 16px;
+          gap: 14px;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
           box-sizing: border-box;
           transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -787,9 +778,9 @@ export const AdminCustomersPage = () => {
         }
 
         .metric-icon-circle-badge {
-          width: 48px;
-          height: 48px;
-          border-radius: 50%;
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -818,21 +809,21 @@ export const AdminCustomersPage = () => {
         }
 
         .metric-numeric-value {
-          font-size: 1.875rem;
+          font-size: 1.625rem;
           font-weight: 700;
           color: #0F172A;
           line-height: 1.1;
           letter-spacing: -0.02em;
         }
 
+        .metric-label,
         .metric-sublabel {
           font-size: 0.8125rem;
           font-weight: 500;
           color: #64748B;
-          margin-top: 4px;
-          display: flex;
-          flex-direction: column;
-          line-height: 1.25;
+          margin-top: 3px;
+          white-space: nowrap;
+          line-height: 1.2;
         }
 
         /* 3. Search and Filter Controls */

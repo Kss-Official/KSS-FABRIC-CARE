@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   ShoppingBag, 
@@ -528,7 +529,7 @@ export const AdminOrdersPage = () => {
       </div>
 
       {/* Order Details Modal */}
-      {selectedOrderDetails && (
+      {selectedOrderDetails && typeof document !== 'undefined' && createPortal(
         <div className="details-modal-backdrop animate-fade-in" onClick={() => setSelectedOrderDetails(null)}>
           <div className="details-modal-card animate-scale-up" onClick={e => e.stopPropagation()}>
             <div className="details-modal-header">
@@ -545,7 +546,8 @@ export const AdminOrdersPage = () => {
               <div className="details-row"><strong>Driver:</strong> <span>{selectedOrderDetails.driver || 'Not Assigned'}</span></div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <style>{`
@@ -554,6 +556,9 @@ export const AdminOrdersPage = () => {
           flex-direction: column;
           gap: 0;
           width: 100%;
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
         }
 
         /* HEADER */
@@ -1196,22 +1201,42 @@ export const AdminOrdersPage = () => {
         .details-modal-backdrop {
           position: fixed;
           inset: 0;
+          width: 100vw;
+          height: 100vh;
+          height: 100dvh;
           background: rgba(15, 23, 42, 0.45);
           backdrop-filter: blur(4px);
-          z-index: 1050;
+          -webkit-backdrop-filter: blur(4px);
+          z-index: 99999;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
+          padding: 20px 16px;
+          overflow: hidden;
+          overscroll-behavior: none;
         }
 
         .details-modal-card {
           width: 500px;
           max-width: 100%;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
           background: #FFFFFF;
           border-radius: 20px;
           padding: 24px;
           box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          overscroll-behavior: contain;
+          position: relative;
+        }
+
+        .details-modal-body {
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          flex: 1 1 auto;
+          min-height: 0;
         }
 
         .details-modal-header {

@@ -163,7 +163,8 @@ export const OrderConfirmedPage = () => {
 
       <style>{`
         .confirmed-page-wrapper {
-          min-height: calc(100vh - 160px);
+          flex: 1;
+          width: 100%;
           display: flex;
           align-items: center;
           justify-content: center;

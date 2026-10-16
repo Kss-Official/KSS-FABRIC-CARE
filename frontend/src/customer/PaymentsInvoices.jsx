@@ -1589,9 +1589,8 @@ export const PaymentsInvoices = () => {
           top: 0;
           left: 0;
           right: 0;
-          bottom: 0;
-          width: 100vw;
-          height: 100vh;
+          width: 100%;
+          height: 100%;
           background: rgba(15, 23, 42, 0.65);
           backdrop-filter: blur(8px);
           -webkit-backdrop-filter: blur(8px);

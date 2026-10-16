@@ -4,6 +4,7 @@ import { useBooking } from '../../context/BookingContext';
 import { useAuth } from '../../context/AuthContext';
 import { 
   LayoutDashboard, 
+  Home,
   Package, 
   Truck, 
   Users, 
@@ -11,7 +12,6 @@ import {
   FileText, 
   Settings, 
   LogOut, 
-  Search, 
   Bell, 
   ChevronDown,
   CheckCircle2,
@@ -22,8 +22,16 @@ import {
   Globe,
   RotateCcw,
   CheckCheck,
-  Check
+  Check,
+  Shirt,
+  UserCheck,
+  Search,
+  AlertCircle,
+  HelpCircle,
+  MessageSquare,
+  Headphones
 } from 'lucide-react';
+
 
 export const AdminLayout = ({ children }) => {
   const { 
@@ -35,7 +43,12 @@ export const AdminLayout = ({ children }) => {
     markNotificationAsRead,
     markNotificationAsUnread,
     markAllNotificationsAsRead,
-    unreadNotificationsCount 
+    unreadNotificationsCount,
+    isCreateOrderDrawerOpen,
+    isAddCustomerModalOpen,
+    isAddServiceModalOpen,
+    isManageServicesModalOpen,
+    isAssignOrderModalOpen
   } = useAdmin();
   const { navigateTo } = useBooking();
   const { userProfile, currentUser, logout } = useAuth();
@@ -43,6 +56,49 @@ export const AdminLayout = ({ children }) => {
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [reportsMenuOpen, setReportsMenuOpen] = useState(true);
+
+  const isAnyModalActive = Boolean(
+    isCreateOrderDrawerOpen ||
+    isAddCustomerModalOpen ||
+    isAddServiceModalOpen ||
+    isManageServicesModalOpen ||
+    isAssignOrderModalOpen
+  );
+
+  useEffect(() => {
+    const mainWrapper = document.querySelector('.admin-main-wrapper');
+    if (isAnyModalActive) {
+      if (mainWrapper) mainWrapper.classList.add('admin-scroll-locked');
+    } else {
+      if (mainWrapper) mainWrapper.classList.remove('admin-scroll-locked');
+    }
+    return () => {
+      if (mainWrapper) mainWrapper.classList.remove('admin-scroll-locked');
+    };
+  }, [isAnyModalActive]);
+
+  // Lock window and document scrollbars while in Admin Portal to prevent layout shifts
+  useEffect(() => {
+    const origHtmlOverflow = document.documentElement.style.overflow;
+    const origBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = origHtmlOverflow;
+      document.body.style.overflow = origBodyOverflow;
+    };
+  }, []);
+
+  // Reset scroll to top and left when switching admin tabs to prevent layout shift
+  useEffect(() => {
+    const mainWrapper = document.querySelector('.admin-main-wrapper');
+    if (mainWrapper) {
+      mainWrapper.scrollTop = 0;
+      mainWrapper.scrollLeft = 0;
+    }
+    window.scrollTo(0, 0);
+  }, [adminTab]);
 
   const notifRef = useRef(null);
   const profileRef = useRef(null);
@@ -101,13 +157,49 @@ export const AdminLayout = ({ children }) => {
     };
   }, []);
 
+  // Prevent background scrolling across all Admin sections whenever any modal/drawer is open
+  useEffect(() => {
+    const modalSelectors = [
+      '.modal-backdrop-overlay',
+      '.modal-backdrop',
+      '.add-service-backdrop',
+      '.manage-modal-backdrop',
+      '.details-modal-backdrop',
+      '.drawer-backdrop',
+      '.assign-order-modal-backdrop',
+      '.ac-modal-backdrop',
+      '.notif-modal-backdrop'
+    ];
+
+    const checkModalOpen = () => {
+      const isModalOpen = modalSelectors.some(sel => document.querySelector(sel));
+      const mainWrapper = document.querySelector('.admin-main-wrapper');
+      if (isModalOpen) {
+        if (mainWrapper) mainWrapper.classList.add('admin-scroll-locked');
+      } else {
+        if (mainWrapper) mainWrapper.classList.remove('admin-scroll-locked');
+      }
+    };
+
+    checkModalOpen();
+    const observer = new MutationObserver(checkModalOpen);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      const mainWrapper = document.querySelector('.admin-main-wrapper');
+      if (mainWrapper) mainWrapper.classList.remove('admin-scroll-locked');
+    };
+  }, []);
+
   const handleAdminLogout = async () => {
     setIsAdminAuthenticated(false);
     setAdminTab('login');
     setProfileDropdownOpen(false);
     setNotifDropdownOpen(false);
+    sessionStorage.removeItem('fabricare_intended_destination');
     await logout();
-    navigateTo('home');
+    navigateTo('login');
   };
 
   const navItems = [
@@ -137,31 +229,103 @@ export const AdminLayout = ({ children }) => {
         </div>
 
         <nav className="admin-nav-menu">
-          {navItems.map(item => {
-            const isActive = adminTab === item.id;
-            return (
-              <button
-                key={item.id}
-                className={`admin-nav-item ${isActive ? 'active' : ''}`}
-                onClick={() => {
-                  setAdminTab(item.id);
-                  setMobileSidebarOpen(false);
-                }}
-              >
-                <span className="nav-item-icon">{item.icon}</span>
-                <span className="nav-item-label">{item.label}</span>
-                {item.badgeCount > 0 ? (
-                  <span className="nav-count-badge">{item.badgeCount}</span>
-                ) : (
-                  item.hasBadge && <span className="nav-dot-badge" />
-                )}
-              </button>
-            );
-          })}
-        </nav>
+          {/* Dashboard */}
+          <button
+            className={`admin-nav-item ${adminTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => {
+              setAdminTab('dashboard');
+              setMobileSidebarOpen(false);
+            }}
+          >
+            <span className="nav-item-icon"><Home size={19} /></span>
+            <span className="nav-item-label">Dashboard</span>
+          </button>
 
-        {/* Sidebar Footer */}
-        <div className="sidebar-footer-menu">
+          {/* Orders */}
+          <button
+            className={`admin-nav-item ${adminTab === 'orders' ? 'active' : ''}`}
+            onClick={() => {
+              setAdminTab('orders');
+              setMobileSidebarOpen(false);
+            }}
+          >
+            <span className="nav-item-icon"><Package size={19} /></span>
+            <span className="nav-item-label">Orders</span>
+          </button>
+
+          {/* Customers */}
+          <button
+            className={`admin-nav-item ${adminTab === 'customers' ? 'active' : ''}`}
+            onClick={() => {
+              setAdminTab('customers');
+              setMobileSidebarOpen(false);
+            }}
+          >
+            <span className="nav-item-icon"><Users size={19} /></span>
+            <span className="nav-item-label">Customers</span>
+          </button>
+
+          {/* Deliveries */}
+          <button
+            className={`admin-nav-item ${adminTab === 'pickup-delivery' || adminTab === 'deliveries' ? 'active' : ''}`}
+            onClick={() => {
+              setAdminTab('pickup-delivery');
+              setMobileSidebarOpen(false);
+            }}
+          >
+            <span className="nav-item-icon"><Truck size={19} /></span>
+            <span className="nav-item-label">Deliveries</span>
+          </button>
+
+          {/* Complaints Accordion */}
+          <div className="admin-nav-group">
+            <button
+              type="button"
+              className={`admin-nav-item has-submenu ${['complaints', 'delivery-reports', 'help-support', 'reports', 'complaint-reports'].includes(adminTab) ? 'active-parent' : ''}`}
+              onClick={() => setReportsMenuOpen(prev => !prev)}
+            >
+              <span className="nav-item-icon"><FileText size={19} /></span>
+              <span className="nav-item-label">Complaints</span>
+              <span className="nav-item-chevron">
+                <ChevronDown size={14} className={`chevron-arrow ${reportsMenuOpen ? 'open' : ''}`} />
+              </span>
+            </button>
+
+            {reportsMenuOpen && (
+              <div className="admin-sub-menu">
+                <button
+                  type="button"
+                  className={`admin-sub-item ${adminTab === 'delivery-reports' || adminTab === 'complaints' || adminTab === 'complaint-reports' || adminTab === 'reports' ? 'active' : ''}`}
+                  onClick={() => {
+                    setAdminTab('delivery-reports');
+                    setMobileSidebarOpen(false);
+                  }}
+                >
+                  {(adminTab === 'delivery-reports' || adminTab === 'complaints' || adminTab === 'complaint-reports' || adminTab === 'reports') && (
+                    <span className="sub-item-active-bar" />
+                  )}
+                  <span className="sub-item-text">Delivery Reports</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`admin-sub-item ${adminTab === 'help-support' ? 'active' : ''}`}
+                  onClick={() => {
+                    setAdminTab('help-support');
+                    setMobileSidebarOpen(false);
+                  }}
+                >
+                  {adminTab === 'help-support' && (
+                    <span className="sub-item-active-bar" />
+                  )}
+                  <span className="sub-item-text">Help &amp; Support</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+
+          {/* Settings */}
           <button
             className={`admin-nav-item ${adminTab === 'settings' ? 'active' : ''}`}
             onClick={() => {
@@ -169,22 +333,36 @@ export const AdminLayout = ({ children }) => {
               setMobileSidebarOpen(false);
             }}
           >
-            <span className="nav-item-icon"><Settings size={20} /></span>
+            <span className="nav-item-icon"><Settings size={19} /></span>
             <span className="nav-item-label">Settings</span>
           </button>
+        </nav>
 
+        {/* Sidebar Clean Clothes Happy Lives Promo Card matching Reference Image */}
+        <div className="sidebar-promo-wrapper">
+          <div className="sidebar-promo-box">
+            <div className="promo-hanger-box">
+              <Shirt size={26} className="promo-hanger-icon" />
+            </div>
+            <div className="promo-title">Clean Clothes</div>
+            <div className="promo-subtitle">Happy Lives</div>
+          </div>
+        </div>
+
+        {/* Sidebar Footer */}
+        <div className="sidebar-footer-menu">
           <button
             className="admin-nav-item logout-btn"
             onClick={handleAdminLogout}
           >
-            <span className="nav-item-icon"><LogOut size={20} /></span>
+            <span className="nav-item-icon"><LogOut size={19} /></span>
             <span className="nav-item-label">Logout</span>
           </button>
         </div>
       </aside>
 
       {/* Main Container */}
-      <div className="admin-main-wrapper">
+      <div className={`admin-main-wrapper ${isAnyModalActive ? 'admin-scroll-locked' : ''}`}>
         {/* Top Header */}
         <header className="admin-topbar">
           <div className="topbar-left">
@@ -194,16 +372,10 @@ export const AdminLayout = ({ children }) => {
             >
               <Menu size={22} />
             </button>
-            
-            <div className="admin-search-box">
-              <Search size={18} className="search-icon" />
-              <input 
-                type="text" 
-                placeholder="Search orders, customers, or services..." 
-                className="admin-search-input"
-              />
-            </div>
+
+            {/* Search bar removed per user instructions */}
           </div>
+
 
           <div className="topbar-right">
             {/* Notification Bell with Dropdown */}
@@ -337,11 +509,10 @@ export const AdminLayout = ({ children }) => {
                 aria-haspopup="true"
               >
                 <div className="admin-avatar">
-                  {(settings?.name || userProfile?.displayName || currentUser?.displayName || 'A').substring(0, 1).toUpperCase()}
+                  AD
                 </div>
                 <div className="admin-user-info">
-                  <span className="admin-name">{settings?.name || userProfile?.displayName || currentUser?.displayName || 'Admin'}</span>
-                  <span className="admin-org">FabriCare</span>
+                  <span className="admin-name">Admin</span>
                 </div>
                 <ChevronDown size={14} className={`profile-chevron ${profileDropdownOpen ? 'rotated' : ''}`} />
               </button>
@@ -410,26 +581,48 @@ export const AdminLayout = ({ children }) => {
       </div>
 
       <style>{`
+        html:has(.admin-root-layout),
+        body:has(.admin-root-layout) {
+          overflow: hidden !important;
+          height: 100% !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
         .admin-root-layout {
           display: flex;
-          min-height: 100vh;
+          height: 100vh;
+          height: 100dvh;
+          max-height: 100vh;
+          max-height: 100dvh;
+          overflow: hidden;
           background-color: #F8FBFC;
           color: #1E293B;
           font-family: var(--font-family);
+          width: 100%;
+          margin: 0;
+          padding: 0;
+          overscroll-behavior: none;
+          box-sizing: border-box;
+          position: relative;
         }
 
-        /* SIDEBAR */
+        /* SIDEBAR - Rigid dimensions to eliminate horizontal flex shifting */
         .admin-sidebar {
-          width: 260px;
+          width: 260px !important;
+          min-width: 260px !important;
+          max-width: 260px !important;
+          flex: 0 0 260px !important;
+          box-sizing: border-box !important;
           background: #FFFFFF;
           border-right: 1px solid #E2E8F0;
           display: flex;
           flex-direction: column;
-          position: sticky;
-          top: 0;
-          height: 100vh;
+          height: 100%;
           z-index: 100;
-          flex-shrink: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
         }
 
         .sidebar-header {
@@ -525,6 +718,168 @@ export const AdminLayout = ({ children }) => {
           line-height: 1.4;
         }
 
+        /* Submenu Accordion & Subitems */
+        .admin-nav-group {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .admin-nav-item.has-submenu {
+          display: flex;
+          align-items: center;
+          width: 100%;
+        }
+
+        .nav-item-chevron {
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          color: #94A3B8;
+        }
+
+        .chevron-arrow {
+          transition: transform 0.2s ease;
+        }
+
+        .chevron-arrow.open {
+          transform: rotate(0deg);
+        }
+
+        .chevron-arrow:not(.open) {
+          transform: rotate(-90deg);
+        }
+
+        .admin-sub-menu {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          padding-left: 20px;
+          margin-top: 2px;
+        }
+
+        .admin-sub-item {
+          position: relative;
+          display: flex;
+          align-items: center;
+          padding: 9px 14px 9px 24px;
+          border-radius: 8px;
+          border: none;
+          background: transparent;
+          font-size: 0.88rem;
+          font-weight: 500;
+          color: #64748B;
+          cursor: pointer;
+          text-align: left;
+          width: 100%;
+          transition: all 0.15s ease;
+        }
+
+        .admin-sub-item:hover {
+          background: #F8FAFC;
+          color: #1E293B;
+        }
+
+        .admin-sub-item.active {
+          background: #E0F7FA !important;
+          color: #087F8C !important;
+          font-weight: 600;
+        }
+
+        .sub-item-active-bar {
+          position: absolute;
+          left: 10px;
+          top: 7px;
+          bottom: 7px;
+          width: 3.5px;
+          background: #087F8C;
+          border-radius: 2px;
+        }
+
+        /* Sidebar Promo Card Clean Clothes Happy Lives */
+        .sidebar-promo-wrapper {
+          padding: 16px 20px 8px;
+          margin-top: auto;
+        }
+
+        .sidebar-promo-box {
+          background: #EBF8F9;
+          border: 1px solid #D1F0F2;
+          border-radius: 12px;
+          padding: 18px 16px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+        }
+
+        .promo-hanger-box {
+          width: 44px;
+          height: 44px;
+          border-radius: 10px;
+          border: 1.5px solid #087F8C;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 10px;
+          color: #087F8C;
+          background: #FFFFFF;
+        }
+
+        .promo-title {
+          font-size: 0.88rem;
+          font-weight: 700;
+          color: #087F8C;
+          line-height: 1.25;
+        }
+
+        .promo-subtitle {
+          font-size: 0.88rem;
+          font-weight: 700;
+          color: #087F8C;
+          line-height: 1.25;
+        }
+
+        /* Topbar Global Search */
+        .admin-global-search {
+          position: relative;
+          margin-left: 16px;
+          min-width: 260px;
+          max-width: 380px;
+        }
+
+        @media (max-width: 640px) {
+          .admin-global-search {
+            display: none;
+          }
+        }
+
+        .global-search-icon {
+          position: absolute;
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #94A3B8;
+        }
+
+        .global-search-input {
+          width: 100%;
+          padding: 8px 14px 8px 36px;
+          border: 1px solid #E2E8F0;
+          border-radius: 8px;
+          font-size: 0.88rem;
+          background: #F8FAFC;
+          color: #1E293B;
+          outline: none;
+          transition: all 0.15s ease;
+        }
+
+        .global-search-input:focus {
+          background: #FFFFFF;
+          border-color: #087F8C;
+          box-shadow: 0 0 0 3px rgba(8, 127, 140, 0.1);
+        }
+
         .profile-drop-badge {
           font-size: 10px;
           font-weight: 700;
@@ -548,13 +903,161 @@ export const AdminLayout = ({ children }) => {
           color: #EF4444;
         }
 
-        /* MAIN WRAPPER */
+        /* MAIN WRAPPER - Always preserve vertical scrollbar gutter and prevent horizontal overflow */
         .admin-main-wrapper {
-          flex: 1;
+          flex: 1 1 auto;
           display: flex;
           flex-direction: column;
           min-width: 0;
           background: #F8FBFC;
+          overflow-y: scroll !important;
+          overflow-x: hidden !important;
+          height: 100%;
+          overscroll-behavior-y: contain;
+          scrollbar-gutter: stable;
+          box-sizing: border-box;
+          width: calc(100% - 260px);
+        }
+
+        .admin-main-wrapper::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .admin-main-wrapper::-webkit-scrollbar-track {
+          background: #F1F5F9;
+        }
+
+        .admin-main-wrapper::-webkit-scrollbar-thumb {
+          background: #CBD5E1;
+          border-radius: 4px;
+        }
+
+        .admin-main-wrapper::-webkit-scrollbar-thumb:hover {
+          background: #94A3B8;
+        }
+
+        .admin-main-wrapper {
+          scrollbar-width: thin;
+          scrollbar-color: #CBD5E1 #F1F5F9;
+        }
+
+        .admin-main-wrapper.admin-scroll-locked {
+          overflow: hidden !important;
+          overscroll-behavior: none !important;
+        }
+
+        /* Consistent Admin Modal Scroll Containment & Fixed Background across all tabs */
+        .modal-backdrop-overlay,
+        .modal-backdrop,
+        .add-service-backdrop,
+        .manage-modal-backdrop,
+        .details-modal-backdrop,
+        .assign-order-modal-backdrop,
+        .ac-modal-backdrop,
+        .notif-modal-backdrop {
+          position: fixed !important;
+          inset: 0 !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          height: 100dvh !important;
+          z-index: 99999 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          overflow: hidden !important;
+          overscroll-behavior: none !important;
+          padding: 20px 16px !important;
+          box-sizing: border-box !important;
+        }
+
+        .drawer-backdrop {
+          position: fixed !important;
+          inset: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          height: 100dvh !important;
+          z-index: 99999 !important;
+          display: flex !important;
+          justify-content: flex-end !important;
+          overflow: hidden !important;
+          overscroll-behavior: none !important;
+          padding: 0 !important;
+        }
+
+        .modal-box-card,
+        .modal-container,
+        .add-service-modal-card,
+        .manage-modal-card,
+        .assign-order-modal-card,
+        .ac-modal-container,
+        .details-modal-card,
+        .notif-modal-card,
+        .order-details-modal {
+          max-height: calc(100vh - 40px) !important;
+          max-height: calc(100dvh - 40px) !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
+          overscroll-behavior: contain !important;
+          margin: auto !important;
+          position: relative !important;
+        }
+
+        .drawer-panel {
+          height: 100vh !important;
+          height: 100dvh !important;
+          max-height: 100vh !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
+          overscroll-behavior: contain !important;
+        }
+
+        .modal-body-form,
+        .modal-body,
+        .add-service-form,
+        .manage-modal-body,
+        .manage-services-list-body,
+        .assign-modal-body,
+        .assign-order-form,
+        .ac-form-body,
+        .ac-modal-body,
+        .details-modal-body,
+        .notif-modal-form,
+        .drawer-body {
+          overflow-y: auto !important;
+          overscroll-behavior: contain !important;
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          -webkit-overflow-scrolling: touch !important;
+        }
+
+        .modal-box-header,
+        .modal-header,
+        .add-service-header,
+        .manage-modal-header,
+        .assign-modal-header,
+        .ac-modal-header,
+        .details-modal-header,
+        .notif-modal-header,
+        .drawer-header {
+          flex-shrink: 0 !important;
+        }
+
+        .modal-actions-bar,
+        .modal-footer-actions,
+        .add-service-footer,
+        .add-service-actions,
+        .manage-modal-footer,
+        .assign-order-footer,
+        .ac-modal-footer,
+        .ac-form-footer,
+        .drawer-footer {
+          flex-shrink: 0 !important;
         }
 
         .admin-topbar {
@@ -568,14 +1071,13 @@ export const AdminLayout = ({ children }) => {
           position: sticky;
           top: 0;
           z-index: 90;
+          margin: 0;
+          flex-shrink: 0;
         }
 
         .topbar-left {
           display: flex;
           align-items: center;
-          gap: 16px;
-          flex: 1;
-          max-width: 520px;
         }
 
         .mobile-sidebar-toggle {
@@ -585,37 +1087,6 @@ export const AdminLayout = ({ children }) => {
           cursor: pointer;
           color: #475569;
           padding: 4px;
-        }
-
-        .admin-search-box {
-          position: relative;
-          width: 100%;
-          display: flex;
-          align-items: center;
-        }
-
-        .search-icon {
-          position: absolute;
-          left: 14px;
-          color: #94A3B8;
-        }
-
-        .admin-search-input {
-          width: 100%;
-          padding: 10px 16px 10px 42px;
-          background: #F8FAFC;
-          border: 1px solid #E2E8F0;
-          border-radius: 12px;
-          font-size: 0.875rem;
-          color: #1E293B;
-          outline: none;
-          transition: all 0.2s;
-        }
-
-        .admin-search-input:focus {
-          border-color: #0D7A75;
-          background: #FFFFFF;
-          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.1);
         }
 
         .topbar-right {
@@ -668,7 +1139,7 @@ export const AdminLayout = ({ children }) => {
           top: calc(100% + 12px);
           right: -8px;
           width: 580px;
-          max-width: calc(100vw - 28px);
+          max-width: min(580px, 92vw);
           background: #F8FAFC;
           border: 1px solid #E2E8F0;
           border-radius: 16px;
@@ -1051,7 +1522,19 @@ export const AdminLayout = ({ children }) => {
 
         .admin-page-body {
           padding: 32px;
+          width: 100%;
+          box-sizing: border-box;
           flex: 1;
+          min-width: 0;
+          overflow-x: hidden;
+        }
+
+        .admin-page-body > * {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          box-sizing: border-box !important;
         }
 
         @media (max-width: 1024px) {

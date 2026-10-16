@@ -277,7 +277,10 @@ export const HowItWorksPage = () => {
       <style>{`
         .how-it-works-page-wrapper {
           background-color: #FAFCFC;
-          min-height: 100vh;
+          width: 100%;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
 
         /* ==========================================================================

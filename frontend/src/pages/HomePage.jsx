@@ -1464,7 +1464,7 @@ export const HomePage = () => {
         /* WHY CHOOSE US (EXACT REFERENCE BENTO DESIGN) */
         .why-us-section {
           padding: 100px 0;
-          background: #FFFFFF;
+          background: #EEF2F2;
         }
 
         .why-us-bento-container {
@@ -1968,27 +1968,29 @@ export const HomePage = () => {
         .contact-form-card {
           background: #FFFFFF;
           border: 1.5px solid #E1E8E6;
-          border-radius: 24px;
+          border-radius: 28px;
           padding: 44px 40px;
           box-shadow: 0 8px 30px rgba(18, 38, 58, 0.03);
           display: flex;
           flex-direction: column;
+          height: 100%;
+          box-sizing: border-box;
         }
 
         .contact-card-title {
           font-family: 'Poppins', sans-serif;
-          font-size: 1.5rem;
+          font-size: 1.55rem;
           font-weight: 800;
           color: #12263A;
           margin: 0 0 16px;
-          line-height: 1.3;
+          line-height: 1.25;
         }
 
         .contact-card-desc {
           font-family: 'Inter', sans-serif;
           font-size: 0.95rem;
           color: #5A6E85;
-          line-height: 1.65;
+          line-height: 1.6;
           margin: 0 0 36px;
         }
 
@@ -2002,8 +2004,7 @@ export const HomePage = () => {
         .contact-details-list {
           display: flex;
           flex-direction: column;
-          gap: 24px;
-          margin-top: auto;
+          gap: 22px;
         }
 
         .contact-item {
@@ -2013,10 +2014,10 @@ export const HomePage = () => {
         }
 
         .contact-icon-squircle {
-          width: 44px;
-          height: 44px;
-          border-radius: 12px;
-          background: #DDF5F2;
+          width: 46px;
+          height: 46px;
+          border-radius: 13px;
+          background: #E8F8F6;
           color: #087F8C;
           display: flex;
           align-items: center;
@@ -2032,8 +2033,9 @@ export const HomePage = () => {
 
         .contact-detail-label {
           font-family: 'Inter', sans-serif;
-          font-size: 0.8rem;
+          font-size: 0.82rem;
           color: #7B8E9D;
+          font-weight: 500;
           line-height: 1.2;
         }
 
@@ -2042,6 +2044,7 @@ export const HomePage = () => {
           font-size: 0.98rem;
           font-weight: 700;
           color: #12263A;
+          line-height: 1.3;
         }
 
         .contact-form {
