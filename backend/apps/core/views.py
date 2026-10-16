@@ -1220,3 +1220,34 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         if user.role == User.Role.ADMIN or user.is_staff:
             return Invoice.objects.all()
         return Invoice.objects.filter(order__customer=user)
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def customer_catalog_view(request):
+    categories = ServiceCategory.objects.filter(is_active=True)
+    services = Service.objects.filter(is_active=True)
+    garments_data = ServiceCategorySerializer(categories, many=True).data
+    services_data = ServiceSerializer(services, many=True).data
+
+    prices = []
+    for s in services:
+        prices.append({
+            "service_id": str(s.id),
+            "service_name": s.name,
+            "category_id": str(s.category.id) if s.category else None,
+            "price": float(s.price),
+            "price_paise": int(float(s.price) * 100),
+            "turnaround_time": s.turnaround_time or '1-2 days'
+        })
+
+    return Response({
+        "garments": garments_data,
+        "categories": garments_data,
+        "services": services_data,
+        "prices": prices
+    })
+

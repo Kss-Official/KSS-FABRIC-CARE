@@ -131,7 +131,7 @@ service cloud.firestore {
              data.uid is string &&
              data.email is string && isValidEmail(data.email) &&
              validStringLength(data.displayName, 1, 100) &&
-             data.role in ['customer', 'admin', 'staff', 'driver'] &&
+             data.role in ['customer', 'admin', 'staff', 'driver', 'agent'] &&
              isValidOptionalString(data, 'phoneNumber', 0, 30) &&
              isValidOptionalString(data, 'avatar', 0, 10);
     }
@@ -258,10 +258,46 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // 8. Content / Terms Document
-    match /content/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
+    // 9. Delivery & Pickup Tasks
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated() && (
+        isStaff() ||
+        resource.data.agent_id == request.auth.uid ||
+        resource.data.driver == request.auth.uid
+      );
+      allow create, delete: if isAdmin() || isStaff();
+      allow update: if isAuthenticated() && (
+        isStaff() ||
+        resource.data.agent_id == request.auth.uid ||
+        resource.data.driver == request.auth.uid
+      );
+    }
+
+    // 10. Notifications
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.user_id == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isStaff()
+      );
+      allow write: if isStaff();
+    }
+
+    // 11. Support Tickets
+    match /support_tickets/{ticketId} {
+      allow read: if isAuthenticated() && (
+        resource.data.customer_id == request.auth.uid ||
+        resource.data.customerId == request.auth.uid ||
+        isStaff()
+      );
+      allow create: if isAuthenticated();
+      allow update: if isStaff() || (
+        isAuthenticated() && (
+          resource.data.customer_id == request.auth.uid ||
+          resource.data.customerId == request.auth.uid
+        )
+      );
+      allow delete: if isAdmin();
     }
 
     // Default Deny All other paths

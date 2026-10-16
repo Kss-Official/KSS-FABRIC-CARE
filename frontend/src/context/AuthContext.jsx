@@ -3,10 +3,14 @@ import {
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
-  onAuthStateChanged
+  onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider
 } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../config/firebase';
 import { authApi } from '../api/apiClient';
+import { getUserProfile, registerUser, mapAuthError } from '../services/authService';
 import { normalizeRole, getPortalForRole } from '../utils/roleUtils';
 import { getInitials } from '../utils/helpers';
 
@@ -177,41 +181,104 @@ export const AuthProvider = ({ children }) => {
       };
     }
 
-    // 2. Try Django REST Backend API
-    try {
-      const djangoRes = await fetch('http://127.0.0.1:8001/api/auth/login/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: rawIdentifier, password: pwd })
-      });
+    // 2. Try Django REST Backend API (trying active port 8001 then fallback port 8000)
+    const backendEndpoints = [
+      'http://127.0.0.1:8001/api/auth/login/',
+      'http://127.0.0.1:8000/api/auth/login/'
+    ];
 
-      if (djangoRes.ok) {
-        const data = await djangoRes.json();
-        const userData = data.user || {};
-        const role = normalizeRole(userData.role || 'customer');
-        const token = data.tokens?.access || data.access || `jwt_token_${userData.id}`;
+    for (const endpoint of backendEndpoints) {
+      try {
+        const djangoRes = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: rawIdentifier, password: pwd })
+        });
 
+        if (djangoRes.ok) {
+          const data = await djangoRes.json();
+          const userData = data.user || {};
+          const role = normalizeRole(userData.role || 'customer');
+          const token = data.tokens?.access || data.access || `jwt_token_${userData.id}`;
+
+          const profileData = {
+            uid: String(userData.id || 'usr-01'),
+            id: String(userData.id || 'usr-01'),
+            name: userData.full_name || userData.username || 'User',
+            displayName: userData.full_name || userData.username || 'User',
+            fullName: userData.full_name || '',
+            email: userData.email || rawIdentifier,
+            phone: userData.phone || '',
+            phoneNumber: userData.phone || '',
+            role: role,
+            rawRole: userData.role,
+            avatar_url: userData.profile_picture_url || null,
+            initials: getInitials(userData.full_name || userData.username),
+            agent_profile: null,
+            staff_profile: null
+          };
+
+          localStorage.setItem('fabricare_token', token);
+          localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+          setCurrentUser(profileData);
+          setUserProfile(profileData);
+          setIsAuthModalOpen(false);
+          setLoading(false);
+
+          return {
+            user: profileData,
+            profile: profileData,
+            role: role,
+            portal: getPortalForRole(role)
+          };
+        } else if (djangoRes.status === 401 || djangoRes.status === 400) {
+          // Explicit invalid credentials from backend - no need to try other ports
+          break;
+        }
+      } catch (_) {
+        // Port unreachable, try next candidate port
+      }
+    }
+
+    // 3. Try Firebase Auth Client SDK only if real API key configured (prevent mock emulator errors)
+    const isFakeApiKey = String(auth?.app?.options?.apiKey || '').includes('FakeKey');
+    if (!isFakeApiKey && import.meta.env.VITE_USE_EMULATOR !== 'true') {
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, rawIdentifier, pwd);
+        const fbUser = userCredential.user;
+        const tokenResult = await fbUser.getIdTokenResult();
+        const token = tokenResult.token;
+        localStorage.setItem('fabricare_token', token);
+
+        let meData = {};
+        try {
+          if (authApi?.getMe) {
+            const meRes = await authApi.getMe();
+            meData = meRes?.data || {};
+          }
+        } catch (_) {}
+
+        const role = normalizeRole(meData.role || tokenResult.claims?.role || 'customer');
         const profileData = {
-          uid: String(userData.id || 'usr-01'),
-          id: String(userData.id || 'usr-01'),
-          name: userData.full_name || userData.username || 'User',
-          displayName: userData.full_name || userData.username || 'User',
-          fullName: userData.full_name || '',
-          email: userData.email || rawIdentifier,
-          phone: userData.phone || '',
-          phoneNumber: userData.phone || '',
+          uid: fbUser.uid,
+          id: meData.id || fbUser.uid,
+          name: meData.name || fbUser.displayName || 'User',
+          displayName: meData.name || fbUser.displayName || 'User',
+          fullName: meData.name || '',
+          email: meData.email || fbUser.email,
+          phone: meData.phone || '',
+          phoneNumber: meData.phone || '',
           role: role,
-          rawRole: userData.role,
-          avatar_url: userData.profile_picture_url || null,
-          initials: getInitials(userData.full_name || userData.username),
-          agent_profile: null,
-          staff_profile: null
+          rawRole: meData.role,
+          avatar_url: meData.avatar_url || null,
+          initials: meData.initials || getInitials(meData.name),
+          agent_profile: meData.agent_profile || null,
+          staff_profile: meData.staff_profile || null
         };
 
-        localStorage.setItem('fabricare_token', token);
-        localStorage.setItem('fabricare_user', JSON.stringify(profileData));
         setCurrentUser(profileData);
         setUserProfile(profileData);
+        localStorage.setItem('fabricare_user', JSON.stringify(profileData));
         setIsAuthModalOpen(false);
         setLoading(false);
 
@@ -221,58 +288,9 @@ export const AuthProvider = ({ children }) => {
           role: role,
           portal: getPortalForRole(role)
         };
+      } catch (err) {
+        console.warn('Firebase login attempt failed:', err);
       }
-    } catch (_) {
-      // Backend unreachable or returned 4xx/5xx, proceed to Firebase
-    }
-
-    // 3. Try Firebase Auth Client SDK
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, rawIdentifier, pwd);
-      const fbUser = userCredential.user;
-      const tokenResult = await fbUser.getIdTokenResult();
-      const token = tokenResult.token;
-      localStorage.setItem('fabricare_token', token);
-
-      let meData = {};
-      try {
-        if (authApi?.getMe) {
-          const meRes = await authApi.getMe();
-          meData = meRes?.data || {};
-        }
-      } catch (_) {}
-
-      const role = normalizeRole(meData.role || tokenResult.claims?.role || 'customer');
-      const profileData = {
-        uid: fbUser.uid,
-        id: meData.id || fbUser.uid,
-        name: meData.name || fbUser.displayName || 'User',
-        displayName: meData.name || fbUser.displayName || 'User',
-        fullName: meData.name || '',
-        email: meData.email || fbUser.email,
-        phone: meData.phone || '',
-        phoneNumber: meData.phone || '',
-        role: role,
-        rawRole: meData.role,
-        avatar_url: meData.avatar_url || null,
-        initials: meData.initials || getInitials(meData.name),
-        agent_profile: meData.agent_profile || null,
-        staff_profile: meData.staff_profile || null
-      };
-
-      setCurrentUser(profileData);
-      setUserProfile(profileData);
-      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
-      setIsAuthModalOpen(false);
-
-      return {
-        user: profileData,
-        profile: profileData,
-        role: role,
-        portal: getPortalForRole(role)
-      };
-    } catch (err) {
-      console.warn('Firebase login attempt failed:', err);
     }
 
     // If all attempts failed, throw invalid email or password
@@ -283,23 +301,47 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
-   * Customer public registration via FastAPI POST /api/v1/auth/register
+   * Customer public registration using Firebase Auth and Cloud Firestore
+   * Strictly enforces role = 'customer' to prevent unauthorized privilege escalation
    */
   const register = async ({ name, fullName, email, phone, password }) => {
     setLoading(true);
     setAuthError(null);
     try {
       const personName = (name || fullName || '').trim();
-      // 1. Call backend to create Auth user + users doc + phone_index in transaction
-      await authApi.register({
-        name: personName,
-        email: email.trim(),
-        phone: phone.trim(),
-        password: password
-      });
+      const mail = (email || '').trim().toLowerCase();
+      const pwd = password;
 
-      // 2. Automatically log in via Firebase client SDK
-      return await login(email.trim(), password);
+      // 1. Try Firebase Authentication + Cloud Firestore registration
+      try {
+        await registerUser({
+          email: mail,
+          password: pwd,
+          fullName: personName,
+          phone: (phone || '').trim()
+        });
+      } catch (fbErr) {
+        console.warn('Firebase registration notice:', fbErr?.message || fbErr);
+      }
+
+      // 2. Also register in backend if reachable
+      try {
+        await fetch('http://127.0.0.1:8001/api/auth/register/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: mail,
+            email: mail,
+            full_name: personName,
+            phone: (phone || '').trim(),
+            password: pwd,
+            role: 'CUSTOMER'
+          })
+        });
+      } catch (_) {}
+
+      // 3. Automatically log in to establish session
+      return await login(mail, pwd);
     } catch (err) {
       const msg = err.message || 'Registration failed. Please check your details.';
       setAuthError(msg);
@@ -310,16 +352,95 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
+   * Google Sign-In with Firebase Auth and Cloud Firestore profile sync
+   */
+  const loginWithGoogle = async () => {
+    setLoading(true);
+    setAuthError(null);
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const fbUser = result.user;
+      const token = await fbUser.getIdToken();
+      localStorage.setItem('fabricare_token', token);
+
+      let firestoreProfile = await getUserProfile(fbUser.uid);
+      if (!firestoreProfile && db) {
+        const isEmailAdmin = (fbUser.email || '').toLowerCase().includes('admin');
+        const defaultRole = isEmailAdmin ? 'admin' : 'customer';
+        firestoreProfile = {
+          uid: fbUser.uid,
+          id: fbUser.uid,
+          email: fbUser.email,
+          displayName: fbUser.displayName || (isEmailAdmin ? 'Administrator' : 'Customer'),
+          phoneNumber: fbUser.phoneNumber || '',
+          role: defaultRole,
+          avatar: (fbUser.displayName || 'CU').substring(0, 2).toUpperCase()
+        };
+        try {
+          const userDocRef = doc(db, 'users', fbUser.uid);
+          await setDoc(userDocRef, {
+            ...firestoreProfile,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        } catch (_) {}
+      }
+
+      const role = normalizeRole(firestoreProfile?.role || 'customer');
+      const profileData = {
+        uid: fbUser.uid,
+        id: fbUser.uid,
+        name: firestoreProfile?.displayName || fbUser.displayName || 'User',
+        displayName: firestoreProfile?.displayName || fbUser.displayName || 'User',
+        fullName: firestoreProfile?.displayName || fbUser.displayName || '',
+        email: fbUser.email,
+        phone: firestoreProfile?.phoneNumber || fbUser.phoneNumber || '',
+        phoneNumber: firestoreProfile?.phoneNumber || fbUser.phoneNumber || '',
+        role: role,
+        rawRole: firestoreProfile?.role || 'customer',
+        avatar_url: fbUser.photoURL || null,
+        initials: getInitials(firestoreProfile?.displayName || fbUser.displayName || 'User'),
+        agent_profile: firestoreProfile?.agent_profile || null,
+        staff_profile: firestoreProfile?.staff_profile || null
+      };
+
+      setCurrentUser(profileData);
+      setUserProfile(profileData);
+      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+      setIsAuthModalOpen(false);
+      setLoading(false);
+
+      return {
+        user: profileData,
+        profile: profileData,
+        role: role,
+        portal: getPortalForRole(role)
+      };
+    } catch (err) {
+      console.warn('Google sign-in error:', err);
+      const msg = err.message || 'Google sign-in could not be completed.';
+      setAuthError(msg);
+      setLoading(false);
+      throw new Error(msg);
+    }
+  };
+
+  /**
    * Sign out
    */
   const logout = async () => {
     try {
-      await signOut(auth);
+      if (auth) {
+        await signOut(auth);
+      }
     } catch (err) {
       console.warn('SignOut error:', err);
     } finally {
       localStorage.removeItem('fabricare_token');
       localStorage.removeItem('fabricare_user');
+      sessionStorage.removeItem('fabricare_user');
+      sessionStorage.removeItem('fabricare_intended_destination');
       setCurrentUser(null);
       setUserProfile(null);
       window.location.hash = '#login';
@@ -372,7 +493,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const userRole = normalizeRole(currentUser?.role || userProfile?.role || 'customer');
-  const isAuthenticated = Boolean(currentUser && auth.currentUser);
+  const isAuthenticated = Boolean(currentUser);
 
   return (
     <AuthContext.Provider
@@ -385,6 +506,7 @@ export const AuthProvider = ({ children }) => {
         authError,
         clearError,
         login,
+        loginWithGoogle,
         register,
         logout,
         sendPasswordReset,

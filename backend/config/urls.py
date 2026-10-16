@@ -34,7 +34,8 @@ from apps.core.views import (
     SupportTicketViewSet,
     InvoiceViewSet,
     ContentFAQViewSet,
-    ContentPolicyViewSet
+    ContentPolicyViewSet,
+    customer_catalog_view
 )
 
 router = DefaultRouter()
@@ -64,6 +65,12 @@ def health_check(request):
 api_urlpatterns = [
     # Health check
     path('health/', health_check, name='api-health'),
+
+    # Catalog endpoints (compatible with both FastAPI and Django frontend clients)
+    path('customer/catalog', customer_catalog_view, name='customer-catalog-no-slash'),
+    path('customer/catalog/', customer_catalog_view, name='customer-catalog'),
+    path('catalog', customer_catalog_view, name='catalog-no-slash'),
+    path('catalog/', customer_catalog_view, name='catalog'),
 
     # Auth endpoints
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
@@ -106,6 +113,7 @@ urlpatterns = [
     path('', health_check, name='root-health'),
     path('admin/', admin.site.urls),
     path('api/', include(api_urlpatterns)),
+    path('api/v1/', include(api_urlpatterns)),
     path('auth/login/', LoginView.as_view(), name='direct-auth-login'),
     path('auth/register/', RegisterView.as_view(), name='direct-auth-register'),
     path('auth/me/', MeView.as_view(), name='direct-auth-me'),

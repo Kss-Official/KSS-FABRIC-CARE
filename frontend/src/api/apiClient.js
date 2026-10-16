@@ -1,7 +1,7 @@
 import { auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+let activeBaseUrl = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001/api').replace(/\/+$/, '');
 
 export class ApiError extends Error {
   constructor(message, code = 'UNKNOWN_ERROR', fields = {}, status = 500) {
@@ -43,13 +43,28 @@ export async function request(endpoint, options = {}, isRetry = false) {
     config.body = JSON.stringify(config.body);
   }
 
-  const url = endpoint.startsWith('http') ? endpoint : `${BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = endpoint.startsWith('http') ? endpoint : `${activeBaseUrl}${cleanEndpoint}`;
 
   let response;
   try {
     response = await fetch(url, config);
   } catch (err) {
-    throw new ApiError('Unable to connect to backend server. Please verify network or server status.', 'NETWORK_ERROR', {}, 0);
+    // If connection was refused on active port, automatically try alternate port (8000 <-> 8001)
+    if (!endpoint.startsWith('http') && (activeBaseUrl.includes(':8000') || activeBaseUrl.includes(':8001'))) {
+      const altBaseUrl = activeBaseUrl.includes(':8000')
+        ? activeBaseUrl.replace(':8000', ':8001')
+        : activeBaseUrl.replace(':8001', ':8000');
+      try {
+        const altUrl = `${altBaseUrl}${cleanEndpoint}`;
+        response = await fetch(altUrl, config);
+        activeBaseUrl = altBaseUrl; // Permanently switch to working port
+      } catch (fallbackErr) {
+        throw new ApiError('Unable to connect to backend server. Please verify network or server status.', 'NETWORK_ERROR', {}, 0);
+      }
+    } else {
+      throw new ApiError('Unable to connect to backend server. Please verify network or server status.', 'NETWORK_ERROR', {}, 0);
+    }
   }
 
   if (response.status === 401 && !isRetry && auth?.currentUser) {
