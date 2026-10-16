@@ -24,7 +24,6 @@ import {
   CheckCheck,
   Check,
   UserCheck,
-  Search,
   AlertCircle,
   HelpCircle,
   MessageSquare,
@@ -48,7 +47,9 @@ export const AdminLayout = ({ children }) => {
     isAddCustomerModalOpen,
     isAddServiceModalOpen,
     isManageServicesModalOpen,
-    isAssignOrderModalOpen
+    isAssignOrderModalOpen,
+    isRescheduleDrawerOpen,
+    isSupportDrawerOpen
   } = useAdmin();
   const { navigateTo } = useBooking();
   const { userProfile, currentUser, logout } = useAuth();
@@ -63,7 +64,9 @@ export const AdminLayout = ({ children }) => {
     isAddCustomerModalOpen ||
     isAddServiceModalOpen ||
     isManageServicesModalOpen ||
-    isAssignOrderModalOpen
+    isAssignOrderModalOpen ||
+    isRescheduleDrawerOpen ||
+    isSupportDrawerOpen
   );
 
   useEffect(() => {
@@ -168,7 +171,10 @@ export const AdminLayout = ({ children }) => {
       '.drawer-backdrop',
       '.assign-order-modal-backdrop',
       '.ac-modal-backdrop',
-      '.notif-modal-backdrop'
+      '.notif-modal-backdrop',
+      '.cr-modal-overlay',
+      '.reschedule-backdrop',
+      '.support-drawer'
     ];
 
     const checkModalOpen = () => {
@@ -397,15 +403,6 @@ export const AdminLayout = ({ children }) => {
             >
               <Menu size={22} />
             </button>
-
-            <div className="admin-search-box">
-              <Search size={18} className="search-icon" />
-              <input 
-                type="text" 
-                placeholder="Search orders, customers, or services..." 
-                className="admin-search-input"
-              />
-            </div>
           </div>
 
 
@@ -827,46 +824,6 @@ export const AdminLayout = ({ children }) => {
           border-radius: 2px;
         }
 
-        /* Topbar Global Search */
-        .admin-global-search {
-          position: relative;
-          margin-left: 16px;
-          min-width: 260px;
-          max-width: 380px;
-        }
-
-        @media (max-width: 640px) {
-          .admin-global-search {
-            display: none;
-          }
-        }
-
-        .global-search-icon {
-          position: absolute;
-          left: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: #94A3B8;
-        }
-
-        .global-search-input {
-          width: 100%;
-          padding: 8px 14px 8px 36px;
-          border: 1px solid #E2E8F0;
-          border-radius: 8px;
-          font-size: 0.88rem;
-          background: #F8FAFC;
-          color: #1E293B;
-          outline: none;
-          transition: all 0.15s ease;
-        }
-
-        .global-search-input:focus {
-          background: #FFFFFF;
-          border-color: #087F8C;
-          box-shadow: 0 0 0 3px rgba(8, 127, 140, 0.1);
-        }
-
         .profile-drop-badge {
           font-size: 10px;
           font-weight: 700;
@@ -942,7 +899,8 @@ export const AdminLayout = ({ children }) => {
         .details-modal-backdrop,
         .assign-order-modal-backdrop,
         .ac-modal-backdrop,
-        .notif-modal-backdrop {
+        .notif-modal-backdrop,
+        .cr-modal-overlay {
           position: fixed !important;
           inset: 0 !important;
           top: 0 !important;
@@ -962,7 +920,8 @@ export const AdminLayout = ({ children }) => {
           box-sizing: border-box !important;
         }
 
-        .drawer-backdrop {
+        .drawer-backdrop,
+        .reschedule-backdrop {
           position: fixed !important;
           inset: 0 !important;
           width: 100vw !important;
@@ -1066,40 +1025,6 @@ export const AdminLayout = ({ children }) => {
         .topbar-left {
           display: flex;
           align-items: center;
-          gap: 16px;
-          flex: 1;
-          max-width: 520px;
-        }
-
-        .admin-search-box {
-          position: relative;
-          width: 100%;
-          display: flex;
-          align-items: center;
-        }
-
-        .search-icon {
-          position: absolute;
-          left: 14px;
-          color: #94A3B8;
-        }
-
-        .admin-search-input {
-          width: 100%;
-          padding: 10px 16px 10px 42px;
-          background: #F8FAFC;
-          border: 1px solid #E2E8F0;
-          border-radius: 12px;
-          font-size: 0.875rem;
-          color: #1E293B;
-          outline: none;
-          transition: all 0.2s;
-        }
-
-        .admin-search-input:focus {
-          border-color: #0D7A75;
-          background: #FFFFFF;
-          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.1);
         }
 
         .mobile-sidebar-toggle {
