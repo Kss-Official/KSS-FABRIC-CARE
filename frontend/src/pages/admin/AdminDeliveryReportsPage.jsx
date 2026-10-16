@@ -232,7 +232,7 @@ export const AdminDeliveryReportsPage = () => {
             <Search size={16} className="cr-search-icon" />
             <input
               type="text"
-              placeholder="Search complaints by Order ID, customer, or reason..."
+              placeholder="Search by Order ID, customer, or reason..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -710,7 +710,7 @@ export const AdminDeliveryReportsPage = () => {
           position: relative;
           flex: 1;
           min-width: 240px;
-          max-width: 380px;
+          max-width: 400px;
         }
         .cr-search-icon {
           position: absolute;
