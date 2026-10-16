@@ -177,6 +177,37 @@ class OrderViewSet(viewsets.ModelViewSet):
                 pass
         return Response(OrderSerializer(order).data)
 
+    @action(detail=True, methods=['post'], url_path='pay')
+    def pay_order(self, request, pk=None):
+        order = self.get_object()
+        order.payment_status = Order.PaymentStatus.PAID
+        order.payment_method = request.data.get('method', 'UPI').upper()
+        order.save()
+        if hasattr(order, 'invoice'):
+            order.invoice.payment_status = 'PAID'
+            order.invoice.save()
+        return Response({
+            'status': 'PAID',
+            'payment_id': f'pay_{order.id}',
+            'gateway_order_id': f'gw_{order.id}',
+            'order': OrderSerializer(order).data
+        })
+
+    @action(detail=True, methods=['get'], url_path='tracking')
+    def get_tracking(self, request, pk=None):
+        order = self.get_object()
+        return Response({
+            'order_id': order.order_id,
+            'status': order.status,
+            'status_display': order.get_status_display(),
+            'stage_logs': [
+                {'stage': log.stage, 'timestamp': log.timestamp, 'notes': log.notes}
+                for log in order.stage_logs.all()
+            ],
+            'pickup': {'driver': order.assigned_pickup_driver.full_name if order.assigned_pickup_driver else None},
+            'delivery': {'driver': order.assigned_delivery_driver.full_name if order.assigned_delivery_driver else None}
+        })
+
 
 # ===============================================================
 # 3. ADMIN WORKFLOW ENDPOINTS
