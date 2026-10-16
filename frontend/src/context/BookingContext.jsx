@@ -88,9 +88,16 @@ export const BookingProvider = ({ children }) => {
 
   // Navigation State: 'home' | 'about' | 'services' | 'why-us' | 'pricing' | 'how-it-works' | 'booking' | 'confirmed' | 'admin' | 'customer-*' | 'delivery-portal' | 'laundry-portal'
   const getInitialPage = () => {
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const hash = window.location.hash.replace(/^#\/?/, '').trim().toLowerCase();
-      if (hash) return hash;
+    if (typeof window !== 'undefined') {
+      if (window.location.hash) {
+        const hash = window.location.hash.replace(/^#\/?/, '').trim().toLowerCase();
+        if (hash) return hash;
+      }
+      if (window.location.pathname && window.location.pathname !== '/') {
+        const path = window.location.pathname.replace(/^\//, '').trim();
+        const search = window.location.search || '';
+        return `${path}${search}`;
+      }
     }
     return 'home';
   };
@@ -98,16 +105,28 @@ export const BookingProvider = ({ children }) => {
   const [currentPage, setCurrentPage] = useState(getInitialPage);
 
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = (window.location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
-      if (hash) {
-        setCurrentPage(hash);
-      } else {
-        setCurrentPage('home');
+    const handleUrlChange = () => {
+      if (window.location.hash) {
+        const hash = window.location.hash.replace(/^#\/?/, '').trim();
+        if (hash) {
+          setCurrentPage(hash);
+          return;
+        }
       }
+      if (window.location.pathname && window.location.pathname !== '/') {
+        const path = window.location.pathname.replace(/^\//, '').trim();
+        const search = window.location.search || '';
+        setCurrentPage(`${path}${search}`);
+        return;
+      }
+      setCurrentPage('home');
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
   }, []);
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState('dry-cleaning');
@@ -397,16 +416,27 @@ export const BookingProvider = ({ children }) => {
     }, 0);
   };
 
-  const navigateTo = (page, idParam = null) => {
-    const cleanPage = String(page || 'home').replace(/^#\/?/, '').trim().toLowerCase();
+  const navigateTo = (page, idParam = null, options = {}) => {
+    let actualId = idParam;
+    let actualOptions = options;
+    if (idParam && typeof idParam === 'object' && !Array.isArray(idParam)) {
+      actualOptions = idParam;
+      actualId = null;
+    }
+
+    const cleanPage = String(page || 'home').replace(/^#\/?/, '').trim();
     setCurrentPage(cleanPage);
     if (typeof window !== 'undefined') {
-      window.location.hash = cleanPage;
+      if (actualOptions?.replace) {
+        window.location.replace(`#${cleanPage}`);
+      } else {
+        window.location.hash = cleanPage;
+      }
     }
-    if (cleanPage === 'customer-track' && idParam) {
-      setActiveTrackingOrderId(idParam);
-    } else if (cleanPage === 'services' && idParam) {
-      setSelectedServiceDetail(idParam);
+    if (cleanPage === 'customer-track' && actualId) {
+      setActiveTrackingOrderId(actualId);
+    } else if (cleanPage === 'services' && actualId) {
+      setSelectedServiceDetail(actualId);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };

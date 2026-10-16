@@ -40,7 +40,27 @@ import { LaundryPortal } from './laundry-staff/LaundryPortal';
 
 // Portal wrapper (no navbar/footer - self-contained)
 const FULL_SCREEN_PAGES = [
-  'admin', 'delivery-portal', 'laundry-portal', 'login', 'signup'
+  'admin', 'delivery-portal', 'laundry-portal', 'login', 'signup', 'orders',
+  'dashboard', 'incoming', 'processing', 'quality-check', 'ready-for-delivery', 'history',
+  'received-clothes', 'inspection', 'washing', 'drying', 'ironing', 'packing', 'ready'
+];
+
+const LAUNDRY_STAFF_ROUTES = [
+  'laundry-portal',
+  'dashboard',
+  'orders',
+  'history',
+  'incoming',
+  'processing',
+  'quality-check',
+  'ready-for-delivery',
+  'received-clothes',
+  'inspection',
+  'washing',
+  'drying',
+  'ironing',
+  'packing',
+  'ready'
 ];
 
 // Customer portal pages (with sidebar layout)
@@ -147,6 +167,9 @@ const AppContent = () => {
   const { isAuthenticated, userRole, loading } = useAuth();
 
   const normalizedRoute = String(currentPage || 'home').replace(/^#\/?/, '').trim().toLowerCase();
+  const cleanPageName = (currentPage || '').split('?')[0].replace(/^#\/?/, '').replace(/^\//, '').toLowerCase();
+  const isLaundryRoute = LAUNDRY_STAFF_ROUTES.includes(cleanPageName) || 
+    ((cleanPageName === 'notifications' || cleanPageName === 'profile') && (userRole === 'laundry_staff' || userRole === 'admin'));
 
   // Protected route redirects inside useEffect to avoid updating BookingProvider during render
   useEffect(() => {
@@ -154,28 +177,28 @@ const AppContent = () => {
 
     if (normalizedRoute === 'admin') {
       if (!isAuthenticated) {
-        navigateTo('login');
+        navigateTo('login', null, { replace: true });
       } else if (userRole !== 'admin') {
-        navigateTo(getPortalForRole(userRole));
+        navigateTo(getPortalForRole(userRole), null, { replace: true });
       }
     } else if (normalizedRoute === 'delivery-portal') {
       if (!isAuthenticated) {
-        navigateTo('login');
+        navigateTo('login', null, { replace: true });
       } else if (userRole !== 'delivery_agent' && userRole !== 'admin') {
-        navigateTo(getPortalForRole(userRole));
+        navigateTo(getPortalForRole(userRole), null, { replace: true });
       }
-    } else if (normalizedRoute === 'laundry-portal') {
+    } else if (isLaundryRoute) {
       if (!isAuthenticated) {
-        navigateTo('login');
+        navigateTo('login', null, { replace: true });
       } else if (userRole !== 'laundry_staff' && userRole !== 'admin') {
-        navigateTo(getPortalForRole(userRole));
+        navigateTo(getPortalForRole(userRole), null, { replace: true });
       }
     } else if (CUSTOMER_PORTAL_PAGES.includes(normalizedRoute)) {
       if (!isAuthenticated) {
-        navigateTo('login');
+        navigateTo('login', null, { replace: true });
       }
     }
-  }, [normalizedRoute, isAuthenticated, userRole, loading, navigateTo]);
+  }, [normalizedRoute, isLaundryRoute, isAuthenticated, userRole, loading, navigateTo]);
 
   // Show subtle loader while session is being verified from storage
   if (loading) {
@@ -221,7 +244,7 @@ const AppContent = () => {
   }
 
   // Route 4: Laundry Hub Portal (Strictly Protected: role === 'laundry_staff' or 'admin')
-  if (normalizedRoute === 'laundry-portal') {
+  if (isLaundryRoute) {
     if (!isAuthenticated || (userRole !== 'laundry_staff' && userRole !== 'admin')) {
       return null;
     }

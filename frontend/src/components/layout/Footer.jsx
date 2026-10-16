@@ -156,6 +156,16 @@ export const Footer = () => {
                   Contact Us
                 </button>
               </li>
+              <li>
+                <button
+                  type="button"
+                  className="footer-nav-link"
+                  onClick={() => handleLinkClick('delivery-portal')}
+                  style={{ color: '#0D7A75', fontWeight: 600 }}
+                >
+                  🚚 Delivery Portal
+                </button>
+              </li>
             </ul>
           </div>
 

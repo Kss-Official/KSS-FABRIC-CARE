@@ -3,7 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 
-const getEnv = (key, fallback) => {
+const getEnv = (key, fallback = '') => {
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
     return import.meta.env[key];
   }
@@ -13,8 +13,22 @@ const getEnv = (key, fallback) => {
   return fallback;
 };
 
+const rawApiKey = getEnv('VITE_FIREBASE_API_KEY', '');
+
+// Check whether a valid, genuine Firebase API key is configured (avoids firing network requests with placeholder keys)
+export const isFirebaseConfigured = Boolean(
+  rawApiKey &&
+  typeof rawApiKey === 'string' &&
+  !rawApiKey.toLowerCase().includes('placeholder') &&
+  !rawApiKey.toLowerCase().includes('demo') &&
+  !rawApiKey.toLowerCase().includes('your_api_key') &&
+  !rawApiKey.toLowerCase().includes('fabric_care') &&
+  rawApiKey.startsWith('AIzaSy') &&
+  rawApiKey.length >= 35
+);
+
 const firebaseConfig = {
-  apiKey: getEnv('VITE_FIREBASE_API_KEY', 'AIzaSy_demo_key_fabric_care_1f384'),
+  apiKey: rawApiKey,
   authDomain: getEnv('VITE_FIREBASE_AUTH_DOMAIN', 'fabric-care-1f384.firebaseapp.com'),
   projectId: getEnv('VITE_FIREBASE_PROJECT_ID', 'fabric-care-1f384'),
   storageBucket: getEnv('VITE_FIREBASE_STORAGE_BUCKET', 'fabric-care-1f384.firebasestorage.app'),
@@ -24,26 +38,22 @@ const firebaseConfig = {
 };
 
 // Determine whether a genuine Firebase Web API key is configured
-export const isRealApiKey = Boolean(
-  firebaseConfig.apiKey &&
-  !firebaseConfig.apiKey.includes('placeholder') &&
-  !firebaseConfig.apiKey.includes('demo') &&
-  !firebaseConfig.apiKey.includes('your_api_key')
-);
+export const isRealApiKey = isFirebaseConfigured;
 
-// Initialize Firebase as a singleton instance
-export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// Initialize Firebase as a singleton instance ONLY when a genuine API key is present
+export const app = isFirebaseConfigured
+  ? (!getApps().length ? initializeApp(firebaseConfig) : getApp())
+  : null;
 
-// Initialize Firebase Authentication only with a valid non-placeholder API key.
-// When a placeholder key is used, getAuth(app) attempts an iframe network call
-// to Identity Toolkit (https://www.googleapis.com/identitytoolkit/...) which fails with 400 Bad Request.
-export const auth = isRealApiKey ? getAuth(app) : null;
+// Initialize Firebase Authentication only when genuine Firebase app exists
+export const auth = (isFirebaseConfigured && app) ? getAuth(app) : null;
 
-// Initialize Cloud Firestore Database
-export const db = getFirestore(app);
+// Initialize Cloud Firestore Database only when genuine Firebase app exists
+export const db = (isFirebaseConfigured && app) ? getFirestore(app) : null;
+
 
 let analytics = null;
-if (typeof window !== 'undefined' && isRealApiKey) {
+if (typeof window !== 'undefined' && isFirebaseConfigured && app) {
   isSupported().then((supported) => {
     if (supported) {
       analytics = getAnalytics(app);

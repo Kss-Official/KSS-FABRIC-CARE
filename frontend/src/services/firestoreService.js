@@ -11,7 +11,7 @@ import {
   onSnapshot,
   serverTimestamp
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db, isFirebaseConfigured } from '../config/firebase';
 import {
   INITIAL_ORDERS,
   INITIAL_CUSTOMERS,
@@ -28,6 +28,7 @@ import {
  * Realtime subscription to Orders
  */
 export const subscribeOrders = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
   try {
     const ordersCol = collection(db, 'orders');
     const q = query(ordersCol, orderBy('createdAt', 'desc'));
@@ -57,6 +58,7 @@ export const subscribeOrders = (callback, errorCallback) => {
  * Create a new Order in Firestore
  */
 export const createFirestoreOrder = async (orderData) => {
+  if (!isFirebaseConfigured || !db) return null;
   try {
     const orderId = orderData.id || `#LDX${Math.floor(1000 + Math.random() * 9000)}`;
     const orderDocRef = doc(db, 'orders', orderId);
@@ -96,6 +98,7 @@ export const createFirestoreOrder = async (orderData) => {
  * Update an order's status
  */
 export const updateFirestoreOrderStatus = async (orderId, status) => {
+  if (!isFirebaseConfigured || !db) return true;
   try {
     const orderDocRef = doc(db, 'orders', orderId);
     await updateDoc(orderDocRef, {
@@ -113,6 +116,7 @@ export const updateFirestoreOrderStatus = async (orderId, status) => {
  * Assign a driver to an order
  */
 export const assignDriverToFirestoreOrder = async (orderId, driverName) => {
+  if (!isFirebaseConfigured || !db) return true;
   try {
     const orderDocRef = doc(db, 'orders', orderId);
     await updateDoc(orderDocRef, {
@@ -134,6 +138,7 @@ export const assignDriverToFirestoreOrder = async (orderId, driverName) => {
  * Realtime subscription to Customers
  */
 export const subscribeCustomers = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
   try {
     const customersCol = collection(db, 'customers');
     return onSnapshot(
@@ -160,6 +165,7 @@ export const subscribeCustomers = (callback, errorCallback) => {
  * Add a new customer to Firestore
  */
 export const addFirestoreCustomer = async (customerData) => {
+  if (!isFirebaseConfigured || !db) return null;
   try {
     const customerId = customerData.id || `#CUS${Math.floor(1000 + Math.random() * 9000)}`;
     const customerDocRef = doc(db, 'customers', customerId);
@@ -196,6 +202,7 @@ export const addFirestoreCustomer = async (customerData) => {
  * Realtime subscription to Services
  */
 export const subscribeServices = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
   try {
     const servicesCol = collection(db, 'services');
     return onSnapshot(
@@ -222,6 +229,7 @@ export const subscribeServices = (callback, errorCallback) => {
  * Add a new service to Firestore
  */
 export const addFirestoreService = async (serviceData) => {
+  if (!isFirebaseConfigured || !db) return null;
   try {
     const serviceId = String(serviceData.id || `srv_${Date.now()}`);
     const serviceDocRef = doc(db, 'services', serviceId);
@@ -251,6 +259,7 @@ export const addFirestoreService = async (serviceData) => {
  * Toggle a service's status in Firestore
  */
 export const toggleFirestoreServiceStatus = async (serviceId, currentStatus) => {
+  if (!isFirebaseConfigured || !db) return currentStatus === 'Active' ? 'Inactive' : 'Active';
   try {
     const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
     const serviceDocRef = doc(db, 'services', String(serviceId));
@@ -273,6 +282,7 @@ export const toggleFirestoreServiceStatus = async (serviceId, currentStatus) => 
  * Realtime subscription to Drivers
  */
 export const subscribeDrivers = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
   try {
     const driversCol = collection(db, 'drivers');
     return onSnapshot(
@@ -303,6 +313,7 @@ export const subscribeDrivers = (callback, errorCallback) => {
  * Realtime subscription to FAQs
  */
 export const subscribeFaqs = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
   try {
     const faqsCol = collection(db, 'faqs');
     return onSnapshot(
@@ -329,6 +340,7 @@ export const subscribeFaqs = (callback, errorCallback) => {
  * Get or Save Terms & Conditions
  */
 export const getFirestoreTerms = async () => {
+  if (!isFirebaseConfigured || !db) return null;
   try {
     const termsDocRef = doc(db, 'content', 'terms');
     const snapshot = await getDoc(termsDocRef);
@@ -343,6 +355,7 @@ export const getFirestoreTerms = async () => {
 };
 
 export const saveFirestoreTerms = async (termsData) => {
+  if (!isFirebaseConfigured || !db) return true;
   try {
     const termsDocRef = doc(db, 'content', 'terms');
     await setDoc(termsDocRef, {
@@ -365,6 +378,7 @@ export const saveFirestoreTerms = async (termsData) => {
  * Get or Save General Settings
  */
 export const getFirestoreSettings = async () => {
+  if (!isFirebaseConfigured || !db) return null;
   try {
     const settingsDocRef = doc(db, 'settings', 'general');
     const snapshot = await getDoc(settingsDocRef);
@@ -379,6 +393,7 @@ export const getFirestoreSettings = async () => {
 };
 
 export const saveFirestoreSettings = async (settingsData) => {
+  if (!isFirebaseConfigured || !db) return true;
   try {
     const settingsDocRef = doc(db, 'settings', 'general');
     await setDoc(settingsDocRef, {
@@ -400,6 +415,7 @@ export const saveFirestoreSettings = async (settingsData) => {
  * Seeds initial services, FAQs, sample orders and drivers if collections are empty.
  */
 export const seedInitialFirestoreData = async () => {
+  if (!isFirebaseConfigured || !db) return false;
   try {
     // Check services
     const servicesSnap = await getDocs(collection(db, 'services'));
