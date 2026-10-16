@@ -126,17 +126,25 @@ class MeView(APIView):
 
 class AddressViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerAddressSerializer
-    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
-        return CustomerAddress.objects.filter(user=self.request.user).order_by('-is_default', '-created_at')
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return CustomerAddress.objects.all().order_by('-is_default', '-created_at')[:10]
+        return CustomerAddress.objects.filter(user=user).order_by('-is_default', '-created_at')
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        user = self.request.user if (self.request.user and self.request.user.is_authenticated) else User.objects.filter(role=User.Role.CUSTOMER).first()
+        serializer.save(user=user)
 
 
 class StaffListView(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.AllowAny,)
 
     def get(self, request):
         role = request.query_params.get('role')

@@ -144,7 +144,68 @@ export const AuthProvider = ({ children }) => {
     const rawIdentifier = (email || '').trim();
     const pwd = (password || '').trim();
 
-    // 1. Check Built-in Demo Credentials
+    // 1. Authenticate with Django REST Backend API (active port 8001 then fallback port 8000)
+    const backendEndpoints = [
+      'http://127.0.0.1:8001/api/auth/login/',
+      'http://127.0.0.1:8000/api/auth/login/'
+    ];
+
+    for (const endpoint of backendEndpoints) {
+      try {
+        const djangoRes = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: rawIdentifier, password: pwd })
+        });
+
+        if (djangoRes.ok) {
+          const data = await djangoRes.json();
+          const userData = data.user || {};
+          const role = normalizeRole(userData.role || 'customer');
+          const token = data.tokens?.access || data.access || '';
+
+          const profileData = {
+            uid: String(userData.id || 'usr-01'),
+            id: String(userData.id || 'usr-01'),
+            name: userData.full_name || userData.username || 'User',
+            displayName: userData.full_name || userData.username || 'User',
+            fullName: userData.full_name || '',
+            email: userData.email || rawIdentifier,
+            phone: userData.phone || '',
+            phoneNumber: userData.phone || '',
+            role: role,
+            rawRole: userData.role,
+            avatar_url: userData.profile_picture_url || null,
+            initials: getInitials(userData.full_name || userData.username),
+            agent_profile: null,
+            staff_profile: null
+          };
+
+          if (token) {
+            localStorage.setItem('fabricare_token', token);
+          }
+          localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+          setCurrentUser(profileData);
+          setUserProfile(profileData);
+          setIsAuthModalOpen(false);
+          setLoading(false);
+
+          return {
+            user: profileData,
+            profile: profileData,
+            role: role,
+            portal: getPortalForRole(role)
+          };
+        } else if (djangoRes.status === 401 || djangoRes.status === 400) {
+          // Explicit invalid credentials from backend - no need to try alternate port
+          break;
+        }
+      } catch (_) {
+        // Port unreachable, try next candidate port
+      }
+    }
+
+    // 2. Offline Demo Credentials Fallback
     const demoUser = DEMO_USERS[identifier];
     if (demoUser && VALID_DEMO_PASSWORDS.includes(pwd)) {
       const normalizedRole = normalizeRole(demoUser.role);
@@ -165,8 +226,9 @@ export const AuthProvider = ({ children }) => {
         staff_profile: demoUser.staff_profile || null
       };
 
-      const mockToken = `fabricare_demo_token_${demoUser.id}_${Date.now()}`;
-      localStorage.setItem('fabricare_token', mockToken);
+      // Valid 3-segment JWT to prevent token segment errors on backends
+      const validMockJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkRlbW8gVXNlciIsImlhdCI6MTUxNjIzOTAyMn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+      localStorage.setItem('fabricare_token', validMockJwt);
       localStorage.setItem('fabricare_user', JSON.stringify(profileData));
       setCurrentUser(profileData);
       setUserProfile(profileData);
@@ -179,65 +241,6 @@ export const AuthProvider = ({ children }) => {
         role: normalizedRole,
         portal: getPortalForRole(normalizedRole)
       };
-    }
-
-    // 2. Try Django REST Backend API (trying active port 8001 then fallback port 8000)
-    const backendEndpoints = [
-      'http://127.0.0.1:8001/api/auth/login/',
-      'http://127.0.0.1:8000/api/auth/login/'
-    ];
-
-    for (const endpoint of backendEndpoints) {
-      try {
-        const djangoRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: rawIdentifier, password: pwd })
-        });
-
-        if (djangoRes.ok) {
-          const data = await djangoRes.json();
-          const userData = data.user || {};
-          const role = normalizeRole(userData.role || 'customer');
-          const token = data.tokens?.access || data.access || `jwt_token_${userData.id}`;
-
-          const profileData = {
-            uid: String(userData.id || 'usr-01'),
-            id: String(userData.id || 'usr-01'),
-            name: userData.full_name || userData.username || 'User',
-            displayName: userData.full_name || userData.username || 'User',
-            fullName: userData.full_name || '',
-            email: userData.email || rawIdentifier,
-            phone: userData.phone || '',
-            phoneNumber: userData.phone || '',
-            role: role,
-            rawRole: userData.role,
-            avatar_url: userData.profile_picture_url || null,
-            initials: getInitials(userData.full_name || userData.username),
-            agent_profile: null,
-            staff_profile: null
-          };
-
-          localStorage.setItem('fabricare_token', token);
-          localStorage.setItem('fabricare_user', JSON.stringify(profileData));
-          setCurrentUser(profileData);
-          setUserProfile(profileData);
-          setIsAuthModalOpen(false);
-          setLoading(false);
-
-          return {
-            user: profileData,
-            profile: profileData,
-            role: role,
-            portal: getPortalForRole(role)
-          };
-        } else if (djangoRes.status === 401 || djangoRes.status === 400) {
-          // Explicit invalid credentials from backend - no need to try other ports
-          break;
-        }
-      } catch (_) {
-        // Port unreachable, try next candidate port
-      }
     }
 
     // 3. Try Firebase Auth Client SDK only if real API key configured (prevent mock emulator errors)

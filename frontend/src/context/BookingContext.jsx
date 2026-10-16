@@ -323,6 +323,7 @@ export const BookingProvider = ({ children }) => {
 
   // Step 4 Instructions & Estimation
   const [specialInstructions, setSpecialInstructions] = useState('Please handle garments with extra care.');
+  const [isExpressDelivery, setIsExpressDelivery] = useState(false);
   
   // Confirmed Order Info
   const [lastOrder, setLastOrder] = useState(null);
@@ -591,6 +592,16 @@ export const BookingProvider = ({ children }) => {
       }
 
       const orderPayload = {
+        pickup_full_name: pickupDetails.name || currentUser?.displayName || 'Customer',
+        pickup_phone: pickupDetails.mobile || currentUser?.phoneNumber || '+91 98765 43210',
+        pickup_address: pickupDetails.address || 'Banaswadi, Bengaluru - 560043',
+        pickup_city: pickupDetails.city || 'Bengaluru',
+        pickup_pincode: pickupDetails.pincode || '560043',
+        pickup_date: formattedPickupDate,
+        pickup_time_slot: pickupSchedule.timeSlot || '9:00 AM – 11:00 AM',
+        special_instructions: specialInstructions || '',
+        total_amount: total,
+        services_list: serviceNames,
         address_id: addressId,
         pickup_slot: {
           date: formattedPickupDate,
@@ -599,7 +610,7 @@ export const BookingProvider = ({ children }) => {
         },
         is_express: Boolean(isExpressDelivery),
         notes: specialInstructions || undefined,
-        items: finalItems
+        items: itemsPayload.length > 0 ? itemsPayload : finalItems
       };
 
       const res = await ordersApi.createOrder(orderPayload);
@@ -694,6 +705,8 @@ export const BookingProvider = ({ children }) => {
         setPickupSchedule,
         specialInstructions,
         setSpecialInstructions,
+        isExpressDelivery,
+        setIsExpressDelivery,
         lastOrder,
         setLastOrder,
         startBooking,

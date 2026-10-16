@@ -35,19 +35,41 @@ from apps.core.views import (
     InvoiceViewSet,
     ContentFAQViewSet,
     ContentPolicyViewSet,
-    customer_catalog_view
+    customer_catalog_view,
+    AdminTasksView,
+    AdminTaskAssignView,
+    AdminAgentsView,
+    AdminUsersView,
+    AdminUserDetailView,
+    AdminUserStatusView,
+    AdminUserResetPasswordView,
+    AdminPricesView,
+    AdminGarmentsView,
+    AdminGarmentDetailView,
+    AdminBroadcastNotificationView
 )
 
 router = DefaultRouter()
 router.register('services/categories', ServiceCategoryViewSet, basename='service-category')
 router.register('services', ServiceViewSet, basename='service')
 router.register('orders', OrderViewSet, basename='order')
+router.register('customer/orders', OrderViewSet, basename='customer-order')
 router.register('addresses', AddressViewSet, basename='address')
+router.register('customer/addresses', AddressViewSet, basename='customer-address')
 router.register('invoices', InvoiceViewSet, basename='invoice')
+router.register('customer/invoices', InvoiceViewSet, basename='customer-invoice')
 router.register('notifications', NotificationViewSet, basename='notification')
 router.register('support', SupportTicketViewSet, basename='support')
+router.register('customer/support/tickets', SupportTicketViewSet, basename='customer-support-ticket')
 router.register('faqs', ContentFAQViewSet, basename='faq')
 router.register('policies', ContentPolicyViewSet, basename='policy')
+
+# Admin router endpoints
+router.register('admin/orders', OrderViewSet, basename='admin-order')
+router.register('admin/services', ServiceViewSet, basename='admin-service')
+router.register('admin/support/tickets', SupportTicketViewSet, basename='admin-support-ticket')
+router.register('admin/notifications', NotificationViewSet, basename='admin-notification')
+router.register('admin/garments', ServiceCategoryViewSet, basename='admin-garments')
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -78,14 +100,53 @@ api_urlpatterns = [
     path('auth/me/', MeView.as_view(), name='auth-me'),
     path('staff/', StaffListView.as_view(), name='staff-list'),
 
-    # Admin workflows
+    # Admin workflows & endpoints
+    path('admin/dashboard', AdminDashboardStatsView.as_view(), name='admin-dashboard-no-slash'),
     path('admin/dashboard/', AdminDashboardStatsView.as_view(), name='admin-dashboard'),
+    path('admin/orders', OrderViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-orders-list-no-slash'),
+    path('admin/orders/', OrderViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-orders-list'),
     path('admin/orders/<int:pk>/accept/', AdminAcceptOrderView.as_view(), name='admin-accept-order'),
     path('admin/orders/<int:pk>/reject/', AdminRejectOrderView.as_view(), name='admin-reject-order'),
     path('admin/orders/<int:pk>/assign-staff/', AdminAssignStaffView.as_view(), name='admin-assign-staff'),
     path('admin/complaints/', AdminComplaintReportsView.as_view(), name='admin-complaints'),
     path('admin/complaints/<int:pk>/', AdminComplaintDetailView.as_view(), name='admin-complaint-detail'),
     path('admin/complaints/<int:pk>/reschedule/', AdminComplaintRescheduleView.as_view(), name='admin-complaint-reschedule'),
+
+    # Admin Tasks & Agents
+    path('admin/tasks', AdminTasksView.as_view(), name='admin-tasks-no-slash'),
+    path('admin/tasks/', AdminTasksView.as_view(), name='admin-tasks'),
+    path('admin/tasks/<int:pk>/assign', AdminTaskAssignView.as_view(), name='admin-task-assign-no-slash'),
+    path('admin/tasks/<int:pk>/assign/', AdminTaskAssignView.as_view(), name='admin-task-assign'),
+    path('admin/agents', AdminAgentsView.as_view(), name='admin-agents-no-slash'),
+    path('admin/agents/', AdminAgentsView.as_view(), name='admin-agents'),
+
+    # Admin Users Management
+    path('admin/users', AdminUsersView.as_view(), name='admin-users-no-slash'),
+    path('admin/users/', AdminUsersView.as_view(), name='admin-users'),
+    path('admin/users/<int:pk>', AdminUserDetailView.as_view(), name='admin-user-detail-no-slash'),
+    path('admin/users/<int:pk>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
+    path('admin/users/<int:pk>/status', AdminUserStatusView.as_view(), name='admin-user-status-no-slash'),
+    path('admin/users/<int:pk>/status/', AdminUserStatusView.as_view(), name='admin-user-status'),
+    path('admin/users/<int:pk>/reset-password', AdminUserResetPasswordView.as_view(), name='admin-user-reset-pwd-no-slash'),
+    path('admin/users/<int:pk>/reset-password/', AdminUserResetPasswordView.as_view(), name='admin-user-reset-pwd'),
+
+    # Admin Services, Garments, Prices, Notifications
+    path('admin/services', ServiceViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-services-no-slash'),
+    path('admin/services/', ServiceViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-services-slash'),
+    path('admin/garments', AdminGarmentsView.as_view(), name='admin-garments-no-slash'),
+    path('admin/garments/', AdminGarmentsView.as_view(), name='admin-garments-slash'),
+    path('admin/garments/<int:pk>', AdminGarmentDetailView.as_view(), name='admin-garment-detail-no-slash'),
+    path('admin/garments/<int:pk>/', AdminGarmentDetailView.as_view(), name='admin-garment-detail-slash'),
+    path('admin/prices', AdminPricesView.as_view(), name='admin-prices-no-slash'),
+    path('admin/prices/', AdminPricesView.as_view(), name='admin-prices-slash'),
+    path('admin/support/tickets', SupportTicketViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-tickets-no-slash'),
+    path('admin/support/tickets/', SupportTicketViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-tickets-slash'),
+    path('admin/notifications/broadcast', AdminBroadcastNotificationView.as_view(), name='admin-broadcast-no-slash'),
+    path('admin/notifications/broadcast/', AdminBroadcastNotificationView.as_view(), name='admin-broadcast-slash'),
+
+    # Customer non-slash fallbacks
+    path('customer/addresses', AddressViewSet.as_view({'get': 'list', 'post': 'create'}), name='customer-addresses-no-slash'),
+    path('notifications', NotificationViewSet.as_view({'get': 'list', 'post': 'create'}), name='notifications-no-slash'),
 
     # Customer Reports
     path('customer/reports/', CustomerReportsView.as_view(), name='customer-reports'),

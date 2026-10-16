@@ -21,7 +21,16 @@ async function getAuthToken(forceRefresh = false) {
       console.warn('Failed to get Firebase ID token:', e);
     }
   }
-  return localStorage.getItem('fabricare_token') || null;
+  const token = localStorage.getItem('fabricare_token');
+  if (token && typeof token === 'string') {
+    // If an unsegmented dummy token is in storage, discard it to avoid 401 segment errors
+    if (token.startsWith('fabricare_demo_token_') || token.split('.').length !== 3) {
+      localStorage.removeItem('fabricare_token');
+      return null;
+    }
+    return token;
+  }
+  return null;
 }
 
 export async function request(endpoint, options = {}, isRetry = false) {
