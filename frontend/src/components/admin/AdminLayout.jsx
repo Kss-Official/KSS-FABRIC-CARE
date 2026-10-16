@@ -23,7 +23,6 @@ import {
   RotateCcw,
   CheckCheck,
   Check,
-  Shirt,
   UserCheck,
   Search,
   AlertCircle,
@@ -265,7 +264,7 @@ export const AdminLayout = ({ children }) => {
             <span className="nav-item-label">Customers</span>
           </button>
 
-          {/* Deliveries */}
+          {/* Pickup & Delivery */}
           <button
             className={`admin-nav-item ${adminTab === 'pickup-delivery' || adminTab === 'deliveries' ? 'active' : ''}`}
             onClick={() => {
@@ -274,7 +273,43 @@ export const AdminLayout = ({ children }) => {
             }}
           >
             <span className="nav-item-icon"><Truck size={19} /></span>
-            <span className="nav-item-label">Deliveries</span>
+            <span className="nav-item-label">Pickup &amp; Delivery</span>
+          </button>
+
+          {/* Services & Pricing */}
+          <button
+            className={`admin-nav-item ${adminTab === 'services' ? 'active' : ''}`}
+            onClick={() => {
+              setAdminTab('services');
+              setMobileSidebarOpen(false);
+            }}
+          >
+            <span className="nav-item-icon"><Tag size={19} /></span>
+            <span className="nav-item-label">Services &amp; Pricing</span>
+          </button>
+
+          {/* Notifications */}
+          <button
+            className={`admin-nav-item ${adminTab === 'notifications' ? 'active' : ''}`}
+            onClick={() => {
+              setAdminTab('notifications');
+              setMobileSidebarOpen(false);
+            }}
+          >
+            <span className="nav-item-icon"><Bell size={19} /></span>
+            <span className="nav-item-label">Notifications</span>
+          </button>
+
+          {/* Content */}
+          <button
+            className={`admin-nav-item ${adminTab === 'content' ? 'active' : ''}`}
+            onClick={() => {
+              setAdminTab('content');
+              setMobileSidebarOpen(false);
+            }}
+          >
+            <span className="nav-item-icon"><FileText size={19} /></span>
+            <span className="nav-item-label">Content</span>
           </button>
 
           {/* Complaints Accordion */}
@@ -338,17 +373,6 @@ export const AdminLayout = ({ children }) => {
           </button>
         </nav>
 
-        {/* Sidebar Clean Clothes Happy Lives Promo Card matching Reference Image */}
-        <div className="sidebar-promo-wrapper">
-          <div className="sidebar-promo-box">
-            <div className="promo-hanger-box">
-              <Shirt size={26} className="promo-hanger-icon" />
-            </div>
-            <div className="promo-title">Clean Clothes</div>
-            <div className="promo-subtitle">Happy Lives</div>
-          </div>
-        </div>
-
         {/* Sidebar Footer */}
         <div className="sidebar-footer-menu">
           <button
@@ -373,7 +397,14 @@ export const AdminLayout = ({ children }) => {
               <Menu size={22} />
             </button>
 
-            {/* Search bar removed per user instructions */}
+            <div className="admin-search-box">
+              <Search size={18} className="search-icon" />
+              <input 
+                type="text" 
+                placeholder="Search orders, customers, or services..." 
+                className="admin-search-input"
+              />
+            </div>
           </div>
 
 
@@ -795,51 +826,6 @@ export const AdminLayout = ({ children }) => {
           border-radius: 2px;
         }
 
-        /* Sidebar Promo Card Clean Clothes Happy Lives */
-        .sidebar-promo-wrapper {
-          padding: 16px 20px 8px;
-          margin-top: auto;
-        }
-
-        .sidebar-promo-box {
-          background: #EBF8F9;
-          border: 1px solid #D1F0F2;
-          border-radius: 12px;
-          padding: 18px 16px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-        }
-
-        .promo-hanger-box {
-          width: 44px;
-          height: 44px;
-          border-radius: 10px;
-          border: 1.5px solid #087F8C;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 10px;
-          color: #087F8C;
-          background: #FFFFFF;
-        }
-
-        .promo-title {
-          font-size: 0.88rem;
-          font-weight: 700;
-          color: #087F8C;
-          line-height: 1.25;
-        }
-
-        .promo-subtitle {
-          font-size: 0.88rem;
-          font-weight: 700;
-          color: #087F8C;
-          line-height: 1.25;
-        }
-
         /* Topbar Global Search */
         .admin-global-search {
           position: relative;
@@ -897,6 +883,7 @@ export const AdminLayout = ({ children }) => {
           display: flex;
           flex-direction: column;
           gap: 4px;
+          margin-top: auto;
         }
 
         .logout-btn:hover {
@@ -1078,6 +1065,40 @@ export const AdminLayout = ({ children }) => {
         .topbar-left {
           display: flex;
           align-items: center;
+          gap: 16px;
+          flex: 1;
+          max-width: 520px;
+        }
+
+        .admin-search-box {
+          position: relative;
+          width: 100%;
+          display: flex;
+          align-items: center;
+        }
+
+        .search-icon {
+          position: absolute;
+          left: 14px;
+          color: #94A3B8;
+        }
+
+        .admin-search-input {
+          width: 100%;
+          padding: 10px 16px 10px 42px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          font-size: 0.875rem;
+          color: #1E293B;
+          outline: none;
+          transition: all 0.2s;
+        }
+
+        .admin-search-input:focus {
+          border-color: #0D7A75;
+          background: #FFFFFF;
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.1);
         }
 
         .mobile-sidebar-toggle {

@@ -788,12 +788,16 @@ export const AdminProvider = ({ children }) => {
       const hash = window.location.hash.toLowerCase();
       if (hash.includes('help-support')) return 'help-support';
       if (hash.includes('delivery-reports') || hash.includes('complaints') || hash.includes('complaint-reports')) return 'delivery-reports';
-      if (hash.includes('dashboard')) return 'dashboard';
       if (hash.includes('orders')) return 'orders';
+      if (hash.includes('pickup-delivery') || hash.includes('deliveries')) return 'pickup-delivery';
       if (hash.includes('customers')) return 'customers';
+      if (hash.includes('services')) return 'services';
+      if (hash.includes('notifications')) return 'notifications';
+      if (hash.includes('content')) return 'content';
       if (hash.includes('settings')) return 'settings';
+      if (hash.includes('dashboard')) return 'dashboard';
     }
-    return 'delivery-reports';
+    return 'dashboard';
   });
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(true);
 
