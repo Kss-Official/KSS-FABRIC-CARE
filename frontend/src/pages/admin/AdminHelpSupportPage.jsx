@@ -99,14 +99,8 @@ export const AdminHelpSupportPage = () => {
 
   return (
     <div className="hs-page-container animate-fade-in">
-      {/* 1. Header & Breadcrumbs matching Reference Image 4 */}
+      {/* 1. Header matching Reference Image 4 */}
       <div className="hs-header-block">
-        <div className="hs-breadcrumb">
-          <span className="hs-breadcrumb-parent">Home</span>
-          <span className="hs-breadcrumb-sep">&gt;</span>
-          <span className="hs-breadcrumb-current">Help &amp; Support</span>
-        </div>
-
         <h1 className="hs-page-title">Help &amp; Support</h1>
         <p className="hs-page-subtitle">
           Manage customer questions and support requests

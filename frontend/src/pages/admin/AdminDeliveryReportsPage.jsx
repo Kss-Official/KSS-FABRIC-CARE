@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   FileText, 
@@ -16,7 +17,8 @@ import {
   AlertTriangle,
   ArrowUpRight,
   TrendingUp,
-  CalendarCheck
+  CalendarCheck,
+  RotateCcw
 } from 'lucide-react';
 import { RescheduleDeliveryDrawer } from '../../components/admin/RescheduleDeliveryDrawer';
 
@@ -38,6 +40,19 @@ export const AdminDeliveryReportsPage = () => {
   // View Details Modal State
   const [selectedComplaint, setSelectedComplaint] = useState(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+
+  // Lock background scroll when Details modal is open (matching Services & Pricing edit modal behavior)
+  useEffect(() => {
+    const wrapper = document.querySelector('.admin-main-wrapper');
+    if (detailsModalOpen) {
+      if (wrapper) wrapper.classList.add('admin-scroll-locked');
+    } else {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    }
+    return () => {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    };
+  }, [detailsModalOpen]);
 
   // Status mapping for visual badge styling matching Reference Image 3
   const getStatusBadge = (status) => {
@@ -104,14 +119,8 @@ export const AdminDeliveryReportsPage = () => {
 
   return (
     <div className="cr-page-container animate-fade-in">
-      {/* 1. Header & Breadcrumbs matching Reference Image 3 */}
+      {/* 1. Header matching Reference Image 3 */}
       <div className="cr-header-block">
-        <div className="cr-breadcrumb">
-          <span className="cr-breadcrumb-parent">Complaints</span>
-          <span className="cr-breadcrumb-sep">&gt;</span>
-          <span className="cr-breadcrumb-current">Delivery Reports</span>
-        </div>
-
         <h1 className="cr-page-title">Delivery Reports</h1>
         <p className="cr-page-subtitle">
           Review delivery complaints and reschedule deliveries for unavailable customers.
@@ -241,15 +250,15 @@ export const AdminDeliveryReportsPage = () => {
               <ChevronDown size={14} className="cr-select-chevron" />
             </div>
 
-            {/* Filter Button */}
+            {/* Refresh Button */}
             <button
               type="button"
               className="cr-filter-btn"
               onClick={() => fetchComplaints()}
-              title="Apply Filters"
+              title="Refresh complaints"
             >
-              <Filter size={15} />
-              <span>Filter</span>
+              <RotateCcw size={15} />
+              <span>Refresh</span>
             </button>
           </div>
         </div>
@@ -415,65 +424,89 @@ export const AdminDeliveryReportsPage = () => {
       {/* 6. Reschedule Delivery Drawer (Sliding Panel from Right) */}
       <RescheduleDeliveryDrawer />
 
-      {/* 7. View Details Modal */}
-      {detailsModalOpen && selectedComplaint && (
-        <div className="cr-modal-overlay animate-fade-in" onClick={() => setDetailsModalOpen(false)}>
-          <div className="cr-modal-container animate-scale-up" onClick={(e) => e.stopPropagation()}>
-            <div className="cr-modal-header">
-              <div className="modal-header-left">
-                <FileText size={20} className="text-[#0D7A75]" />
-                <h3 className="modal-title font-bold text-slate-800">
-                  Complaint Details: {selectedComplaint.order_id_display || selectedComplaint.order_id || `#FC${selectedComplaint.id}`}
-                </h3>
+      {/* 7. View Details Modal (Matching Services & Pricing Edit Modal Behavior & Structure) */}
+      {detailsModalOpen && selectedComplaint && typeof document !== 'undefined' && createPortal(
+        <div className="modal-backdrop-overlay animate-fade-in" onClick={() => setDetailsModalOpen(false)}>
+          <div className="modal-box-card animate-scale-up" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-box-header">
+              <div className="modal-title-wrap">
+                <div className="modal-icon-badge">
+                  <FileText size={18} color="#0D7A75" strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h3 className="modal-heading">Complaint Details</h3>
+                  <p className="modal-sub">
+                    {selectedComplaint.order_id_display || selectedComplaint.order_id || `#FC${selectedComplaint.id}`} &bull; Review failure reason and reschedule delivery.
+                  </p>
+                </div>
               </div>
               <button 
                 type="button" 
-                className="modal-close-btn"
+                className="modal-close-icon"
                 onClick={() => setDetailsModalOpen(false)}
+                title="Close details"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="cr-modal-body">
+            <div className="modal-body-scrollable">
               <div className="detail-meta-grid">
                 <div className="detail-item">
+                  <span className="detail-label">Order ID</span>
+                  <span className="detail-value font-mono font-bold text-slate-900">
+                    {selectedComplaint.order_id_display || selectedComplaint.order_id || `#FC${selectedComplaint.id}`}
+                  </span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">Current Status</span>
+                  <div className="pt-0.5">{getStatusBadge(selectedComplaint.status)}</div>
+                </div>
+                <div className="detail-item">
                   <span className="detail-label">Customer Name</span>
-                  <span className="detail-value font-semibold">{selectedComplaint.customer_name || 'Rohit Sharma'}</span>
+                  <span className="detail-value font-semibold text-slate-900">
+                    {selectedComplaint.customer_name || 'Customer'}
+                  </span>
                 </div>
                 <div className="detail-item">
-                  <span className="detail-label">Status</span>
-                  <div className="pt-1">{getStatusBadge(selectedComplaint.status)}</div>
+                  <span className="detail-label">Customer Phone</span>
+                  <span className="detail-value font-medium text-slate-800">
+                    {selectedComplaint.customer_phone || '+91 98765 43210'}
+                  </span>
                 </div>
-                <div className="detail-item">
+                <div className="detail-item" style={{ gridColumn: 'span 2' }}>
                   <span className="detail-label">Failure Reason</span>
-                  <span className="detail-value text-amber-700 font-medium">{selectedComplaint.failure_reason}</span>
+                  <span className="detail-value text-amber-700 font-semibold">
+                    {selectedComplaint.failure_reason || 'Customer Unavailable'}
+                  </span>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">Report Date</span>
-                  <span className="detail-value">{selectedComplaint.formatted_report_date || selectedComplaint.report_date}</span>
+                  <span className="detail-value text-slate-700">
+                    {selectedComplaint.formatted_report_date || selectedComplaint.report_date_only || selectedComplaint.report_date}
+                  </span>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">Reschedule Date &amp; Slot</span>
-                  <span className="detail-value font-medium text-teal-700">
+                  <span className="detail-value font-semibold text-teal-700">
                     {selectedComplaint.formatted_reschedule_date || selectedComplaint.rescheduled_date || 'Not yet rescheduled'}
                   </span>
                 </div>
               </div>
 
               {selectedComplaint.notes && (
-                <div className="detail-notes-box mt-4 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                  <span className="detail-label text-xs uppercase tracking-wider text-slate-500 font-bold block mb-1">
+                <div className="detail-notes-box">
+                  <span className="detail-label font-bold block mb-1">
                     Complaint &amp; Reschedule Notes
                   </span>
-                  <p className="detail-notes-text text-sm text-slate-700 whitespace-pre-wrap">
+                  <p className="detail-notes-text">
                     {selectedComplaint.notes}
                   </p>
                 </div>
               )}
             </div>
 
-            <div className="cr-modal-footer">
+            <div className="modal-box-footer">
               <button
                 type="button"
                 className="modal-btn-cancel"
@@ -495,7 +528,8 @@ export const AdminDeliveryReportsPage = () => {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Scoped CSS Styles matching Reference Image 3 */}
@@ -845,79 +879,145 @@ export const AdminDeliveryReportsPage = () => {
           cursor: not-allowed;
         }
 
-        /* DETAILS MODAL */
-        .cr-modal-overlay {
+        /* DETAILS MODAL matching Services & Pricing edit modal */
+        .modal-backdrop-overlay {
           position: fixed;
           inset: 0;
           background: rgba(15, 23, 42, 0.45);
-          backdrop-filter: blur(2px);
-          z-index: 99999;
+          backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
+          z-index: 99999;
+          padding: 20px 16px;
+          overflow: hidden;
+          overscroll-behavior: none;
         }
-        .cr-modal-container {
+
+        .modal-box-card {
           background: #FFFFFF;
           border-radius: 16px;
-          max-width: 540px;
           width: 100%;
-          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+          max-width: 540px;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
           overflow: hidden;
-        }
-        .cr-modal-header {
           display: flex;
-          align-items: center;
+          flex-direction: column;
+          position: relative;
+          overscroll-behavior: contain;
+        }
+
+        .modal-box-header {
+          display: flex;
           justify-content: space-between;
-          padding: 18px 24px;
+          align-items: center;
+          padding: 20px 24px;
           border-bottom: 1px solid #F1F5F9;
+          flex-shrink: 0;
         }
-        .modal-header-left {
+
+        .modal-title-wrap {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 12px;
         }
-        .modal-title {
-          font-size: 16px;
+
+        .modal-icon-badge {
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          background: #E6F7F7;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .modal-heading {
+          font-size: 18px;
+          font-weight: 700;
+          color: #0F172A;
           margin: 0;
         }
-        .modal-close-btn {
+
+        .modal-sub {
+          font-size: 13px;
+          color: #64748B;
+          margin: 2px 0 0 0;
+        }
+
+        .modal-close-icon {
           background: transparent;
           border: none;
           color: #94A3B8;
           cursor: pointer;
           padding: 4px;
           border-radius: 6px;
+          transition: color 0.15s ease;
         }
-        .modal-close-btn:hover {
+
+        .modal-close-icon:hover {
           color: #0F172A;
-          background: #F1F5F9;
         }
-        .cr-modal-body {
+
+        .modal-body-scrollable {
           padding: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          flex: 1;
         }
+
         .detail-meta-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 16px;
+          gap: 14px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 16px 18px;
         }
+
         .detail-item {
           display: flex;
           flex-direction: column;
         }
+
         .detail-label {
           font-size: 11px;
-          font-weight: 600;
+          font-weight: 700;
           color: #64748B;
           text-transform: uppercase;
           letter-spacing: 0.5px;
-          margin-bottom: 2px;
+          margin-bottom: 3px;
         }
+
         .detail-value {
-          font-size: 14px;
+          font-size: 13.5px;
           color: #0F172A;
         }
-        .cr-modal-footer {
+
+        .detail-notes-box {
+          padding: 14px 16px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+        }
+
+        .detail-notes-text {
+          font-size: 13px;
+          color: #334155;
+          margin: 4px 0 0;
+          line-height: 1.5;
+          white-space: pre-wrap;
+        }
+
+        .modal-box-footer {
           display: flex;
           align-items: center;
           justify-content: flex-end;
@@ -925,26 +1025,40 @@ export const AdminDeliveryReportsPage = () => {
           padding: 16px 24px;
           background: #F8FAFC;
           border-top: 1px solid #F1F5F9;
+          flex-shrink: 0;
         }
+
         .modal-btn-cancel {
           background: #FFFFFF;
           border: 1px solid #E2E8F0;
-          padding: 8px 16px;
+          padding: 9px 18px;
           border-radius: 8px;
           font-size: 13px;
           font-weight: 600;
           color: #475569;
           cursor: pointer;
+          transition: all 0.15s ease;
         }
+
+        .modal-btn-cancel:hover {
+          background: #F1F5F9;
+          color: #0F172A;
+        }
+
         .modal-btn-action {
           background: #0D7A75;
           border: none;
-          padding: 8px 18px;
+          padding: 9px 20px;
           border-radius: 8px;
           font-size: 13px;
           font-weight: 600;
           color: #FFFFFF;
           cursor: pointer;
+          transition: background 0.15s ease;
+        }
+
+        .modal-btn-action:hover {
+          background: #0B6B67;
         }
 
         @media (max-width: 1024px) {
