@@ -99,9 +99,19 @@ export const CustomerReports = () => {
   const { navigateTo } = useBooking();
 
   // State
-  const [reports, setReports] = useState(DEFAULT_REPORTS);
+  const [reports, setReports] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_customer_reports');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_REPORTS.map(r => ({ ...r }));
+  });
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState(null);
 
@@ -109,6 +119,121 @@ export const CustomerReports = () => {
   const [selectedReport, setSelectedReport] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const modalRef = useRef(null);
+
+  // Helper to normalize and ensure all expected fields exist
+  const normalizeReport = (item) => {
+    const orderId = item.order_id || item.order_id_display || `#FC${item.id}`;
+    const reportDate =
+      item.report_date_only ||
+      (item.report_date ? String(item.report_date).split('T')[0] : '16 Oct 2026');
+    const reschedDate =
+      item.new_delivery_date_formatted ||
+      (item.rescheduled_date ? String(item.rescheduled_date).split('T')[0] : null);
+
+    return {
+      ...item,
+      id: item.id || orderId,
+      order_id: orderId,
+      order_id_display: item.order_id_display || orderId,
+      report_date_only: reportDate,
+      formatted_report_date: item.formatted_report_date || reportDate,
+      failure_reason: item.failure_reason || 'Customer Unavailable',
+      rescheduled_date: item.rescheduled_date || null,
+      new_delivery_date_formatted: reschedDate,
+      rescheduled_time_slot: item.rescheduled_time_slot || item.time_slot || '',
+      status: item.status || 'UNDER_REVIEW',
+      customer_name: item.customer_name || 'Rohan Mehta',
+      customer_phone: item.customer_phone || '+91 98765 43210',
+      reported_by_name: item.reported_by_name || 'Rajesh Kumar (Delivery Executive)'
+    };
+  };
+
+  // Synchronize reports across Backend API, Admin Context complaints, and localStorage
+  const syncReportsData = (backendData = null) => {
+    let baseList = [];
+    try {
+      const savedCustomerReports = localStorage.getItem('fabricare_customer_reports');
+      if (savedCustomerReports) {
+        const parsed = JSON.parse(savedCustomerReports);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          baseList = parsed;
+        }
+      }
+    } catch (e) {}
+
+    if (baseList.length === 0) {
+      baseList = DEFAULT_REPORTS.map(r => ({ ...r }));
+    }
+
+    // Merge backend API records if available
+    if (backendData && Array.isArray(backendData) && backendData.length > 0) {
+      const backendMap = new Map();
+      backendData.forEach(item => {
+        const key = String(item.order_id || item.order_id_display || item.id);
+        backendMap.set(key, item);
+      });
+
+      const merged = baseList.map(item => {
+        const key = String(item.order_id || item.order_id_display || item.id);
+        if (backendMap.has(key)) {
+          const b = backendMap.get(key);
+          backendMap.delete(key);
+          return normalizeReport({ ...item, ...b });
+        }
+        return normalizeReport(item);
+      });
+
+      backendMap.forEach(item => {
+        merged.unshift(normalizeReport(item));
+      });
+
+      baseList = merged;
+    }
+
+    // Merge any live reschedules from Admin Context / Delivery Portal (fabricare_admin_complaints)
+    try {
+      const savedAdminComplaints = localStorage.getItem('fabricare_admin_complaints');
+      if (savedAdminComplaints) {
+        const adminComplaints = JSON.parse(savedAdminComplaints);
+        if (Array.isArray(adminComplaints)) {
+          const adminMap = new Map();
+          adminComplaints.forEach(ac => {
+            const code = String(ac.order_id_display || ac.order_id || ac.id);
+            adminMap.set(code, ac);
+          });
+
+          baseList = baseList.map(rep => {
+            const code = String(rep.order_id_display || rep.order_id || rep.id);
+            if (adminMap.has(code)) {
+              const ac = adminMap.get(code);
+              return normalizeReport({
+                ...rep,
+                status: ac.status || rep.status,
+                rescheduled_date: ac.rescheduled_date || rep.rescheduled_date,
+                new_delivery_date_formatted:
+                  ac.new_delivery_date_formatted ||
+                  ac.new_delivery_date ||
+                  ac.rescheduled_date ||
+                  rep.new_delivery_date_formatted,
+                rescheduled_time_slot:
+                  ac.rescheduled_time_slot || ac.time_slot || rep.rescheduled_time_slot,
+                failure_reason: ac.failure_reason || rep.failure_reason,
+                admin_reply: ac.admin_notes || ac.notes || rep.admin_reply
+              });
+            }
+            return normalizeReport(rep);
+          });
+        }
+      }
+    } catch (e) {}
+
+    // Persist to localStorage for persistence across reloads
+    try {
+      localStorage.setItem('fabricare_customer_reports', JSON.stringify(baseList));
+    } catch (e) {}
+
+    return baseList;
+  };
 
   // Handle outside click and ESC for modal
   useEffect(() => {
@@ -129,33 +254,47 @@ export const CustomerReports = () => {
     };
   }, [isModalOpen]);
 
-  // Fetch reports from backend API
+  // Fetch reports from backend API & local cache
   const fetchReports = async (isManualRefresh = false) => {
-    if (isManualRefresh) setRefreshing(true);
-    else setLoading(true);
+    if (isManualRefresh) {
+      setRefreshing(true);
+      setRefreshSuccess(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
+    const startTime = Date.now();
+
     try {
-      const params = {};
-      if (searchQuery.trim()) {
-        params.search = searchQuery.trim();
+      let backendList = null;
+      try {
+        const res = await complaintsApi.getReports({});
+        const data = res.data;
+        if (data && data.results && Array.isArray(data.results) && data.results.length > 0) {
+          backendList = data.results;
+        } else if (Array.isArray(data) && data.length > 0) {
+          backendList = data;
+        }
+      } catch (err) {
+        console.warn('Backend complaints fetch notice (falling back to synchronized storage):', err);
       }
 
-      const res = await complaintsApi.getReports(params);
-      const data = res.data;
+      const synced = syncReportsData(backendList);
+      setReports(synced);
 
-      if (data && data.results && data.results.length > 0) {
-        setReports(data.results);
-      } else if (Array.isArray(data) && data.length > 0) {
-        setReports(data);
-      } else {
-        // Fallback to default reference items if API returns empty
-        setReports(DEFAULT_REPORTS);
+      if (isManualRefresh) {
+        const elapsed = Date.now() - startTime;
+        if (elapsed < 450) {
+          await new Promise(r => setTimeout(r, 450 - elapsed));
+        }
+        setRefreshSuccess(true);
+        setTimeout(() => setRefreshSuccess(false), 2000);
       }
     } catch (err) {
-      console.error('Error fetching reports from backend:', err);
-      // Fallback on error to ensure user sees reference reports
-      setReports(DEFAULT_REPORTS);
+      console.error('Error fetching reports:', err);
+      const synced = syncReportsData(null);
+      setReports(synced);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -164,6 +303,16 @@ export const CustomerReports = () => {
 
   useEffect(() => {
     fetchReports();
+
+    // Listen for storage changes from admin portal or delivery portal
+    const handleStorageChange = (e) => {
+      if (e.key === 'fabricare_admin_complaints' || e.key === 'fabricare_customer_reports') {
+        const synced = syncReportsData(null);
+        setReports(synced);
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   // Filtered reports in memory for instant typing feedback
@@ -239,20 +388,9 @@ export const CustomerReports = () => {
 
   return (
     <div className="reports-portal-page animate-fade-in">
-      {/* 1. Breadcrumbs and Page Title Header matching Customer Portal layout */}
+      {/* 1. Page Title Header matching Customer Portal layout */}
       <div className="reports-header-row mb-6 no-print">
         <div className="header-breadcrumbs-col">
-          <div className="breadcrumbs-nav">
-            <span
-              onClick={() => navigateTo('home')}
-              className="breadcrumb-link"
-            >
-              Home
-            </span>
-            <span className="breadcrumb-slash">&gt;</span>
-            <span className="breadcrumb-active">Reports</span>
-          </div>
-
           <h1 className="reports-page-title">Reports</h1>
           <p className="reports-page-subtitle">
             View delivery and complaint reports for your laundry orders.
@@ -281,13 +419,13 @@ export const CustomerReports = () => {
               </span>
               <button
                 type="button"
-                className={`refresh-reports-btn ${refreshing ? 'loading' : ''}`}
+                className={`refresh-reports-btn ${refreshing ? 'loading' : ''} ${refreshSuccess ? 'success' : ''}`}
                 onClick={() => fetchReports(true)}
                 disabled={refreshing}
                 title="Refresh report records"
               >
                 <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-                <span>Refresh</span>
+                <span>{refreshing ? 'Refreshing...' : refreshSuccess ? 'Refreshed!' : 'Refresh'}</span>
               </button>
             </div>
 
@@ -716,15 +854,27 @@ export const CustomerReports = () => {
           transition: all 0.2s ease;
         }
 
-        .refresh-reports-btn:hover {
+        .refresh-reports-btn:hover:not(:disabled) {
           background: #F8FAFC;
           color: #0D7A75;
           border-color: #0D7A75;
         }
 
+        .refresh-reports-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.75;
+        }
+
         .refresh-reports-btn.loading {
           border-color: #0D7A75;
           background: #F4FBFA;
+          color: #0D7A75;
+        }
+
+        .refresh-reports-btn.success {
+          border-color: #16A34A;
+          background: #F0FDF4;
+          color: #16A34A;
         }
 
         /* Search Input */

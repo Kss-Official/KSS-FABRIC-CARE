@@ -529,9 +529,10 @@ export const AdminDeliveryReportsPage = () => {
       {/* Scoped CSS Styles matching Reference Image 3 */}
       <style>{`
         .cr-page-container {
-          padding: 24px 32px 48px;
-          background-color: #F8FAFC;
-          min-height: 100vh;
+          padding: 0 0 40px 0;
+          width: 100%;
+          box-sizing: border-box;
+          margin: 0;
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
@@ -1064,7 +1065,7 @@ export const AdminDeliveryReportsPage = () => {
         }
         @media (max-width: 640px) {
           .cr-page-container {
-            padding: 16px;
+            padding: 0 0 24px 0;
           }
           .cr-summary-grid {
             grid-template-columns: 1fr;
