@@ -184,6 +184,8 @@ def seed_database(confirm: bool = False):
     # 2. Users & Auth
     print("Creating/updating test users...")
     user_docs = {}
+    all_created_users = []
+    customer_uids = []
     for u in SEED_USERS:
         # Check if auth user exists
         try:
@@ -229,21 +231,38 @@ def seed_database(confirm: bool = False):
         db.collection("users").document(uid).set(user_data, merge=True)
         db.collection("phone_index").document(u["phone"]).set({"uid": uid, "created_at": now_iso}, merge=True)
         user_docs[u["role"]] = {"id": uid, **user_data}
+        all_created_users.append({"id": uid, **user_data})
+        if u["role"] == "customer":
+            customer_uids.append(uid)
 
-    # Add default address for customer
-    customer_uid = user_docs["customer"]["id"]
-    cust_addr_ref = db.collection("users").document(customer_uid).collection("addresses").document("default_home")
-    cust_address = {
-        "id": "default_home",
-        "label": "Home",
-        "line1": "Flat 402, Sunshine Heights, Powai",
-        "city": "Mumbai",
-        "pincode": "400076",
-        "lat": 19.1176,
-        "lng": 72.9060,
-        "is_default": True,
-    }
-    cust_addr_ref.set(cust_address)
+    customers = [u for u in all_created_users if u["role"] == "customer"]
+
+    # Add addresses for all customers
+    cust_addresses = [
+        {
+            "id": "default_home",
+            "label": "Home",
+            "line1": "Flat 402, Sunshine Heights, Powai",
+            "city": "Mumbai",
+            "pincode": "400076",
+            "lat": 19.1176,
+            "lng": 72.9060,
+            "is_default": True,
+        },
+        {
+            "id": "work_office",
+            "label": "Work",
+            "line1": "Tower 3, Mindspace Tech Park, Malad West",
+            "city": "Mumbai",
+            "pincode": "400064",
+            "lat": 19.1764,
+            "lng": 72.8354,
+            "is_default": False,
+        },
+    ]
+    for c_uid in customer_uids:
+        for addr in cust_addresses:
+            db.collection("users").document(c_uid).collection("addresses").document(addr["id"]).set(addr, merge=True)
 
     # 3. Garments
     print("Seeding garment types...")
@@ -399,13 +418,18 @@ def seed_database(confirm: bool = False):
         assigned_staff_id = user_docs["staff"]["id"] if st in statuses[3:] else None
         assigned_staff_name = "laundry_anita" if assigned_staff_id else None
 
+        cust = customers[(i - 1) % len(customers)] if customers else user_docs["customer"]
+        cust_uid = cust["id"]
+        cust_name = cust["name"]
+        cust_phone = cust["phone"]
+
         order_ref = db.collection("orders").document(f"order_{i}")
         order_doc_data = {
             "id": f"order_{i}",
             "code": order_code,
-            "customer_id": customer_uid,
-            "customer": {"name": "Pratiksha Sharma", "phone": "+919876543210"},
-            "address": cust_address,
+            "customer_id": cust_uid,
+            "customer": {"name": cust_name, "phone": cust_phone},
+            "address": cust_addresses[0],
             "pickup": {"date": created_time.strftime("%Y-%m-%d"), "from": "10:00 AM", "to": "12:00 PM"},
             "status": st,
             "payment_status": payment_st,
@@ -426,7 +450,7 @@ def seed_database(confirm: bool = False):
             "assigned_staff_id": assigned_staff_id,
             "assigned_staff_name": assigned_staff_name,
             "payment_expires_at": (created_time + timedelta(minutes=30)).isoformat(),
-            "search_tokens": [order_code.lower(), "+919876543210", "pratiksha", "sharma"],
+            "search_tokens": [order_code.lower(), cust_phone, cust_name.lower()],
             "unresolved_combo": unresolved_combo,
             "express_late_notified": False,
             "invoice_id": f"inv_{i}" if payment_st == "paid" else None,
@@ -439,8 +463,8 @@ def seed_database(confirm: bool = False):
         hist_ref.set({
             "from_status": None,
             "to_status": "PAYMENT_PENDING",
-            "changed_by": customer_uid,
-            "changed_by_name": "Pratiksha Sharma",
+            "changed_by": cust_uid,
+            "changed_by_name": cust_name,
             "note": "Order created",
             "created_at": created_iso,
         })
@@ -471,7 +495,8 @@ def seed_database(confirm: bool = False):
                 "invoice_no": inv_no,
                 "order_id": f"order_{i}",
                 "order_code": order_code,
-                "customer_id": customer_uid,
+                "customer_id": cust_uid,
+                "customer_name": cust_name,
                 "amount_paise": total_paise,
                 "status": "paid",
                 "issued_at": created_iso,
@@ -485,7 +510,7 @@ def seed_database(confirm: bool = False):
                 "id": f"pay_{i}",
                 "order_id": f"order_{i}",
                 "order_code": order_code,
-                "user_id": customer_uid,
+                "user_id": cust_uid,
                 "amount_paise": total_paise,
                 "method": "upi" if i % 2 == 0 else "card",
                 "status": "paid",
@@ -520,8 +545,8 @@ def seed_database(confirm: bool = False):
                 "status": task_status,
                 "agent_id": agent_uid if task_status != "unassigned" else None,
                 "agent_name": "Rajesh Kumar" if task_status != "unassigned" else None,
-                "customer": {"name": "Pratiksha Sharma", "phone": "+919876543210"},
-                "address": cust_address,
+                "customer": {"name": cust_name, "phone": cust_phone},
+                "address": cust_addresses[0],
                 "items_count": sum(it["quantity"] for it in order_items),
                 "scheduled_at": created_iso,
                 "otp_hash": None,
@@ -541,8 +566,8 @@ def seed_database(confirm: bool = False):
                 "status": task_status,
                 "agent_id": agent_uid,
                 "agent_name": "Rajesh Kumar",
-                "customer": {"name": "Pratiksha Sharma", "phone": "+919876543210"},
-                "address": cust_address,
+                "customer": {"name": cust_name, "phone": cust_phone},
+                "address": cust_addresses[0],
                 "items_count": sum(it["quantity"] for it in order_items),
                 "scheduled_at": now_iso,
                 "otp_hash": None,
@@ -581,33 +606,66 @@ def seed_database(confirm: bool = False):
                 "created_at": (now - timedelta(hours=j * 3)).isoformat(),
             })
 
-    # 8. Seed Support Tickets (3 tickets)
+    # 8. Seed Support Tickets (per customer)
     print("Seeding support tickets...")
-    for t_idx in range(1, 4):
-        t_id = f"ticket_{t_idx}"
-        t_ref = db.collection("support_tickets").document(t_id)
-        t_ref.set({
-            "id": t_id,
-            "customer_id": customer_uid,
-            "customer_name": "Pratiksha Sharma",
-            "order_id": f"order_{t_idx}",
-            "subject": f"Query regarding order FC-{10000 + t_idx}",
-            "status": "open" if t_idx != 3 else "closed",
-            "created_at": (now - timedelta(days=t_idx)).isoformat(),
-            "last_message_at": (now - timedelta(hours=t_idx * 2)).isoformat(),
-        })
-        t_ref.collection("messages").document("m1").set({
-            "sender_id": customer_uid,
-            "sender_role": "customer",
-            "text": f"Hello, I wanted to inquire about the delivery status of order FC-{10000 + t_idx}.",
-            "created_at": (now - timedelta(days=t_idx)).isoformat(),
-        })
-        t_ref.collection("messages").document("m2").set({
-            "sender_id": user_docs["admin"]["id"],
-            "sender_role": "admin",
-            "text": "Hello Pratiksha! Your order is being processed by our staff and will be delivered on schedule.",
-            "created_at": (now - timedelta(hours=t_idx * 2)).isoformat(),
-        })
+    ticket_counter = 1
+    for c_user in customers:
+        for t_idx in range(1, 3):
+            t_id = f"ticket_{c_user['id'][:8]}_{t_idx}"
+            t_ref = db.collection("support_tickets").document(t_id)
+            t_ref.set({
+                "id": t_id,
+                "customer_id": c_user["id"],
+                "customer_name": c_user["name"],
+                "order_id": f"order_{ticket_counter}",
+                "subject": f"Query regarding order FC-{10000 + ticket_counter}",
+                "status": "open" if t_idx == 1 else "closed",
+                "created_at": (now - timedelta(days=t_idx)).isoformat(),
+                "last_message_at": (now - timedelta(hours=t_idx * 2)).isoformat(),
+            })
+            t_ref.collection("messages").document("m1").set({
+                "sender_id": c_user["id"],
+                "sender_role": "customer",
+                "text": f"Hello, I wanted to inquire about the delivery status of order FC-{10000 + ticket_counter}.",
+                "created_at": (now - timedelta(days=t_idx)).isoformat(),
+            })
+            t_ref.collection("messages").document("m2").set({
+                "sender_id": user_docs["admin"]["id"],
+                "sender_role": "admin",
+                "text": f"Hello {c_user['name'].split()[0]}! Your order is being processed by our staff and will be delivered on schedule.",
+                "created_at": (now - timedelta(hours=t_idx * 2)).isoformat(),
+            })
+            ticket_counter += 1
+
+    # 9. Seed Complaints / Delivery Reports (per customer)
+    print("Seeding delivery complaints & reports...")
+    comp_reasons = [
+        ("Customer Unavailable", "RESCHEDULED", "18 Oct 2026", "2026-10-18", "10:00 AM – 12:00 PM"),
+        ("Customer Not Responding", "RESCHEDULED", "19 Oct 2026", "2026-10-19", "12:00 PM – 02:00 PM"),
+        ("Address Issue", "UNDER_REVIEW", None, None, ""),
+        ("Package Delivered", "RESOLVED", None, None, ""),
+    ]
+    for c_user in customers:
+        for c_idx, (reason, c_status, resched_fmt, resched_d, resched_slot) in enumerate(comp_reasons, start=1):
+            comp_id = f"comp_{c_user['id'][:8]}_{c_idx}"
+            db.collection("complaints").document(comp_id).set({
+                "id": comp_id,
+                "order_id": f"order_{c_idx}",
+                "order_id_display": f"#FC-{10000 + c_idx}",
+                "customer_id": c_user["id"],
+                "customer_name": c_user["name"],
+                "customer_phone": c_user["phone"],
+                "failure_reason": reason,
+                "report_date_only": f"{16 - c_idx} Oct 2026",
+                "formatted_report_date": f"{16 - c_idx} Oct 2026, 11:30 AM",
+                "new_delivery_date_formatted": resched_fmt,
+                "rescheduled_date": resched_d,
+                "rescheduled_time_slot": resched_slot,
+                "status": c_status,
+                "reported_by_name": "Rajesh Kumar (Delivery Executive)",
+                "notes": f"Delivery report for order #{10000 + c_idx}. Processed by system.",
+                "created_at": (now - timedelta(days=c_idx)).isoformat(),
+            })
 
     print("--- FabriCare Database Seeding Complete! ---")
 

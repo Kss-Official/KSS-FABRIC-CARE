@@ -150,6 +150,42 @@ export const notificationsApi = {
 };
 
 // 3. CUSTOMER PORTAL APIS
+export const normalizeOrder = (o) => {
+  if (!o || typeof o !== 'object') return o;
+  const addressStr = o.pickup_address || (o.address ? [o.address.line1, o.address.city, o.address.pincode].filter(Boolean).join(', ') : 'Default Location');
+  const pickupDate = o.pickup_date || o.pickup?.date || (o.created_at ? o.created_at.split('T')[0] : 'Today');
+  const pickupSlot = o.pickup_time_slot || (o.pickup?.from && o.pickup?.to ? `${o.pickup.from} – ${o.pickup.to}` : (o.pickup?.time_slot || '10:00 AM – 12:00 PM'));
+  const totalAmount = o.total_amount ?? (o.total_paise != null ? (Number(o.total_paise) / 100).toFixed(2) : (o.estimated_amount != null ? Number(o.estimated_amount).toFixed(2) : '0.00'));
+  
+  const normItems = Array.isArray(o.items) ? o.items.map(it => ({
+    ...it,
+    item_name: it.item_name || it.garment || it.name || 'Laundry Item',
+    service_name: it.service_name || (Array.isArray(it.services) && it.services[0]?.name) || (it.service ? it.service.name : 'Wash & Fold'),
+    quantity: it.quantity ?? 1,
+    price: it.price ?? (it.unit_price_paise != null ? it.unit_price_paise / 100 : 0)
+  })) : [];
+
+  const orderNum = o.order_number || o.code || (o.id ? `#${o.id}` : '#FC1001');
+
+  return {
+    ...o,
+    id: o.id || orderNum,
+    code: o.code || orderNum,
+    order_number: orderNum,
+    pickup_address: addressStr,
+    delivery_address: o.delivery_address || addressStr,
+    pickup_date: pickupDate,
+    pickup_time_slot: pickupSlot,
+    total_amount: totalAmount,
+    estimated_amount: o.estimated_amount ?? totalAmount,
+    payment_status: (o.payment_status || 'PENDING').toUpperCase(),
+    status: o.status || 'PENDING',
+    items: normItems,
+    invoice_number: o.invoice_id || o.invoice_no || `INV-${orderNum.replace('#', '')}`,
+    invoice_date: o.placed_at ? o.placed_at.split('T')[0] : (o.created_at ? o.created_at.split('T')[0] : pickupDate)
+  };
+};
+
 export const customerApi = {
   getCatalog: () => apiClient.get('/customer/catalog'),
   getAddresses: () => apiClient.get('/customer/addresses'),
@@ -157,18 +193,38 @@ export const customerApi = {
   updateAddress: (id, data) => apiClient.patch(`/customer/addresses/${id}`, data),
   deleteAddress: (id) => apiClient.delete(`/customer/addresses/${id}`),
   createOrder: (data) => apiClient.post('/customer/orders', data),
-  getOrders: (params = {}) => apiClient.get('/customer/orders', { params }),
-  getOrder: (id) => apiClient.get(`/customer/orders/${id}`),
+  getOrders: async (params = {}) => {
+    const res = await apiClient.get('/customer/orders', { params: { page_size: 50, ...params } });
+    const raw = res.data;
+    const rawList = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
+    const items = rawList.map(normalizeOrder);
+    return { ...res, data: items, items, results: items, total: raw?.total ?? items.length };
+  },
+  getOrder: async (id) => {
+    const res = await apiClient.get(`/customer/orders/${id}`);
+    const normalized = normalizeOrder(res.data);
+    return { ...res, data: normalized };
+  },
   cancelOrder: (id, reason = '') => apiClient.post(`/customer/orders/${id}/cancel`, { reason }),
   payOrder: (id, method = 'upi') => apiClient.post(`/customer/orders/${id}/pay`, { method }),
   verifyPayment: (payment_id, gateway_payload) => apiClient.post('/payments/verify', { payment_id, gateway_payload }),
   getPayments: (params = {}) => apiClient.get('/customer/payments', { params }),
   getOrderTracking: (id) => apiClient.get(`/customer/orders/${id}/tracking`),
-  getInvoices: (params = {}) => apiClient.get('/customer/invoices', { params }),
+  getInvoices: async (params = {}) => {
+    const res = await apiClient.get('/customer/invoices', { params });
+    const raw = res.data;
+    const list = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
+    return { ...res, data: list, items: list, results: list, total: raw?.total ?? list.length };
+  },
   getInvoice: (id) => apiClient.get(`/customer/invoices/${id}`),
   getInvoicePdfUrl: (id) => `${BASE_URL}/customer/invoices/${id}/pdf`,
   createTicket: (data) => apiClient.post('/customer/support/tickets', data),
-  getTickets: (params = {}) => apiClient.get('/customer/support/tickets', { params }),
+  getTickets: async (params = {}) => {
+    const res = await apiClient.get('/customer/support/tickets', { params });
+    const raw = res.data;
+    const list = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
+    return { ...res, data: list, items: list, results: list, total: raw?.total ?? list.length };
+  },
   getTicket: (id) => apiClient.get(`/customer/support/tickets/${id}`),
   replyTicket: (id, message) => apiClient.post(`/customer/support/tickets/${id}/messages`, { message })
 };
@@ -180,8 +236,25 @@ export const servicesApi = {
 };
 
 export const ordersApi = {
-  getOrders: (params = {}) => apiClient.get('/customer/orders', { params }),
-  getOrderById: (id) => apiClient.get(`/customer/orders/${id}`),
+  getOrders: async (params = {}) => {
+    const res = await apiClient.get('/customer/orders', { params: { page_size: 50, ...params } });
+    const raw = res.data;
+    const rawList = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
+    const items = rawList.map(normalizeOrder);
+    return {
+      ...res,
+      data: items,
+      items,
+      results: items,
+      total: raw?.total ?? items.length,
+      next_cursor: raw?.next_cursor ?? null
+    };
+  },
+  getOrderById: async (id) => {
+    const res = await apiClient.get(`/customer/orders/${id}`);
+    const normalized = normalizeOrder(res.data);
+    return { ...res, data: normalized };
+  },
   createOrder: (data) => apiClient.post('/customer/orders', data),
   cancelOrder: (id, reason = '') => apiClient.post(`/customer/orders/${id}/cancel`, { reason }),
   getTracking: (id) => apiClient.get(`/customer/orders/${id}/tracking`),
@@ -226,22 +299,44 @@ export const addressApi = {
 };
 
 export const invoicesApi = {
-  getInvoices: (params = {}) => apiClient.get('/customer/invoices', { params }),
+  getInvoices: async (params = {}) => {
+    const res = await apiClient.get('/customer/invoices', { params });
+    const raw = res.data;
+    const list = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
+    return { ...res, data: list, items: list, results: list, total: raw?.total ?? list.length };
+  },
   getInvoiceById: (id) => apiClient.get(`/customer/invoices/${id}`)
 };
 
 export const supportApi = {
-  getTickets: (params = {}) => apiClient.get('/customer/support/tickets', { params }),
+  getTickets: async (params = {}) => {
+    const res = await apiClient.get('/customer/support/tickets', { params });
+    const raw = res.data;
+    const list = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
+    return { ...res, data: list, items: list, results: list, total: raw?.total ?? list.length };
+  },
   getTicketById: (id) => apiClient.get(`/customer/support/tickets/${id}`),
   createTicket: (data) => apiClient.post('/customer/support/tickets', data),
   replyTicket: (id, data) => apiClient.post(`/customer/support/tickets/${id}/messages`, { message: data.message || data.text || '' })
 };
 
 export const complaintsApi = {
-  getReports: (params = {}) => apiClient.get('/customer/complaints', { params }).catch(() => ({ data: [] }))
+  getReports: async (params = {}) => {
+    try {
+      const res = await apiClient.get('/customer/complaints', { params });
+      const raw = res.data;
+      const list = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
+      return { ...res, data: list, items: list, results: list, total: raw?.total ?? list.length };
+    } catch {
+      return { data: [], items: [], results: [], total: 0 };
+    }
+  }
 };
 
-export const contentApi = {};
+export const contentApi = {
+  getFaqs: () => Promise.resolve({ data: [] }),
+  getTerms: () => Promise.resolve({ data: [] })
+};
 
 // 4. DELIVERY AGENT PORTAL APIS
 export const agentApi = {

@@ -39,7 +39,7 @@ export const TrackOrder = () => {
         setOrder(res.data);
       } else {
         const res = await ordersApi.getOrders();
-        const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+        const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
         if (list.length > 0) {
           const active = list.find(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED') || list[0];
           setOrder(active);

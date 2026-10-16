@@ -99,7 +99,7 @@ export const PaymentsInvoices = () => {
     setLoading(true);
     try {
       const res = await ordersApi.getOrders();
-      const ordList = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      const ordList = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
       setOrders([...ordList]);
 
       if (ordList.length > 0) {

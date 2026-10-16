@@ -30,7 +30,7 @@ export const CustomerDashboard = () => {
     setLoading(true);
     try {
       const res = await ordersApi.getOrders();
-      const list = Array.isArray(res.data) ? res.data : res.data?.results || [];
+      const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
       setOrders(list);
     } catch (err) {
       console.warn('Error fetching customer orders:', err);
@@ -43,8 +43,8 @@ export const CustomerDashboard = () => {
     fetchOrders();
   }, []);
 
-  const pendingCount = orders.filter(o => ['PENDING', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED'].includes(o.status)).length;
-  const inProcessCount = orders.filter(o => ['PICKED_UP', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'WASHING', 'DRYING', 'IRONING', 'QUALITY_CHECK', 'PACKED'].includes(o.status)).length;
+  const pendingCount = orders.filter(o => ['PENDING', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PLACED', 'PAYMENT_PENDING'].includes(o.status)).length;
+  const inProcessCount = orders.filter(o => ['PICKED_UP', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKED', 'PACKING'].includes(o.status)).length;
   const readyCount = orders.filter(o => ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(o.status)).length;
   const deliveredCount = orders.filter(o => o.status === 'DELIVERED').length;
 

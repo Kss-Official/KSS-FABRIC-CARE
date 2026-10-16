@@ -84,13 +84,14 @@ export const MyOrders = () => {
   };
 
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = 
-      order.order_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.pickup_address?.toLowerCase().includes(searchQuery.toLowerCase());
+    const term = (searchQuery || '').trim().toLowerCase();
+    const orderNo = (order.order_number || order.code || '').toLowerCase();
+    const addr = (order.pickup_address || (order.address ? `${order.address.line1 || ''} ${order.address.city || ''}` : '')).toLowerCase();
+    const matchesSearch = !term || orderNo.includes(term) || addr.includes(term);
     
     if (statusFilter === 'ALL') return matchesSearch;
-    if (statusFilter === 'PENDING') return matchesSearch && ['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS'].includes(order.status);
-    if (statusFilter === 'PROCESSING') return matchesSearch && ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'QUALITY_CHECK', 'PACKING', 'PACKED'].includes(order.status);
+    if (statusFilter === 'PENDING') return matchesSearch && ['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PLACED', 'PAYMENT_PENDING'].includes(order.status);
+    if (statusFilter === 'PROCESSING') return matchesSearch && ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKING', 'PACKED'].includes(order.status);
     if (statusFilter === 'DELIVERY') return matchesSearch && ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.status);
     if (statusFilter === 'COMPLETED') return matchesSearch && ['DELIVERED', 'COMPLETED'].includes(order.status);
     if (statusFilter === 'CANCELLED') return matchesSearch && order.status === 'CANCELLED';

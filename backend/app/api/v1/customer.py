@@ -31,6 +31,8 @@ from app.repositories import (
     support_repo,
     task_repo,
 )
+from app.core.firebase import get_db
+from google.cloud.firestore_v1.base_query import FieldFilter
 from app.services import order_service, status_service, invoice_service, payment_service
 from app.services.status_service import STEP_LABELS
 
@@ -388,3 +390,15 @@ def reply_ticket(
         order_id=ticket.get("order_id"),
     )
     return msg
+
+
+# --- COMPLAINTS & DELIVERY REPORTS ---
+@router.get("/complaints")
+def list_complaints(
+    current_user: Dict[str, Any] = Depends(require_role("customer")),
+):
+    db = get_db()
+    docs = db.collection("complaints").where(filter=FieldFilter("customer_id", "==", current_user["id"])).stream()
+    items = [{"id": d.id, **d.to_dict()} for d in docs]
+    return {"results": items, "items": items, "total": len(items)}
+
