@@ -28,7 +28,8 @@ import {
   AlertCircle,
   HelpCircle,
   MessageSquare,
-  Headphones
+  Headphones,
+  User
 } from 'lucide-react';
 
 
@@ -360,16 +361,16 @@ export const AdminLayout = ({ children }) => {
           </div>
 
 
-          {/* Settings */}
+          {/* My Profile */}
           <button
-            className={`admin-nav-item ${adminTab === 'settings' ? 'active' : ''}`}
+            className={`admin-nav-item ${adminTab === 'settings' || adminTab === 'my-profile' || adminTab === 'profile' ? 'active' : ''}`}
             onClick={() => {
               setAdminTab('settings');
               setMobileSidebarOpen(false);
             }}
           >
-            <span className="nav-item-icon"><Settings size={19} /></span>
-            <span className="nav-item-label">Settings</span>
+            <span className="nav-item-icon"><User size={19} /></span>
+            <span className="nav-item-label">My Profile</span>
           </button>
         </nav>
 
@@ -587,8 +588,8 @@ export const AdminLayout = ({ children }) => {
                     className="dropdown-item"
                     onClick={() => { setAdminTab('settings'); setProfileDropdownOpen(false); }}
                   >
-                    <Settings size={15} style={{ marginRight: 8 }} />
-                    Account Settings
+                    <User size={15} style={{ marginRight: 8 }} />
+                    My Profile
                   </button>
                   <div className="dropdown-divider" />
                   <button 

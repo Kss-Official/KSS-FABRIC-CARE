@@ -44,6 +44,8 @@ export const AdminPortal = () => {
       case 'content':
         return <AdminContentPage />;
       case 'settings':
+      case 'my-profile':
+      case 'profile':
         return <AdminSettingsPage />;
       case 'delivery-reports':
       case 'complaints':

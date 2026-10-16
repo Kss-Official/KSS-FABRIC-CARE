@@ -43,7 +43,7 @@ export const AdminSettingsPage = () => {
   const [showPwd, setShowPwd] = useState({ current: false, next: false, confirm: false });
   const [errors, setErrors] = useState({});
   const [savedToast, setSavedToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('Settings saved successfully!');
+  const [toastMessage, setToastMessage] = useState('Profile saved successfully!');
 
   // Handle Photo Upload
   const handlePhotoUpload = (e) => {
@@ -123,9 +123,9 @@ export const AdminSettingsPage = () => {
       if (pwd.next) {
         // Clear passwords after saving
         setPwd({ current: '', next: '', confirm: '' });
-        setToastMessage('Settings and password updated successfully!');
+        setToastMessage('Profile and password updated successfully!');
       } else {
-        setToastMessage('Settings saved successfully!');
+        setToastMessage('Profile saved successfully!');
       }
 
       setSavedToast(true);
@@ -141,8 +141,8 @@ export const AdminSettingsPage = () => {
     <div className="as-page-container">
       {/* Page Header */}
       <div className="as-header-block">
-        <h1 className="as-page-title">Settings</h1>
-        <p className="as-page-subtitle">Manage your account, business details and preferences.</p>
+        <h1 className="as-page-title">My Profile</h1>
+        <p className="as-page-subtitle">Manage your account profile, business details and preferences.</p>
       </div>
 
       <form onSubmit={handleSaveAll} className="as-cards-stack" noValidate>

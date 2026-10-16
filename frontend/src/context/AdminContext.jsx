@@ -794,7 +794,7 @@ export const AdminProvider = ({ children }) => {
       if (hash.includes('services')) return 'services';
       if (hash.includes('notifications')) return 'notifications';
       if (hash.includes('content')) return 'content';
-      if (hash.includes('settings')) return 'settings';
+      if (hash.includes('settings') || hash.includes('my-profile') || hash.includes('profile')) return 'settings';
       if (hash.includes('dashboard')) return 'dashboard';
     }
     return 'dashboard';
