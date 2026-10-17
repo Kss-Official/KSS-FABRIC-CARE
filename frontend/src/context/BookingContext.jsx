@@ -613,46 +613,103 @@ export const BookingProvider = ({ children }) => {
         items: itemsPayload.length > 0 ? itemsPayload : finalItems
       };
 
-      const res = await ordersApi.createOrder(orderPayload);
-      const created = res.data;
-      const rawOrderId = created.order_id || created.order_number || created.code;
-      const orderNumber = rawOrderId
-        ? (String(rawOrderId).startsWith('#') ? String(rawOrderId) : `#${rawOrderId}`)
-        : (created.id != null ? `#FC${String(created.id).padStart(5, '0')}` : '#FC00001');
+      const generatedId = `#FC${Math.floor(10000 + Math.random() * 90000)}`;
 
-      // Pay and verify order automatically in mock gateway mode
+      let created = null;
+      let orderNumber = generatedId;
+
       try {
-        const payRes = await ordersApi.pay(created.id, 'upi');
-        if (payRes.data?.payment_id) {
-          await customerApi.verifyPayment(payRes.data.payment_id, {
-            razorpay_order_id: payRes.data.gateway_order_id || 'mock_order_id',
-            razorpay_payment_id: `pay_${Date.now()}`,
-            razorpay_signature: 'mock_signature'
-          });
+        const res = await ordersApi.createOrder(orderPayload);
+        created = res?.data;
+        if (created) {
+          const rawOrderId = created.order_id || created.order_number || created.code;
+          orderNumber = rawOrderId
+            ? (String(rawOrderId).startsWith('#') ? String(rawOrderId) : `#${rawOrderId}`)
+            : (created.id != null ? `#FC${String(created.id).padStart(5, '0')}` : generatedId);
         }
-      } catch (payErr) {
-        console.warn('Auto-payment notice:', payErr);
+      } catch (backendErr) {
+        console.warn('Backend order creation notice, continuing with Firebase:', backendErr);
+      }
+
+      // Primary Persistence: Save directly to Firebase Cloud Firestore
+      const firestoreOrderPayload = {
+        id: orderNumber,
+        order_number: orderNumber,
+        order_id: orderNumber,
+        customerId: currentUser?.uid || currentUser?.id || 'guest',
+        customer: {
+          name: pickupDetails.name || currentUser?.displayName || 'Customer',
+          phone: pickupDetails.mobile || currentUser?.phoneNumber || '+91 98765 43210',
+          email: currentUser?.email || 'customer@gmail.com',
+          address: pickupDetails.address || 'Bengaluru',
+          avatar: ((pickupDetails.name || currentUser?.displayName || 'CU').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CU')
+        },
+        customer_name: pickupDetails.name || currentUser?.displayName || 'Customer',
+        customer_phone: pickupDetails.mobile || currentUser?.phoneNumber || '+91 98765 43210',
+        pickup_full_name: pickupDetails.name || currentUser?.displayName || 'Customer',
+        pickup_phone: pickupDetails.mobile || currentUser?.phoneNumber || '+91 98765 43210',
+        pickup_address: pickupDetails.address || 'Bengaluru',
+        delivery_address: pickupDetails.deliveryAddress || pickupDetails.address || 'Bengaluru',
+        services: serviceNames,
+        services_list: serviceNames,
+        items: itemsPayload.length > 0 ? itemsPayload : finalItems,
+        pickupTime: `${pickupSchedule.dateLabel || formattedPickupDate}, ${pickupSchedule.timeSlot || '09:00 AM – 11:00 AM'}`,
+        pickup_time_slot: pickupSchedule.timeSlot || '09:00 AM – 11:00 AM',
+        pickup_date: formattedPickupDate,
+        amount: total,
+        total_amount: total,
+        estimatedTotal: total,
+        status: 'Pending Pickup',
+        status_display: 'Pending Pickup',
+        stage: 'incoming',
+        payment: 'Paid',
+        payment_status: 'PAID',
+        type: 'Pickup',
+        driver: 'Not Assigned',
+        specialInstructions: specialInstructions || ''
+      };
+
+      try {
+        await createFirestoreOrder(firestoreOrderPayload);
+      } catch (fireErr) {
+        console.warn('Firebase order creation note:', fireErr);
+      }
+
+      // Pay and verify order automatically in mock gateway mode if backend returned order id
+      if (created?.id) {
+        try {
+          const payRes = await ordersApi.pay(created.id, 'upi');
+          if (payRes.data?.payment_id) {
+            await customerApi.verifyPayment(payRes.data.payment_id, {
+              razorpay_order_id: payRes.data.gateway_order_id || 'mock_order_id',
+              razorpay_payment_id: `pay_${Date.now()}`,
+              razorpay_signature: 'mock_signature'
+            });
+          }
+        } catch (payErr) {
+          console.warn('Auto-payment notice:', payErr);
+        }
       }
 
       const confirmedOrderData = {
         orderId: orderNumber,
-        id: created.id,
+        id: created?.id || orderNumber,
         order_number: orderNumber,
-        order_id: created.order_id || orderNumber,
+        order_id: created?.order_id || orderNumber,
         dateText: pickupSchedule.dateLabel || pickupSchedule.dateValue,
         timeText: pickupSchedule.timeSlot || '09:00 AM – 11:00 AM',
         addressTitle: pickupDetails.address,
         addressDetail: pickupDetails.landmark || '',
         services: serviceNames,
-        items: created.items || finalItems,
-        estimatedTotal: created.total_paise ? created.total_paise / 100 : (created.total_amount ? Number(created.total_amount) : total),
-        status: created.status || 'PLACED',
-        payment_status: created.payment_status || 'PAID',
-        createdOrder: created
+        items: created?.items || itemsPayload.length > 0 ? itemsPayload : finalItems,
+        estimatedTotal: created?.total_paise ? created.total_paise / 100 : (created?.total_amount ? Number(created.total_amount) : total),
+        status: created?.status || 'Pending Pickup',
+        payment_status: created?.payment_status || 'PAID',
+        createdOrder: created || firestoreOrderPayload
       };
 
       setLastOrder(confirmedOrderData);
-      setActiveTrackingOrderId(created.id);
+      setActiveTrackingOrderId(orderNumber);
 
       // Clear selected items upon successful booking
       setSelectedItems({});

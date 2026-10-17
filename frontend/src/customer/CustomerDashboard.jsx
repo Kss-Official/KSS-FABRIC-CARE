@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { ordersApi, notificationsApi } from '../api/apiClient';
+import { subscribeOrders } from '../services/firestoreService';
 import { 
   Package, 
   Clock, 
@@ -26,22 +27,41 @@ export const CustomerDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
       const res = await ordersApi.getOrders();
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
-      setOrders(list);
+      if (list.length > 0) {
+        setOrders(prev => {
+          const ids = new Set(prev.map(p => p.id));
+          return [...prev, ...list.filter(item => !ids.has(item.id || item.order_number))];
+        });
+      }
     } catch (err) {
-      console.warn('Error fetching customer orders:', err);
+      console.warn('Customer dashboard fetch orders notice:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    let isSubscribed = true;
+    const unsubscribe = subscribeOrders((fireOrders) => {
+      if (!isSubscribed) return;
+      if (fireOrders && fireOrders.length > 0) {
+        setOrders(fireOrders);
+      }
+      setLoading(false);
+    });
+
     fetchOrders();
-  }, []);
+
+    return () => {
+      isSubscribed = false;
+      unsubscribe();
+    };
+  }, [fetchOrders]);
 
   const pendingCount = orders.filter(o => ['PENDING', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PLACED', 'PAYMENT_PENDING'].includes(o.status)).length;
   const inProcessCount = orders.filter(o => ['PICKED_UP', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKED', 'PACKING'].includes(o.status)).length;

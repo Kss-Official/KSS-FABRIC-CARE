@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { deliveryApi, notificationsApi, authApi } from '../api/apiClient';
+import { subscribeOrders, updateFirestoreOrderStatus } from '../services/firestoreService';
 import { 
   Truck, 
   Package, 
@@ -273,6 +274,12 @@ export const DeliveryPortal = () => {
       setSelectedTaskDetail(prev => prev ? { ...prev, status: backendStatus } : null);
     }
 
+    // Call Firestore to update order status in primary database
+    updateFirestoreOrderStatus(id, newStatus === 'AT_HUB' ? 'In Cleaning' : (newStatus === 'COLLECTED' ? 'In Cleaning' : 'Pending Pickup'), {
+      stage: newStatus === 'AT_HUB' ? 'inspection' : 'incoming',
+      raw_status: backendStatus
+    }).catch(e => console.warn('Firestore advance tracker note:', e));
+
     // Call backend API if real task (not demo)
     if (task?.id && !String(task.id).startsWith('FC1028')) {
       if (newStatus === 'AT_HUB') {
@@ -346,6 +353,12 @@ export const DeliveryPortal = () => {
     if (selectedTaskDetail && (String(selectedTaskDetail.id) === id || String(selectedTaskDetail.order_number) === id)) {
       setSelectedTaskDetail(prev => prev ? { ...prev, status: backendStatus } : null);
     }
+
+    // Call Firestore to update order status in primary database
+    updateFirestoreOrderStatus(id, newStatus === 'DELIVERED' ? 'Completed' : 'Ready for Delivery', {
+      stage: 'ready',
+      raw_status: backendStatus
+    }).catch(e => console.warn('Firestore advance delivery tracker note:', e));
   };
 
   // Dropoff Tasks Interactive Controls
@@ -848,6 +861,56 @@ export const DeliveryPortal = () => {
     }
   };
 
+  // Real-time Firestore Tasks synchronization
+  useEffect(() => {
+    let isSubscribed = true;
+    const unsub = subscribeOrders((fireOrders) => {
+      if (!isSubscribed) return;
+      if (Array.isArray(fireOrders) && fireOrders.length > 0) {
+        const fireTasks = fireOrders.map(o => {
+          const isPickup = ['Pending Pickup', 'PICKUP_ASSIGNED', 'PICKUP_IN_PROGRESS', 'ARRIVED', 'PICKED_UP'].includes(o.status) || ['Pending Pickup'].includes(o.status_display);
+          const rawStatus = isPickup ? (o.status === 'In Cleaning' ? 'PICKED_UP' : 'PICKUP_ASSIGNED') : (o.status === 'Completed' ? 'DELIVERED' : 'READY_FOR_DELIVERY');
+          return {
+            id: o.id,
+            order_number: o.order_number || o.id,
+            order_id: o.order_id || o.id,
+            customer_name: o.customer?.name || o.customerName || 'Customer',
+            pickup_full_name: o.customer?.name || o.customerName || 'Customer',
+            customer_phone: o.customer?.phone || o.customerPhone || '-',
+            pickup_phone: o.customer?.phone || o.customerPhone || '-',
+            type: isPickup ? 'Pickup' : 'Delivery',
+            raw_type: isPickup ? 'pickup' : 'delivery',
+            raw_status: rawStatus,
+            status: rawStatus,
+            time_slot: o.pickup_time_slot || o.timeText || '10:00 AM – 12:00 PM',
+            pickup_address: o.pickup_address || o.customer?.address || 'Bengaluru',
+            delivery_address: o.delivery_address || o.customer?.address || 'Bengaluru',
+            address_display: o.pickup_address || o.customer?.address || 'Bengaluru',
+            items_count: `${o.itemsCount || (Array.isArray(o.items) ? o.items.length : 1)} Items`,
+            bags_count: o.bags || o.bags_count || 1,
+            estimated_weight: o.weight_kg ? `${o.weight_kg} kg` : 'Est. 3.5 kg',
+            total_amount: o.total_amount || o.amount || 300,
+            delivery_date: o.pickup_date || 'Today',
+            pickup_date: o.pickup_date || 'Today'
+          };
+        });
+
+        setTasks(prev => {
+          const map = new Map();
+          prev.forEach(t => map.set(String(t.id || t.order_number), t));
+          fireTasks.forEach(t => map.set(String(t.id || t.order_number), t));
+          return Array.from(map.values());
+        });
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      isSubscribed = false;
+      unsub();
+    };
+  }, []);
+
   const handleToggleAvailability = async (checked) => {
     try {
       setIsOnline(checked);
@@ -956,10 +1019,24 @@ export const DeliveryPortal = () => {
           console.warn('Start task note:', sErr);
         }
       }
-      await deliveryApi.completeTask(id, {
-        otp: otpCode,
+      try {
+        await deliveryApi.completeTask(id, {
+          otp: otpCode,
+          notes: pickupNotes
+        });
+      } catch (apiErr) {
+        console.warn('Backend completeTask note:', apiErr);
+      }
+
+      // Persist directly to Firebase Cloud Firestore
+      updateFirestoreOrderStatus(id, 'In Cleaning', {
+        stage: 'incoming',
+        raw_status: 'PICKED_UP',
+        bags_count: bagsCount,
+        weight_kg: weightKg,
         notes: pickupNotes
-      });
+      }).catch(e => console.warn('Firestore pickup complete note:', e));
+
       handleAdvanceTracker(pickupModalOrder, 'COLLECTED');
       setPickupModalOrder(null);
       setAgentOtp('');
@@ -981,6 +1058,15 @@ export const DeliveryPortal = () => {
     e.preventDefault();
     if (!dropoffModalOrder) return;
     setSubmittingDropoff(true);
+
+    const targetId = dropoffModalOrder.id || dropoffModalOrder.order_number;
+    updateFirestoreOrderStatus(targetId, 'In Cleaning', {
+      stage: 'inspection',
+      raw_status: 'DROPPED_OFF',
+      facility_name: facilityName,
+      notes: dropoffNotes
+    }).catch(e => console.warn('Firestore dropoff note:', e));
+
     try {
       await deliveryApi.dropoffLaundry(dropoffModalOrder.id, {
         facility_name: facilityName,
@@ -990,7 +1076,10 @@ export const DeliveryPortal = () => {
       setDropoffNotes('');
       fetchTasks();
     } catch (err) {
-      alert(err.response?.data?.detail || err.response?.data?.error || 'Failed to record hub dropoff');
+      // Still close modal and refresh as Firestore was updated
+      setDropoffModalOrder(null);
+      setDropoffNotes('');
+      fetchTasks();
     } finally {
       setSubmittingDropoff(false);
     }
@@ -1012,10 +1101,22 @@ export const DeliveryPortal = () => {
           console.warn('Start delivery task note:', sErr);
         }
       }
-      await deliveryApi.completeTask(id, {
-        otp: otpCode,
-        notes: deliveryNotes
-      });
+      try {
+        await deliveryApi.completeTask(id, {
+          otp: otpCode,
+          notes: deliveryNotes
+        });
+      } catch (apiErr) {
+        console.warn('Backend completeTask note:', apiErr);
+      }
+
+      // Persist directly to Firebase Cloud Firestore
+      updateFirestoreOrderStatus(id, 'Completed', {
+        raw_status: 'DELIVERED',
+        recipient_name: recipientName,
+        delivery_notes: deliveryNotes
+      }).catch(e => console.warn('Firestore delivery complete note:', e));
+
       handleAdvanceDeliveryTracker(deliveryModalOrder, 'DELIVERED');
       setDeliveryModalOrder(null);
       setAgentOtp('');

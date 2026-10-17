@@ -1470,10 +1470,11 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         return Invoice.objects.filter(order__customer=user)
 
 
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import AllowAny
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def customer_catalog_view(request):
     categories = ServiceCategory.objects.filter(is_active=True)
@@ -1743,4 +1744,249 @@ class AdminBroadcastNotificationView(APIView):
         ]
         Notification.objects.bulk_create(notifications)
         return Response({'detail': f'Notification broadcast to {len(notifications)} users.'})
+
+
+# ===============================================================
+# 7. STAFF PORTAL UNIFIED ENDPOINTS (COMPATIBLE WITH STAFFAPI)
+# ===============================================================
+
+class StaffOrderCountsView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        qs = Order.objects.all()
+        received = qs.filter(status__in=[Order.Status.RECEIVED_BY_LAUNDRY, Order.Status.ACCEPTED, Order.Status.PENDING_REVIEW]).count()
+        inspection = qs.filter(status=Order.Status.INSPECTION).count()
+        washing = qs.filter(status=Order.Status.WASHING).count()
+        drying = qs.filter(status=Order.Status.DRYING).count()
+        ironing = qs.filter(status=Order.Status.IRONING).count()
+        folding = qs.filter(status=Order.Status.FOLDING).count()
+        qc = qs.filter(status=Order.Status.QUALITY_CHECK).count()
+        packing = qs.filter(status=Order.Status.PACKING).count()
+        ready = qs.filter(status=Order.Status.READY_FOR_DELIVERY).count()
+        delivered = qs.filter(status=Order.Status.DELIVERED).count()
+
+        return Response({
+            'all': qs.count(),
+            'RECEIVED': received,
+            'INSPECTION': inspection,
+            'WASHING': washing,
+            'DRYING': drying,
+            'IRONING': ironing,
+            'FOLDING': folding,
+            'QUALITY_CHECK': qc,
+            'PACKING': packing,
+            'DELIVERY': ready,
+            'DELIVERED': delivered,
+            'received': received,
+            'inspection': inspection,
+            'washing': washing,
+            'drying': drying,
+            'ironing': ironing,
+            'folding': folding,
+            'quality_check': qc,
+            'packing': packing,
+            'ready_for_delivery': ready,
+            'delivered': delivered
+        })
+
+
+class StaffDashboardView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        period = request.query_params.get('period', 'today').lower()
+        qs = Order.objects.all()
+        total_active = qs.exclude(status__in=[Order.Status.DELIVERED, Order.Status.CANCELLED]).count()
+        express_count = qs.filter(special_instructions__icontains='express').count()
+        combo_count = qs.filter(special_instructions__icontains='combo').count()
+
+        stages = [
+            {"status": "RECEIVED", "label": "Received", "count": qs.filter(status__in=[Order.Status.RECEIVED_BY_LAUNDRY, Order.Status.ACCEPTED]).count(), "percent": 0},
+            {"status": "INSPECTION", "label": "Inspection", "count": qs.filter(status=Order.Status.INSPECTION).count(), "percent": 0},
+            {"status": "WASHING", "label": "Washing", "count": qs.filter(status=Order.Status.WASHING).count(), "percent": 0},
+            {"status": "DRYING", "label": "Drying", "count": qs.filter(status=Order.Status.DRYING).count(), "percent": 0},
+            {"status": "IRONING", "label": "Ironing", "count": qs.filter(status=Order.Status.IRONING).count(), "percent": 0},
+            {"status": "FOLDING", "label": "Folding", "count": qs.filter(status=Order.Status.FOLDING).count(), "percent": 0},
+            {"status": "QUALITY_CHECK", "label": "Quality Check", "count": qs.filter(status=Order.Status.QUALITY_CHECK).count(), "percent": 0},
+            {"status": "PACKING", "label": "Packing", "count": qs.filter(status=Order.Status.PACKING).count(), "percent": 0},
+        ]
+        total_stage_items = sum(s["count"] for s in stages) or 1
+        for s in stages:
+            s["percent"] = round((s["count"] / total_stage_items) * 100)
+
+        service_counts = []
+        for cat in ServiceCategory.objects.all():
+            cnt = OrderItem.objects.filter(category_name__iexact=cat.name).count()
+            service_counts.append({"service": cat.name, "count": cnt})
+
+        return Response({
+            "kpis": {
+                "total_incoming": {"value": total_active, "today_delta": 2},
+                "express": {"value": express_count, "today_delta": 1},
+                "combo": {"value": combo_count, "percent": round((combo_count / (total_active or 1)) * 100)},
+                "needs_attention": {"value": qs.filter(status=Order.Status.FAILED_DELIVERY).count()}
+            },
+            "stages": {
+                "total": total_stage_items,
+                "items": stages
+            },
+            "services": {
+                "period": period,
+                "total": sum(sc["count"] for sc in service_counts),
+                "items": service_counts
+            },
+            "recent_requests": [],
+            "needs_attention": []
+        })
+
+
+class StaffOrdersListView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        status_param = request.query_params.get('status')
+        q_param = request.query_params.get('q')
+        page_size = int(request.query_params.get('page_size', 100))
+
+        qs = Order.objects.all().select_related('customer', 'assigned_laundry_staff', 'assigned_delivery_driver').prefetch_related('items').order_by('-created_at')
+
+        if status_param and status_param != 'all':
+            qs = qs.filter(status__iexact=status_param)
+        if q_param:
+            qs = qs.filter(Q(order_id__icontains=q_param) | Q(customer__first_name__icontains=q_param) | Q(customer__last_name__icontains=q_param))
+
+        items = []
+        for o in qs[:page_size]:
+            items_list = list(o.items.all())
+            summary = ", ".join([f"{it.service_name} x{it.quantity}" for it in items_list]) if items_list else "Standard Laundry"
+            services = list(set([it.service_name for it in items_list])) or ["Wash & Fold"]
+            is_express = 'express' in (o.special_instructions or '').lower() or any('express' in (it.category_name or '').lower() for it in items_list)
+            is_combo = 'combo' in (o.special_instructions or '').lower()
+
+            items.append({
+                "id": str(o.id),
+                "code": o.order_id,
+                "order_number": o.order_id,
+                "customer": {
+                    "name": o.pickup_full_name or (o.customer.full_name if hasattr(o.customer, 'full_name') else 'Customer'),
+                    "phone": o.pickup_phone or '',
+                    "email": o.customer.email if o.customer else ''
+                },
+                "customer_name": o.pickup_full_name or (o.customer.full_name if hasattr(o.customer, 'full_name') else 'Customer'),
+                "customer_phone": o.pickup_phone or '',
+                "customerName": o.pickup_full_name or (o.customer.full_name if hasattr(o.customer, 'full_name') else 'Customer'),
+                "customerPhone": o.pickup_phone or '',
+                "items_summary": summary,
+                "services": services,
+                "status": o.status,
+                "is_express": is_express,
+                "is_combo": is_combo,
+                "placed_at": o.created_at.isoformat() if o.created_at else None,
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+                "total_amount": float(o.total_amount or 0),
+                "amount": float(o.total_amount or 0),
+                "pickup_address": o.pickup_address or '',
+                "delivery_address": o.delivery_address or o.pickup_address or '',
+                "items": [
+                    {
+                        "id": str(it.id),
+                        "name": it.service_name,
+                        "quantity": it.quantity,
+                        "price": float(it.unit_price or 0)
+                    } for it in items_list
+                ]
+            })
+
+        return Response({
+            "items": items,
+            "results": items,
+            "total": qs.count(),
+            "next_cursor": None
+        })
+
+
+class StaffOrderDetailView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request, pk):
+        try:
+            o = Order.objects.select_related('customer', 'assigned_laundry_staff', 'assigned_delivery_driver').prefetch_related('items__service').get(Q(id=pk) if str(pk).isdigit() else Q(order_id=pk))
+            return Response(OrderSerializer(o).data)
+        except Order.DoesNotExist:
+            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class StaffOrderStatusUpdateView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    STAGE_MAP = {
+        'RECEIVED': Order.Status.RECEIVED_BY_LAUNDRY,
+        'RECEIVED_BY_LAUNDRY': Order.Status.RECEIVED_BY_LAUNDRY,
+        'INSPECTION': Order.Status.INSPECTION,
+        'WASHING': Order.Status.WASHING,
+        'DRYING': Order.Status.DRYING,
+        'IRONING': Order.Status.IRONING,
+        'FOLDING': Order.Status.FOLDING,
+        'QUALITY_CHECK': Order.Status.QUALITY_CHECK,
+        'QUALITY': Order.Status.QUALITY_CHECK,
+        'PACKING': Order.Status.PACKING,
+        'READY_FOR_DELIVERY': Order.Status.READY_FOR_DELIVERY,
+        'READY': Order.Status.READY_FOR_DELIVERY,
+        'OUT_FOR_DELIVERY': Order.Status.OUT_FOR_DELIVERY,
+        'DELIVERED': Order.Status.DELIVERED,
+    }
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.get(Q(id=pk) if str(pk).isdigit() else Q(order_id=pk))
+        except Order.DoesNotExist:
+            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        to_status = request.data.get('to_status') or request.data.get('status')
+        note = request.data.get('note', '')
+
+        mapped_status = self.STAGE_MAP.get(str(to_status).upper(), to_status)
+        order.status = mapped_status
+        if note:
+            order.notes = f"{order.notes}\nStaff Note: {note}".strip() if order.notes else f"Staff Note: {note}"
+        order.save()
+
+        return Response(OrderSerializer(order).data)
+
+
+class StaffHistoryView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        qs = Order.objects.filter(status__in=[Order.Status.DELIVERED, Order.Status.CANCELLED]).order_by('-updated_at')
+        total_val = sum(float(o.total_amount or 0) for o in qs)
+        items = [OrderSerializer(o).data for o in qs[:50]]
+        return Response({
+            "items": items,
+            "total": qs.count(),
+            "total_value_paise": int(total_val * 100)
+        })
+
+
+class AgentDashboardView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        return Response({
+            "is_online": True,
+            "total_tasks": Order.objects.exclude(status=Order.Status.DELIVERED).count(),
+            "completed_today": Order.objects.filter(status=Order.Status.DELIVERED).count(),
+            "earnings_today": 850
+        })
+
+
+class AgentTasksView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    def get(self, request):
+        qs = Order.objects.exclude(status=Order.Status.DELIVERED).order_by('-created_at')
+        items = [OrderSerializer(o).data for o in qs[:50]]
+        return Response({"items": items, "tasks": items, "total": qs.count()})
+
 

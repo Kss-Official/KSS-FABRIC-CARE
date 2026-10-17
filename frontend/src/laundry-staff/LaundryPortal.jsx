@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { staffApi, laundryApi, notificationsApi, ordersApi } from '../api/apiClient';
 import { useStaffActiveOrdersRealtime, useUnreadNotificationsCount } from '../hooks/useRealtime';
+import { subscribeOrders, updateFirestoreOrderStatus } from '../services/firestoreService';
 import { 
   Sparkles, 
   Layers, 
@@ -298,6 +299,19 @@ export const LaundryPortal = () => {
   // Realtime bell notification badge
   const unreadCount = useUnreadNotificationsCount(currentUser?.uid || currentUser?.id);
 
+  // Notifications state
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+
+
+  // Orders Page State (Matching Image 2)
+  const [ordersActiveChip, setOrdersActiveChip] = useState('all');
+  const [ordersServiceFilter, setOrdersServiceFilter] = useState('all');
+  const [ordersSortBy, setOrdersSortBy] = useState('newest');
+  const [ordersCurrentPage, setOrdersCurrentPage] = useState(1);
+  const [openDropdownOrderId, setOpenDropdownOrderId] = useState(null);
+  const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
+
   const fetchDashboard = useCallback(async (period = 'today') => {
     try {
       const p = period.toLowerCase().includes('week') ? 'week' : period.toLowerCase().includes('month') ? 'month' : 'today';
@@ -369,18 +383,39 @@ export const LaundryPortal = () => {
     fetchDashboard(dashServicePeriod);
   });
 
-  // Notifications state
-  const [notifications, setNotifications] = useState([]);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  // Realtime Firebase Firestore Orders Listener (loads and syncs orders directly from Firebase)
+  useEffect(() => {
+    const unsubscribe = subscribeOrders(
+      (firebaseOrders) => {
+        if (Array.isArray(firebaseOrders) && firebaseOrders.length > 0) {
+          setOrders((prev) => {
+            const map = new Map();
+            // 1. Existing orders from REST API or state
+            prev.forEach((o) => {
+              const k = String(o.id || o.order_number || o.code || '');
+              if (k) map.set(k, o);
+            });
+            // 2. Merge in Firebase Firestore orders
+            firebaseOrders.forEach((fo) => {
+              const norm = normalizeOrder(fo);
+              const k = String(norm.id || norm.order_number || norm.code || '');
+              if (k) map.set(k, norm);
+            });
+            return Array.from(map.values());
+          });
+        }
+      },
+      (err) => {
+        console.warn('Firebase orders subscription note:', err.message);
+      }
+    );
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
 
   // Modals state
-  // Orders Page State (Matching Image 2)
-  const [ordersActiveChip, setOrdersActiveChip] = useState('all');
-  const [ordersServiceFilter, setOrdersServiceFilter] = useState('all');
-  const [ordersSortBy, setOrdersSortBy] = useState('newest');
-  const [ordersCurrentPage, setOrdersCurrentPage] = useState(1);
-  const [openDropdownOrderId, setOpenDropdownOrderId] = useState(null);
-  const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
 
   // Dropdown outside click & Escape listener
   useEffect(() => {
@@ -594,13 +629,6 @@ export const LaundryPortal = () => {
 
   const saveOrdersState = (updatedOrders) => {
     setOrders(updatedOrders);
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('fabricare_staff_orders', JSON.stringify(updatedOrders));
-      }
-    } catch (e) {
-      console.warn('Failed to persist orders:', e);
-    }
   };
 
   const handleResetDemoOrders = () => {
@@ -810,6 +838,16 @@ export const LaundryPortal = () => {
     setSubmittingReceipt(true);
     const bCount = parseInt(receivedBags) || 1;
     const wKg = receivedWeight ? parseFloat(receivedWeight) : null;
+    const targetId = receiptModalOrder.id || receiptModalOrder.order_number || receiptModalOrder.code;
+    updateFirestoreOrderStatus(targetId, 'In Cleaning', {
+      stage: 'inspection',
+      raw_status: 'RECEIVED_BY_LAUNDRY',
+      bags_count: bCount,
+      weight_kg: wKg,
+      discrepancy_found: hasDiscrepancy,
+      discrepancy_notes: discrepancyNotes
+    }).catch(e => console.warn('Firestore confirmReceipt note:', e));
+
     try {
       await laundryApi.confirmReceipt(receiptModalOrder.id, {
         received_bags_count: bCount,
@@ -854,6 +892,15 @@ export const LaundryPortal = () => {
     e.preventDefault();
     if (!advancingOrder) return;
     setSubmittingStage(true);
+
+    const targetId = advancingOrder.id || advancingOrder.order_number || advancingOrder.code;
+    const isReady = targetStage === 'PACKED' || targetStage === 'READY_FOR_DELIVERY';
+    updateFirestoreOrderStatus(targetId, isReady ? 'Ready for Delivery' : 'In Cleaning', {
+      stage: targetStage.toLowerCase(),
+      raw_status: targetStage,
+      laundryNotes: stageNotes
+    }).catch(e => console.warn('Firestore advanceStage note:', e));
+
     try {
       await laundryApi.advanceStage(advancingOrder.id, {
         stage: targetStage,
@@ -885,6 +932,15 @@ export const LaundryPortal = () => {
     e.preventDefault();
     if (!qcModalOrder) return;
     setSubmittingQc(true);
+
+    const targetId = qcModalOrder.id || qcModalOrder.order_number || qcModalOrder.code;
+    updateFirestoreOrderStatus(targetId, qcPassed ? 'Ready for Delivery' : 'In Cleaning', {
+      stage: qcPassed ? 'ready' : 'washing',
+      raw_status: qcPassed ? 'READY_FOR_DELIVERY' : 'QC_FAILED',
+      qcResult: qcPassed ? 'PASSED' : 'FAILED',
+      qcNotes
+    }).catch(e => console.warn('Firestore qualityCheck note:', e));
+
     try {
       await laundryApi.qualityCheck(qcModalOrder.id, {
         passed: qcPassed,
@@ -936,6 +992,14 @@ export const LaundryPortal = () => {
     e.preventDefault();
     if (!packingModalOrder) return;
     setSubmittingPack(true);
+
+    const targetId = packingModalOrder.id || packingModalOrder.order_number || packingModalOrder.code;
+    updateFirestoreOrderStatus(targetId, 'Ready for Delivery', {
+      stage: 'ready',
+      raw_status: 'READY_FOR_DELIVERY',
+      laundryNotes: packingNotes
+    }).catch(e => console.warn('Firestore packOrder note:', e));
+
     try {
       await laundryApi.packOrder(packingModalOrder.id, {
         notes: packingNotes
@@ -1200,7 +1264,7 @@ export const LaundryPortal = () => {
               </span>
             )}
           </div>
-          <div className="text-xs font-semibold text-navy mt-0.5">{order.customer_name || order.pickup_full_name}</div>
+          <div className="text-xs font-semibold text-navy mt-0.5">{order.customer_name || (typeof order.customer === 'object' ? order.customer?.name : order.customer) || order.pickup_full_name || 'Customer'}</div>
         </div>
 
         <button
@@ -2184,7 +2248,7 @@ export const LaundryPortal = () => {
             if (ordersSearchQuery.trim()) {
               const q = ordersSearchQuery.toLowerCase();
               const num = String(order.order_number || order.order_id || '').toLowerCase();
-              const name = String(order.customer_name || order.customer || '').toLowerCase();
+              const name = String(order.customer_name || (typeof order.customer === 'object' ? order.customer?.name : order.customer) || order.customerName || '').toLowerCase();
               const phone = String(order.customer_phone || '').toLowerCase();
               const items = String(order.items_summary || '').toLowerCase();
               if (!num.includes(q) && !name.includes(q) && !phone.includes(q) && !items.includes(q)) return false;
@@ -2306,7 +2370,11 @@ export const LaundryPortal = () => {
                   ) : (
                     paginatedOrders.map((order, idx) => {
                       const orderIdStr = order.order_number || order.order_id || `FC-${order.id}`;
-                      const customerName = order.customer_name || order.customer || 'Customer';
+                      const customerName = (typeof order.customer_name === 'string' && order.customer_name)
+                        ? order.customer_name
+                        : ((typeof order.customer === 'string' && order.customer)
+                          ? order.customer
+                          : (order.customer?.name || order.customerName || order.pickup_full_name || 'Customer'));
                       const itemsStr = order.items_summary || (order.items && order.items[0]?.name ? `${order.items[0].name} x ${order.items[0].quantity || 1}` : '1 Item');
                       const placedStr = order.placed || '10:42 AM';
                       const svcBadge = getServiceBadge(order);
@@ -3505,7 +3573,7 @@ export const LaundryPortal = () => {
                       </span>
                     </div>
                     <div className="staff-modal-meta">
-                      <span>Customer: <strong style={{ color: '#0F172A' }}>{order.customer_name || order.pickup_full_name}</strong></span>
+                      <span>Customer: <strong style={{ color: '#0F172A' }}>{order.customer_name || (typeof order.customer === 'object' ? order.customer?.name : order.customer) || order.pickup_full_name || 'Customer'}</strong></span>
                       <span>•</span>
                       <span>{items.length} {items.length === 1 ? 'Garment Item' : 'Garment Items'}</span>
                     </div>

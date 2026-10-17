@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { ordersApi } from '../api/apiClient';
+import { subscribeOrders, cancelFirestoreOrder } from '../services/firestoreService';
 import { 
   Package, 
   Search, 
@@ -24,6 +25,24 @@ export const MyOrders = () => {
   const [cancelModalOrder, setCancelModalOrder] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
   const cancelModalRef = useRef(null);
+
+  const fetchOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await ordersApi.getOrders();
+      const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
+      if (list.length > 0) {
+        setOrders(prev => {
+          const ids = new Set(prev.map(p => p.id));
+          return [...prev, ...list.filter(item => !ids.has(item.id || item.order_number))];
+        });
+      }
+    } catch (err) {
+      console.warn('MyOrders fetch orders notice:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!cancelModalOrder) return;
@@ -51,33 +70,37 @@ export const MyOrders = () => {
     };
   }, [cancelModalOrder]);
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      const res = await ordersApi.getOrders();
-      const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
-      setOrders(list);
-    } catch (err) {
-      console.error('Failed to load orders:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    let isSubscribed = true;
+    const unsubscribe = subscribeOrders((fireOrders) => {
+      if (!isSubscribed) return;
+      if (fireOrders && fireOrders.length > 0) {
+        setOrders(fireOrders);
+      }
+      setLoading(false);
+    });
+
     fetchOrders();
-  }, []);
+
+    return () => {
+      isSubscribed = false;
+      unsubscribe();
+    };
+  }, [fetchOrders]);
 
   const handleCancelOrder = async () => {
     if (!cancelModalOrder) return;
-    setCancellingId(cancelModalOrder.id);
+    const targetId = cancelModalOrder.id || cancelModalOrder.order_number || cancelModalOrder.order_id;
+    setCancellingId(targetId);
     try {
-      await ordersApi.cancelOrder(cancelModalOrder.id, cancelReason || 'Customer requested cancellation');
+      await cancelFirestoreOrder(targetId, cancelReason || 'Customer requested cancellation');
+      try {
+        await ordersApi.cancelOrder(targetId, cancelReason || 'Customer requested cancellation');
+      } catch (_) {}
       setCancelModalOrder(null);
       setCancelReason('');
-      fetchOrders();
     } catch (err) {
-      alert(err.response?.data?.error || err.message || 'Failed to cancel order');
+      alert(err.message || 'Failed to cancel order');
     } finally {
       setCancellingId(null);
     }

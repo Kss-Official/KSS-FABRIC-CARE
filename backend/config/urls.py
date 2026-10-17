@@ -47,7 +47,15 @@ from apps.core.views import (
     AdminGarmentsView,
     AdminGarmentDetailView,
     AdminBroadcastNotificationView,
-    payment_verify_view
+    payment_verify_view,
+    StaffOrderCountsView,
+    StaffDashboardView,
+    StaffOrdersListView,
+    StaffOrderDetailView,
+    StaffOrderStatusUpdateView,
+    StaffHistoryView,
+    AgentDashboardView,
+    AgentTasksView
 )
 
 router = DefaultRouter()
@@ -199,6 +207,26 @@ api_urlpatterns = [
     path('laundry/orders/<int:pk>/advance-stage/', LaundryAdvanceStageView.as_view(), name='laundry-advance-stage'),
     path('laundry/orders/<int:pk>/quality-check/', LaundryQualityCheckView.as_view(), name='laundry-quality-check'),
     path('laundry/orders/<int:pk>/pack/', LaundryPackOrderView.as_view(), name='laundry-pack'),
+
+    # Staff Portal unified endpoints (matching staffApi client calls)
+    path('staff/orders/counts', StaffOrderCountsView.as_view(), name='staff-order-counts-no-slash'),
+    path('staff/orders/counts/', StaffOrderCountsView.as_view(), name='staff-order-counts'),
+    path('staff/dashboard', StaffDashboardView.as_view(), name='staff-dashboard-no-slash'),
+    path('staff/dashboard/', StaffDashboardView.as_view(), name='staff-dashboard'),
+    path('staff/orders', StaffOrdersListView.as_view(), name='staff-orders-no-slash'),
+    path('staff/orders/', StaffOrdersListView.as_view(), name='staff-orders'),
+    path('staff/orders/<str:pk>', StaffOrderDetailView.as_view(), name='staff-order-detail-no-slash'),
+    path('staff/orders/<str:pk>/', StaffOrderDetailView.as_view(), name='staff-order-detail'),
+    path('staff/orders/<str:pk>/status', StaffOrderStatusUpdateView.as_view(), name='staff-order-status-no-slash'),
+    path('staff/orders/<str:pk>/status/', StaffOrderStatusUpdateView.as_view(), name='staff-order-status'),
+    path('staff/history', StaffHistoryView.as_view(), name='staff-history-no-slash'),
+    path('staff/history/', StaffHistoryView.as_view(), name='staff-history'),
+
+    # Delivery Agent Portal unified endpoints (matching agentApi client calls)
+    path('agent/dashboard', AgentDashboardView.as_view(), name='agent-dashboard-no-slash'),
+    path('agent/dashboard/', AgentDashboardView.as_view(), name='agent-dashboard'),
+    path('agent/tasks', AgentTasksView.as_view(), name='agent-tasks-no-slash'),
+    path('agent/tasks/', AgentTasksView.as_view(), name='agent-tasks'),
 
     # Unified Router patterns
     path('', include(router.urls)),
