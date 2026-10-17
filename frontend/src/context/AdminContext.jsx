@@ -67,15 +67,7 @@ export const INITIAL_TERMS_CONTENT = {
 Welcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.
 
 2. Services
-Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.
-
-3. Orders & Pickup
-  Orders can be placed through our website, mobile app or by phone.
-  Pickup and delivery timings are subject to availability.
-  Please ensure clothes are securely packed and handed over in clean condition.
-
-4. Pricing & Payment
-  Prices are based on the type of garment, fabric and service selected.`
+Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.`
 };
 
 export const INITIAL_DRIVERS = [
