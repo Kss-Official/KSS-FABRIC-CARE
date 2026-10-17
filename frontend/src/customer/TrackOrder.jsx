@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
+import { useAuth } from '../context/AuthContext';
 import { ordersApi } from '../api/apiClient';
 import { subscribeOrderById, subscribeOrders } from '../services/firestoreService';
 import { 
@@ -27,9 +28,45 @@ import {
 
 export const TrackOrder = () => {
   const { activeTrackingOrderId, navigateTo, startBooking } = useBooking();
+  const { currentUser } = useAuth();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const fetchOrderDetails = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (activeTrackingOrderId) {
+        const res = await ordersApi.getOrderById(activeTrackingOrderId);
+        if (res?.data) {
+          setOrder(res.data);
+          return;
+        }
+      }
+      const res = await ordersApi.getOrders();
+      const list = Array.isArray(res?.data) ? res.data : (res?.data?.items || res?.data?.results || []);
+      if (list.length > 0) {
+        const myId = currentUser?.uid || currentUser?.id;
+        const myEmail = currentUser?.email;
+        const userList = list.filter(o => 
+          (myId && (o.customer_id === myId || o.customerId === myId || o.userId === myId)) ||
+          (myEmail && (o.customer?.email === myEmail || o.customer_email === myEmail))
+        );
+        const candidates = userList.length > 0 ? userList : list;
+        const act = candidates.find(o => {
+          const s = String(o.status || '').toUpperCase();
+          return s !== 'DELIVERED' && s !== 'COMPLETED' && s !== 'CANCELLED';
+        }) || candidates[0];
+        setOrder(act);
+      }
+    } catch (e) {
+      console.warn('Fetch order details error:', e);
+      setError('Unable to refresh order details');
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTrackingOrderId, currentUser]);
 
   useEffect(() => {
     let isSubscribed = true;
@@ -66,16 +103,36 @@ export const TrackOrder = () => {
       unsubscribe = subscribeOrders((fireOrders) => {
         if (!isSubscribed) return;
         if (fireOrders && fireOrders.length > 0) {
-          const active = fireOrders.find(o => o.status !== 'Completed' && o.status !== 'Delivered' && o.status !== 'Cancelled') || fireOrders[0];
+          const myId = currentUser?.uid || currentUser?.id;
+          const myEmail = currentUser?.email;
+          const userOrders = fireOrders.filter(o => 
+            (myId && (o.customer_id === myId || o.customerId === myId || o.userId === myId)) ||
+            (myEmail && (o.customer?.email === myEmail || o.customer_email === myEmail))
+          );
+          const candidates = userOrders.length > 0 ? userOrders : fireOrders;
+          const active = candidates.find(o => {
+            const s = String(o.status || '').toUpperCase();
+            return s !== 'COMPLETED' && s !== 'DELIVERED' && s !== 'CANCELLED';
+          }) || candidates[0];
           setOrder(active);
           setLoading(false);
         } else {
           ordersApi.getOrders()
             .then(res => {
               if (!isSubscribed) return;
-              const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
+              const list = Array.isArray(res?.data) ? res.data : (res?.data?.items || res?.data?.results || []);
               if (list.length > 0) {
-                const act = list.find(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED') || list[0];
+                const myId = currentUser?.uid || currentUser?.id;
+                const myEmail = currentUser?.email;
+                const userList = list.filter(o => 
+                  (myId && (o.customer_id === myId || o.customerId === myId || o.userId === myId)) ||
+                  (myEmail && (o.customer?.email === myEmail || o.customer_email === myEmail))
+                );
+                const candidates = userList.length > 0 ? userList : list;
+                const act = candidates.find(o => {
+                  const s = String(o.status || '').toUpperCase();
+                  return s !== 'DELIVERED' && s !== 'COMPLETED' && s !== 'CANCELLED';
+                }) || candidates[0];
                 setOrder(act);
               }
             })
@@ -91,7 +148,7 @@ export const TrackOrder = () => {
       isSubscribed = false;
       unsubscribe();
     };
-  }, [activeTrackingOrderId]);
+  }, [activeTrackingOrderId, currentUser]);
 
   if (loading) {
     return (
@@ -131,33 +188,34 @@ export const TrackOrder = () => {
     );
   }
 
-  // Format pickup date
-  const formatPickupDate = (dateStr) => {
-    if (!dateStr) return '12 Oct 2026';
+  // Format pickup date safely
+  const formatPickupDate = (dateVal) => {
+    if (!dateVal) return '12 Oct 2026';
     try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
+      const d = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal);
+      if (isNaN(d.getTime())) return String(dateVal);
       return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     } catch {
-      return dateStr;
+      return String(dateVal);
     }
   };
 
   const formattedPickupDate = formatPickupDate(order.pickup_date);
-  const orderNumberDisplay = order.order_number ? `#${order.order_number.replace(/^#/, '')}` : '#FC8F71E';
+  const rawOrderNum = order.order_number || order.orderNumber || order.id || 'FC8F71E';
+  const orderNumberDisplay = `#${String(rawOrderNum).replace(/^#/, '')}`;
   const orderPlacedTime = `${formattedPickupDate} · 08:45 AM`;
   const pickedUpTime = `${formattedPickupDate} · 10:15 AM`;
   const facilityTime = `${formattedPickupDate} · 11:30 AM`;
   const cleaningEstTime = `${formattedPickupDate} · 02:00 PM (est.)`;
 
-  const formatDeliveryDate = (dateStr) => {
-    if (!dateStr) return null;
+  const formatDeliveryDate = (dateVal) => {
+    if (!dateVal) return null;
     try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
+      const d = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal);
+      if (isNaN(d.getTime())) return String(dateVal);
       return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     } catch {
-      return dateStr;
+      return String(dateVal);
     }
   };
 
@@ -167,7 +225,7 @@ export const TrackOrder = () => {
   const formatStepTimestamp = (timestamp, fallbackDayMonth, fallbackTime) => {
     if (timestamp) {
       try {
-        const d = new Date(timestamp);
+        const d = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
         if (!isNaN(d.getTime())) {
           const dayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
           const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -180,14 +238,14 @@ export const TrackOrder = () => {
     let baseDayMonth = fallbackDayMonth || '13 Oct';
     if (order?.pickup_date) {
       try {
-        const d = new Date(order.pickup_date);
+        const d = order.pickup_date?.toDate ? order.pickup_date.toDate() : new Date(order.pickup_date);
         if (!isNaN(d.getTime())) {
           baseDayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
         }
       } catch {}
     } else if (order?.created_at) {
       try {
-        const d = new Date(order.created_at);
+        const d = order.created_at?.toDate ? order.created_at.toDate() : new Date(order.created_at);
         if (!isNaN(d.getTime())) {
           baseDayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
         }
@@ -209,7 +267,7 @@ export const TrackOrder = () => {
     return 3;
   };
 
-  const isDelivered = order.status === 'DELIVERED' || order.status === 'COMPLETED';
+  const isDelivered = String(order.status || '').toUpperCase() === 'DELIVERED' || String(order.status || '').toUpperCase() === 'COMPLETED';
   const activeStepIndex = isDelivered ? 6 : getActiveStepIndex(order.status);
 
   const trackingSteps = [
@@ -257,13 +315,13 @@ export const TrackOrder = () => {
     }
   ];
 
-  const orderItems = order.items && order.items.length > 0 
+  const orderItems = Array.isArray(order.items) && order.items.length > 0 
     ? order.items.map(it => ({
-        name: it.item_name || 'Fabric Care',
-        subtitle: it.service_category || 'Premium Wash & Care',
-        quantity: it.quantity || 1,
-        rate: it.unit_price || 120,
-        total: it.total_price || 120
+        name: it?.item_name || it?.name || 'Fabric Care',
+        subtitle: it?.service_category || it?.category || 'Premium Wash & Care',
+        quantity: Number(it?.quantity) || 1,
+        rate: Number(it?.unit_price || it?.rate || 120),
+        total: Number(it?.total_price || it?.total || 120)
       }))
     : [
         {
@@ -355,7 +413,7 @@ export const TrackOrder = () => {
           </div>
           <div className="metric-text-stack">
             <span className="metric-label">Estimated Total</span>
-            <span className="metric-value-bold">₹{parseFloat(order.total_amount || order.estimated_amount || 120).toFixed(2)}</span>
+            <span className="metric-value-bold">₹{(parseFloat(order.total_amount ?? order.estimated_amount ?? order.amount ?? 120) || 120).toFixed(2)}</span>
           </div>
         </div>
 
@@ -642,15 +700,15 @@ export const TrackOrder = () => {
                       </div>
                     </td>
                     <td className="td-qty">{item.quantity}</td>
-                    <td className="td-rate">₹{parseFloat(item.rate).toFixed(2)}</td>
-                    <td className="td-total bold">₹{parseFloat(item.total).toFixed(2)}</td>
+                    <td className="td-rate">₹{(parseFloat(item.rate) || 0).toFixed(2)}</td>
+                    <td className="td-total bold">₹{(parseFloat(item.total) || 0).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="grand-total-row">
                   <td colSpan={3} className="grand-total-label">Grand Total</td>
-                  <td className="grand-total-val">₹{parseFloat(order.total_amount || order.estimated_amount || 120).toFixed(2)}</td>
+                  <td className="grand-total-val">₹{(parseFloat(order.total_amount ?? order.estimated_amount ?? order.amount ?? 120) || 120).toFixed(2)}</td>
                 </tr>
               </tfoot>
             </table>
