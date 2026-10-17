@@ -248,18 +248,65 @@ export const AdminProvider = ({ children }) => {
         const idStr = String(o.id || '');
         const orderCode = o.code || o.order_id || o.order_number || `#${idStr.padStart(5, '0')}`;
         const totalVal = o.total_amount ? Number(o.total_amount) : (o.total_paise ? o.total_paise / 100 : (o.amount || 0));
+
+        const custName = o.pickup_full_name || o.customer_name || o.customer?.name || 'Customer';
+        const custPhone = o.pickup_phone || o.customer_phone || o.customer?.phone || '';
+        const custEmail = o.customer_email || o.customer?.email || '';
+        const custAddress = o.pickup_address || o.address?.line1 || (typeof o.address === 'string' ? o.address : 'Bengaluru');
+        const custAvatar = o.customer?.avatar || String(custName).split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CU';
+
+        const servicesList = Array.isArray(o.services) && o.services.length > 0 
+          ? o.services 
+          : (Array.isArray(o.services_list) && o.services_list.length > 0
+            ? o.services_list
+            : (Array.isArray(o.items) && o.items.length > 0
+              ? o.items.map(it => it.service_name || it.item_name || 'Wash & Fold')
+              : ['Wash & Fold']));
+
+        const pickupSlotStr = o.pickup_time_slot || (o.pickup ? `${o.pickup.from || '09:00'} - ${o.pickup.to || '11:00'}` : '09:00 AM - 11:00 AM');
+        const pickupStr = o.pickup_date ? `${o.pickup_date}, ${pickupSlotStr}` : (o.pickupTime || pickupSlotStr);
+        const dateStr = o.created_at ? new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : (o.date || 'Today');
+
+        let uiStatus = o.status_display || 'Pending Pickup';
+        const rawStatus = String(o.status || '').toUpperCase();
+        if (rawStatus === 'PENDING' || rawStatus === 'CONFIRMED' || rawStatus === 'PICKUP_SCHEDULED') {
+          uiStatus = 'Pending Pickup';
+        } else if (rawStatus === 'PICKED_UP' || rawStatus === 'IN_CLEANING' || rawStatus === 'WASHING' || rawStatus === 'IRONING' || rawStatus === 'IN_PROGRESS') {
+          uiStatus = 'In Cleaning';
+        } else if (rawStatus === 'READY' || rawStatus === 'READY_FOR_DELIVERY' || rawStatus === 'OUT_FOR_DELIVERY') {
+          uiStatus = 'Ready for Delivery';
+        } else if (rawStatus === 'DELIVERED' || rawStatus === 'COMPLETED' || rawStatus === 'CLOSED') {
+          uiStatus = 'Completed';
+        }
+
+        const paymentDisplay = (o.payment_status === 'PAID' || o.payment === 'Paid') ? 'Paid' : (o.payment_method === 'COD' || o.payment === 'COD' ? 'COD' : (o.payment || 'Paid'));
+
         return {
           ...o,
-          id: o.id,
+          id: orderCode,
+          rawId: o.id,
           order_number: orderCode,
           order_id: orderCode,
           amount: totalVal,
           total_amount: totalVal,
-          pickup_address: o.pickup_address || o.address?.line1 || (typeof o.address === 'string' ? o.address : 'Bengaluru'),
-          pickup_time_slot: o.pickup_time_slot || (o.pickup ? `${o.pickup.from || '09:00'} - ${o.pickup.to || '11:00'}` : '09:00 AM - 11:00 AM'),
-          customer_name: o.pickup_full_name || o.customer_name || o.customer?.name || 'Customer',
-          customer_phone: o.pickup_phone || o.customer_phone || o.customer?.phone || '',
-          status_display: o.status_display || o.status?.replace(/_/g, ' ')
+          date: dateStr,
+          customer: {
+            name: custName,
+            phone: custPhone,
+            email: custEmail,
+            address: custAddress,
+            avatar: custAvatar
+          },
+          services: servicesList,
+          pickupTime: pickupStr,
+          pickup_address: custAddress,
+          pickup_time_slot: pickupSlotStr,
+          customer_name: custName,
+          customer_phone: custPhone,
+          status: uiStatus,
+          status_display: o.status_display || uiStatus,
+          payment: paymentDisplay,
+          driver: o.assigned_pickup_driver_detail?.full_name || o.driver || 'Not Assigned'
         };
       });
       setOrders(normalized);

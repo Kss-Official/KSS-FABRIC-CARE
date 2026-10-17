@@ -63,19 +63,26 @@ export const AdminOrdersPage = () => {
     completed: 64,
   };
 
-  const filteredOrders = orders.filter(o => {
+  const filteredOrders = (orders || []).filter(o => {
+    if (!o) return false;
+    const services = Array.isArray(o.services) ? o.services : (Array.isArray(o.services_list) ? o.services_list : ['Wash & Fold']);
+    const custName = o.customer?.name || o.customer_name || '';
+    const custPhone = o.customer?.phone || o.customer_phone || '';
+    const idStr = String(o.id || o.order_number || o.order_id || '');
+
     if (activeTab === 'pending' && o.status !== 'Pending Pickup') return false;
     if (activeTab === 'cleaning' && o.status !== 'In Cleaning') return false;
     if (activeTab === 'ready' && o.status !== 'Ready for Delivery') return false;
-    if (activeTab === 'completed' && o.status !== 'Completed') return false;
+    if (activeTab === 'completed' && o.status !== 'Completed' && o.status !== 'Delivered') return false;
 
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
-    if (serviceFilter !== 'all' && !o.services.includes(serviceFilter)) return false;
+    if (serviceFilter !== 'all' && !services.includes(serviceFilter)) return false;
 
     if (searchTerm) {
-      const matchId = o.id.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchName = o.customer.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchPhone = o.customer.phone.includes(searchTerm);
+      const s = searchTerm.toLowerCase();
+      const matchId = idStr.toLowerCase().includes(s);
+      const matchName = custName.toLowerCase().includes(s);
+      const matchPhone = custPhone.includes(searchTerm);
       if (!matchId && !matchName && !matchPhone) return false;
     }
     return true;
@@ -366,10 +373,10 @@ export const AdminOrdersPage = () => {
                       {/* Customer */}
                       <td>
                         <div className="order-customer-meta-cell">
-                          <div className="cust-circle-avatar">{ord.customer.avatar}</div>
+                          <div className="cust-circle-avatar">{ord.customer?.avatar || 'CU'}</div>
                           <div className="cust-text-block">
-                            <span className="cust-full-name">{ord.customer.name}</span>
-                            <span className="cust-phone-num">{ord.customer.phone}</span>
+                            <span className="cust-full-name">{ord.customer?.name || ord.customer_name || 'Customer'}</span>
+                            <span className="cust-phone-num">{ord.customer?.phone || ord.customer_phone || ''}</span>
                           </div>
                         </div>
                       </td>
@@ -377,8 +384,14 @@ export const AdminOrdersPage = () => {
                       {/* Services */}
                       <td>
                         <div className="order-services-pill-group">
-                          <span className="service-name-capsule">{ord.services[0]}</span>
-                          {ord.services.length > 1 && (
+                          <span className="service-name-capsule">
+                            {Array.isArray(ord.services) && ord.services.length > 0 
+                              ? ord.services[0] 
+                              : (Array.isArray(ord.services_list) && ord.services_list.length > 0
+                                ? ord.services_list[0]
+                                : (ord.service || 'Wash & Fold'))}
+                          </span>
+                          {Array.isArray(ord.services) && ord.services.length > 1 && (
                             <span className="service-count-badge">+{ord.services.length - 1}</span>
                           )}
                         </div>
@@ -537,11 +550,11 @@ export const AdminOrdersPage = () => {
               <button className="details-close" onClick={() => setSelectedOrderDetails(null)}>×</button>
             </div>
             <div className="details-modal-body">
-              <div className="details-row"><strong>Customer:</strong> <span>{selectedOrderDetails.customer.name} ({selectedOrderDetails.customer.phone})</span></div>
-              <div className="details-row"><strong>Address:</strong> <span>{selectedOrderDetails.customer.address}</span></div>
-              <div className="details-row"><strong>Services:</strong> <span>{selectedOrderDetails.services.join(', ')}</span></div>
-              <div className="details-row"><strong>Pickup Time:</strong> <span>{selectedOrderDetails.pickupTime}</span></div>
-              <div className="details-row"><strong>Amount:</strong> <span>₹{selectedOrderDetails.amount} ({selectedOrderDetails.payment})</span></div>
+              <div className="details-row"><strong>Customer:</strong> <span>{selectedOrderDetails.customer?.name || selectedOrderDetails.customer_name || 'Customer'} ({selectedOrderDetails.customer?.phone || selectedOrderDetails.customer_phone || ''})</span></div>
+              <div className="details-row"><strong>Address:</strong> <span>{selectedOrderDetails.customer?.address || selectedOrderDetails.pickup_address || 'Bengaluru'}</span></div>
+              <div className="details-row"><strong>Services:</strong> <span>{Array.isArray(selectedOrderDetails.services) ? selectedOrderDetails.services.join(', ') : (Array.isArray(selectedOrderDetails.services_list) ? selectedOrderDetails.services_list.join(', ') : (selectedOrderDetails.service || 'Wash & Fold'))}</span></div>
+              <div className="details-row"><strong>Pickup Time:</strong> <span>{selectedOrderDetails.pickupTime || selectedOrderDetails.pickup_time_slot || 'Today'}</span></div>
+              <div className="details-row"><strong>Amount:</strong> <span>₹{selectedOrderDetails.amount || selectedOrderDetails.total_amount || 0} ({selectedOrderDetails.payment || 'Paid'})</span></div>
               <div className="details-row"><strong>Status:</strong> <span className={`order-status-capsule-badge ${getStatusBadgeClass(selectedOrderDetails.status)}`}>{selectedOrderDetails.status}</span></div>
               <div className="details-row"><strong>Driver:</strong> <span>{selectedOrderDetails.driver || 'Not Assigned'}</span></div>
             </div>
