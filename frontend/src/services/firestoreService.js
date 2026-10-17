@@ -302,7 +302,7 @@ export const INITIAL_ORDERS = [
 
 export const INITIAL_TERMS_CONTENT = {
   title: 'Terms & Conditions',
-  body: `1. Introduction\nWelcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nLaundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.\n\n3. Orders & Pickup\nOrders can be placed through our website, mobile app or by phone.\nPickup and delivery timings are subject to availability.\nPlease ensure clothes are securely packed and handed over in clean condition.\n\n4. Pricing & Payment\nPrices are based on the type of garment, fabric and service selected.\nWe accept UPI, Credit/Debit cards, Net Banking and Cash on Delivery.`
+  body: `1. Introduction\nWelcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nLaundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.`
 };
 
 export const INITIAL_SETTINGS = {

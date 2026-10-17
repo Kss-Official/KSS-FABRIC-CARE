@@ -34,7 +34,26 @@ export const AdminContentPage = () => {
   const faqs = Array.isArray(contextFaqs) ? contextFaqs : localFaqs;
   const setFaqs = contextSetFaqs || setLocalFaqs;
 
-  const [activeTab, setActiveTab] = useState('faqs');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash.toLowerCase();
+        if (hash.includes('faq')) return 'faqs';
+        if (hash.includes('terms') || hash.includes('policies')) return 'terms';
+        const savedTab = localStorage.getItem('fabricare_content_active_tab');
+        if (savedTab === 'faqs' || savedTab === 'terms') return savedTab;
+      }
+    } catch (e) {}
+    return 'terms';
+  });
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    try {
+      localStorage.setItem('fabricare_content_active_tab', tab);
+    } catch (e) {}
+  };
+
   const [editingTitle, setEditingTitle] = useState(contextTerms?.title || 'Terms & Conditions');
   const [editingBody, setEditingBody] = useState(
     contextTerms?.body || 
@@ -42,15 +61,7 @@ export const AdminContentPage = () => {
 Welcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.
 
 2. Services
-Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.
-
-3. Orders & Pickup
-  Orders can be placed through our website, mobile app or by phone.
-  Pickup and delivery timings are subject to availability.
-  Please ensure clothes are securely packed and handed over in clean condition.
-
-4. Pricing & Payment
-  Prices are based on the type of garment, fabric and service selected.`
+Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.`
   );
   
   const [saveToast, setSaveToast] = useState(false);
@@ -221,15 +232,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
 Welcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.
 
 2. Services
-Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.
-
-3. Orders & Pickup
-  Orders can be placed through our website, mobile app or by phone.
-  Pickup and delivery timings are subject to availability.
-  Please ensure clothes are securely packed and handed over in clean condition.
-
-4. Pricing & Payment
-  Prices are based on the type of garment, fabric and service selected.`;
+Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.`;
 
     setEditingTitle(defaultTitle);
     setEditingBody(defaultBody);
@@ -379,7 +382,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         <button 
           type="button"
           className={`content-tab-btn ${activeTab === 'faqs' ? 'active' : ''}`}
-          onClick={() => setActiveTab('faqs')}
+          onClick={() => handleTabChange('faqs')}
         >
           <HelpCircle size={18} />
           <span>FAQs</span>
@@ -388,7 +391,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         <button 
           type="button"
           className={`content-tab-btn ${activeTab === 'terms' ? 'active' : ''}`}
-          onClick={() => setActiveTab('terms')}
+          onClick={() => handleTabChange('terms')}
         >
           <FileText size={18} />
           <span>Terms & Policies</span>
@@ -708,9 +711,13 @@ Laundrix provides professional laundry and dry cleaning services, including pick
                 <div className="preview-banner-content">
                   <span className="preview-banner-tag">TERMS & CONDITIONS</span>
                   <h3 className="preview-banner-title">
-                    {editingTitle.toLowerCase().includes('our') 
-                      ? editingTitle 
-                      : `Our ${editingTitle || 'Terms & Conditions'}`}
+                    {editingTitle.trim().toLowerCase() === 'terms & conditions' ? (
+                      <>Our Terms &amp;<br />Conditions</>
+                    ) : editingTitle.toLowerCase().includes('our') ? (
+                      editingTitle
+                    ) : (
+                      `Our ${editingTitle || 'Terms & Conditions'}`
+                    )}
                   </h3>
                   <p className="preview-banner-desc">
                     Please read these terms carefully before using Laundrix services.
@@ -1521,13 +1528,13 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         }
 
         .preview-banner {
-          background: linear-gradient(135deg, #E6F2F7 0%, #D8E8EF 100%);
-          border-radius: 14px;
-          padding: 24px 24px;
+          background: #E6F4F8;
+          border-radius: 16px;
+          padding: 24px 26px;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 20px;
+          gap: 16px;
           overflow: hidden;
           flex-shrink: 0;
         }
@@ -1535,12 +1542,12 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         .preview-banner-content {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 4px;
           max-width: 58%;
         }
 
         .preview-banner-tag {
-          font-size: 0.71875rem;
+          font-size: 0.72rem;
           font-weight: 800;
           color: #0D7A75;
           letter-spacing: 0.06em;
@@ -1548,18 +1555,19 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         }
 
         .preview-banner-title {
-          font-size: 1.5rem;
+          font-size: 1.625rem;
           font-weight: 800;
           color: #0F172A;
-          margin: 0;
-          line-height: 1.25;
+          margin: 4px 0 6px 0;
+          line-height: 1.22;
         }
 
         .preview-banner-desc {
           font-size: 0.84375rem;
-          color: #475569;
+          color: #64748B;
           margin: 0;
           line-height: 1.45;
+          max-width: 250px;
         }
 
         .preview-banner-media {
@@ -1571,11 +1579,10 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         }
 
         .preview-clothes-img {
-          width: 175px;
+          width: 160px;
           height: auto;
           object-fit: contain;
           display: block;
-          filter: drop-shadow(0 6px 12px rgba(13, 122, 117, 0.08));
         }
 
         .preview-sections-list {
