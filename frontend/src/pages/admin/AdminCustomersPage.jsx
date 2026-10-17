@@ -213,11 +213,11 @@ export const AdminCustomersPage = () => {
     const baseIds = new Set(BASELINE_CUSTOMERS.map(c => c.id));
     const newFromContext = contextCustomers.filter(c => !baseIds.has(c.id)).map(c => ({
       id: c.id,
-      name: c.name.split(' ')[0] || c.name,
-      fullName: c.name,
+      name: (c.name ? c.name.split(' ')[0] : 'Customer'),
+      fullName: c.name || 'Customer',
       phone: c.phone || '+91 98765 00000',
       email: c.email || 'customer@gmail.com',
-      avatar: c.avatar || (c.name.substring(0, 2).toUpperCase()),
+      avatar: c.avatar || (String(c.name || 'CU').substring(0, 2).toUpperCase()),
       avatarBg: '#E0F2FE',
       avatarColor: '#0284C7',
       location: c.location || `${c.area || 'HSR Layout'}, Bengaluru`,

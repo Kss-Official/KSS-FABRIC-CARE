@@ -265,11 +265,46 @@ export const AdminDashboardPage = () => {
     ];
     const refSet = new Set(refOrderIds);
 
-    const dynamicNewOrders = orders.filter(o => 
-      !refSet.has(o.id) && 
-      !o.id.startsWith('#LDX12') && 
-      o.id !== '#LDX10281'
-    );
+    const dynamicNewOrders = (orders || [])
+      .filter(o => {
+        const idStr = String(o?.id || '');
+        const orderIdStr = String(o?.order_id || '');
+        const orderNumStr = String(o?.order_number || '');
+        return !refSet.has(o?.id) && 
+               !refSet.has(idStr) &&
+               !idStr.startsWith('#LDX12') && 
+               !orderIdStr.startsWith('#LDX12') && 
+               !orderNumStr.startsWith('#LDX12') &&
+               idStr !== '#LDX10281';
+      })
+      .map(o => {
+        const idDisplay = o.order_number || o.order_id || (typeof o.id === 'string' && o.id.startsWith('#') ? o.id : `#FC${String(o.id).padStart(5, '0')}`);
+        const custName = o.pickup_full_name || o.customer_name || o.customer?.name || 'Customer';
+        const custAvatar = o.customer?.avatar || custName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+        const servicesList = o.services_list || (Array.isArray(o.services) ? o.services : (o.items ? o.items.map(it => it.service_name || it.item_name) : ['Wash & Fold']));
+        const pickupStr = o.pickup_time_slot ? `${o.pickup_date || 'Today'}, ${o.pickup_time_slot}` : (o.pickupTime || o.date || 'Today');
+        const amt = o.total_amount ? Number(o.total_amount) : (o.amount ? Number(o.amount) : 0);
+        const stat = o.status_display || o.status || 'Pickup Scheduled';
+
+        return {
+          ...o,
+          id: idDisplay,
+          rawId: o.id,
+          customer: {
+            name: custName,
+            avatar: custAvatar,
+            phone: o.pickup_phone || o.customer_phone || o.customer?.phone || '',
+            email: o.customer_email || o.customer?.email || '',
+            address: o.pickup_address || o.customer?.address || ''
+          },
+          services: servicesList,
+          pickupTime: pickupStr,
+          amount: amt,
+          status: stat,
+          payment: o.payment_status === 'PAID' ? 'Paid' : (o.payment || 'Paid'),
+          driver: o.assigned_pickup_driver_detail?.full_name || o.driver || 'Not Assigned'
+        };
+      });
 
     const fallbackBaseOrders = [
       {
@@ -335,7 +370,7 @@ export const AdminDashboardPage = () => {
     ];
 
     const liveReferenceOrders = refOrderIds.map(id => {
-      const live = orders.find(o => o.id === id);
+      const live = (orders || []).find(o => o?.id === id || String(o?.id) === String(id) || o?.order_number === id || o?.order_id === id);
       const fallback = fallbackBaseOrders.find(f => f.id === id);
       if (!live) return fallback;
       return {
