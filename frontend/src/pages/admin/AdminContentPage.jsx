@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useAdmin } from '../../context/AdminContext';
+import { useAdmin, INITIAL_FAQS_ADMIN, INITIAL_TERMS_CONTENT } from '../../context/AdminContext';
 import { 
   HelpCircle, 
   FileText, 
@@ -23,12 +23,21 @@ import {
 } from 'lucide-react';
 
 export const AdminContentPage = () => {
-  const { faqs, setFaqs, termsContent, updateTerms } = useAdmin();
+  const { 
+    faqs: contextFaqs, 
+    setFaqs: contextSetFaqs, 
+    termsContent: contextTerms, 
+    updateTerms 
+  } = useAdmin();
+
+  const [localFaqs, setLocalFaqs] = useState(() => (Array.isArray(INITIAL_FAQS_ADMIN) ? INITIAL_FAQS_ADMIN : []));
+  const faqs = Array.isArray(contextFaqs) ? contextFaqs : localFaqs;
+  const setFaqs = contextSetFaqs || setLocalFaqs;
 
   const [activeTab, setActiveTab] = useState('faqs');
-  const [editingTitle, setEditingTitle] = useState(termsContent?.title || 'Terms & Conditions');
+  const [editingTitle, setEditingTitle] = useState(contextTerms?.title || 'Terms & Conditions');
   const [editingBody, setEditingBody] = useState(
-    termsContent?.body || 
+    contextTerms?.body || 
 `1. Introduction
 Welcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.
 
@@ -238,7 +247,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
       question: '',
       answer: '',
       status: 'Active',
-      displayOrder: faqs.length + 1
+      displayOrder: (faqs?.length || 0) + 1
     });
     setIsFaqModalOpen(true);
   };
@@ -259,14 +268,15 @@ Laundrix provides professional laundry and dry cleaning services, including pick
     if (!faqForm.question.trim() || !faqForm.answer.trim()) return;
 
     if (editingFaq) {
-      setFaqs(prev => prev.map(f => f.id === editingFaq.id ? { ...f, ...faqForm } : f));
+      setFaqs(prev => (prev || []).map(f => f.id === editingFaq.id ? { ...f, ...faqForm } : f));
       setToastMessage('FAQ updated successfully!');
     } else {
+      const list = faqs || [];
       const newFaq = {
-        id: faqs.length ? Math.max(...faqs.map(f => f.id)) + 1 : 1,
+        id: list.length ? Math.max(...list.map(f => Number(f.id) || 0)) + 1 : 1,
         ...faqForm
       };
-      setFaqs(prev => [...prev, newFaq]);
+      setFaqs(prev => [...(prev || []), newFaq]);
       setToastMessage('New FAQ added successfully!');
     }
     setIsFaqModalOpen(false);
@@ -413,7 +423,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
                 </tr>
               </thead>
               <tbody>
-                {faqs.map(faq => (
+                {(faqs || []).map(faq => (
                   <tr key={faq.id}>
                     <td className="td-question">
                       <span className="faq-question-text">{faq.question}</span>
@@ -507,7 +517,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           {/* Pagination Footer */}
           <div className="faqs-pagination-footer">
             <div className="pagination-info">
-              Showing <strong>1–{faqs.length}</strong> of <strong>{faqs.length}</strong> FAQs
+              Showing <strong>1–{(faqs || []).length}</strong> of <strong>{(faqs || []).length}</strong> FAQs
             </div>
             <div className="pagination-controls">
               <button type="button" className="page-nav-btn" disabled>

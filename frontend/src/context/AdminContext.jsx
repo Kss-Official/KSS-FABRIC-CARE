@@ -2,6 +2,90 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { adminApi, notificationsApi } from '../api/apiClient';
 import { useAuth } from './AuthContext';
 
+export const INITIAL_FAQS_ADMIN = [
+  {
+    id: 1,
+    question: 'How does Laundrix pickup and delivery work?',
+    answer: 'Schedule a pickup through our app or website. Our executive will arrive with specialized laundry bags and deliver clean clothes within 24-48 hours.',
+    status: 'Active',
+    displayOrder: 1
+  },
+  {
+    id: 2,
+    question: 'What areas do you service?',
+    answer: 'We currently provide pickup and delivery services across Bengaluru including Indiranagar, Koramangala, Whitefield, HSR Layout, Banaswadi, and Malleshwaram.',
+    status: 'Active',
+    displayOrder: 2
+  },
+  {
+    id: 3,
+    question: 'What types of clothes do you clean?',
+    answer: 'We clean all types of everyday and premium fabrics including cotton, silk, linen, wool, denim, party wear, suits, and curtains.',
+    status: 'Active',
+    displayOrder: 3
+  },
+  {
+    id: 4,
+    question: 'How long does the cleaning process take?',
+    answer: 'Standard turnaround time is 1–2 days. Express services may be delivered within 24 hours.',
+    status: 'Active',
+    displayOrder: 4
+  },
+  {
+    id: 5,
+    question: 'How should I prepare my clothes for pickup?',
+    answer: 'Please keep your clothes in a clean bag. You can also add special instructions for delicate items during booking.',
+    status: 'Active',
+    displayOrder: 5
+  },
+  {
+    id: 6,
+    question: 'What are the payment options?',
+    answer: 'We accept online payments (UPI, cards, net banking) and cash on delivery (COD) upon inspection.',
+    status: 'Active',
+    displayOrder: 6
+  },
+  {
+    id: 7,
+    question: 'How can I track my order?',
+    answer: 'You can track your order in real-time through our app or website with live SMS and WhatsApp status updates.',
+    status: 'Active',
+    displayOrder: 7
+  },
+  {
+    id: 8,
+    question: 'What if I am not satisfied with the service?',
+    answer: 'Your satisfaction is our priority. If you are not happy with the service, we offer a 100% free re-wash guarantee.',
+    status: 'Inactive',
+    displayOrder: 8
+  }
+];
+
+export const INITIAL_TERMS_CONTENT = {
+  title: 'Terms & Conditions',
+  body: `1. Introduction
+Welcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.
+
+2. Services
+Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.
+
+3. Orders & Pickup
+  Orders can be placed through our website, mobile app or by phone.
+  Pickup and delivery timings are subject to availability.
+  Please ensure clothes are securely packed and handed over in clean condition.
+
+4. Pricing & Payment
+  Prices are based on the type of garment, fabric and service selected.`
+};
+
+export const INITIAL_DRIVERS = [
+  { id: 'd1', name: 'Ravi Kumar', phone: '+91 98765 43210', status: 'Available', ordersToday: 5, avatar: 'RK' },
+  { id: 'd2', name: 'Arjun Singh', phone: '+91 87654 32109', status: 'Available', ordersToday: 4, avatar: 'AS' },
+  { id: 'd3', name: 'Mohammed Taha', phone: '+91 91234 55678', status: 'Available', ordersToday: 3, avatar: 'MT' },
+  { id: 'd4', name: 'Suresh Kumar', phone: '+91 99887 66554', status: 'On Delivery', ordersToday: 2, avatar: 'SK' },
+  { id: 'd5', name: 'Praveen D', phone: '+91 98712 34567', status: 'Available', ordersToday: 4, avatar: 'PD' }
+];
+
 const AdminContext = createContext();
 
 export const AdminProvider = ({ children }) => {
@@ -37,6 +121,48 @@ export const AdminProvider = ({ children }) => {
   const [dashboardPeriod, setDashboardPeriod] = useState('today');
   const [notifications, setNotifications] = useState([]);
 
+  // FAQs, Terms & Drivers
+  const [faqs, setFaqsState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_faqs');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return INITIAL_FAQS_ADMIN;
+  });
+
+  const setFaqs = (updater) => {
+    setFaqsState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      try {
+        localStorage.setItem('fabricare_admin_faqs', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const [termsContent, setTermsContent] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_terms');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.body) return parsed;
+      }
+    } catch (e) {}
+    return INITIAL_TERMS_CONTENT;
+  });
+
+  const updateTerms = async (newTerms) => {
+    setTermsContent(newTerms);
+    try {
+      localStorage.setItem('fabricare_admin_terms', JSON.stringify(newTerms));
+    } catch (e) {}
+  };
+
+  const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
+
   // Complaints & Reschedule Delivery States
   const [complaints, setComplaints] = useState([]);
   const [complaintsSummary, setComplaintsSummary] = useState({
@@ -65,21 +191,42 @@ export const AdminProvider = ({ children }) => {
   const [supportDrawerTicket, setSupportDrawerTicket] = useState(null);
 
   // Settings
-  const [settings, setSettings] = useState({
-    name: 'Admin',
-    email: 'admin@fabricare.test',
-    phone: '+91 98765 43210',
-    role: 'Administrator',
-    supportEmail: 'support@fabricare.test',
-    supportPhone: '+91 98765 43210',
-    websiteUrl: 'https://www.fabricare.com',
-    notifications: {
-      newOrders: true,
-      customerMessages: true,
-      pickupDelivery: true,
-      systemAnnouncements: false
-    }
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_admin_settings');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      name: 'Admin',
+      email: 'admin@fabricare.test',
+      phone: '+91 98765 43210',
+      role: 'Administrator',
+      supportEmail: 'support@fabricare.test',
+      supportPhone: '+91 98765 43210',
+      websiteUrl: 'https://www.fabricare.com',
+      notifications: {
+        newOrders: true,
+        customerMessages: true,
+        pickupDelivery: true,
+        systemAnnouncements: false
+      }
+    };
   });
+
+  const updateSettings = async (newSettings) => {
+    setSettings(newSettings);
+    try {
+      localStorage.setItem('fabricare_admin_settings', JSON.stringify(newSettings));
+      const savedUser = localStorage.getItem('fabricare_user') || sessionStorage.getItem('fabricare_user');
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        parsed.displayName = newSettings.name || parsed.displayName;
+        parsed.email = newSettings.email || parsed.email;
+        localStorage.setItem('fabricare_user', JSON.stringify(parsed));
+      }
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {}
+  };
 
   // 1. Fetch Dashboard Data
   const fetchDashboard = useCallback(async (period = dashboardPeriod) => {
@@ -370,13 +517,44 @@ export const AdminProvider = ({ children }) => {
   };
 
   const markNotificationAsRead = async (id) => {
-    await notificationsApi.markRead(id);
-    await fetchNotifications();
+    try {
+      await notificationsApi.markRead(id);
+      await fetchNotifications();
+    } catch {
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, unread: false, is_read: true } : n));
+    }
+  };
+
+  const markNotificationAsUnread = (id) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, unread: true, is_read: false } : n));
   };
 
   const markAllNotificationsAsRead = async () => {
-    await notificationsApi.markAllRead();
-    await fetchNotifications();
+    try {
+      await notificationsApi.markAllRead();
+      await fetchNotifications();
+    } catch {
+      setNotifications(prev => prev.map(n => ({ ...n, unread: false, is_read: true })));
+    }
+  };
+
+  const deleteNotification = (id) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const clearAllNotifications = () => {
+    setNotifications([]);
+  };
+
+  const addAdminNotification = (notif) => {
+    const newNotif = {
+      id: `notif-${Date.now()}`,
+      time: 'Just now',
+      timestamp: Date.now(),
+      unread: true,
+      ...notif
+    };
+    setNotifications(prev => [newNotif, ...prev]);
   };
 
   const supportSummary = {
@@ -411,6 +589,14 @@ export const AdminProvider = ({ children }) => {
         notifications,
         settings,
         setSettings,
+        updateSettings,
+        drivers,
+        setDrivers,
+        faqs,
+        setFaqs,
+        termsContent,
+        setTermsContent,
+        updateTerms,
         loading,
         error,
         isCreateOrderDrawerOpen,
@@ -448,7 +634,12 @@ export const AdminProvider = ({ children }) => {
         replySupportTicket,
         updateTicketStatus,
         markNotificationAsRead,
+        markNotificationAsUnread,
         markAllNotificationsAsRead,
+        deleteNotification,
+        clearAllNotifications,
+        addAdminNotification,
+        unreadNotificationsCount: (notifications || []).filter(n => n.unread || !n.is_read).length,
         complaints,
         setComplaints,
         complaintsSummary,
