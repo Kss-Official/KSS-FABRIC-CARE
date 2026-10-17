@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
-import { ordersApi } from '../api/apiClient';
-import { subscribeOrders, cancelFirestoreOrder } from '../services/firestoreService';
+import { useAuth } from '../context/AuthContext';
+import { subscribeCustomerOrders, cancelCustomerOrder } from '../services/customerDataService';
 import { 
   Package, 
   Search, 
@@ -12,13 +12,16 @@ import {
   ChevronRight, 
   AlertCircle,
   RefreshCw,
-  PlusCircle
+  PlusCircle,
+  Loader2
 } from 'lucide-react';
 
 export const MyOrders = () => {
-  const { navigateTo, startBooking } = useBooking();
+  const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
+  const { currentUser } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [cancellingId, setCancellingId] = useState(null);
@@ -26,23 +29,43 @@ export const MyOrders = () => {
   const [cancelReason, setCancelReason] = useState('');
   const cancelModalRef = useRef(null);
 
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await ordersApi.getOrders();
-      const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
-      if (list.length > 0) {
-        setOrders(prev => {
-          const ids = new Set(prev.map(p => p.id));
-          return [...prev, ...list.filter(item => !ids.has(item.id || item.order_number))];
-        });
-      }
-    } catch (err) {
-      console.warn('MyOrders fetch orders notice:', err);
-    } finally {
+  useEffect(() => {
+    if (!currentUser?.uid) {
       setLoading(false);
+      return;
     }
-  }, []);
+
+    setLoading(true);
+    setError(null);
+
+    const unsubscribe = subscribeCustomerOrders(
+      currentUser.uid,
+      (liveOrders) => {
+        // Map to UI friendly shape
+        const mapped = (liveOrders || []).map(o => {
+          const totalInr = o.total ? (o.total / 100).toFixed(2) : (o.estimatedTotal || '0.00');
+          return {
+            ...o,
+            id: o.id || o.code,
+            order_number: o.code || o.id,
+            order_id: o.code || o.id,
+            total_amount: totalInr,
+            pickup_address: o.address ? `${o.address.flatHouse || ''}, ${o.address.areaColony || ''}, ${o.address.city || ''}` : 'Bengaluru',
+            date: o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Recent'
+          };
+        });
+        setOrders(mapped);
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Orders listener error:', err);
+        setError('Failed to fetch orders. Please check your network connection.');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   useEffect(() => {
     if (!cancelModalOrder) return;
@@ -70,33 +93,12 @@ export const MyOrders = () => {
     };
   }, [cancelModalOrder]);
 
-  useEffect(() => {
-    let isSubscribed = true;
-    const unsubscribe = subscribeOrders((fireOrders) => {
-      if (!isSubscribed) return;
-      if (fireOrders && fireOrders.length > 0) {
-        setOrders(fireOrders);
-      }
-      setLoading(false);
-    });
-
-    fetchOrders();
-
-    return () => {
-      isSubscribed = false;
-      unsubscribe();
-    };
-  }, [fetchOrders]);
-
   const handleCancelOrder = async () => {
     if (!cancelModalOrder) return;
-    const targetId = cancelModalOrder.id || cancelModalOrder.order_number || cancelModalOrder.order_id;
+    const targetId = cancelModalOrder.rawId || cancelModalOrder.id || cancelModalOrder.order_id;
     setCancellingId(targetId);
     try {
-      await cancelFirestoreOrder(targetId, cancelReason || 'Customer requested cancellation');
-      try {
-        await ordersApi.cancelOrder(targetId, cancelReason || 'Customer requested cancellation');
-      } catch (_) {}
+      await cancelCustomerOrder(targetId, cancelReason || 'Customer requested cancellation', currentUser);
       setCancelModalOrder(null);
       setCancelReason('');
     } catch (err) {
@@ -109,13 +111,13 @@ export const MyOrders = () => {
   const filteredOrders = orders.filter(order => {
     const term = (searchQuery || '').trim().toLowerCase();
     const orderNo = (order.order_number || order.code || '').toLowerCase();
-    const addr = (order.pickup_address || (order.address ? `${order.address.line1 || ''} ${order.address.city || ''}` : '')).toLowerCase();
+    const addr = (order.pickup_address || '').toLowerCase();
     const matchesSearch = !term || orderNo.includes(term) || addr.includes(term);
     
     if (statusFilter === 'ALL') return matchesSearch;
-    if (statusFilter === 'PENDING') return matchesSearch && ['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PLACED', 'PAYMENT_PENDING'].includes(order.status);
-    if (statusFilter === 'PROCESSING') return matchesSearch && ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKING', 'PACKED'].includes(order.status);
-    if (statusFilter === 'DELIVERY') return matchesSearch && ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.status);
+    if (statusFilter === 'PENDING') return matchesSearch && ['PAYMENT_PENDING', 'PLACED', 'PICKUP_SCHEDULED'].includes(order.status);
+    if (statusFilter === 'PROCESSING') return matchesSearch && ['PICKED_UP', 'RECEIVED', 'IN_CLEANING'].includes(order.status);
+    if (statusFilter === 'DELIVERY') return matchesSearch && ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY'].includes(order.status);
     if (statusFilter === 'COMPLETED') return matchesSearch && ['DELIVERED', 'COMPLETED'].includes(order.status);
     if (statusFilter === 'CANCELLED') return matchesSearch && order.status === 'CANCELLED';
     return matchesSearch;
@@ -123,35 +125,21 @@ export const MyOrders = () => {
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case 'PENDING':
-      case 'PENDING_REVIEW':
-        return <span className="badge badge-warning">Booking Received</span>;
-      case 'ACCEPTED':
-      case 'PICKUP_ASSIGNED':
+      case 'PAYMENT_PENDING':
+        return <span className="badge badge-warning">Payment Pending</span>;
+      case 'PLACED':
+        return <span className="badge badge-info">Booking Confirmed</span>;
       case 'PICKUP_SCHEDULED':
-      case 'PICKUP_IN_PROGRESS':
         return <span className="badge badge-info">Pickup Scheduled</span>;
       case 'PICKED_UP':
         return <span className="badge badge-info">Clothes Collected</span>;
-      case 'DROPPED_OFF_AT_LAUNDRY':
-      case 'RECEIVED_BY_LAUNDRY':
-      case 'RECEIVED_AT_LAUNDRY':
-        return <span className="badge badge-info">Received at Hub</span>;
-      case 'INSPECTION':
-        return <span className="badge badge-primary">Clothes Inspection</span>;
-      case 'IN_PROCESS':
-      case 'WASHING':
-      case 'DRYING':
-      case 'IRONING':
-        return <span className="badge badge-primary">In Process ({status})</span>;
-      case 'QUALITY_CHECK':
-        return <span className="badge badge-primary">Quality Check</span>;
-      case 'PACKING':
-      case 'PACKED':
+      case 'RECEIVED':
+        return <span className="badge badge-primary">Received at Hub</span>;
+      case 'IN_CLEANING':
+        return <span className="badge badge-primary">In Cleaning</span>;
       case 'READY_FOR_DELIVERY':
         return <span className="badge badge-success">Packed / Ready</span>;
       case 'OUT_FOR_DELIVERY':
-      case 'DELIVERY_ASSIGNED':
         return <span className="badge badge-warning">Out for Delivery</span>;
       case 'DELIVERED':
       case 'COMPLETED':
@@ -174,14 +162,6 @@ export const MyOrders = () => {
         </div>
         <div className="flex items-center gap-3">
           <button 
-            onClick={fetchOrders} 
-            className="btn btn-outline-secondary btn-sm flex items-center gap-1"
-            disabled={loading}
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
-          </button>
-          <button 
             onClick={() => startBooking()} 
             className="btn btn-primary btn-sm flex items-center gap-2 shadow-sm"
           >
@@ -198,19 +178,24 @@ export const MyOrders = () => {
             <Search className="absolute left-3 top-3 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder="Search by Order ID or Address..."
+              className="form-control pl-9 text-sm"
+              placeholder="Search by order ID or address..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="form-input pl-9 text-sm"
             />
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
+          {/* Status Tabs */}
+          <div className="flex flex-wrap gap-2 w-full md:w-auto">
             {['ALL', 'PENDING', 'PROCESSING', 'DELIVERY', 'COMPLETED', 'CANCELLED'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setStatusFilter(tab)}
-                className={`filter-tab ${statusFilter === tab ? 'active' : ''}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  statusFilter === tab 
+                    ? 'bg-primary text-white shadow-sm' 
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
               >
                 {tab === 'ALL' ? 'All Orders' : tab.charAt(0) + tab.slice(1).toLowerCase()}
               </button>
@@ -219,99 +204,91 @@ export const MyOrders = () => {
         </div>
       </div>
 
-      {/* Orders List */}
-      {loading ? (
-        <div className="text-center py-16 bg-white rounded-xl border border-slate-200 shadow-sm">
-          <RefreshCw size={36} className="animate-spin text-primary mx-auto mb-3" />
-          <p className="text-sm font-medium text-navy">Fetching your order history...</p>
+      {/* Loading Skeleton */}
+      {loading && (
+        <div className="content-card p-12 text-center">
+          <Loader2 className="animate-spin mx-auto text-primary mb-3" size={32} />
+          <p className="text-sm text-slate-500 font-medium">Loading your orders in real-time...</p>
         </div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300 shadow-sm">
-          <Package size={48} className="text-slate-300 mx-auto mb-3" />
-          <h3 className="text-lg font-bold text-navy">No orders found</h3>
-          <p className="text-sm text-muted max-w-sm mx-auto mt-1 mb-5">
-            {searchQuery || statusFilter !== 'ALL' 
-              ? 'Try adjusting your search query or status filter.' 
-              : 'You have no laundry orders yet. Book your first pickup with FabriCare today!'}
-          </p>
-          <button onClick={() => startBooking()} className="btn btn-primary btn-sm">
-            Book a Pickup Now
+      )}
+
+      {/* Error State */}
+      {error && !loading && (
+        <div className="content-card p-8 text-center bg-red-50 border border-red-200">
+          <AlertCircle className="mx-auto text-red-500 mb-2" size={32} />
+          <p className="text-sm text-red-700 font-medium">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="btn btn-outline-danger btn-sm mt-3"
+          >
+            Retry
           </button>
         </div>
-      ) : (
+      )}
+
+      {/* Empty State */}
+      {!loading && !error && filteredOrders.length === 0 && (
+        <div className="content-card p-12 text-center">
+          <Package className="mx-auto text-slate-300 mb-3" size={48} />
+          <h3 className="text-lg font-bold text-slate-700">No Orders Found</h3>
+          <p className="text-sm text-slate-500 max-w-sm mx-auto mt-1 mb-4">
+            {searchQuery || statusFilter !== 'ALL' 
+              ? 'No orders matched your search or status filter criteria.' 
+              : 'You have not placed any laundry bookings yet.'}
+          </p>
+          <button onClick={() => startBooking()} className="btn btn-primary btn-sm">
+            Book Laundry Service
+          </button>
+        </div>
+      )}
+
+      {/* Orders List */}
+      {!loading && !error && filteredOrders.length > 0 && (
         <div className="space-y-4">
-          {filteredOrders.map(order => (
-            <div key={order.id} className="order-item-card">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="order-icon-badge">
-                    <Package size={20} className="text-primary" />
+          {filteredOrders.map((order) => (
+            <div key={order.id} className="content-card hover:shadow-md transition-shadow">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-3 bg-teal-50 rounded-xl text-teal-600 mt-1">
+                    <Package size={22} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-lg text-navy">{order.order_number}</span>
+                      <span className="font-bold text-navy text-base">{order.order_number || order.code}</span>
                       {getStatusBadge(order.status)}
                     </div>
-                    <span className="text-xs text-muted">
-                      Placed on {order.created_at ? new Date(order.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today'}
-                    </span>
+                    <p className="text-xs text-muted mt-1">Booked on {order.date}</p>
+                    <p className="text-xs text-slate-600 mt-0.5 line-clamp-1">{order.pickup_address}</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {order.status === 'PENDING' && (
+                <div className="flex flex-row md:flex-col items-center md:items-end justify-between border-t md:border-t-0 pt-3 md:pt-0">
+                  <div className="text-left md:text-right">
+                    <span className="text-xs text-muted">Total Amount</span>
+                    <div className="text-lg font-bold text-teal-700">₹{order.total_amount}</div>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-2">
+                    {['PAYMENT_PENDING', 'PLACED', 'PICKUP_SCHEDULED'].includes(order.status) && (
+                      <button
+                        onClick={() => setCancelModalOrder(order)}
+                        disabled={cancellingId === order.id}
+                        className="btn btn-outline-danger btn-xs"
+                      >
+                        Cancel
+                      </button>
+                    )}
                     <button
-                      onClick={() => setCancelModalOrder(order)}
-                      className="btn btn-outline-danger btn-sm"
+                      onClick={() => {
+                        setActiveTrackingOrderId(order.id || order.code);
+                        navigateTo('track-order');
+                      }}
+                      className="btn btn-outline-primary btn-xs flex items-center gap-1"
                     >
-                      Cancel Order
+                      <span>Track</span>
+                      <ChevronRight size={12} />
                     </button>
-                  )}
-                  <button
-                    onClick={() => navigateTo('customer-track', order.id.toString())}
-                    className="btn btn-primary btn-sm flex items-center gap-1.5"
-                  >
-                    <span>Track Live</span>
-                    <ChevronRight size={15} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 text-sm">
-                <div>
-                  <span className="text-xs text-muted block mb-1">
-                    {order.delivery_date ? 'Schedule Details' : 'Pickup Schedule'}
-                  </span>
-                  <div className="font-semibold text-navy">Pickup: {order.pickup_date}</div>
-                  <div className="text-xs text-slate-500">{order.pickup_time_slot}</div>
-                  {order.delivery_date && (
-                    <div className="mt-1.5 pt-1.5 border-t border-slate-100">
-                      <span className="text-[11px] font-semibold text-[#087F8C] block">
-                        Delivery Schedule:
-                      </span>
-                      <div className="font-semibold text-navy text-xs">
-                        {order.delivery_date} {order.delivery_time_slot ? `· ${order.delivery_time_slot}` : ''}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <span className="text-xs text-muted block mb-1">Items & Services</span>
-                  <div className="font-medium text-navy">
-                    {order.items && order.items.length > 0
-                      ? order.items.map(i => `${i.item_name || i.service_name || 'Item'} ×${i.quantity}`).join(', ')
-                      : 'General Laundry Service'}
                   </div>
-                  <div className="text-xs text-slate-500 truncate max-w-xs">{order.pickup_address}</div>
-                </div>
-
-                <div>
-                  <span className="text-xs text-muted block mb-1">Total Bill & Payment</span>
-                  <div className="text-base font-bold text-navy">₹{order.total_amount || order.estimated_amount || '0.00'}</div>
-                  <span className={`text-xs font-semibold ${order.payment_status === 'PAID' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                    Payment: {order.payment_status || 'Pending'}
-                  </span>
                 </div>
               </div>
             </div>
@@ -321,47 +298,35 @@ export const MyOrders = () => {
 
       {/* Cancel Order Modal */}
       {cancelModalOrder && (
-        <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setCancelModalOrder(null)}
-        >
-          <div 
-            ref={cancelModalRef}
-            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 text-red-600 mb-3">
-              <AlertCircle size={24} />
-              <h3 className="text-lg font-bold">Cancel Order {cancelModalOrder.order_number}?</h3>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div ref={cancelModalRef} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-navy mb-2">Cancel Laundry Order</h3>
             <p className="text-sm text-slate-600 mb-4">
-              Are you sure you want to cancel this booking? This action cannot be undone once confirmed.
+              Are you sure you want to cancel order <strong>{cancelModalOrder.order_number || cancelModalOrder.code}</strong>?
             </p>
             <div className="mb-4">
-              <label className="form-label">Cancellation Reason (Optional)</label>
-              <textarea
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Reason for cancellation</label>
+              <textarea 
+                className="form-control text-sm w-full"
+                rows="3"
+                placeholder="Please tell us why you are cancelling..."
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="E.g., Rescheduling for next week, changed plans..."
-                className="form-textarea"
-                rows={3}
               />
             </div>
             <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setCancelModalOrder(null)}
+              <button 
+                onClick={() => setCancelModalOrder(null)} 
                 className="btn btn-outline-secondary btn-sm"
-                disabled={cancellingId !== null}
               >
                 Keep Order
               </button>
-              <button
-                onClick={handleCancelOrder}
-                className="btn btn-danger btn-sm flex items-center gap-2"
-                disabled={cancellingId !== null}
+              <button 
+                onClick={handleCancelOrder} 
+                disabled={Boolean(cancellingId)}
+                className="btn btn-danger btn-sm"
               >
-                {cancellingId ? <RefreshCw size={14} className="animate-spin" /> : null}
-                <span>Confirm Cancel</span>
+                {cancellingId ? 'Cancelling...' : 'Confirm Cancellation'}
               </button>
             </div>
           </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
-import { ordersApi } from '../api/apiClient';
+import { subscribeCustomerInvoices, subscribeCustomerOrders } from '../services/customerDataService';
 import { 
   Download, 
   Printer, 
@@ -15,9 +15,10 @@ import {
   Package, 
   Shirt, 
   Check, 
-  RefreshCw,
-  Search,
-  X
+  RefreshCw, 
+  Search, 
+  X,
+  Loader2
 } from 'lucide-react';
 
 export const PaymentsInvoices = () => {
@@ -69,8 +70,8 @@ export const PaymentsInvoices = () => {
   const filteredOrders = orders.filter((ord) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
-    const ordNum = (ord.order_number || ord.order_id || `#FC${ord.id}` || '').toLowerCase();
-    const ordDate = formatOrderDate(ord.created_at || ord.pickup_date).toLowerCase();
+    const ordNum = (ord.order_number || ord.order_id || ord.code || `#FC${ord.id}` || '').toLowerCase();
+    const ordDate = formatOrderDate(ord.date || ord.created_at || ord.pickup_date).toLowerCase();
     const cleanSlot = getCleanPickupSlot(ord).toLowerCase();
     const status = (ord.status || 'paid').toLowerCase();
     const amount = `${parseFloat(ord.total_amount || 735).toFixed(2)}`.toLowerCase();
@@ -94,49 +95,51 @@ export const PaymentsInvoices = () => {
     );
   });
 
-  const fetchOrdersAndInvoices = async () => {
-    setIsRefreshing(true);
-    setLoading(true);
-    try {
-      const res = await ordersApi.getOrders();
-      const ordList = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
-      setOrders([...ordList]);
-
-      if (ordList.length > 0) {
-        if (activeTrackingOrderId) {
-          const match = ordList.find(o => 
-            String(o.id) === String(activeTrackingOrderId) || 
-            o.order_number === activeTrackingOrderId || 
-            o.order_id === activeTrackingOrderId
-          );
-          if (match) {
-            setSelectedOrder(match);
-          } else {
-            setSelectedOrder(ordList[0]);
-          }
-        } else {
-          setSelectedOrder(prev => {
-            if (!prev) return ordList[0];
-            return ordList.find(o => o.id === prev.id) || ordList[0];
-          });
-        }
-      }
-
-      setRefreshSuccess(true);
-      setTimeout(() => setRefreshSuccess(false), 2000);
-    } catch (err) {
-      console.warn('Orders refresh notice:', err);
-    } finally {
-      setTimeout(() => {
-        setIsRefreshing(false);
-        setLoading(false);
-      }, 500);
-    }
-  };
-
   useEffect(() => {
-    fetchOrdersAndInvoices();
-  }, [activeTrackingOrderId]);
+    if (!currentUser?.uid) return;
+    setLoading(true);
+
+    const unsub = subscribeCustomerInvoices(
+      currentUser.uid,
+      (invoicesList) => {
+        const mapped = (invoicesList || []).map(inv => ({
+          ...inv,
+          id: inv.id,
+          order_number: inv.orderCode || inv.orderId,
+          order_id: inv.orderCode || inv.orderId,
+          total_amount: inv.total ? (inv.total / 100).toFixed(2) : '0.00',
+          amount: inv.total ? (inv.total / 100).toFixed(2) : '0.00',
+          status: inv.paymentStatus || 'Paid',
+          created_at: inv.date,
+          pickup_date: inv.date,
+          items: Object.values(inv.items || {}).map((it, idx) => ({
+            index: idx + 1,
+            name: it.name || 'Laundry Care',
+            title: it.name || 'Laundry Care',
+            category: it.category || 'General',
+            quantity: it.quantity || 1,
+            qty: it.quantity || 1,
+            rate: it.unitPrice ? (it.unitPrice / 100).toFixed(2) : '60.00',
+            price: it.unitPrice ? (it.unitPrice / 100).toFixed(2) : '60.00',
+            amount: it.lineTotal ? (it.lineTotal / 100).toFixed(2) : '60.00',
+            iconType: 'shirt'
+          }))
+        }));
+
+        setOrders(mapped);
+        if (mapped.length > 0) {
+          setSelectedOrder(prev => prev ? (mapped.find(m => m.id === prev.id) || mapped[0]) : mapped[0]);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Invoices listener error:', err);
+        setLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, [currentUser?.uid]);
 
   // Synchronously reset modal scroll to top before browser paint
   useLayoutEffect(() => {

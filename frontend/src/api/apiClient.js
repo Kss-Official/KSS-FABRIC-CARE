@@ -1,36 +1,29 @@
-import { auth, db } from '../config/firebase';
-import {
-  getFirestoreOrders,
-  createFirestoreOrder,
-  updateFirestoreOrderStatus,
-  updateFirestoreOrder,
-  cancelFirestoreOrder,
-  assignDriverToFirestoreOrder,
-  getFirestoreServices,
-  addFirestoreService,
-  toggleFirestoreServiceStatus,
-  getFirestoreDrivers,
-  updateFirestoreDriverStatus,
-  getFirestoreFaqs,
-  getFirestoreTerms,
-  getFirestoreSettings,
-  getFirestoreNotifications,
-  addFirestoreNotification,
-  getFirestoreComplaints,
-  addFirestoreComplaint,
-  getFirestoreTickets,
-  createFirestoreTicket,
-  replyFirestoreTicket,
-  updateFirestoreTicketStatus,
-  getFirestoreUsers,
-  createFirestoreUser,
-  updateFirestoreUser,
-  getUserAddresses,
-  addUserAddress,
-  updateUserAddress,
-  deleteUserAddress,
-  normalizeFirestoreOrder
-} from '../services/firestoreService';
+import { ref, get, set, update, push, query, orderByChild, equalTo, limitToLast } from 'firebase/database';
+import { auth, rtdb } from '../config/firebase';
+import { 
+  createCustomerOrder, 
+  confirmCustomerPayment, 
+  cancelCustomerOrder, 
+  markNotificationRead,
+  submitCustomerComplaint 
+} from '../services/customerDataService';
+import { 
+  assignPickupAgent, 
+  assignDeliveryAgent, 
+  adminOverrideOrderStatus, 
+  replyToSupportComplaint 
+} from '../services/adminDataService';
+import { 
+  staffConfirmHubReceipt, 
+  advanceLaundryStep 
+} from '../services/staffDataService';
+import { 
+  startPickupTask, 
+  verifyAndCompletePickup, 
+  recordHubDropoff, 
+  startDeliveryTask, 
+  verifyAndCompleteDelivery 
+} from '../services/deliveryDataService';
 
 export class ApiError extends Error {
   constructor(message, code = 'UNKNOWN_ERROR', fields = {}, status = 500) {
@@ -47,727 +40,383 @@ export class ApiError extends Error {
 // -------------------------------------------------------------
 export const normalizeOrder = (o) => {
   if (!o || typeof o !== 'object') return o;
-  const addressStr = o.pickup_address || (o.address ? [o.address.line1, o.address.city, o.address.pincode].filter(Boolean).join(', ') : 'Default Location');
-  const pickupDate = o.pickup_date || o.pickup?.date || (o.created_at ? o.created_at.split('T')[0] : 'Today');
-  const pickupSlot = o.pickup_time_slot || (o.pickup?.from && o.pickup?.to ? `${o.pickup.from} – ${o.pickup.to}` : (o.pickup?.time_slot || '10:00 AM – 12:00 PM'));
-  const totalAmount = o.total_amount ?? (o.total_paise != null ? (Number(o.total_paise) / 100).toFixed(2) : (o.estimated_amount != null ? Number(o.estimated_amount).toFixed(2) : '0.00'));
+  const addressStr = o.pickup_address || (o.address ? [o.address.flatHouse, o.address.areaColony, o.address.city].filter(Boolean).join(', ') : 'Default Location');
+  const pickupDate = o.pickup?.date || (o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : 'Today');
+  const pickupSlot = o.pickup ? `${o.pickup.from || '09:00'} - ${o.pickup.to || '11:00'}` : '09:00 AM - 11:00 AM';
+  const totalAmount = o.total ? (Number(o.total) / 100).toFixed(2) : '0.00';
   
-  const normItems = Array.isArray(o.items) ? o.items.map(it => ({
-    ...it,
-    item_name: it.item_name || it.garment || it.name || 'Laundry Item',
-    service_name: it.service_name || (Array.isArray(it.services) && it.services[0]?.name) || (it.service ? it.service.name : 'Wash & Fold'),
-    quantity: it.quantity ?? 1,
-    price: it.price ?? (it.unit_price != null ? it.unit_price : (it.unit_price_paise != null ? it.unit_price_paise / 100 : 60))
-  })) : [];
-
-  const orderNum = o.order_number || o.order_id || o.code || (o.id ? (String(o.id).startsWith('#') ? o.id : `#${o.id}`) : '#FC1001');
-
-  let uiStatus = o.status_display || o.status || 'Pending Pickup';
-  const rawStatus = String(o.status || '').toUpperCase();
-  if (['PENDING', 'ACCEPTED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PLACED'].includes(rawStatus)) {
-    uiStatus = 'Pending Pickup';
-  } else if (['PICKED_UP', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'WASHING', 'DRYING', 'IRONING', 'IN_CLEANING'].includes(rawStatus)) {
-    uiStatus = 'In Cleaning';
-  } else if (['QUALITY_CHECK', 'PACKED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY'].includes(rawStatus)) {
-    uiStatus = 'Ready for Delivery';
-  } else if (['DELIVERED', 'COMPLETED', 'CLOSED'].includes(rawStatus)) {
-    uiStatus = 'Completed';
-  }
+  const normItems = Array.isArray(o.items) 
+    ? o.items 
+    : (o.items && typeof o.items === 'object' 
+      ? Object.values(o.items).map(it => ({
+          name: it.name || 'Laundry Care',
+          quantity: it.quantity || 1,
+          price: it.unitPrice ? it.unitPrice / 100 : 60,
+          total: it.lineTotal ? it.lineTotal / 100 : 60
+        }))
+      : []);
 
   return {
     ...o,
-    id: orderNum,
-    code: orderNum,
-    order_id: orderNum,
-    order_number: orderNum,
+    id: o.code || o.id,
+    order_id: o.code || o.id,
+    order_number: o.code || o.id,
     pickup_address: addressStr,
-    delivery_address: o.delivery_address || addressStr,
     pickup_date: pickupDate,
     pickup_time_slot: pickupSlot,
     pickupTime: `${pickupDate}, ${pickupSlot}`,
-    total_amount: Number(totalAmount),
-    amount: Number(totalAmount),
-    estimated_amount: o.estimated_amount ?? totalAmount,
-    payment_status: (o.payment_status || 'PAID').toUpperCase(),
-    payment: (o.payment_status || 'PAID').toUpperCase() === 'PAID' ? 'Paid' : 'Pending',
-    status: uiStatus,
-    status_display: uiStatus,
+    total_amount: totalAmount,
+    amount: totalAmount,
     items: normItems,
-    customer_name: o.customer_name || o.pickup_full_name || o.customer?.name || 'Customer',
-    customer_phone: o.customer_phone || o.pickup_phone || o.customer?.phone || '+91 98765 43210',
-    driver: o.driver || o.assigned_pickup_driver_detail?.full_name || 'Not Assigned',
-    invoice_number: o.invoice_id || o.invoice_no || `INV-${orderNum.replace('#', '')}`,
-    invoice_date: o.placed_at ? o.placed_at.split('T')[0] : (o.created_at ? o.created_at.split('T')[0] : pickupDate)
+    customer_name: o.customerName || 'Customer',
+    customer_phone: o.customerPhone || '',
+    status: o.status === 'PLACED' ? 'Pending Pickup' : (o.status === 'IN_CLEANING' ? 'In Cleaning' : (o.status === 'READY_FOR_DELIVERY' ? 'Ready for Delivery' : (o.status === 'OUT_FOR_DELIVERY' ? 'In Transit' : (o.status === 'DELIVERED' ? 'Completed' : (o.status === 'CANCELLED' ? 'Cancelled' : o.status)))))
   };
 };
 
-// -------------------------------------------------------------
-// GENERIC API CLIENT (100% SERVERLESS FALLBACK ROUTER)
-// -------------------------------------------------------------
-export async function request(endpoint, options = {}) {
-  const method = (options.method || 'GET').toUpperCase();
-  const clean = endpoint.toLowerCase();
-
-  try {
-    if (clean.includes('/orders')) {
-      const orders = await getFirestoreOrders();
-      return { data: orders, status: 200 };
-    }
-    if (clean.includes('/services') || clean.includes('/catalog')) {
-      const services = await getFirestoreServices();
-      return { data: { services, garments: [] }, status: 200 };
-    }
-    if (clean.includes('/notifications')) {
-      const notifs = await getFirestoreNotifications();
-      return { data: notifs, status: 200 };
-    }
-    if (clean.includes('/complaints') || clean.includes('/reports')) {
-      const comps = await getFirestoreComplaints();
-      return { data: comps, status: 200 };
-    }
-    if (clean.includes('/support/tickets')) {
-      const tickets = await getFirestoreTickets();
-      return { data: tickets, status: 200 };
-    }
-  } catch (e) {
-    console.warn('API router note:', e);
-  }
-
-  return { data: [], status: 200 };
-}
-
-export const apiClient = {
-  get: (url, config = {}) => request(url, { method: 'GET', ...config }),
-  post: (url, body, config = {}) => request(url, { method: 'POST', body, ...config }),
-  put: (url, body, config = {}) => request(url, { method: 'PUT', body, ...config }),
-  patch: (url, body, config = {}) => request(url, { method: 'PATCH', body, ...config }),
-  delete: (url, config = {}) => request(url, { method: 'DELETE', ...config })
-};
-
-// -------------------------------------------------------------
-// 1. AUTH & USER API (FIREBASE INTEGRATED)
-// -------------------------------------------------------------
-export const authApi = {
-  register: async () => ({ data: { success: true, message: 'User registered' }, status: 201 }),
-  getMe: async () => {
-    const user = auth.currentUser;
-    const email = user?.email || localStorage.getItem('fabricare_user_email') || 'customer@fabricare.com';
-    const users = await getFirestoreUsers();
-    const found = users.find(u => u.email === email || u.uid === user?.uid);
-    return {
-      data: found || {
-        uid: user?.uid || 'guest',
-        email,
-        fullName: user?.displayName || 'FabriCare User',
-        role: 'customer'
-      },
-      status: 200
-    };
-  },
-  updateMe: async (data) => {
-    const user = auth.currentUser;
-    if (user) {
-      await updateFirestoreUser(user.uid, data);
-    }
-    return { data: { success: true }, status: 200 };
-  },
-  uploadAvatar: async () => ({ data: { success: true }, status: 200 }),
-  deleteAvatar: async () => ({ data: { success: true }, status: 200 })
-};
-
-export const userApi = { ...authApi, updateProfile: authApi.updateMe };
-
-// -------------------------------------------------------------
-// 2. NOTIFICATIONS API
-// -------------------------------------------------------------
-export const notificationsApi = {
-  getNotifications: async () => {
-    const list = await getFirestoreNotifications();
-    return { data: list, status: 200 };
-  },
-  getUnreadCount: async () => {
-    const list = await getFirestoreNotifications();
-    const count = list.filter(n => n.unread).length;
-    return { data: { count }, status: 200 };
-  },
-  markRead: async () => ({ data: { success: true }, status: 200 }),
-  markAllRead: async () => ({ data: { success: true }, status: 200 })
-};
-
-// -------------------------------------------------------------
-// 3. CUSTOMER PORTAL API
-// -------------------------------------------------------------
-export const customerApi = {
-  getCatalog: async () => {
-    const services = await getFirestoreServices();
-    return {
-      data: {
-        services: services.map(s => ({ ...s, price: Number(s.price || 120) })),
-        garments: [
-          { id: 1, name: 'Cotton Shirt', price: 60, category_name: 'Men' },
-          { id: 2, name: 'Trousers/Jeans', price: 90, category_name: 'Men' },
-          { id: 3, name: 'Silk Saree', price: 250, category_name: 'Women' },
-          { id: 4, name: 'Blazer/Suit', price: 350, category_name: 'Suits' },
-          { id: 5, name: 'Bed Sheet', price: 150, category_name: 'Household' }
-        ]
-      },
-      status: 200
-    };
-  },
-  getAddresses: async () => {
-    const user = auth.currentUser;
-    const list = await getUserAddresses(user?.uid || 'default');
-    return { data: list, status: 200 };
-  },
-  createAddress: async (data) => {
-    const user = auth.currentUser;
-    const added = await addUserAddress(user?.uid || 'default', data);
-    return { data: added, status: 201 };
-  },
-  updateAddress: async (id, data) => {
-    const user = auth.currentUser;
-    const updated = await updateUserAddress(user?.uid || 'default', id, data);
-    return { data: updated, status: 200 };
-  },
-  deleteAddress: async (id) => {
-    const user = auth.currentUser;
-    await deleteUserAddress(user?.uid || 'default', id);
-    return { data: { success: true }, status: 200 };
-  },
-  createOrder: async (data) => {
-    const created = await createFirestoreOrder(data);
-    return { data: created, status: 201 };
-  },
-  getOrders: async () => {
-    const raw = await getFirestoreOrders();
-    const items = raw.map(normalizeOrder);
-    return { data: items, items, results: items, total: items.length, status: 200 };
-  },
-  getOrder: async (id) => {
-    const raw = await getFirestoreOrders();
-    const found = raw.find(o => o.id === id || o.order_number === id || o.code === id);
-    return { data: found ? normalizeOrder(found) : null, status: 200 };
-  },
-  cancelOrder: async (id, reason = '') => {
-    await cancelFirestoreOrder(id, reason);
-    return { data: { success: true }, status: 200 };
-  },
-  payOrder: async (id) => {
-    await updateFirestoreOrderStatus(id, 'Pending Pickup', { payment_status: 'PAID', payment: 'Paid' });
-    return { data: { success: true }, status: 200 };
-  },
-  verifyPayment: async () => ({ data: { success: true, verified: true }, status: 200 }),
-  getPayments: async () => {
-    const orders = await getFirestoreOrders();
-    const payments = orders.map(o => ({
-      id: `PAY-${o.id.replace('#', '')}`,
-      order_id: o.id,
-      amount: o.total_amount,
-      status: o.payment_status || 'PAID',
-      method: o.payment_method || 'UPI',
-      date: o.date || 'Today'
-    }));
-    return { data: payments, status: 200 };
-  },
-  getOrderTracking: async (id) => {
-    const orders = await getFirestoreOrders();
-    const order = orders.find(o => o.id === id || o.order_number === id);
-    const status = order ? order.status : 'Pending Pickup';
-
-    const steps = [
-      { key: 'placed', label: 'Order Confirmed', time: '10:00 AM', done: true, current: false },
-      { key: 'pickup', label: 'Pickup from Doorstep', time: '11:00 AM', done: ['In Cleaning', 'Ready for Delivery', 'Completed'].includes(status), current: status === 'Pending Pickup' },
-      { key: 'cleaning', label: 'Washing & Steam Press', time: '02:00 PM', done: ['Ready for Delivery', 'Completed'].includes(status), current: status === 'In Cleaning' },
-      { key: 'ready', label: 'Out for Delivery', time: '05:00 PM', done: status === 'Completed', current: status === 'Ready for Delivery' },
-      { key: 'delivered', label: 'Delivered Fresh & Clean', time: '06:00 PM', done: status === 'Completed', current: false }
-    ];
-
-    return {
-      data: {
-        order_id: id,
-        current_status: status,
-        steps,
-        driver: order?.driver || 'Ravi Kumar',
-        driver_phone: '+91 98765 43210'
-      },
-      status: 200
-    };
-  },
-  getInvoices: async () => {
-    const orders = await getFirestoreOrders();
-    const invoices = orders.map(o => ({
-      id: `INV-${o.id.replace('#', '')}`,
-      invoice_no: `INV-${o.id.replace('#', '')}`,
-      order_id: o.id,
-      date: o.date || 'Today',
-      amount: o.total_amount,
-      status: o.payment_status || 'PAID',
-      customer_name: o.customer_name || 'Customer'
-    }));
-    return { data: invoices, items: invoices, results: invoices, total: invoices.length, status: 200 };
-  },
-  getInvoice: async (id) => {
-    const orders = await getFirestoreOrders();
-    const o = orders.find(ord => ord.id.includes(id) || `INV-${ord.id.replace('#', '')}` === id) || orders[0];
-    return {
-      data: {
-        id,
-        invoice_no: id,
-        order: o ? normalizeOrder(o) : null,
-        amount: o ? o.total_amount : 300,
-        date: o ? o.date : 'Today'
-      },
-      status: 200
-    };
-  },
-  getInvoicePdfUrl: (id) => `#invoice-${id}`,
-  createTicket: async (data) => {
-    const created = await createFirestoreTicket(data);
-    return { data: created, status: 201 };
-  },
-  getTickets: async () => {
-    const list = await getFirestoreTickets();
-    return { data: list, items: list, results: list, total: list.length, status: 200 };
-  },
-  getTicket: async (id) => {
-    const list = await getFirestoreTickets();
-    const found = list.find(t => t.id === id);
-    return { data: found, status: 200 };
-  },
-  replyTicket: async (id, message) => {
-    const updated = await replyFirestoreTicket(id, message);
-    return { data: updated, status: 200 };
-  }
-};
-
-// Aliases for backward compatibility
-export const servicesApi = {
-  getCategories: () => customerApi.getCatalog().then(res => ({ data: res.data?.garments || [] })),
-  getServices: () => customerApi.getCatalog().then(res => ({ data: res.data?.services || [] }))
-};
-
 export const ordersApi = {
-  getOrders: customerApi.getOrders,
-  getOrderById: customerApi.getOrder,
-  createOrder: customerApi.createOrder,
-  cancelOrder: customerApi.cancelOrder,
-  getTracking: customerApi.getOrderTracking,
-  pay: customerApi.payOrder
-};
+  getOrders: async () => {
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) return { data: [] };
+    const userRoleSnap = await get(ref(rtdb, `users/${currentUid}/role`));
+    const role = userRoleSnap.val();
 
-export const addressApi = {
-  getAddresses: customerApi.getAddresses,
-  createAddress: customerApi.createAddress,
-  updateAddress: customerApi.updateAddress,
-  deleteAddress: customerApi.deleteAddress
-};
+    if (role === 'admin') {
+      const snap = await get(query(ref(rtdb, 'orders'), limitToLast(50)));
+      if (!snap.exists()) return { data: [] };
+      const raw = Object.values(snap.val()).reverse();
+      return { data: raw.map(normalizeOrder) };
+    }
 
-export const invoicesApi = {
-  getInvoices: customerApi.getInvoices,
-  getInvoiceById: customerApi.getInvoice
-};
+    const uOrdersSnap = await get(ref(rtdb, `userOrders/${currentUid}`));
+    if (!uOrdersSnap.exists()) return { data: [] };
+    const ids = Object.keys(uOrdersSnap.val());
+    const promises = ids.map(async id => {
+      const s = await get(ref(rtdb, `orders/${id}`));
+      return s.exists() ? normalizeOrder(s.val()) : null;
+    });
+    const res = (await Promise.all(promises)).filter(Boolean).reverse();
+    return { data: res };
+  },
 
-export const supportApi = {
-  getTickets: customerApi.getTickets,
-  getTicketById: customerApi.getTicket,
-  createTicket: customerApi.createTicket,
-  replyTicket: customerApi.replyTicket,
-  resolveTicket: async (id) => {
-    await updateFirestoreTicketStatus(id, 'RESOLVED');
-    return { data: { success: true }, status: 200 };
+  getOrderById: async (id) => {
+    const snap = await get(ref(rtdb, `orders/${id}`));
+    if (snap.exists()) {
+      return { data: normalizeOrder(snap.val()) };
+    }
+    // Query by code
+    const qSnap = await get(query(ref(rtdb, 'orders'), orderByChild('code'), equalTo(id)));
+    if (qSnap.exists()) {
+      const firstKey = Object.keys(qSnap.val())[0];
+      return { data: normalizeOrder(qSnap.val()[firstKey]) };
+    }
+    return { data: null };
+  },
+
+  createOrder: async (payload) => {
+    const res = await createCustomerOrder(payload, auth.currentUser);
+    await confirmCustomerPayment(res.orderId, 'UPI_MOCK', auth.currentUser);
+    return { data: res.orderData };
+  },
+
+  cancelOrder: async (id, reason) => {
+    await cancelCustomerOrder(id, reason, auth.currentUser);
+    return { data: { success: true } };
+  },
+
+  updateStatus: async (id, status, reason = 'Status updated') => {
+    await adminOverrideOrderStatus(id, status, reason, auth.currentUser);
+    return { data: { success: true } };
   }
 };
 
-export const complaintsApi = {
-  getReports: async () => {
-    const list = await getFirestoreComplaints();
-    return { data: list, items: list, results: list, total: list.length, status: 200 };
-  },
-  getReportById: async (id) => {
-    const list = await getFirestoreComplaints();
-    return { data: list.find(c => c.id === id), status: 200 };
-  },
-  getAdminReports: async () => {
-    const list = await getFirestoreComplaints();
-    return { data: list, status: 200 };
-  },
-  getAdminReportById: async (id) => {
-    const list = await getFirestoreComplaints();
-    return { data: list.find(c => c.id === id), status: 200 };
-  },
-  rescheduleReport: async (id, data) => adminApi.rescheduleDelivery(id, data),
-  getComplaints: async () => {
-    const list = await getFirestoreComplaints();
-    return { data: list, status: 200 };
-  },
-  getComplaintById: async (id) => {
-    const list = await getFirestoreComplaints();
-    return { data: list.find(c => c.id === id), status: 200 };
-  },
-  rescheduleComplaint: async (id, data) => adminApi.rescheduleDelivery(id, data)
-};
+export const staffApi = {
+  getOrders: async () => {
+    const statuses = ['RECEIVED', 'IN_CLEANING', 'READY_FOR_DELIVERY'];
+    const promises = statuses.map(st => get(ref(rtdb, `ordersByStatus/${st}`)));
+    const snaps = await Promise.all(promises);
+    const orderIds = new Set();
+    snaps.forEach(s => {
+      if (s.exists()) {
+        Object.keys(s.val()).forEach(id => orderIds.add(id));
+      }
+    });
 
-export const contentApi = {
-  getFaqs: async () => {
-    const list = await getFirestoreFaqs ? await getFirestoreFaqs() : [];
-    return { data: list, status: 200 };
+    const orderPromises = Array.from(orderIds).map(async id => {
+      const oSnap = await get(ref(rtdb, `orders/${id}`));
+      return oSnap.exists() ? normalizeOrder(oSnap.val()) : null;
+    });
+    const items = (await Promise.all(orderPromises)).filter(Boolean);
+    return { data: { items } };
   },
-  getTerms: async () => {
-    const terms = await getFirestoreTerms();
-    return { data: terms, status: 200 };
-  }
-};
 
-// -------------------------------------------------------------
-// 4. DELIVERY STAFF & AGENT API (FIREBASE INTEGRATED)
-// -------------------------------------------------------------
-export const agentApi = {
+  updateStatus: async (orderId, targetStep) => {
+    const staffUser = {
+      uid: auth.currentUser?.uid || 'usr_staff_001',
+      name: auth.currentUser?.displayName || 'Staff Specialist'
+    };
+    if (targetStep === 'RECEIVED' || targetStep === 'inspect') {
+      await staffConfirmHubReceipt(orderId, staffUser);
+    } else {
+      await advanceLaundryStep(orderId, targetStep, staffUser);
+    }
+    return { data: { success: true } };
+  },
+
   getDashboard: async () => {
-    const orders = await getFirestoreOrders();
-    const activeTasks = orders.filter(o => o.status === 'Pending Pickup' || o.status === 'Ready for Delivery');
-    const completedTasks = orders.filter(o => o.status === 'Completed');
+    const today = new Date().toISOString().split('T')[0];
+    const snap = await get(ref(rtdb, `stats/daily/${today}`));
+    return { data: snap.exists() ? snap.val() : { ordersPlaced: 0, revenue: 0, completedOrders: 0 } };
+  },
+
+  getCounts: async () => {
     return {
       data: {
-        active_tasks: activeTasks.length,
-        completed_today: completedTasks.length,
-        pending_pickups: orders.filter(o => o.status === 'Pending Pickup').length,
-        pending_deliveries: orders.filter(o => o.status === 'Ready for Delivery').length,
-        rating: '4.9',
-        is_online: true
-      },
-      status: 200
+        inspect: 1,
+        wash: 2,
+        dry: 1,
+        iron: 1,
+        pack: 1
+      }
     };
   },
-  updateAvailability: async (is_online) => {
-    const drivers = await getFirestoreDrivers();
-    if (drivers.length > 0) {
-      await updateFirestoreDriverStatus(drivers[0].id, is_online ? 'Available' : 'Offline');
-    }
-    return { data: { success: true, is_online }, status: 200 };
-  },
-  getTasks: async () => {
-    const orders = await getFirestoreOrders();
-    const tasks = orders.map((o, idx) => {
-      const isDelivery = o.status === 'Ready for Delivery' || o.status === 'Completed';
-      return {
-        id: `task_${idx + 1}`,
-        order_id: o.id,
-        type: isDelivery ? 'DELIVERY' : 'PICKUP',
-        customer_name: o.customer_name,
-        customer_phone: o.customer_phone,
-        address: isDelivery ? o.delivery_address : o.pickup_address,
-        time_slot: o.pickup_time_slot,
-        total_amount: o.total_amount,
-        payment_status: o.payment_status,
-        status: o.status === 'Completed' ? 'COMPLETED' : (o.status === 'In Cleaning' ? 'IN_TRANSIT' : 'ASSIGNED'),
-        otp: isDelivery ? '9052' : '4821',
-        created_at: o.date
-      };
-    });
-    return { data: tasks, items: tasks, results: tasks, total: tasks.length, status: 200 };
-  },
-  startTask: async () => ({ data: { success: true, status: 'IN_TRANSIT' }, status: 200 }),
-  completeTask: async (id, data = {}) => {
-    const orders = await getFirestoreOrders();
-    if (orders.length > 0) {
-      const orderToUpdate = orders.find(o => o.id.includes(id) || o.status === 'Pending Pickup');
-      if (orderToUpdate) {
-        const nextStatus = orderToUpdate.status === 'Pending Pickup' ? 'In Cleaning' : 'Completed';
-        await updateFirestoreOrderStatus(orderToUpdate.id, nextStatus, {
-          laundryNotes: data.notes || 'Completed by delivery executive'
-        });
-      }
-    }
-    return { data: { success: true }, status: 200 };
-  },
-  failTask: async (id, reason = '') => ({ data: { success: true, reason }, status: 200 }),
+
   getHistory: async () => {
-    const orders = await getFirestoreOrders();
-    const history = orders.filter(o => o.status === 'Completed').map((o, idx) => ({
-      id: `hist_${idx + 1}`,
-      order_id: o.id,
-      completed_at: o.date,
-      type: 'DELIVERY',
-      amount: o.total_amount
-    }));
-    return { data: history, status: 200 };
-  },
-  sendLocation: async () => ({ data: { success: true }, status: 200 }),
-  updateVehicle: async () => ({ data: { success: true }, status: 200 })
+    const snap = await get(ref(rtdb, 'ordersByStatus/DELIVERED'));
+    if (!snap.exists()) return { data: { items: [], total: 0 } };
+    const ids = Object.keys(snap.val());
+    const promises = ids.map(async id => {
+      const o = await get(ref(rtdb, `orders/${id}`));
+      return o.exists() ? normalizeOrder(o.val()) : null;
+    });
+    const items = (await Promise.all(promises)).filter(Boolean).reverse();
+    return { data: { items, total: items.length } };
+  }
 };
 
 export const deliveryApi = {
-  ...agentApi,
-  confirmPickup: (id, data = {}) => agentApi.completeTask(id, { ...data, type: 'PICKUP' }),
-  confirmDelivery: (id, data = {}) => agentApi.completeTask(id, { ...data, type: 'DELIVERY' }),
-  failDelivery: (id, data = {}) => agentApi.failTask(id, data.reason || 'Customer unavailable'),
-  dropoffLaundry: async (id) => {
-    const orders = await getFirestoreOrders();
-    const ord = orders.find(o => o.id === id || o.order_number === id);
-    if (ord) {
-      await updateFirestoreOrderStatus(ord.id, 'In Cleaning', {
-        stage: 'washing',
-        hubDropOffTime: new Date().toLocaleTimeString()
-      });
+  getTasks: async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return { data: [] };
+    const agentTasksSnap = await get(ref(rtdb, `agentTasks/${uid}`));
+    if (!agentTasksSnap.exists()) return { data: [] };
+    const taskIds = Object.keys(agentTasksSnap.val());
+    const promises = taskIds.map(async id => {
+      const tSnap = await get(ref(rtdb, `tasks/${id}`));
+      return tSnap.exists() ? { ...tSnap.val(), id } : null;
+    });
+    const list = (await Promise.all(promises)).filter(Boolean);
+    return { data: list };
+  },
+
+  getDashboard: async () => {
+    return {
+      data: {
+        active_tasks: 2,
+        completed_today: 4,
+        is_online: true
+      }
+    };
+  },
+
+  startTask: async (taskId) => {
+    const taskSnap = await get(ref(rtdb, `tasks/${taskId}`));
+    if (!taskSnap.exists()) return { data: { success: false } };
+    const task = taskSnap.val();
+    const agentUser = { uid: auth.currentUser?.uid || 'usr_agent_001', name: auth.currentUser?.displayName || 'Driver' };
+    if (task.type === 'delivery') {
+      await startDeliveryTask(taskId, task.orderId, agentUser);
+    } else {
+      await startPickupTask(taskId, task.orderId, agentUser);
     }
-    return { data: { success: true }, status: 200 };
+    return { data: { success: true } };
+  },
+
+  completeTask: async (taskId, { otp }) => {
+    const taskSnap = await get(ref(rtdb, `tasks/${taskId}`));
+    if (!taskSnap.exists()) throw new Error('Task not found');
+    const task = taskSnap.val();
+    const agentUser = { uid: auth.currentUser?.uid || 'usr_agent_001', name: auth.currentUser?.displayName || 'Driver' };
+    if (task.type === 'delivery') {
+      await verifyAndCompleteDelivery(taskId, task.orderId, otp, agentUser);
+    } else {
+      await verifyAndCompletePickup(taskId, task.orderId, otp, agentUser);
+    }
+    return { data: { success: true } };
+  },
+
+  confirmHubDropoff: async (orderId, facilityName) => {
+    const agentUser = { uid: auth.currentUser?.uid || 'usr_agent_001', name: auth.currentUser?.displayName || 'Driver' };
+    await recordHubDropoff(orderId, facilityName, agentUser);
+    return { data: { success: true } };
+  },
+
+  updateAvailability: async (isOnline) => {
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      await update(ref(rtdb, `agents/${uid}`), { isOnline });
+    }
+    return { data: { isOnline } };
+  },
+
+  sendLocation: async (lat, lng) => {
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      await update(ref(rtdb, `agents/${uid}`), { lastLat: lat, lastLng: lng, lastActiveAt: Date.now() });
+    }
+    return { data: { success: true } };
   }
 };
 
-// -------------------------------------------------------------
-// 5. LAUNDRY STAFF PORTAL API (FIREBASE INTEGRATED)
-// -------------------------------------------------------------
-export const staffApi = {
-  getDashboard: async () => {
-    const orders = await getFirestoreOrders();
-    return {
-      data: {
-        total_orders: orders.length,
-        incoming: orders.filter(o => o.status === 'Pending Pickup' || o.stage === 'incoming').length,
-        washing: orders.filter(o => o.status === 'In Cleaning' && (!o.stage || o.stage === 'washing')).length,
-        ironing: orders.filter(o => o.stage === 'ironing').length,
-        ready: orders.filter(o => o.status === 'Ready for Delivery' || o.stage === 'ready').length,
-        completed: orders.filter(o => o.status === 'Completed').length
-      },
-      status: 200
-    };
+export const notificationsApi = {
+  getNotifications: async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return { data: [] };
+    const snap = await get(query(ref(rtdb, `notifications/${uid}`), limitToLast(30)));
+    if (!snap.exists()) return { data: [] };
+    const raw = Object.keys(snap.val()).map(k => ({ ...snap.val()[k], id: k })).reverse();
+    return { data: raw };
   },
-  getOrders: async () => {
-    const raw = await getFirestoreOrders();
-    const items = raw.map(normalizeOrder);
-    return { data: items, items, results: items, total: items.length, status: 200 };
-  },
-  getCounts: async () => {
-    const orders = await getFirestoreOrders();
-    return {
-      data: {
-        incoming: orders.filter(o => o.stage === 'incoming' || o.status === 'Pending Pickup').length,
-        washing: orders.filter(o => o.stage === 'washing' || (o.status === 'In Cleaning' && !o.stage)).length,
-        drying: orders.filter(o => o.stage === 'drying').length,
-        ironing: orders.filter(o => o.stage === 'ironing').length,
-        ready: orders.filter(o => o.stage === 'ready' || o.status === 'Ready for Delivery').length
-      },
-      status: 200
-    };
-  },
-  updateStatus: async (id, to_status, note = null) => {
-    let uiStatus = 'In Cleaning';
-    let stage = 'washing';
 
-    if (to_status === 'RECEIVED_BY_LAUNDRY' || to_status === 'IN_CLEANING') {
-      uiStatus = 'In Cleaning';
-      stage = 'washing';
-    } else if (to_status === 'PACKING' || to_status === 'READY_FOR_DELIVERY') {
-      uiStatus = 'Ready for Delivery';
-      stage = 'ready';
-    } else if (to_status === 'PROCESSING' || to_status === 'WASHING') {
-      uiStatus = 'In Cleaning';
-      stage = 'washing';
+  markRead: async (id) => {
+    const uid = auth.currentUser?.uid;
+    if (uid && id) {
+      await markNotificationRead(uid, id);
     }
-
-    await updateFirestoreOrderStatus(id, uiStatus, {
-      stage,
-      laundryNotes: note || 'Updated by laundry staff'
-    });
-    return { data: { success: true, status: uiStatus, stage }, status: 200 };
+    return { data: { success: true } };
   },
-  getOrder: async (id) => customerApi.getOrder(id),
-  resolveCombo: async () => ({ data: { success: true }, status: 200 }),
-  getHistory: async () => customerApi.getOrders(),
-  getInvoicePdfUrl: (id) => `#invoice-${id}`
+
+  markAllRead: async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return { data: { success: true } };
+    const snap = await get(ref(rtdb, `notifications/${uid}`));
+    if (snap.exists()) {
+      const updates = {};
+      Object.keys(snap.val()).forEach(k => {
+        updates[`notifications/${uid}/${k}/isRead`] = true;
+      });
+      await update(ref(rtdb), updates);
+    }
+    return { data: { success: true } };
+  }
 };
 
-export const laundryApi = {
-  ...staffApi,
-  confirmReceipt: (id, data = {}) => staffApi.updateStatus(id, 'RECEIVED_BY_LAUNDRY', data.discrepancy_details || 'Receipt confirmed'),
-  advanceStage: (id, data = {}) => staffApi.updateStatus(id, data.stage || 'PROCESSING', data.notes || data.note),
-  qualityCheck: (id, data = {}) => staffApi.updateStatus(id, data.passed ? 'PACKING' : 'PROCESSING', data.notes),
-  packOrder: (id, data = {}) => staffApi.updateStatus(id, 'READY_FOR_DELIVERY', data.notes)
+export const supportApi = {
+  getTickets: async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return { data: [] };
+    const snap = await get(ref(rtdb, `userComplaints/${uid}`));
+    if (!snap.exists()) return { data: [] };
+    const ids = Object.keys(snap.val());
+    const promises = ids.map(async id => {
+      const c = await get(ref(rtdb, `complaints/${id}`));
+      return c.exists() ? { ...c.val(), id } : null;
+    });
+    const list = (await Promise.all(promises)).filter(Boolean).reverse();
+    return { data: list };
+  },
+
+  createTicket: async (payload) => {
+    const user = { uid: auth.currentUser?.uid, name: auth.currentUser?.displayName || 'Customer' };
+    const res = await submitCustomerComplaint(payload, user);
+    return { data: res };
+  },
+
+  replyTicket: async (ticketId, replyMessage) => {
+    const user = { uid: auth.currentUser?.uid, name: auth.currentUser?.displayName || 'Admin' };
+    await replyToSupportComplaint(ticketId, replyMessage, user);
+    return { data: { success: true } };
+  }
 };
 
-// -------------------------------------------------------------
-// 6. ADMIN PORTAL API (FIREBASE INTEGRATED)
-// -------------------------------------------------------------
 export const adminApi = {
   getDashboard: async () => {
-    const orders = await getFirestoreOrders();
-    const customers = await getFirestoreUsers();
-    const totalRev = orders.reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
-    return {
-      data: {
-        total_orders: orders.length,
-        active_orders: orders.filter(o => o.status !== 'Completed' && o.status !== 'Cancelled').length,
-        total_customers: customers.length,
-        revenue: totalRev,
-        pending_pickups: orders.filter(o => o.status === 'Pending Pickup').length,
-        ready_for_delivery: orders.filter(o => o.status === 'Ready for Delivery').length
-      },
-      status: 200
-    };
+    const today = new Date().toISOString().split('T')[0];
+    const snap = await get(ref(rtdb, `stats/daily/${today}`));
+    return { data: snap.exists() ? snap.val() : { ordersPlaced: 0, revenue: 0, completedOrders: 0 } };
   },
+
   getOrders: async () => {
-    const raw = await getFirestoreOrders();
-    const items = raw.map(normalizeOrder);
-    return { data: items, items, results: items, total: items.length, status: 200 };
+    const snap = await get(query(ref(rtdb, 'orders'), limitToLast(100)));
+    if (!snap.exists()) return { data: [] };
+    const list = Object.values(snap.val()).map(normalizeOrder).reverse();
+    return { data: list };
   },
-  getOrder: (id) => customerApi.getOrder(id),
-  assignStaff: async (orderId, staffId) => {
-    await updateFirestoreOrder(orderId, { assigned_laundry_staff: staffId });
-    return { data: { success: true }, status: 200 };
+
+  getTasks: async () => {
+    const snap = await get(ref(rtdb, 'tasks'));
+    if (!snap.exists()) return { data: [] };
+    const list = Object.keys(snap.val()).map(k => ({ ...snap.val()[k], id: k })).reverse();
+    return { data: list };
   },
-  updateStatus: async (orderId, to_status, note) => {
-    await updateFirestoreOrderStatus(orderId, to_status, { note });
-    return { data: { success: true }, status: 200 };
-  },
-  cancelOrder: async (orderId, reason = '') => {
-    await cancelFirestoreOrder(orderId, reason);
-    return { data: { success: true }, status: 200 };
-  },
-  getTasks: async () => agentApi.getTasks(),
+
   getAgents: async () => {
-    const drivers = await getFirestoreDrivers();
-    return { data: drivers, status: 200 };
+    const snap = await get(query(ref(rtdb, 'users'), orderByChild('role'), equalTo('agent')));
+    if (!snap.exists()) return { data: [] };
+    const list = Object.keys(snap.val()).map(k => ({ ...snap.val()[k], id: k }));
+    return { data: list };
   },
-  assignTask: async (taskId, agentId) => {
-    const drivers = await getFirestoreDrivers();
-    const driver = drivers.find(d => d.id === agentId) || { name: 'Ravi Kumar' };
-    await assignDriverToFirestoreOrder(taskId, driver.name);
-    return { data: { success: true }, status: 200 };
-  },
+
   getUsers: async () => {
-    const users = await getFirestoreUsers();
-    return { data: users, results: users, items: users, total: users.length, status: 200 };
+    const snap = await get(ref(rtdb, 'users'));
+    if (!snap.exists()) return { data: [] };
+    const list = Object.keys(snap.val()).map(k => ({ ...snap.val()[k], id: k }));
+    return { data: list };
   },
-  createUser: async (data) => {
-    const created = await createFirestoreUser(data);
-    return { data: created, status: 201 };
-  },
-  updateUser: async (id, data) => {
-    await updateFirestoreUser(id, data);
-    return { data: { success: true }, status: 200 };
-  },
-  setUserStatus: async (id, is_active) => {
-    await updateFirestoreUser(id, { isActive: is_active });
-    return { data: { success: true }, status: 200 };
-  },
-  resetPassword: async () => ({ data: { success: true, message: 'Password reset' }, status: 200 }),
+
   getServices: async () => {
-    const list = await getFirestoreServices();
-    return { data: list, status: 200 };
+    const snap = await get(ref(rtdb, 'services'));
+    if (!snap.exists()) return { data: [] };
+    const list = Object.keys(snap.val()).map(k => ({ ...snap.val()[k], id: k }));
+    return { data: list };
   },
-  createService: async (data) => {
-    const added = await addFirestoreService(data);
-    return { data: added, status: 201 };
-  },
-  updateService: async () => ({ data: { success: true }, status: 200 }),
+
   getGarments: async () => {
-    return {
-      data: [
-        { id: 1, name: 'Cotton Shirt', price: 60, category_name: 'Men' },
-        { id: 2, name: 'Trousers/Jeans', price: 90, category_name: 'Men' },
-        { id: 3, name: 'Silk Saree', price: 250, category_name: 'Women' },
-        { id: 4, name: 'Blazer/Suit', price: 350, category_name: 'Suits' },
-        { id: 5, name: 'Bed Sheet', price: 150, category_name: 'Household' }
-      ],
-      status: 200
-    };
+    const snap = await get(ref(rtdb, 'garments'));
+    if (!snap.exists()) return { data: [] };
+    const list = Object.keys(snap.val()).map(k => ({ ...snap.val()[k], id: k }));
+    return { data: list };
   },
-  createGarment: async (data) => ({ data: { id: Date.now(), ...data }, status: 201 }),
-  updateGarment: async () => ({ data: { success: true }, status: 200 }),
-  getPrices: async () => ({ data: [], status: 200 }),
-  updatePrices: async () => ({ data: { success: true }, status: 200 }),
-  broadcastNotification: async (data) => {
-    const added = await addFirestoreNotification(data);
-    return { data: added, status: 201 };
-  },
-  getTickets: async (params = {}) => {
-    try {
-      const list = await getFirestoreTickets();
-      if (list && list.length > 0) {
-        return { data: list, items: list, results: list, total: list.length, status: 200 };
-      }
-    } catch (_) {}
-    return apiClient.get('/admin/support/tickets/', { params }).catch(() => customerApi.getTickets());
-  },
-  getTicket: async (id) => {
-    try {
-      const list = await getFirestoreTickets();
-      const found = list.find(t => t.id === id);
-      if (found) return { data: found, status: 200 };
-    } catch (_) {}
-    return apiClient.get(`/admin/support/tickets/${id}/`).catch(() => customerApi.getTicket(id));
-  },
-  replyTicket: async (id, dataOrMessage, status) => {
-    try {
-      const msg = typeof dataOrMessage === 'object' ? dataOrMessage.admin_reply || dataOrMessage.message : dataOrMessage;
-      await replyFirestoreTicket(id, msg);
-    } catch (_) {}
-    try {
-      return typeof dataOrMessage === 'object' 
-        ? await apiClient.post(`/admin/support/tickets/${id}/reply/`, dataOrMessage) 
-        : await apiClient.post(`/admin/support/tickets/${id}/reply/`, { admin_reply: dataOrMessage, message: dataOrMessage, status });
-    } catch (_) {
-      return { data: { success: true }, status: 200 };
-    }
-  },
-  resolveTicket: async (id, dataOrReply) => {
-    try {
-      await updateFirestoreTicketStatus(id, 'RESOLVED');
-    } catch (_) {}
-    try {
-      return typeof dataOrReply === 'object' 
-        ? await apiClient.post(`/admin/support/tickets/${id}/resolve/`, dataOrReply) 
-        : await apiClient.post(`/admin/support/tickets/${id}/resolve/`, { admin_reply: dataOrReply });
-    } catch (_) {
-      return { data: { success: true }, status: 200 };
-    }
-  },
-  updateTicketStatus: async (id, status) => {
-    try {
-      await updateFirestoreTicketStatus(id, status);
-    } catch (_) {}
-    try {
-      return await apiClient.patch(`/admin/support/tickets/${id}/status/`, { status });
-    } catch (_) {
-      return { data: { success: true }, status: 200 };
-    }
-  },
-  getComplaints: async (params = {}) => {
-    try {
-      const list = await getFirestoreComplaints();
-      if (list && list.length > 0) {
-        return { data: list, results: list, items: list, total: list.length, status: 200 };
-      }
-    } catch (_) {}
-    return apiClient.get('/admin/complaints/', { params }).catch(async () => {
-      const list = await getFirestoreComplaints();
-      return { data: list, results: list, items: list, total: list.length, status: 200 };
-    });
-  },
-  getComplaint: async (id) => {
-    try {
-      const list = await getFirestoreComplaints();
-      const found = list.find(c => c.id === id);
-      if (found) return { data: found, status: 200 };
-    } catch (_) {}
-    return apiClient.get(`/admin/complaints/${id}/`).catch(async () => {
-      const list = await getFirestoreComplaints();
-      return { data: list.find(c => c.id === id), status: 200 };
-    });
-  },
-  rescheduleDelivery: async (id, data) => {
-    try {
-      await updateFirestoreOrderStatus(id, 'Pending Pickup', {
-        pickup_date: data.pickup_date || data.delivery_date,
-        pickup_time_slot: data.pickup_time_slot || data.delivery_time_slot
-      });
-    } catch (_) {}
-    try {
-      return await apiClient.post(`/admin/complaints/${id}/reschedule/`, data);
-    } catch (_) {
-      return { data: { success: true }, status: 200 };
-    }
+
+  getPrices: async () => {
+    const snap = await get(ref(rtdb, 'prices'));
+    return { data: snap.exists() ? snap.val() : {} };
   }
 };
 
-export default apiClient;
+export const addressApi = {
+  getAddresses: async () => ({ data: [] }),
+  createAddress: async (addr) => ({ data: { id: `addr_${Date.now()}`, ...addr } })
+};
+
+export const customerApi = {
+  verifyPayment: async () => ({ data: { success: true } })
+};
+
+export const authApi = {
+  getProfile: async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return { data: null };
+    const snap = await get(ref(rtdb, `users/${uid}`));
+    return { data: snap.exists() ? snap.val() : null };
+  },
+  updateProfile: async (data) => ({ data: { success: true } })
+};
+
+export const complaintsApi = supportApi;
+export const laundryApi = staffApi;
+export const servicesApi = adminApi;
+export const contentApi = {
+  getFaqs: async () => ({ data: [] }),
+  getTerms: async () => ({ data: {} })
+};
+
+export default {
+  ordersApi,
+  staffApi,
+  deliveryApi,
+  adminApi,
+  notificationsApi,
+  supportApi,
+  authApi
+};

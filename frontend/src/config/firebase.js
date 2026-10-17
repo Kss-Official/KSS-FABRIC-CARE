@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getDatabase, connectDatabaseEmulator } from 'firebase/database';
 
 const getEnv = (key, fallback = '') => {
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
@@ -9,7 +9,7 @@ const getEnv = (key, fallback = '') => {
   return fallback;
 };
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: getEnv('VITE_FIREBASE_API_KEY', 'AIzaSyBs7OqbOeIIcldEkaJQTCKw_zBF-Sa7Au0'),
   authDomain: getEnv('VITE_FIREBASE_AUTH_DOMAIN', 'fabric-care-1f384.firebaseapp.com'),
   projectId: getEnv('VITE_FIREBASE_PROJECT_ID', 'fabric-care-1f384'),
@@ -21,7 +21,9 @@ const firebaseConfig = {
 
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const rtdb = getDatabase(app);
+// Alias db to rtdb
+export const db = rtdb;
 
 const isFakeApiKey = firebaseConfig.apiKey.includes('FakeKey') || firebaseConfig.apiKey.startsWith('AIzaSyFake');
 const useEmulator = getEnv('VITE_USE_EMULATOR', 'false') === 'true' || isFakeApiKey;
@@ -34,7 +36,7 @@ if (useEmulator && typeof window !== 'undefined' && !window.__FIREBASE_EMULATOR_
     // ignore emulator error
   }
   try {
-    connectFirestoreEmulator(db, '127.0.0.1', 8080);
+    connectDatabaseEmulator(rtdb, '127.0.0.1', 9000);
   } catch (err) {
     // ignore emulator error
   }
@@ -42,5 +44,23 @@ if (useEmulator && typeof window !== 'undefined' && !window.__FIREBASE_EMULATOR_
 
 export const isFirebaseConfigured = true;
 export const isRealApiKey = !isFakeApiKey;
+
+/**
+ * Creates or gets a secondary Firebase app instance to register staff/agents without signing out the admin
+ */
+export const getSecondaryAuth = () => {
+  const secondaryAppName = 'fabricare-secondary-admin';
+  const existingApp = getApps().find(a => a.name === secondaryAppName);
+  const secondaryApp = existingApp || initializeApp(firebaseConfig, secondaryAppName);
+  const secondaryAuth = getAuth(secondaryApp);
+  if (useEmulator) {
+    try {
+      connectAuthEmulator(secondaryAuth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    } catch {
+      // ignore emulator error
+    }
+  }
+  return { secondaryApp, secondaryAuth };
+};
 
 export default app;
