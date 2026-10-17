@@ -162,43 +162,24 @@ export const CustomerReports = () => {
   // Synchronize reports across Backend API, Admin Context complaints, and localStorage
   const syncReportsData = (backendData = null) => {
     let baseList = [];
-    try {
-      const savedCustomerReports = localStorage.getItem('fabricare_customer_reports');
-      if (savedCustomerReports) {
-        const parsed = JSON.parse(savedCustomerReports);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          baseList = parsed;
-        }
-      }
-    } catch (e) {}
 
-    if (baseList.length === 0) {
-      baseList = DEFAULT_REPORTS.map(r => ({ ...r }));
-    }
-
-    // Merge backend API records if available
+    // If live backend records are provided, prioritize backend as primary source of truth
     if (backendData && Array.isArray(backendData) && backendData.length > 0) {
-      const backendMap = new Map();
-      backendData.forEach(item => {
-        const key = String(item.order_id || item.order_id_display || item.id);
-        backendMap.set(key, item);
-      });
-
-      const merged = baseList.map(item => {
-        const key = String(item.order_id || item.order_id_display || item.id);
-        if (backendMap.has(key)) {
-          const b = backendMap.get(key);
-          backendMap.delete(key);
-          return normalizeReport({ ...item, ...b });
+      baseList = backendData.map(normalizeReport);
+    } else {
+      try {
+        const savedCustomerReports = localStorage.getItem('fabricare_customer_reports');
+        if (savedCustomerReports) {
+          const parsed = JSON.parse(savedCustomerReports);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            baseList = parsed.map(normalizeReport);
+          }
         }
-        return normalizeReport(item);
-      });
+      } catch (e) {}
 
-      backendMap.forEach(item => {
-        merged.unshift(normalizeReport(item));
-      });
-
-      baseList = merged;
+      if (baseList.length === 0) {
+        baseList = DEFAULT_REPORTS.map(r => normalizeReport({ ...r }));
+      }
     }
 
     // Merge any live reschedules from Admin Context / Delivery Portal (fabricare_admin_complaints)
@@ -232,7 +213,7 @@ export const CustomerReports = () => {
                 admin_reply: ac.admin_notes || ac.notes || rep.admin_reply
               });
             }
-            return normalizeReport(rep);
+            return rep;
           });
         }
       }
@@ -390,6 +371,10 @@ export const CustomerReports = () => {
           backendList = data.results;
         } else if (Array.isArray(data) && data.length > 0) {
           backendList = data;
+        } else if (res.items && Array.isArray(res.items) && res.items.length > 0) {
+          backendList = res.items;
+        } else if (res.results && Array.isArray(res.results) && res.results.length > 0) {
+          backendList = res.results;
         }
       } catch (err) {
         console.warn('Backend complaints fetch notice (falling back to synchronized storage):', err);

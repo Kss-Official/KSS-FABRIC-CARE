@@ -183,10 +183,10 @@ export const AdminProvider = ({ children }) => {
   const [supportDrawerTicket, setSupportDrawerTicket] = useState(null);
   const [activeSupportTicket, setActiveSupportTicket] = useState(null);
   const [supportSummary, setSupportSummary] = useState({
-    total_tickets: 128,
-    open: 24,
-    in_progress: 12,
-    resolved: 92
+    total_tickets: 0,
+    open: 0,
+    in_progress: 0,
+    resolved: 0
   });
 
   // Settings
@@ -680,6 +680,7 @@ export const AdminProvider = ({ children }) => {
         actionTab: 'help-support'
       });
 
+      fetchSupportTickets();
       return { success: true, data: updated };
     } catch (err) {
       console.warn('Backend reply failed, applying local update:', err);
@@ -751,6 +752,7 @@ export const AdminProvider = ({ children }) => {
         actionTab: 'help-support'
       });
 
+      fetchSupportTickets();
       return { success: true, data: updated };
     } catch (err) {
       console.warn('Backend resolve failed, applying local update:', err);

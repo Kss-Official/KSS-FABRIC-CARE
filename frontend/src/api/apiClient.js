@@ -450,14 +450,14 @@ export const adminApi = {
   getPrices: () => apiClient.get('/admin/prices'),
   updatePrices: (prices) => apiClient.put('/admin/prices', { prices }),
   broadcastNotification: (data) => apiClient.post('/admin/notifications/broadcast', data),
-  getTickets: (params = {}) => apiClient.get('/admin/support/tickets', { params }),
-  getTicket: (id) => apiClient.get(`/admin/support/tickets/${id}`),
-  replyTicket: (id, dataOrMessage, status) => typeof dataOrMessage === 'object' ? apiClient.post(`/admin/support/tickets/${id}/reply`, dataOrMessage) : apiClient.post(`/admin/support/tickets/${id}/reply`, { admin_reply: dataOrMessage, message: dataOrMessage, status }),
-  updateTicketStatus: (id, status) => apiClient.patch(`/admin/support/tickets/${id}/status`, { status }),
-  resolveTicket: (id, dataOrReply) => typeof dataOrReply === 'object' ? apiClient.post(`/admin/support/tickets/${id}/resolve`, dataOrReply) : apiClient.post(`/admin/support/tickets/${id}/resolve`, { admin_reply: dataOrReply }),
-  getComplaints: (params = {}) => apiClient.get('/admin/complaints', { params }),
-  getComplaint: (id) => apiClient.get(`/admin/complaints/${id}`),
-  rescheduleDelivery: (id, data) => apiClient.post(`/admin/complaints/${id}/reschedule`, data)
+  getTickets: (params = {}) => apiClient.get('/admin/support/tickets/', { params }),
+  getTicket: (id) => apiClient.get(`/admin/support/tickets/${id}/`),
+  replyTicket: (id, dataOrMessage, status) => typeof dataOrMessage === 'object' ? apiClient.post(`/admin/support/tickets/${id}/reply/`, dataOrMessage) : apiClient.post(`/admin/support/tickets/${id}/reply/`, { admin_reply: dataOrMessage, message: dataOrMessage, status }),
+  updateTicketStatus: (id, status) => apiClient.patch(`/admin/support/tickets/${id}/status/`, { status }),
+  resolveTicket: (id, dataOrReply) => typeof dataOrReply === 'object' ? apiClient.post(`/admin/support/tickets/${id}/resolve/`, dataOrReply) : apiClient.post(`/admin/support/tickets/${id}/resolve/`, { admin_reply: dataOrReply }),
+  getComplaints: (params = {}) => apiClient.get('/admin/complaints/', { params }),
+  getComplaint: (id) => apiClient.get(`/admin/complaints/${id}/`),
+  rescheduleDelivery: (id, data) => apiClient.post(`/admin/complaints/${id}/reschedule/`, data)
 };
 
 export default apiClient;

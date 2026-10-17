@@ -111,10 +111,10 @@ api_urlpatterns = [
     path('admin/orders/<int:pk>/assign-staff/', AdminAssignStaffView.as_view(), name='admin-assign-staff'),
     path('admin/complaints', AdminComplaintReportsView.as_view(), name='admin-complaints-no-slash'),
     path('admin/complaints/', AdminComplaintReportsView.as_view(), name='admin-complaints'),
-    path('admin/complaints/<int:pk>', AdminComplaintDetailView.as_view(), name='admin-complaint-detail-no-slash'),
-    path('admin/complaints/<int:pk>/', AdminComplaintDetailView.as_view(), name='admin-complaint-detail'),
-    path('admin/complaints/<int:pk>/reschedule', AdminComplaintRescheduleView.as_view(), name='admin-complaint-reschedule-no-slash'),
-    path('admin/complaints/<int:pk>/reschedule/', AdminComplaintRescheduleView.as_view(), name='admin-complaint-reschedule'),
+    path('admin/complaints/<str:pk>', AdminComplaintDetailView.as_view(), name='admin-complaint-detail-no-slash'),
+    path('admin/complaints/<str:pk>/', AdminComplaintDetailView.as_view(), name='admin-complaint-detail'),
+    path('admin/complaints/<str:pk>/reschedule', AdminComplaintRescheduleView.as_view(), name='admin-complaint-reschedule-no-slash'),
+    path('admin/complaints/<str:pk>/reschedule/', AdminComplaintRescheduleView.as_view(), name='admin-complaint-reschedule'),
 
     # Admin Tasks & Agents
     path('admin/tasks', AdminTasksView.as_view(), name='admin-tasks-no-slash'),
@@ -145,6 +145,14 @@ api_urlpatterns = [
     path('admin/prices/', AdminPricesView.as_view(), name='admin-prices-slash'),
     path('admin/support/tickets', SupportTicketViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-tickets-no-slash'),
     path('admin/support/tickets/', SupportTicketViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-tickets-slash'),
+    path('admin/support/tickets/<str:pk>', SupportTicketViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='admin-ticket-detail-no-slash'),
+    path('admin/support/tickets/<str:pk>/', SupportTicketViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='admin-ticket-detail-slash'),
+    path('admin/support/tickets/<str:pk>/reply', SupportTicketViewSet.as_view({'post': 'reply'}), name='admin-ticket-reply-no-slash'),
+    path('admin/support/tickets/<str:pk>/reply/', SupportTicketViewSet.as_view({'post': 'reply'}), name='admin-ticket-reply-slash'),
+    path('admin/support/tickets/<str:pk>/resolve', SupportTicketViewSet.as_view({'post': 'mark_resolved'}), name='admin-ticket-resolve-no-slash'),
+    path('admin/support/tickets/<str:pk>/resolve/', SupportTicketViewSet.as_view({'post': 'mark_resolved'}), name='admin-ticket-resolve-slash'),
+    path('admin/support/tickets/<str:pk>/status', SupportTicketViewSet.as_view({'patch': 'update_status', 'post': 'update_status'}), name='admin-ticket-status-no-slash'),
+    path('admin/support/tickets/<str:pk>/status/', SupportTicketViewSet.as_view({'patch': 'update_status', 'post': 'update_status'}), name='admin-ticket-status-slash'),
     path('admin/notifications/broadcast', AdminBroadcastNotificationView.as_view(), name='admin-broadcast-no-slash'),
     path('admin/notifications/broadcast/', AdminBroadcastNotificationView.as_view(), name='admin-broadcast-slash'),
 
@@ -173,8 +181,10 @@ api_urlpatterns = [
     path('notifications/', NotificationViewSet.as_view({'get': 'list', 'post': 'create'}), name='notifications-slash'),
 
     # Customer Reports
+    path('customer/reports', CustomerReportsView.as_view(), name='customer-reports-no-slash'),
     path('customer/reports/', CustomerReportsView.as_view(), name='customer-reports'),
-    path('customer/reports/<int:pk>/', CustomerReportDetailView.as_view(), name='customer-report-detail'),
+    path('customer/reports/<str:pk>', CustomerReportDetailView.as_view(), name='customer-report-detail-no-slash'),
+    path('customer/reports/<str:pk>/', CustomerReportDetailView.as_view(), name='customer-report-detail'),
 
     # Delivery Staff workflows
     path('delivery/tasks/', DeliveryTasksListView.as_view(), name='delivery-tasks'),
