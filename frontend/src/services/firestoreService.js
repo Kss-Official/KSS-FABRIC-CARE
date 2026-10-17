@@ -467,24 +467,33 @@ export const subscribeOrders = (callback, errorCallback) => {
 export const subscribeOrderById = (orderId, callback, errorCallback) => {
   if (!isFirebaseConfigured || !db || !orderId) return () => {};
   try {
-    const cleanId = String(orderId).trim();
-    const docRef = doc(db, 'orders', cleanId);
+    const rawId = String(orderId).trim();
+    const cleanId = rawId.replace(/^#/, '');
+    const withHash = `#${cleanId}`;
+
+    // Real-time listener on orders collection matching ID
+    const ordersCol = collection(db, 'orders');
     return onSnapshot(
-      docRef,
+      ordersCol,
       (snapshot) => {
-        if (snapshot.exists()) {
-          callback(normalizeFirestoreOrder(snapshot.data(), snapshot.id));
+        const foundDoc = snapshot.docs.find(d => {
+          const docId = d.id;
+          const data = d.data();
+          const dId = String(data.id || '').replace(/^#/, '');
+          const dNum = String(data.order_number || data.orderNumber || data.code || '').replace(/^#/, '');
+          return (
+            docId === rawId ||
+            docId === withHash ||
+            docId === cleanId ||
+            dId === cleanId ||
+            dNum === cleanId
+          );
+        });
+
+        if (foundDoc) {
+          callback(normalizeFirestoreOrder(foundDoc.data(), foundDoc.id));
         } else {
-          // If not found by docId, check query where id == cleanId
-          const q = query(collection(db, 'orders'), where('id', '==', cleanId));
-          getDocs(q).then(qSnap => {
-            if (!qSnap.empty) {
-              const first = qSnap.docs[0];
-              callback(normalizeFirestoreOrder(first.data(), first.id));
-            } else {
-              callback(null);
-            }
-          }).catch(() => callback(null));
+          callback(null);
         }
       },
       (err) => {
@@ -594,8 +603,9 @@ export const createFirestoreOrder = async (orderData) => {
 export const updateFirestoreOrderStatus = async (orderId, status, extraFields = {}) => {
   if (!isFirebaseConfigured || !db || !orderId) return true;
   try {
-    const cleanId = String(orderId).trim();
-    const orderDocRef = doc(db, 'orders', cleanId);
+    const rawId = String(orderId).trim();
+    const cleanId = rawId.replace(/^#/, '');
+    const candidateIds = [rawId, `#${cleanId}`, cleanId];
 
     const updatePayload = {
       status,
@@ -608,7 +618,27 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
       updatePayload.stage = extraFields.stage;
     }
 
-    await updateDoc(orderDocRef, updatePayload);
+    let updated = false;
+    for (const cId of candidateIds) {
+      try {
+        const orderDocRef = doc(db, 'orders', cId);
+        await updateDoc(orderDocRef, updatePayload);
+        updated = true;
+        break;
+      } catch (err) {
+        // try next
+      }
+    }
+
+    if (!updated) {
+      const q = query(collection(db, 'orders'), where('id', 'in', candidateIds));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        await updateDoc(qSnap.docs[0].ref, updatePayload);
+        updated = true;
+      }
+    }
+
     return true;
   } catch (error) {
     console.error('Error updating order status in Firestore:', error);
@@ -622,12 +652,37 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
 export const updateFirestoreOrder = async (orderId, updateFields) => {
   if (!isFirebaseConfigured || !db || !orderId) return true;
   try {
-    const cleanId = String(orderId).trim();
-    const orderDocRef = doc(db, 'orders', cleanId);
-    await updateDoc(orderDocRef, {
-      ...updateFields,
-      updatedAt: serverTimestamp()
-    });
+    const rawId = String(orderId).trim();
+    const cleanId = rawId.replace(/^#/, '');
+    const candidateIds = [rawId, `#${cleanId}`, cleanId];
+
+    let updated = false;
+    for (const cId of candidateIds) {
+      try {
+        const orderDocRef = doc(db, 'orders', cId);
+        await updateDoc(orderDocRef, {
+          ...updateFields,
+          updatedAt: serverTimestamp()
+        });
+        updated = true;
+        break;
+      } catch (err) {
+        // try next
+      }
+    }
+
+    if (!updated) {
+      const q = query(collection(db, 'orders'), where('id', 'in', candidateIds));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        await updateDoc(qSnap.docs[0].ref, {
+          ...updateFields,
+          updatedAt: serverTimestamp()
+        });
+        updated = true;
+      }
+    }
+
     return true;
   } catch (error) {
     console.error('Error updating order in Firestore:', error);
