@@ -257,11 +257,41 @@ export const normalizeOrderItem = (item, index = 0) => {
  * @returns {object}
  */
 export const normalizeOrder = (order) => {
+  if (!order) return order;
   const items = (order.items || []).map((item, idx) => normalizeOrderItem(item, idx));
   const conflict = checkOrderConflict({ ...order, items });
 
+  // Safe extraction of customer string name (prevents React object child crash)
+  let custName = 'Customer';
+  if (typeof order.customer === 'string' && order.customer.trim()) {
+    custName = order.customer.trim();
+  } else if (order.customer && typeof order.customer === 'object' && order.customer.name) {
+    custName = String(order.customer.name);
+  } else if (order.customer_name && typeof order.customer_name === 'string') {
+    custName = order.customer_name;
+  } else if (order.customerName && typeof order.customerName === 'string') {
+    custName = order.customerName;
+  } else if (order.pickup_full_name && typeof order.pickup_full_name === 'string') {
+    custName = order.pickup_full_name;
+  }
+
+  let custPhone = '';
+  if (order.customer && typeof order.customer === 'object' && order.customer.phone) {
+    custPhone = String(order.customer.phone);
+  } else if (order.customer_phone) {
+    custPhone = String(order.customer_phone);
+  } else if (order.customerPhone) {
+    custPhone = String(order.customerPhone);
+  } else if (order.pickup_phone) {
+    custPhone = String(order.pickup_phone);
+  }
+
   return {
     ...order,
+    customer_name: custName,
+    customerName: custName,
+    customer_phone: custPhone,
+    customerPhone: custPhone,
     items,
     is_express: Boolean(order.is_express || order.express || order.priority === 'EXPRESS'),
     has_conflict: conflict.hasConflict,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { ordersApi } from '../api/apiClient';
+import { subscribeOrderById, subscribeOrders } from '../services/firestoreService';
 import { 
   Package, 
   Clock, 
@@ -30,33 +31,66 @@ export const TrackOrder = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchOrderDetails = async () => {
+  useEffect(() => {
+    let isSubscribed = true;
     setLoading(true);
     setError(null);
-    try {
-      if (activeTrackingOrderId) {
-        const res = await ordersApi.getOrderById(activeTrackingOrderId);
-        setOrder(res.data);
-      } else {
-        const res = await ordersApi.getOrders();
-        const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
-        if (list.length > 0) {
-          const active = list.find(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED') || list[0];
-          setOrder(active);
-        } else {
-          setOrder(null);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load tracking details:', err);
-      setError('Could not retrieve order details.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => {
-    fetchOrderDetails();
+    let unsubscribe = () => {};
+
+    if (activeTrackingOrderId) {
+      unsubscribe = subscribeOrderById(
+        activeTrackingOrderId,
+        (fireOrder) => {
+          if (!isSubscribed) return;
+          if (fireOrder) {
+            setOrder(fireOrder);
+            setLoading(false);
+          } else {
+            // Try API fallback
+            ordersApi.getOrderById(activeTrackingOrderId)
+              .then(res => {
+                if (isSubscribed && res?.data) setOrder(res.data);
+              })
+              .catch(() => {})
+              .finally(() => {
+                if (isSubscribed) setLoading(false);
+              });
+          }
+        },
+        () => {
+          if (isSubscribed) setLoading(false);
+        }
+      );
+    } else {
+      unsubscribe = subscribeOrders((fireOrders) => {
+        if (!isSubscribed) return;
+        if (fireOrders && fireOrders.length > 0) {
+          const active = fireOrders.find(o => o.status !== 'Completed' && o.status !== 'Delivered' && o.status !== 'Cancelled') || fireOrders[0];
+          setOrder(active);
+          setLoading(false);
+        } else {
+          ordersApi.getOrders()
+            .then(res => {
+              if (!isSubscribed) return;
+              const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
+              if (list.length > 0) {
+                const act = list.find(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED') || list[0];
+                setOrder(act);
+              }
+            })
+            .catch(() => {})
+            .finally(() => {
+              if (isSubscribed) setLoading(false);
+            });
+        }
+      });
+    }
+
+    return () => {
+      isSubscribed = false;
+      unsubscribe();
+    };
   }, [activeTrackingOrderId]);
 
   if (loading) {

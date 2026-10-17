@@ -83,7 +83,13 @@ export const AuthProvider = ({ children }) => {
           const token = await fbUser.getIdToken();
           localStorage.setItem('fabricare_token', token);
 
-          // Attempt fetching full profile from backend GET /me
+          // Fetch full profile from Cloud Firestore users/{uid}
+          let firestoreData = {};
+          try {
+            firestoreData = (await getUserProfile(fbUser.uid)) || {};
+          } catch (_) {}
+
+          // Also attempt fetching profile from backend GET /me
           let meData = {};
           try {
             if (authApi?.getMe) {
@@ -92,20 +98,20 @@ export const AuthProvider = ({ children }) => {
             }
           } catch (_) {}
 
-          const role = normalizeRole(meData.role || 'customer');
+          const role = normalizeRole(firestoreData.role || meData.role || 'customer');
           const profileData = {
             uid: fbUser.uid,
             id: meData.id || fbUser.uid,
-            name: meData.name || fbUser.displayName || 'User',
-            displayName: meData.name || fbUser.displayName || 'User',
-            fullName: meData.name || '',
+            name: firestoreData.displayName || meData.name || fbUser.displayName || 'User',
+            displayName: firestoreData.displayName || meData.name || fbUser.displayName || 'User',
+            fullName: firestoreData.displayName || meData.name || '',
             email: meData.email || fbUser.email,
-            phone: meData.phone || '',
-            phoneNumber: meData.phone || '',
+            phone: firestoreData.phoneNumber || meData.phone || '',
+            phoneNumber: firestoreData.phoneNumber || meData.phone || '',
             role: role,
-            rawRole: meData.role,
+            rawRole: firestoreData.role || meData.role,
             avatar_url: meData.avatar_url || null,
-            initials: meData.initials || getInitials(meData.name || fbUser.displayName),
+            initials: meData.initials || getInitials(firestoreData.displayName || meData.name || fbUser.displayName),
             agent_profile: meData.agent_profile || null,
             staff_profile: meData.staff_profile || null
           };
@@ -305,7 +311,7 @@ export const AuthProvider = ({ children }) => {
 
   /**
    * Customer public registration using Firebase Auth and Cloud Firestore
-   * Strictly enforces role = 'customer' to prevent unauthorized privilege escalation
+   * Strictly creates user in Firebase Authentication and stores user + customer data in Cloud Firestore
    */
   const register = async ({ name, fullName, email, phone, password }) => {
     setLoading(true);
@@ -315,36 +321,60 @@ export const AuthProvider = ({ children }) => {
       const mail = (email || '').trim().toLowerCase();
       const pwd = password;
 
-      // 1. Try Firebase Authentication + Cloud Firestore registration
-      try {
-        await registerUser({
-          email: mail,
-          password: pwd,
-          fullName: personName,
-          phone: (phone || '').trim()
-        });
-      } catch (fbErr) {
-        console.warn('Firebase registration notice:', fbErr?.message || fbErr);
-      }
+      // 1. Create account in Firebase Authentication and persist profile in Cloud Firestore
+      const { user, profile } = await registerUser({
+        email: mail,
+        password: pwd,
+        fullName: personName,
+        phone: (phone || '').trim()
+      });
 
       // 2. Also register in backend if reachable
       try {
-        await fetch('http://127.0.0.1:8001/api/auth/register/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        if (authApi?.register) {
+          await authApi.register({
             username: mail,
             email: mail,
             full_name: personName,
             phone: (phone || '').trim(),
             password: pwd,
             role: 'CUSTOMER'
-          })
-        });
+          });
+        }
       } catch (_) {}
 
-      // 3. Automatically log in to establish session
-      return await login(mail, pwd);
+      // 3. Establish session directly from the created Firebase user
+      const token = await user.getIdToken();
+      localStorage.setItem('fabricare_token', token);
+
+      const profileData = {
+        uid: user.uid,
+        id: user.uid,
+        name: personName || user.displayName || 'Customer',
+        displayName: personName || user.displayName || 'Customer',
+        fullName: personName,
+        email: user.email,
+        phone: (phone || '').trim(),
+        phoneNumber: (phone || '').trim(),
+        role: 'customer',
+        rawRole: 'customer',
+        avatar_url: null,
+        initials: getInitials(personName || user.displayName),
+        agent_profile: null,
+        staff_profile: null
+      };
+
+      setCurrentUser(profileData);
+      setUserProfile(profileData);
+      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+      setIsAuthModalOpen(false);
+
+      return {
+        user: profileData,
+        profile: profileData,
+        role: 'customer',
+        portal: 'customer'
+      };
     } catch (err) {
       const msg = err.message || 'Registration failed. Please check your details.';
       setAuthError(msg);

@@ -1,90 +1,36 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { adminApi, notificationsApi } from '../api/apiClient';
 import { useAuth } from './AuthContext';
+import { createCustomerAccountByAdmin } from '../services/authService';
+import {
+  subscribeOrders,
+  createFirestoreOrder,
+  updateFirestoreOrderStatus,
+  cancelFirestoreOrder,
+  assignDriverToFirestoreOrder,
+  subscribeCustomers,
+  addFirestoreCustomer,
+  updateFirestoreCustomerStatus,
+  subscribeServices,
+  addFirestoreService,
+  toggleFirestoreServiceStatus,
+  subscribeDrivers,
+  subscribeFaqs,
+  saveFirestoreFaqs,
+  getFirestoreTerms,
+  saveFirestoreTerms,
+  getFirestoreSettings,
+  saveFirestoreSettings,
+  subscribeComplaints,
+  subscribeNotifications,
+  addFirestoreNotification,
+  INITIAL_FAQS_ADMIN,
+  INITIAL_TERMS_CONTENT,
+  INITIAL_DRIVERS,
+  INITIAL_SETTINGS
+} from '../services/firestoreService';
 
-export const INITIAL_FAQS_ADMIN = [
-  {
-    id: 1,
-    question: 'How does Laundrix pickup and delivery work?',
-    answer: 'Schedule a pickup through our app or website. Our executive will arrive with specialized laundry bags and deliver clean clothes within 24-48 hours.',
-    status: 'Active',
-    displayOrder: 1
-  },
-  {
-    id: 2,
-    question: 'What areas do you service?',
-    answer: 'We currently provide pickup and delivery services across Bengaluru including Indiranagar, Koramangala, Whitefield, HSR Layout, Banaswadi, and Malleshwaram.',
-    status: 'Active',
-    displayOrder: 2
-  },
-  {
-    id: 3,
-    question: 'What types of clothes do you clean?',
-    answer: 'We clean all types of everyday and premium fabrics including cotton, silk, linen, wool, denim, party wear, suits, and curtains.',
-    status: 'Active',
-    displayOrder: 3
-  },
-  {
-    id: 4,
-    question: 'How long does the cleaning process take?',
-    answer: 'Standard turnaround time is 1–2 days. Express services may be delivered within 24 hours.',
-    status: 'Active',
-    displayOrder: 4
-  },
-  {
-    id: 5,
-    question: 'How should I prepare my clothes for pickup?',
-    answer: 'Please keep your clothes in a clean bag. You can also add special instructions for delicate items during booking.',
-    status: 'Active',
-    displayOrder: 5
-  },
-  {
-    id: 6,
-    question: 'What are the payment options?',
-    answer: 'We accept online payments (UPI, cards, net banking) and cash on delivery (COD) upon inspection.',
-    status: 'Active',
-    displayOrder: 6
-  },
-  {
-    id: 7,
-    question: 'How can I track my order?',
-    answer: 'You can track your order in real-time through our app or website with live SMS and WhatsApp status updates.',
-    status: 'Active',
-    displayOrder: 7
-  },
-  {
-    id: 8,
-    question: 'What if I am not satisfied with the service?',
-    answer: 'Your satisfaction is our priority. If you are not happy with the service, we offer a 100% free re-wash guarantee.',
-    status: 'Inactive',
-    displayOrder: 8
-  }
-];
-
-export const INITIAL_TERMS_CONTENT = {
-  title: 'Terms & Conditions',
-  body: `1. Introduction
-Welcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.
-
-2. Services
-Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.
-
-3. Orders & Pickup
-  Orders can be placed through our website, mobile app or by phone.
-  Pickup and delivery timings are subject to availability.
-  Please ensure clothes are securely packed and handed over in clean condition.
-
-4. Pricing & Payment
-  Prices are based on the type of garment, fabric and service selected.`
-};
-
-export const INITIAL_DRIVERS = [
-  { id: 'd1', name: 'Ravi Kumar', phone: '+91 98765 43210', status: 'Available', ordersToday: 5, avatar: 'RK' },
-  { id: 'd2', name: 'Arjun Singh', phone: '+91 87654 32109', status: 'Available', ordersToday: 4, avatar: 'AS' },
-  { id: 'd3', name: 'Mohammed Taha', phone: '+91 91234 55678', status: 'Available', ordersToday: 3, avatar: 'MT' },
-  { id: 'd4', name: 'Suresh Kumar', phone: '+91 99887 66554', status: 'On Delivery', ordersToday: 2, avatar: 'SK' },
-  { id: 'd5', name: 'Praveen D', phone: '+91 98712 34567', status: 'Available', ordersToday: 4, avatar: 'PD' }
-];
+export { INITIAL_FAQS_ADMIN, INITIAL_TERMS_CONTENT, INITIAL_DRIVERS };
 
 const AdminContext = createContext();
 
@@ -108,7 +54,7 @@ export const AdminProvider = ({ children }) => {
   const { isAuthenticated, userRole } = useAuth();
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(true);
 
-  // Live Data States
+  // Live Data States (Synced with Firebase Cloud Firestore)
   const [orders, setOrders] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [availableAgents, setAvailableAgents] = useState([]);
@@ -121,47 +67,45 @@ export const AdminProvider = ({ children }) => {
   const [dashboardPeriod, setDashboardPeriod] = useState('today');
   const [notifications, setNotifications] = useState([]);
 
-  // FAQs, Terms & Drivers
-  const [faqs, setFaqsState] = useState(() => {
-    try {
-      const saved = localStorage.getItem('fabricare_admin_faqs');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return INITIAL_FAQS_ADMIN;
-  });
+  // FAQs, Terms & Drivers (Primary Storage: Firebase Cloud Firestore)
+  const [faqs, setFaqsState] = useState(INITIAL_FAQS_ADMIN);
+  const [termsContent, setTermsContent] = useState(INITIAL_TERMS_CONTENT);
+  const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
+  const [settings, setSettings] = useState(INITIAL_SETTINGS);
 
   const setFaqs = (updater) => {
     setFaqsState(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      try {
-        localStorage.setItem('fabricare_admin_faqs', JSON.stringify(next));
-      } catch (e) {}
+      saveFirestoreFaqs(next).catch(e => console.warn('Save FAQs to Firestore note:', e));
       return next;
     });
   };
 
-  const [termsContent, setTermsContent] = useState(() => {
-    try {
-      const saved = localStorage.getItem('fabricare_admin_terms');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.body) return parsed;
-      }
-    } catch (e) {}
-    return INITIAL_TERMS_CONTENT;
-  });
-
   const updateTerms = async (newTerms) => {
     setTermsContent(newTerms);
     try {
-      localStorage.setItem('fabricare_admin_terms', JSON.stringify(newTerms));
-    } catch (e) {}
+      await saveFirestoreTerms(newTerms);
+    } catch (e) {
+      console.warn('Save terms to Firestore note:', e);
+    }
   };
 
-  const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
+  const updateSettings = async (newSettings) => {
+    setSettings(newSettings);
+    try {
+      await saveFirestoreSettings(newSettings);
+      const savedUser = localStorage.getItem('fabricare_user') || sessionStorage.getItem('fabricare_user');
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        parsed.displayName = newSettings.name || parsed.displayName;
+        parsed.email = newSettings.email || parsed.email;
+        localStorage.setItem('fabricare_user', JSON.stringify(parsed));
+      }
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {
+      console.warn('Save settings to Firestore note:', e);
+    }
+  };
 
   // Complaints & Reschedule Delivery States
   const [complaints, setComplaints] = useState([]);
@@ -197,43 +141,79 @@ export const AdminProvider = ({ children }) => {
     resolved: 92
   });
 
-  // Settings
-  const [settings, setSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem('fabricare_admin_settings');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return {
-      name: 'Admin',
-      email: 'admin@fabricare.test',
-      phone: '+91 98765 43210',
-      role: 'Administrator',
-      supportEmail: 'support@fabricare.test',
-      supportPhone: '+91 98765 43210',
-      websiteUrl: 'https://www.fabricare.com',
-      notifications: {
-        newOrders: true,
-        customerMessages: true,
-        pickupDelivery: true,
-        systemAnnouncements: false
+  // ========================================================
+  // REAL-TIME FIRESTORE SUBSCRIPTIONS
+  // ========================================================
+  useEffect(() => {
+    // 1. Subscribe to Orders in Firestore
+    const unsubOrders = subscribeOrders((fireOrders) => {
+      if (fireOrders && fireOrders.length > 0) {
+        setOrders(fireOrders);
       }
-    };
-  });
+    });
 
-  const updateSettings = async (newSettings) => {
-    setSettings(newSettings);
-    try {
-      localStorage.setItem('fabricare_admin_settings', JSON.stringify(newSettings));
-      const savedUser = localStorage.getItem('fabricare_user') || sessionStorage.getItem('fabricare_user');
-      if (savedUser) {
-        const parsed = JSON.parse(savedUser);
-        parsed.displayName = newSettings.name || parsed.displayName;
-        parsed.email = newSettings.email || parsed.email;
-        localStorage.setItem('fabricare_user', JSON.stringify(parsed));
+    // 2. Subscribe to Customers in Firestore
+    const unsubCustomers = subscribeCustomers((fireCustomers) => {
+      if (fireCustomers && fireCustomers.length > 0) {
+        setCustomers(fireCustomers);
       }
-      window.dispatchEvent(new Event('storage'));
-    } catch (e) {}
-  };
+    });
+
+    // 3. Subscribe to Services in Firestore
+    const unsubServices = subscribeServices((fireServices) => {
+      if (fireServices && fireServices.length > 0) {
+        setServices(fireServices);
+      }
+    });
+
+    // 4. Subscribe to Drivers in Firestore
+    const unsubDrivers = subscribeDrivers((fireDrivers) => {
+      if (fireDrivers && fireDrivers.length > 0) {
+        setDrivers(fireDrivers);
+      }
+    });
+
+    // 5. Subscribe to FAQs in Firestore
+    const unsubFaqs = subscribeFaqs((fireFaqs) => {
+      if (fireFaqs && fireFaqs.length > 0) {
+        setFaqsState(fireFaqs);
+      }
+    });
+
+    // 6. Fetch Terms from Firestore
+    getFirestoreTerms().then(terms => {
+      if (terms) setTermsContent(terms);
+    }).catch(() => {});
+
+    // 7. Fetch Settings from Firestore
+    getFirestoreSettings().then(st => {
+      if (st) setSettings(st);
+    }).catch(() => {});
+
+    // 8. Subscribe to Complaints in Firestore
+    const unsubComplaints = subscribeComplaints((fireComplaints) => {
+      if (fireComplaints && fireComplaints.length > 0) {
+        setComplaints(fireComplaints);
+      }
+    });
+
+    // 9. Subscribe to Notifications in Firestore
+    const unsubNotifications = subscribeNotifications((fireNotifs) => {
+      if (fireNotifs && fireNotifs.length > 0) {
+        setNotifications(fireNotifs);
+      }
+    });
+
+    return () => {
+      unsubOrders();
+      unsubCustomers();
+      unsubServices();
+      unsubDrivers();
+      unsubFaqs();
+      unsubComplaints();
+      unsubNotifications();
+    };
+  }, []);
 
   // 1. Fetch Dashboard Data
   const fetchDashboard = useCallback(async (period = dashboardPeriod) => {
@@ -246,79 +226,86 @@ export const AdminProvider = ({ children }) => {
     }
   }, [dashboardPeriod]);
 
-  // 2. Fetch Orders
+  // 2. Fetch Orders (Fallback query)
   const fetchOrders = useCallback(async (params = {}) => {
     try {
       const res = await adminApi.getOrders({ page_size: 50, ...params });
       const raw = Array.isArray(res.data) ? res.data : (res.data?.items || []);
-      const normalized = raw.map(o => {
-        const idStr = String(o.id || '');
-        const orderCode = o.code || o.order_id || o.order_number || `#${idStr.padStart(5, '0')}`;
-        const totalVal = o.total_amount ? Number(o.total_amount) : (o.total_paise ? o.total_paise / 100 : (o.amount || 0));
+      if (raw.length > 0) {
+        const normalized = raw.map(o => {
+          const idStr = String(o.id || '');
+          const orderCode = o.code || o.order_id || o.order_number || `#${idStr.padStart(5, '0')}`;
+          const totalVal = o.total_amount ? Number(o.total_amount) : (o.total_paise ? o.total_paise / 100 : (o.amount || 0));
 
-        const custName = o.pickup_full_name || o.customer_name || o.customer?.name || 'Customer';
-        const custPhone = o.pickup_phone || o.customer_phone || o.customer?.phone || '';
-        const custEmail = o.customer_email || o.customer?.email || '';
-        const custAddress = o.pickup_address || o.address?.line1 || (typeof o.address === 'string' ? o.address : 'Bengaluru');
-        const custAvatar = o.customer?.avatar || String(custName).split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CU';
+          const custName = o.pickup_full_name || o.customer_name || o.customer?.name || 'Customer';
+          const custPhone = o.pickup_phone || o.customer_phone || o.customer?.phone || '';
+          const custEmail = o.customer_email || o.customer?.email || '';
+          const custAddress = o.pickup_address || o.address?.line1 || (typeof o.address === 'string' ? o.address : 'Bengaluru');
+          const custAvatar = o.customer?.avatar || String(custName).split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CU';
 
-        const servicesList = Array.isArray(o.services) && o.services.length > 0 
-          ? o.services 
-          : (Array.isArray(o.services_list) && o.services_list.length > 0
-            ? o.services_list
-            : (Array.isArray(o.items) && o.items.length > 0
-              ? o.items.map(it => it.service_name || it.item_name || 'Wash & Fold')
-              : ['Wash & Fold']));
+          const servicesList = Array.isArray(o.services) && o.services.length > 0 
+            ? o.services 
+            : (Array.isArray(o.services_list) && o.services_list.length > 0
+              ? o.services_list
+              : (Array.isArray(o.items) && o.items.length > 0
+                ? o.items.map(it => it.service_name || it.item_name || 'Wash & Fold')
+                : ['Wash & Fold']));
 
-        const pickupSlotStr = o.pickup_time_slot || (o.pickup ? `${o.pickup.from || '09:00'} - ${o.pickup.to || '11:00'}` : '09:00 AM - 11:00 AM');
-        const pickupStr = o.pickup_date ? `${o.pickup_date}, ${pickupSlotStr}` : (o.pickupTime || pickupSlotStr);
-        const dateStr = o.created_at ? new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : (o.date || 'Today');
+          const pickupSlotStr = o.pickup_time_slot || (o.pickup ? `${o.pickup.from || '09:00'} - ${o.pickup.to || '11:00'}` : '09:00 AM - 11:00 AM');
+          const pickupStr = o.pickup_date ? `${o.pickup_date}, ${pickupSlotStr}` : (o.pickupTime || pickupSlotStr);
+          const dateStr = o.created_at ? new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : (o.date || 'Today');
 
-        let uiStatus = o.status_display || 'Pending Pickup';
-        const rawStatus = String(o.status || '').toUpperCase();
-        if (rawStatus === 'PENDING' || rawStatus === 'CONFIRMED' || rawStatus === 'PICKUP_SCHEDULED') {
-          uiStatus = 'Pending Pickup';
-        } else if (rawStatus === 'PICKED_UP' || rawStatus === 'IN_CLEANING' || rawStatus === 'WASHING' || rawStatus === 'IRONING' || rawStatus === 'IN_PROGRESS') {
-          uiStatus = 'In Cleaning';
-        } else if (rawStatus === 'READY' || rawStatus === 'READY_FOR_DELIVERY' || rawStatus === 'OUT_FOR_DELIVERY') {
-          uiStatus = 'Ready for Delivery';
-        } else if (rawStatus === 'DELIVERED' || rawStatus === 'COMPLETED' || rawStatus === 'CLOSED') {
-          uiStatus = 'Completed';
-        }
+          let uiStatus = o.status_display || 'Pending Pickup';
+          const rawStatus = String(o.status || '').toUpperCase();
+          if (rawStatus === 'PENDING' || rawStatus === 'CONFIRMED' || rawStatus === 'PICKUP_SCHEDULED') {
+            uiStatus = 'Pending Pickup';
+          } else if (rawStatus === 'PICKED_UP' || rawStatus === 'IN_CLEANING' || rawStatus === 'WASHING' || rawStatus === 'IRONING' || rawStatus === 'IN_PROGRESS') {
+            uiStatus = 'In Cleaning';
+          } else if (rawStatus === 'READY' || rawStatus === 'READY_FOR_DELIVERY' || rawStatus === 'OUT_FOR_DELIVERY') {
+            uiStatus = 'Ready for Delivery';
+          } else if (rawStatus === 'DELIVERED' || rawStatus === 'COMPLETED' || rawStatus === 'CLOSED') {
+            uiStatus = 'Completed';
+          }
 
-        const paymentDisplay = (o.payment_status === 'PAID' || o.payment === 'Paid') ? 'Paid' : (o.payment_method === 'COD' || o.payment === 'COD' ? 'COD' : (o.payment || 'Paid'));
+          const paymentDisplay = (o.payment_status === 'PAID' || o.payment === 'Paid') ? 'Paid' : (o.payment_method === 'COD' || o.payment === 'COD' ? 'COD' : (o.payment || 'Paid'));
 
-        return {
-          ...o,
-          id: orderCode,
-          rawId: o.id,
-          order_number: orderCode,
-          order_id: orderCode,
-          amount: totalVal,
-          total_amount: totalVal,
-          date: dateStr,
-          customer: {
-            name: custName,
-            phone: custPhone,
-            email: custEmail,
-            address: custAddress,
-            avatar: custAvatar
-          },
-          services: servicesList,
-          pickupTime: pickupStr,
-          pickup_address: custAddress,
-          pickup_time_slot: pickupSlotStr,
-          customer_name: custName,
-          customer_phone: custPhone,
-          status: uiStatus,
-          status_display: o.status_display || uiStatus,
-          payment: paymentDisplay,
-          driver: o.assigned_pickup_driver_detail?.full_name || o.driver || 'Not Assigned'
-        };
-      });
-      setOrders(normalized);
+          return {
+            ...o,
+            id: orderCode,
+            rawId: o.id,
+            order_number: orderCode,
+            order_id: orderCode,
+            amount: totalVal,
+            total_amount: totalVal,
+            date: dateStr,
+            customer: {
+              name: custName,
+              phone: custPhone,
+              email: custEmail,
+              address: custAddress,
+              avatar: custAvatar
+            },
+            services: servicesList,
+            pickupTime: pickupStr,
+            pickup_address: custAddress,
+            pickup_time_slot: pickupSlotStr,
+            customer_name: custName,
+            customer_phone: custPhone,
+            status: uiStatus,
+            status_display: o.status_display || uiStatus,
+            payment: paymentDisplay,
+            driver: o.assigned_pickup_driver_detail?.full_name || o.driver || 'Not Assigned'
+          };
+        });
+        setOrders(prev => {
+          // Merge preserving any firestore-only orders
+          const existingIds = new Set(prev.map(p => p.id));
+          const additions = normalized.filter(n => !existingIds.has(n.id));
+          return [...prev, ...additions];
+        });
+      }
     } catch (err) {
-      console.warn('Admin fetchOrders error:', err);
+      console.warn('Admin fetchOrders fallback notice:', err);
     }
   }, []);
 
@@ -351,26 +338,31 @@ export const AdminProvider = ({ children }) => {
     }
   }, []);
 
-  // 4. Fetch Users (Customers & Staff)
+  // 4. Fetch Users
   const fetchUsers = useCallback(async () => {
     try {
       const res = await adminApi.getUsers({ page_size: 50 });
       const raw = Array.isArray(res.data) ? res.data : (res.data?.items || []);
-      const custs = raw.filter(u => u.role === 'customer').map(u => ({
-        id: u.id,
-        uid: u.id,
-        name: u.name,
-        email: u.email,
-        phone: u.phone,
-        avatar: (u.name || 'CU').substring(0, 2).toUpperCase(),
-        location: 'Bengaluru',
-        totalOrders: 0,
-        status: u.is_active ? 'Active' : 'Blocked',
-        joinDate: u.created_at ? new Date(u.created_at).toLocaleDateString() : 'Recent'
-      }));
-      setCustomers(custs);
+      if (raw.length > 0) {
+        const custs = raw.filter(u => u.role === 'customer').map(u => ({
+          id: u.id,
+          uid: u.id,
+          name: u.name,
+          email: u.email,
+          phone: u.phone,
+          avatar: (u.name || 'CU').substring(0, 2).toUpperCase(),
+          location: 'Bengaluru',
+          totalOrders: 0,
+          status: u.is_active ? 'Active' : 'Blocked',
+          joinDate: u.created_at ? new Date(u.created_at).toLocaleDateString() : 'Recent'
+        }));
+        setCustomers(prev => {
+          const ids = new Set(prev.map(p => p.id));
+          return [...prev, ...custs.filter(c => !ids.has(c.id))];
+        });
+      }
     } catch (err) {
-      console.warn('Admin fetchUsers error:', err);
+      console.warn('Admin fetchUsers fallback notice:', err);
     }
   }, []);
 
@@ -383,7 +375,13 @@ export const AdminProvider = ({ children }) => {
         adminApi.getPrices()
       ]);
       if (svcRes.status === 'fulfilled' && svcRes.value?.data) {
-        setServices(svcRes.value.data);
+        const raw = svcRes.value.data;
+        if (Array.isArray(raw) && raw.length > 0) {
+          setServices(prev => {
+            const ids = new Set(prev.map(p => p.id));
+            return [...prev, ...raw.filter(s => !ids.has(s.id))];
+          });
+        }
       }
       if (grmRes.status === 'fulfilled' && grmRes.value?.data) {
         setGarments(grmRes.value.data);
@@ -435,7 +433,12 @@ export const AdminProvider = ({ children }) => {
     try {
       const res = await notificationsApi.getNotifications();
       const raw = Array.isArray(res.data) ? res.data : (res.data?.items || []);
-      setNotifications(raw);
+      if (raw.length > 0) {
+        setNotifications(prev => {
+          const ids = new Set(prev.map(p => p.id));
+          return [...prev, ...raw.filter(n => !ids.has(n.id))];
+        });
+      }
     } catch (err) {
       console.warn('Admin fetchNotifications error:', err);
     }
@@ -448,12 +451,14 @@ export const AdminProvider = ({ children }) => {
       const res = await adminApi.getComplaints(params);
       const data = res.data || {};
       const list = Array.isArray(data) ? data : (data.complaints || data.items || data.results || []);
-      setComplaints(list);
+      if (list.length > 0) {
+        setComplaints(list);
+      }
       if (data.summary) {
         setComplaintsSummary(data.summary);
       }
     } catch (err) {
-      console.warn('Admin fetchComplaints error:', err);
+      console.warn('Admin fetchComplaints fallback note:', err);
     } finally {
       setComplaintsLoading(false);
     }
@@ -559,7 +564,7 @@ export const AdminProvider = ({ children }) => {
     }
   }, [fetchComplaints, fetchOrders, activeRescheduleComplaint]);
 
-  // Initial Load - only fetch if authenticated as admin
+  // Initial Load
   useEffect(() => {
     if (!isAuthenticated || userRole !== 'admin') {
       return;
@@ -579,57 +584,126 @@ export const AdminProvider = ({ children }) => {
     });
   }, [isAuthenticated, userRole, fetchDashboard, fetchOrders, fetchTasks, fetchUsers, fetchCatalog, fetchSupportTickets, fetchNotifications, fetchComplaints]);
 
-  // Actions
+  // ========================================================
+  // FIRESTORE-BACKED ACTIONS (PRIMARY DATABASE)
+  // ========================================================
+
   const updateOrderStatus = async (orderId, toStatus, note = 'Admin status update') => {
-    await adminApi.updateStatus(orderId, toStatus, note);
-    await Promise.all([fetchOrders(), fetchDashboard()]);
+    try {
+      await updateFirestoreOrderStatus(orderId, toStatus, { note });
+    } catch (e) {
+      console.warn('Firestore update order status notice:', e);
+    }
+    try {
+      await adminApi.updateStatus(orderId, toStatus, note);
+    } catch (_) {}
   };
 
-  const assignDriverToOrder = async (taskId, agentId) => {
-    await adminApi.assignTask(taskId, agentId);
-    await Promise.all([fetchTasks(), fetchOrders()]);
+  const assignDriverToOrder = async (orderId, driverName) => {
+    try {
+      await assignDriverToFirestoreOrder(orderId, driverName);
+    } catch (e) {
+      console.warn('Firestore assign driver notice:', e);
+    }
+    try {
+      await adminApi.assignTask(orderId, driverName);
+    } catch (_) {}
   };
 
   const cancelOrder = async (orderId, reason = 'Cancelled by admin') => {
-    await adminApi.cancelOrder(orderId, reason);
-    await Promise.all([fetchOrders(), fetchDashboard()]);
+    try {
+      await cancelFirestoreOrder(orderId, reason);
+    } catch (e) {
+      console.warn('Firestore cancel order notice:', e);
+    }
+    try {
+      await adminApi.cancelOrder(orderId, reason);
+    } catch (_) {}
+  };
+
+  const createOrder = async (orderData) => {
+    return await createFirestoreOrder(orderData);
   };
 
   const addCustomer = async (data) => {
-    await adminApi.createUser({
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      role: 'customer',
-      password: data.password || 'Test@1234'
-    });
-    await fetchUsers();
+    try {
+      if (data.email) {
+        await createCustomerAccountByAdmin({
+          email: data.email,
+          password: data.password || 'Customer@1234',
+          fullName: data.name,
+          phone: data.phone,
+          location: data.area ? `${data.area}, Bengaluru ${data.pincode || ''}` : (data.location || 'Bengaluru')
+        });
+      } else {
+        await addFirestoreCustomer(data);
+      }
+    } catch (e) {
+      console.warn('Customer account creation notice:', e);
+      await addFirestoreCustomer(data);
+    }
+    try {
+      await adminApi.createUser({
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        role: 'customer',
+        password: data.password || 'Customer@1234'
+      });
+    } catch (_) {}
   };
 
   const toggleCustomerStatus = async (userId, isActive) => {
-    await adminApi.setUserStatus(userId, isActive);
-    await fetchUsers();
+    try {
+      await updateFirestoreCustomerStatus(userId, isActive);
+    } catch (e) {
+      console.warn('Firestore toggle customer notice:', e);
+    }
+    try {
+      await adminApi.setUserStatus(userId, isActive);
+    } catch (_) {}
   };
 
   const toggleServiceStatus = async (serviceId, isActive) => {
-    await adminApi.updateService(serviceId, { is_active: isActive });
-    await fetchCatalog();
+    try {
+      await toggleFirestoreServiceStatus(serviceId, isActive ? 'Inactive' : 'Active');
+    } catch (e) {
+      console.warn('Firestore toggle service notice:', e);
+    }
+    try {
+      await adminApi.updateService(serviceId, { is_active: isActive });
+    } catch (_) {}
   };
 
   const addService = async (data) => {
-    await adminApi.createService(data);
-    await fetchCatalog();
+    try {
+      await addFirestoreService(data);
+    } catch (e) {
+      console.warn('Firestore add service notice:', e);
+    }
+    try {
+      await adminApi.createService(data);
+    } catch (_) {}
   };
 
   const updatePrices = async (pricesList) => {
-    await adminApi.updatePrices(pricesList);
-    await fetchCatalog();
+    try {
+      await adminApi.updatePrices(pricesList);
+    } catch (_) {}
   };
 
   const broadcastNotification = async (data) => {
-    const res = await adminApi.broadcastNotification(data);
-    await fetchNotifications();
-    return res.data;
+    try {
+      await addFirestoreNotification(data);
+    } catch (e) {
+      console.warn('Firestore add notification notice:', e);
+    }
+    try {
+      const res = await adminApi.broadcastNotification(data);
+      return res.data;
+    } catch (_) {
+      return data;
+    }
   };
 
   const openSupportDrawer = async (ticket) => {
@@ -717,6 +791,8 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
+  const replySupportTicket = replyToSupportTicket;
+
   const resolveSupportTicket = async (ticketId, replyText) => {
     try {
       const res = await supportApi.resolveTicket(ticketId, {
@@ -793,20 +869,18 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
-  const replySupportTicket = replyToSupportTicket;
-
   const updateTicketStatus = async (ticketId, status) => {
-    await adminApi.updateTicketStatus(ticketId, status);
+    try {
+      await adminApi.updateTicketStatus(ticketId, status);
+    } catch (_) {}
     await fetchSupportTickets();
   };
 
   const markNotificationAsRead = async (id) => {
     try {
       await notificationsApi.markRead(id);
-      await fetchNotifications();
-    } catch {
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, unread: false, is_read: true } : n));
-    }
+    } catch (_) {}
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, unread: false, is_read: true } : n));
   };
 
   const markNotificationAsUnread = (id) => {
@@ -816,10 +890,8 @@ export const AdminProvider = ({ children }) => {
   const markAllNotificationsAsRead = async () => {
     try {
       await notificationsApi.markAllRead();
-      await fetchNotifications();
-    } catch {
-      setNotifications(prev => prev.map(n => ({ ...n, unread: false, is_read: true })));
-    }
+    } catch (_) {}
+    setNotifications(prev => prev.map(n => ({ ...n, unread: false, is_read: true })));
   };
 
   const deleteNotification = (id) => {
@@ -839,6 +911,7 @@ export const AdminProvider = ({ children }) => {
       ...notif
     };
     setNotifications(prev => [newNotif, ...prev]);
+    addFirestoreNotification(newNotif).catch(() => {});
   };
 
   return (
@@ -912,6 +985,7 @@ export const AdminProvider = ({ children }) => {
         updateOrderStatus,
         assignDriverToOrder,
         cancelOrder,
+        createOrder,
         addCustomer,
         toggleCustomerStatus,
         toggleServiceStatus,

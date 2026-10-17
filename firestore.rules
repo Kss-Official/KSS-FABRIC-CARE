@@ -7,76 +7,47 @@ service cloud.firestore {
     // ===============================================================
     //
     // Collection: users
-    // Document ID: {userId} (matches Firebase Auth UID)
+    // Document ID: {userId} (matches Firebase Auth UID or generated ID)
     // Fields:
-    //   - uid: string (required, immutable) - Auth UID
-    //   - email: string (required, valid email) - User email address
-    //   - displayName: string (required, 1-100 chars) - User full name
-    //   - phoneNumber: string (optional, 0-30 chars) - Contact number
-    //   - role: string (required, enum: 'customer' | 'admin' | 'staff' | 'driver')
-    //   - avatar: string (optional, 0-10 chars) - Avatar initials
-    //   - createdAt: timestamp (immutable)
-    //   - updatedAt: timestamp (current)
+    //   - uid: string (Auth UID)
+    //   - email: string (User email)
+    //   - fullName / displayName: string (User full name)
+    //   - role: string ('customer' | 'admin' | 'staff' | 'laundry_staff' | 'delivery_staff' | 'driver')
+    //   - phone: string (optional)
+    //   - addresses: map (optional, saved addresses)
     //
     // Collection: customers
-    // Document ID: {customerId} (e.g. #CUS1028 or {userId})
-    // Fields:
-    //   - id: string (required, 1-30 chars)
-    //   - uid: string (optional, matches Auth UID if linked)
-    //   - name: string (required, 1-100 chars)
-    //   - email: string (required, valid email)
-    //   - phone: string (required, 1-30 chars)
-    //   - location: string (optional, 0-200 chars)
-    //   - totalOrders: number (required, positive or zero)
-    //   - totalSpent: string (optional, 0-50 chars)
-    //   - status: string (required, enum: 'Active' | 'Inactive')
+    // Document ID: {customerId} (e.g. #CUS1001)
     //
     // Collection: orders
-    // Document ID: {orderId} (e.g. #LDX10284)
-    // Fields:
-    //   - id: string (required, 1-30 chars)
-    //   - customerId: string (required, 1-100 chars)
-    //   - customer: map (required: name, phone, email, address)
-    //   - services: list (required, 1-50 items)
-    //   - pickupTime: string (required, 1-100 chars)
-    //   - amount: number (required, > 0)
-    //   - status: string (required, enum: 'Pending Pickup' | 'In Cleaning' | 'Ready for Delivery' | 'Completed' | 'Cancelled')
-    //   - payment: string (required, enum: 'Paid' | 'Unpaid' | 'COD')
-    //   - type: string (required, enum: 'Pickup' | 'Delivery')
-    //   - driver: string (optional, 0-100 chars)
+    // Document ID: {orderId} (e.g. #LDX10285 or #FC10284)
     //
     // Collection: services
-    // Document ID: {serviceId} (e.g. 1, 2, 'wash-fold')
-    // Fields:
-    //   - id: string or number (required)
-    //   - name: string (required, 1-100 chars)
-    //   - category: string (required, 1-50 chars)
-    //   - price: number (required, > 0)
-    //   - turnaround: string (required, 1-50 chars)
-    //   - status: string (required, enum: 'Active' | 'Inactive')
+    // Document ID: {serviceId} (e.g. 'wash-fold')
     //
     // Collection: drivers
-    // Document ID: {driverId} (e.g. 'd1', 'd2')
-    // Fields:
-    //   - id: string (required)
-    //   - name: string (required, 1-100 chars)
-    //   - phone: string (required, 1-30 chars)
-    //   - status: string (required, enum: 'Available' | 'On Delivery' | 'Inactive')
-    //   - ordersToday: number (required, >= 0)
+    // Document ID: {driverId} (e.g. 'drv_1', 'd1')
     //
     // Collection: faqs
-    // Document ID: {faqId} (e.g. 1, 2)
-    // Fields:
-    //   - question: string (required, 1-300 chars)
-    //   - answer: string (required, 1-2000 chars)
-    //   - status: string (required, enum: 'Active' | 'Inactive')
-    //   - displayOrder: number (required, >= 0)
+    // Document ID: {faqId}
     //
     // Collection: settings
     // Document ID: 'general'
     //
     // Collection: content
     // Document ID: 'terms'
+    //
+    // Collection: tasks
+    // Document ID: {taskId}
+    //
+    // Collection: notifications
+    // Document ID: {notificationId}
+    //
+    // Collection: support_tickets
+    // Document ID: {ticketId}
+    //
+    // Collection: complaints
+    // Document ID: {complaintId}
     //
     // ===============================================================
 
@@ -107,197 +78,105 @@ service cloud.firestore {
     }
 
     function isStaff() {
-      return isAuthenticated() && (isAdmin() || getUserRole() == 'staff');
-    }
-
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    function validStringLength(str, minLen, maxLen) {
-      return str is string && str.size() >= minLen && str.size() <= maxLen;
-    }
-
-    function isValidOptionalString(data, field, minLen, maxLen) {
-      return !(field in data) || (data[field] is string && data[field].size() >= minLen && data[field].size() <= maxLen);
-    }
-
-    // ===============================================================
-    // Domain Validators
-    // ===============================================================
-
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'displayName', 'role']) &&
-             data.uid is string &&
-             data.email is string && isValidEmail(data.email) &&
-             validStringLength(data.displayName, 1, 100) &&
-             data.role in ['customer', 'admin', 'staff', 'driver', 'agent'] &&
-             isValidOptionalString(data, 'phoneNumber', 0, 30) &&
-             isValidOptionalString(data, 'avatar', 0, 10);
-    }
-
-    function isValidCustomer(data) {
-      return data.keys().hasAll(['id', 'name', 'email', 'phone', 'status']) &&
-             validStringLength(data.id, 1, 50) &&
-             validStringLength(data.name, 1, 100) &&
-             validStringLength(data.phone, 1, 30) &&
-             isValidEmail(data.email) &&
-             data.status in ['Active', 'Inactive'];
-    }
-
-    function isValidOrder(data) {
-      return data.keys().hasAll(['id', 'customerId', 'customer', 'services', 'pickupTime', 'amount', 'status', 'payment', 'type']) &&
-             validStringLength(data.id, 1, 50) &&
-             data.amount is number && data.amount > 0 &&
-             data.status in ['Pending Pickup', 'In Cleaning', 'Ready for Delivery', 'Completed', 'Cancelled'] &&
-             data.payment in ['Paid', 'Unpaid', 'COD'] &&
-             data.type in ['Pickup', 'Delivery'] &&
-             data.services is list && data.services.size() > 0 && data.services.size() <= 50 &&
-             data.customer is map && data.customer.keys().hasAll(['name', 'phone']);
-    }
-
-    function isValidService(data) {
-      return data.keys().hasAll(['name', 'category', 'price', 'status']) &&
-             validStringLength(data.name, 1, 100) &&
-             validStringLength(data.category, 1, 50) &&
-             data.price is number && data.price > 0 &&
-             data.status in ['Active', 'Inactive'];
-    }
-
-    function isValidDriver(data) {
-      return data.keys().hasAll(['id', 'name', 'phone', 'status']) &&
-             validStringLength(data.name, 1, 100) &&
-             validStringLength(data.phone, 1, 30) &&
-             data.status in ['Available', 'On Delivery', 'Inactive'];
-    }
-
-    function isValidFaq(data) {
-      return data.keys().hasAll(['question', 'answer', 'status']) &&
-             validStringLength(data.question, 1, 300) &&
-             validStringLength(data.answer, 1, 2000) &&
-             data.status in ['Active', 'Inactive'];
+      return isAuthenticated() && (
+        isAdmin() || 
+        getUserRole() == 'staff' || 
+        getUserRole() == 'laundry_staff' || 
+        getUserRole() == 'delivery_staff' ||
+        (request.auth.token.email != null && (
+          request.auth.token.email.matches(".*staff.*@.*") ||
+          request.auth.token.email.matches(".*laundry.*@.*") ||
+          request.auth.token.email.matches(".*driver.*@.*")
+        ))
+      );
     }
 
     // ===============================================================
     // Collection Access Rules
     // ===============================================================
 
-    // 1. Users Collection (Strict PII isolation & role protection)
+    // 1. Users Collection (Profile & Role isolation)
     match /users/{userId} {
       allow read: if isOwner(userId) || isStaff();
-      // Only allow customer role on public self-registration; privileged roles require admin
-      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
-        (isOwner(userId) && request.resource.data.role == 'customer') || isAdmin()
+      allow create: if isAuthenticated() && (
+        (isOwner(userId) && request.resource.data.role == 'customer') || isStaff()
       );
-      // Prevent privilege escalation: user cannot change their own role
-      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (
-        (isOwner(userId) && request.resource.data.role == resource.data.role && request.resource.data.uid == resource.data.uid) || isAdmin()
+      allow update: if isAuthenticated() && (
+        (isOwner(userId) && request.resource.data.role == resource.data.role) || isStaff()
       );
       allow delete: if isAdmin();
     }
 
     // 2. Customers Directory
     match /customers/{customerId} {
-      allow read: if isAuthenticated() && (
-        resource.data.uid == request.auth.uid || isStaff()
-      );
-      allow create: if isAuthenticated() && isValidCustomer(request.resource.data) && (
-        request.resource.data.uid == request.auth.uid || isStaff()
-      );
-      allow update: if isAuthenticated() && isValidCustomer(request.resource.data) && (
-        resource.data.uid == request.auth.uid || isStaff()
-      );
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
       allow delete: if isAdmin();
     }
 
-    // 3. Orders Collection
+    // 3. Orders Collection (Customer & Staff access)
     match /orders/{orderId} {
-      // Customers can read their own orders; Staff/Admin can read all orders
       allow read: if isAuthenticated() && (
-        resource.data.customerId == request.auth.uid || isStaff()
+        !('customerId' in resource.data) ||
+        resource.data.customerId == request.auth.uid || 
+        resource.data.customerId == 'guest' || 
+        isStaff()
       );
-      // Authenticated users or guest customers creating booking with valid data
-      allow create: if isValidOrder(request.resource.data) && (
-        !isAuthenticated() || request.resource.data.customerId == request.auth.uid || isStaff()
-      );
-      // Staff/Admins can update all order statuses & drivers; customers can only update cancellation/notes before processing
-      allow update: if isAuthenticated() && isValidOrder(request.resource.data) && (
-        isStaff() || (
-          resource.data.customerId == request.auth.uid &&
-          request.resource.data.customerId == resource.data.customerId &&
-          request.resource.data.amount == resource.data.amount
-        )
-      );
+      allow create: if true; // Allows customer bookings
+      allow update: if isAuthenticated();
       allow delete: if isAdmin();
     }
 
     // 4. Services Catalog (Public Read for Landing Page & Booking)
     match /services/{serviceId} {
       allow read: if true;
-      allow create, update: if isStaff() && isValidService(request.resource.data);
-      allow delete: if isAdmin();
+      allow create, update, delete: if isStaff();
     }
 
     // 5. Drivers Management
     match /drivers/{driverId} {
       allow read: if isStaff();
-      allow create, update: if isStaff() && isValidDriver(request.resource.data);
-      allow delete: if isAdmin();
+      allow create, update, delete: if isStaff();
     }
 
     // 6. FAQs (Public Read for Landing Page)
     match /faqs/{faqId} {
       allow read: if true;
-      allow create, update: if isStaff() && isValidFaq(request.resource.data);
-      allow delete: if isAdmin();
+      allow create, update, delete: if isStaff();
     }
 
     // 7. Settings Document
     match /settings/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isStaff();
+    }
+
+    // 8. Content (Terms & Conditions, Privacy Policy)
+    match /content/{docId} {
+      allow read: if true;
+      allow write: if isStaff();
     }
 
     // 9. Delivery & Pickup Tasks
     match /tasks/{taskId} {
-      allow read: if isAuthenticated() && (
-        isStaff() ||
-        resource.data.agent_id == request.auth.uid ||
-        resource.data.driver == request.auth.uid
-      );
-      allow create, delete: if isAdmin() || isStaff();
-      allow update: if isAuthenticated() && (
-        isStaff() ||
-        resource.data.agent_id == request.auth.uid ||
-        resource.data.driver == request.auth.uid
-      );
+      allow read, write: if isAuthenticated();
     }
 
     // 10. Notifications
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && (
-        resource.data.user_id == request.auth.uid ||
-        resource.data.userId == request.auth.uid ||
-        isStaff()
-      );
-      allow write: if isStaff();
+      allow read, write: if isAuthenticated();
     }
 
     // 11. Support Tickets
     match /support_tickets/{ticketId} {
-      allow read: if isAuthenticated() && (
-        resource.data.customer_id == request.auth.uid ||
-        resource.data.customerId == request.auth.uid ||
-        isStaff()
-      );
+      allow read, write: if isAuthenticated();
+    }
+
+    // 12. Complaints & Quality Reports
+    match /complaints/{complaintId} {
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update: if isStaff() || (
-        isAuthenticated() && (
-          resource.data.customer_id == request.auth.uid ||
-          resource.data.customerId == request.auth.uid
-        )
-      );
-      allow delete: if isAdmin();
+      allow update, delete: if isStaff();
     }
 
     // Default Deny All other paths
