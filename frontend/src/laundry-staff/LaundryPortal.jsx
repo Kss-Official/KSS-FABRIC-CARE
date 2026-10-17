@@ -284,6 +284,8 @@ export const LaundryPortal = () => {
   // Live Staff API States
   const [dashboardData, setDashboardData] = useState(null);
   const [counts, setCounts] = useState({});
+  const [dashServicePeriod, setDashServicePeriod] = useState('Today'); // 'Today' | 'This Week' | 'This Month'
+  const [hoveredDonutKey, setHoveredDonutKey] = useState(null);
   const [historyOrders, setHistoryOrders] = useState([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyTotalValue, setHistoryTotalValue] = useState(0);
@@ -372,10 +374,6 @@ export const LaundryPortal = () => {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   // Modals state
-  // Dashboard Page State (Matching Redesigned Dashboard)
-  const [dashServicePeriod, setDashServicePeriod] = useState('Today'); // 'Today' | 'This Week' | 'This Month'
-  const [hoveredDonutKey, setHoveredDonutKey] = useState(null);
-
   // Orders Page State (Matching Image 2)
   const [ordersActiveChip, setOrdersActiveChip] = useState('all');
   const [ordersServiceFilter, setOrdersServiceFilter] = useState('all');
