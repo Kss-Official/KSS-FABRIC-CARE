@@ -461,10 +461,22 @@ export const AdminPickupDeliveryPage = () => {
     // Map context updates into the baseline orders
     const contextMap = new Map();
     (contextOrders || []).forEach(o => {
-      // Map both 5-digit and short IDs
-      const cleanId = o.id.replace('#LDX12', '#LDX1028');
+      if (!o) return;
+      const idStr = String(o.id || '');
+      const cleanId = idStr.replace('#LDX12', '#LDX1028');
       contextMap.set(o.id, o);
+      contextMap.set(idStr, o);
       contextMap.set(cleanId, o);
+      if (o.order_number) {
+        contextMap.set(o.order_number, o);
+        contextMap.set(String(o.order_number), o);
+        contextMap.set(String(o.order_number).replace('#LDX12', '#LDX1028'), o);
+      }
+      if (o.order_id) {
+        contextMap.set(o.order_id, o);
+        contextMap.set(String(o.order_id), o);
+        contextMap.set(String(o.order_id).replace('#LDX12', '#LDX1028'), o);
+      }
     });
 
     let persistedMap = {};
@@ -485,11 +497,14 @@ export const AdminPickupDeliveryPage = () => {
 
       if (live && live.driver && live.driver !== 'Not Assigned') {
         isAssigned = true;
-        const namePart = live.driver.split('(')[0]?.trim();
-        const phonePart = live.driver.match(/\((.*?)\)/)?.[1]?.trim() || '+91 98765 43210';
-        driverName = namePart || live.driver;
+        const driverStr = typeof live.driver === 'string' ? live.driver : (live.driver?.name || 'Driver');
+        const namePart = driverStr.split('(')[0]?.trim();
+        const phonePart = typeof live.driver === 'string' 
+          ? (live.driver.match(/\((.*?)\)/)?.[1]?.trim() || '+91 98765 43210')
+          : (live.driver?.phone || '+91 98765 43210');
+        driverName = namePart || driverStr;
         driverPhone = phonePart;
-        driverInitials = driverName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
+        driverInitials = String(driverName || 'DR').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
         status = 'Assigned';
       }
 
