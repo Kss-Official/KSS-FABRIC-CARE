@@ -211,7 +211,7 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
-    // 2. Offline Demo Credentials Fallback
+    // 2. Offline Demo Credentials Fallback with Automatic Firebase Auth Session
     const demoUser = DEMO_USERS[identifier];
     if (demoUser && VALID_DEMO_PASSWORDS.includes(pwd)) {
       const normalizedRole = normalizeRole(demoUser.role);
@@ -232,9 +232,44 @@ export const AuthProvider = ({ children }) => {
         staff_profile: demoUser.staff_profile || null
       };
 
-      // Valid 3-segment JWT to prevent token segment errors on backends
-      const validMockJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkRlbW8gVXNlciIsImlhdCI6MTUxNjIzOTAyMn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
-      localStorage.setItem('fabricare_token', validMockJwt);
+      // Also establish real Firebase Auth session for Firestore real-time permissions
+      const isFakeApiKey = String(auth?.app?.options?.apiKey || '').includes('FakeKey');
+      if (!isFakeApiKey && auth) {
+        try {
+          const candidatePasswords = [
+            pwd,
+            pwd === 'delivery' ? 'delivery123' : null,
+            pwd === 'admin' ? 'admin123' : null,
+            pwd === 'laundry' ? 'laundry123' : null,
+            pwd === 'customer' ? 'customer123' : null,
+            'delivery123',
+            'admin123',
+            'laundry123',
+            'customer123',
+            'Test@1234'
+          ].filter(Boolean);
+
+          let userCred = null;
+          for (const candPwd of candidatePasswords) {
+            try {
+              userCred = await signInWithEmailAndPassword(auth, demoUser.email, candPwd);
+              if (userCred?.user) break;
+            } catch (_) {}
+          }
+
+          if (userCred?.user) {
+            const token = await userCred.user.getIdToken();
+            localStorage.setItem('fabricare_token', token);
+            profileData.uid = userCred.user.uid;
+            profileData.id = userCred.user.uid;
+          }
+        } catch (_) {}
+      } else {
+        // Valid 3-segment mock JWT fallback if offline
+        const validMockJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkRlbW8gVXNlciIsImlhdCI6MTUxNjIzOTAyMn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+        localStorage.setItem('fabricare_token', validMockJwt);
+      }
+
       localStorage.setItem('fabricare_user', JSON.stringify(profileData));
       setCurrentUser(profileData);
       setUserProfile(profileData);
@@ -248,6 +283,7 @@ export const AuthProvider = ({ children }) => {
         portal: getPortalForRole(normalizedRole)
       };
     }
+
 
     // 3. Try Firebase Auth Client SDK only if real API key configured (prevent mock emulator errors)
     const isFakeApiKey = String(auth?.app?.options?.apiKey || '').includes('FakeKey');

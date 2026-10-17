@@ -40,7 +40,6 @@ import {
   FileText,
   Check,
   Shirt,
-  Map,
   MoreVertical,
   Search,
   Filter,
@@ -896,10 +895,10 @@ export const DeliveryPortal = () => {
         });
 
         setTasks(prev => {
-          const map = new Map();
-          prev.forEach(t => map.set(String(t.id || t.order_number), t));
-          fireTasks.forEach(t => map.set(String(t.id || t.order_number), t));
-          return Array.from(map.values());
+          const taskMap = new (typeof window !== 'undefined' && window.Map ? window.Map : Map)();
+          prev.forEach(t => taskMap.set(String(t.id || t.order_number), t));
+          fireTasks.forEach(t => taskMap.set(String(t.id || t.order_number), t));
+          return Array.from(taskMap.values());
         });
         setLoading(false);
       }

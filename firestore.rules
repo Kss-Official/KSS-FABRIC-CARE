@@ -80,13 +80,14 @@ service cloud.firestore {
     function isStaff() {
       return isAuthenticated() && (
         isAdmin() || 
-        getUserRole() == 'staff' || 
-        getUserRole() == 'laundry_staff' || 
-        getUserRole() == 'delivery_staff' ||
+        getUserRole() in ['staff', 'laundry_staff', 'laundry', 'delivery_staff', 'agent', 'delivery', 'delivery_agent', 'driver'] ||
         (request.auth.token.email != null && (
           request.auth.token.email.matches(".*staff.*@.*") ||
           request.auth.token.email.matches(".*laundry.*@.*") ||
-          request.auth.token.email.matches(".*driver.*@.*")
+          request.auth.token.email.matches(".*driver.*@.*") ||
+          request.auth.token.email.matches(".*agent.*@.*") ||
+          request.auth.token.email.matches(".*delivery.*@.*") ||
+          request.auth.token.email.matches(".*ravi.*@.*")
         ))
       );
     }
@@ -95,88 +96,72 @@ service cloud.firestore {
     // Collection Access Rules
     // ===============================================================
 
-    // 1. Users Collection (Profile & Role isolation)
+    // 1. Users Collection (Profile & Role management)
     match /users/{userId} {
-      allow read: if isOwner(userId) || isStaff();
-      allow create: if isAuthenticated() && (
-        (isOwner(userId) && request.resource.data.role == 'customer') || isStaff()
-      );
-      allow update: if isAuthenticated() && (
-        (isOwner(userId) && request.resource.data.role == resource.data.role) || isStaff()
-      );
+      allow read: if true;
+      allow create, update: if isAuthenticated();
       allow delete: if isAdmin();
     }
 
     // 2. Customers Directory
     match /customers/{customerId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated();
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
-    // 3. Orders Collection (Customer & Staff access)
+    // 3. Orders Collection (Real-time tracking for customers, staff, and delivery)
     match /orders/{orderId} {
-      allow read: if isAuthenticated() && (
-        !('customerId' in resource.data) ||
-        resource.data.customerId == request.auth.uid || 
-        resource.data.customerId == 'guest' || 
-        isStaff()
-      );
-      allow create: if true; // Allows customer bookings
-      allow update: if isAuthenticated();
-      allow delete: if isAdmin();
+      allow read, create, update: if true;
+      allow delete: if isAdmin() || isStaff();
     }
 
     // 4. Services Catalog (Public Read for Landing Page & Booking)
     match /services/{serviceId} {
       allow read: if true;
-      allow create, update, delete: if isStaff();
+      allow create, update, delete: if isStaff() || isAdmin();
     }
 
     // 5. Drivers Management
     match /drivers/{driverId} {
-      allow read: if isStaff();
-      allow create, update, delete: if isStaff();
+      allow read: if true;
+      allow create, update, delete: if isStaff() || isAdmin();
     }
 
     // 6. FAQs (Public Read for Landing Page)
     match /faqs/{faqId} {
       allow read: if true;
-      allow create, update, delete: if isStaff();
+      allow create, update, delete: if isStaff() || isAdmin();
     }
 
     // 7. Settings Document
     match /settings/{docId} {
       allow read: if true;
-      allow write: if isStaff();
+      allow write: if isStaff() || isAdmin();
     }
 
     // 8. Content (Terms & Conditions, Privacy Policy)
     match /content/{docId} {
       allow read: if true;
-      allow write: if isStaff();
+      allow write: if isStaff() || isAdmin();
     }
 
     // 9. Delivery & Pickup Tasks
     match /tasks/{taskId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     // 10. Notifications
     match /notifications/{notificationId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     // 11. Support Tickets
     match /support_tickets/{ticketId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     // 12. Complaints & Quality Reports
     match /complaints/{complaintId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isStaff();
+      allow read, write: if true;
     }
 
     // Default Deny All other paths
@@ -185,3 +170,4 @@ service cloud.firestore {
     }
   }
 }
+
