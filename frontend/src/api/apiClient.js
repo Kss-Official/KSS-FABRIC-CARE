@@ -334,27 +334,49 @@ export const invoicesApi = {
 
 export const supportApi = {
   getTickets: async (params = {}) => {
-    const res = await apiClient.get('/customer/support/tickets', { params });
-    const raw = res.data;
-    const list = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
-    return { ...res, data: list, items: list, results: list, total: raw?.total ?? list.length };
+    try {
+      const res = await apiClient.get('/admin/support/tickets/', { params });
+      const raw = res.data;
+      const list = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
+      return { ...res, data: list, items: list, results: list, total: raw?.total ?? list.length, summary: raw?.summary };
+    } catch {
+      const res = await apiClient.get('/customer/support/tickets', { params });
+      const raw = res.data;
+      const list = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
+      return { ...res, data: list, items: list, results: list, total: raw?.total ?? list.length, summary: raw?.summary };
+    }
   },
-  getTicketById: (id) => apiClient.get(`/customer/support/tickets/${id}`),
-  createTicket: (data) => apiClient.post('/customer/support/tickets', data),
-  replyTicket: (id, data) => apiClient.post(`/customer/support/tickets/${id}/messages`, { message: data.message || data.text || '' })
+  getTicketById: (id) => apiClient.get(`/admin/support/tickets/${id}/`),
+  createTicket: (data) => apiClient.post('/admin/support/tickets/', data),
+  replyTicket: (id, data) => apiClient.post(`/admin/support/tickets/${id}/reply/`, typeof data === 'object' ? data : { admin_reply: data, message: data }),
+  resolveTicket: (id, data = {}) => apiClient.post(`/admin/support/tickets/${id}/resolve/`, typeof data === 'object' ? data : { admin_reply: data })
 };
 
 export const complaintsApi = {
   getReports: async (params = {}) => {
     try {
-      const res = await apiClient.get('/customer/complaints', { params });
+      const res = await apiClient.get('/customer/reports/', { params });
       const raw = res.data;
       const list = Array.isArray(raw) ? raw : (raw?.items || raw?.results || []);
       return { ...res, data: list, items: list, results: list, total: raw?.total ?? list.length };
     } catch {
-      return { data: [], items: [], results: [], total: 0 };
+      try {
+        const res = await apiClient.get('/admin/complaints/', { params });
+        const raw = res.data;
+        const list = Array.isArray(raw) ? raw : (raw?.items || raw?.results || raw?.complaints || []);
+        return { ...res, data: list, items: list, results: list, total: raw?.total ?? list.length };
+      } catch {
+        return { data: [], items: [], results: [], total: 0 };
+      }
     }
-  }
+  },
+  getReportById: (id) => apiClient.get(`/customer/reports/${id}/`),
+  getAdminReports: (params = {}) => apiClient.get('/admin/complaints/', { params }),
+  getAdminReportById: (id) => apiClient.get(`/admin/complaints/${id}/`),
+  rescheduleReport: (id, data) => apiClient.post(`/admin/complaints/${id}/reschedule/`, data),
+  getComplaints: (params = {}) => apiClient.get('/admin/complaints/', { params }),
+  getComplaintById: (id) => apiClient.get(`/admin/complaints/${id}/`),
+  rescheduleComplaint: (id, data) => apiClient.post(`/admin/complaints/${id}/reschedule/`, data),
 };
 
 export const contentApi = {
@@ -430,8 +452,9 @@ export const adminApi = {
   broadcastNotification: (data) => apiClient.post('/admin/notifications/broadcast', data),
   getTickets: (params = {}) => apiClient.get('/admin/support/tickets', { params }),
   getTicket: (id) => apiClient.get(`/admin/support/tickets/${id}`),
-  replyTicket: (id, message) => apiClient.post(`/admin/support/tickets/${id}/reply`, { message }),
+  replyTicket: (id, dataOrMessage, status) => typeof dataOrMessage === 'object' ? apiClient.post(`/admin/support/tickets/${id}/reply`, dataOrMessage) : apiClient.post(`/admin/support/tickets/${id}/reply`, { admin_reply: dataOrMessage, message: dataOrMessage, status }),
   updateTicketStatus: (id, status) => apiClient.patch(`/admin/support/tickets/${id}/status`, { status }),
+  resolveTicket: (id, dataOrReply) => typeof dataOrReply === 'object' ? apiClient.post(`/admin/support/tickets/${id}/resolve`, dataOrReply) : apiClient.post(`/admin/support/tickets/${id}/resolve`, { admin_reply: dataOrReply }),
   getComplaints: (params = {}) => apiClient.get('/admin/complaints', { params }),
   getComplaint: (id) => apiClient.get(`/admin/complaints/${id}`),
   rescheduleDelivery: (id, data) => apiClient.post(`/admin/complaints/${id}/reschedule`, data)
