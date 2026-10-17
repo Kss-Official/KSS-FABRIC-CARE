@@ -515,17 +515,37 @@ class AdminComplaintReportsView(APIView):
 class AdminComplaintDetailView(APIView):
     permission_classes = (permissions.AllowAny,)
 
+    def get_complaint(self, pk):
+        complaint = None
+        if str(pk).isdigit():
+            complaint = ComplaintReport.objects.select_related('order', 'reported_by').filter(pk=int(pk)).first()
+        if not complaint:
+            clean_pk = str(pk).strip()
+            complaint = ComplaintReport.objects.select_related('order', 'reported_by').filter(
+                Q(order_id_display__iexact=clean_pk) |
+                Q(order__order_id__iexact=clean_pk)
+            ).first()
+            if not complaint and clean_pk.startswith('#'):
+                complaint = ComplaintReport.objects.select_related('order', 'reported_by').filter(
+                    Q(order_id_display__iexact=clean_pk[1:]) |
+                    Q(order__order_id__iexact=clean_pk[1:])
+                ).first()
+            if not complaint and not clean_pk.startswith('#'):
+                complaint = ComplaintReport.objects.select_related('order', 'reported_by').filter(
+                    Q(order_id_display__iexact=f"#{clean_pk}") |
+                    Q(order__order_id__iexact=f"#{clean_pk}")
+                ).first()
+        return complaint
+
     def get(self, request, pk):
-        try:
-            complaint = ComplaintReport.objects.select_related('order', 'reported_by').get(pk=pk)
-        except ComplaintReport.DoesNotExist:
+        complaint = self.get_complaint(pk)
+        if not complaint:
             return Response({'detail': 'Complaint not found.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(ComplaintReportSerializer(complaint).data)
 
     def patch(self, request, pk):
-        try:
-            complaint = ComplaintReport.objects.get(pk=pk)
-        except ComplaintReport.DoesNotExist:
+        complaint = self.get_complaint(pk)
+        if not complaint:
             return Response({'detail': 'Complaint not found.'}, status=status.HTTP_404_NOT_FOUND)
         serializer = ComplaintReportSerializer(complaint, data=request.data, partial=True)
         if serializer.is_valid():
@@ -538,9 +558,26 @@ class AdminComplaintRescheduleView(APIView):
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request, pk):
-        try:
-            complaint = ComplaintReport.objects.select_related('order').get(pk=pk)
-        except ComplaintReport.DoesNotExist:
+        complaint = None
+        if str(pk).isdigit():
+            complaint = ComplaintReport.objects.select_related('order').filter(pk=int(pk)).first()
+        if not complaint:
+            clean_pk = str(pk).strip()
+            complaint = ComplaintReport.objects.select_related('order').filter(
+                Q(order_id_display__iexact=clean_pk) |
+                Q(order__order_id__iexact=clean_pk)
+            ).first()
+            if not complaint and clean_pk.startswith('#'):
+                complaint = ComplaintReport.objects.select_related('order').filter(
+                    Q(order_id_display__iexact=clean_pk[1:]) |
+                    Q(order__order_id__iexact=clean_pk[1:])
+                ).first()
+            if not complaint and not clean_pk.startswith('#'):
+                complaint = ComplaintReport.objects.select_related('order').filter(
+                    Q(order_id_display__iexact=f"#{clean_pk}") |
+                    Q(order__order_id__iexact=f"#{clean_pk}")
+                ).first()
+        if not complaint:
             return Response({'detail': 'Complaint report not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         new_delivery_date_raw = request.data.get('delivery_date') or request.data.get('new_delivery_date') or request.data.get('rescheduled_date')
@@ -678,25 +715,41 @@ class CustomerReportDetailView(APIView):
 
     def get(self, request, pk):
         user = request.user
-        try:
-            if user.role == User.Role.ADMIN or user.is_staff:
-                complaint = ComplaintReport.objects.select_related('order', 'reported_by').get(pk=pk)
-            else:
-                name_variants = [user.full_name]
-                if user.first_name:
-                    name_variants.append(f"{user.first_name} {user.last_name}".strip())
+        base_qs = ComplaintReport.objects.select_related('order', 'reported_by')
+        if not (user.role == User.Role.ADMIN or user.is_staff):
+            name_variants = [user.full_name]
+            if user.first_name:
+                name_variants.append(f"{user.first_name} {user.last_name}".strip())
 
-                customer_query = Q(order__customer=user)
-                if user.phone:
-                    customer_query |= Q(customer_phone=user.phone)
-                for n in name_variants:
-                    if n:
-                        customer_query |= Q(customer_name__iexact=n)
+            customer_query = Q(order__customer=user)
+            if user.phone:
+                customer_query |= Q(customer_phone=user.phone)
+            for n in name_variants:
+                if n:
+                    customer_query |= Q(customer_name__iexact=n)
+            base_qs = base_qs.filter(customer_query)
 
-                complaint = ComplaintReport.objects.select_related('order', 'reported_by').get(
-                    Q(pk=pk) & customer_query
-                )
-        except ComplaintReport.DoesNotExist:
+        complaint = None
+        if str(pk).isdigit():
+            complaint = base_qs.filter(pk=int(pk)).first()
+        if not complaint:
+            clean_pk = str(pk).strip()
+            complaint = base_qs.filter(
+                Q(order_id_display__iexact=clean_pk) |
+                Q(order__order_id__iexact=clean_pk)
+            ).first()
+            if not complaint and clean_pk.startswith('#'):
+                complaint = base_qs.filter(
+                    Q(order_id_display__iexact=clean_pk[1:]) |
+                    Q(order__order_id__iexact=clean_pk[1:])
+                ).first()
+            if not complaint and not clean_pk.startswith('#'):
+                complaint = base_qs.filter(
+                    Q(order_id_display__iexact=f"#{clean_pk}") |
+                    Q(order__order_id__iexact=f"#{clean_pk}")
+                ).first()
+
+        if not complaint:
             return Response({'detail': 'Report not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
 
         return Response(ComplaintReportSerializer(complaint).data)
@@ -1269,6 +1322,23 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
 
         return queryset.order_by('-created_at')
 
+    def get_object(self):
+        lookup = self.kwargs.get(self.lookup_url_kwarg or self.lookup_field)
+        queryset = self.filter_queryset(self.get_queryset())
+        if str(lookup).isdigit():
+            obj = queryset.filter(pk=int(lookup)).first()
+            if obj:
+                return obj
+        clean_num = str(lookup).strip()
+        obj = queryset.filter(ticket_number__iexact=clean_num).first()
+        if not obj and clean_num.startswith('#'):
+            obj = queryset.filter(ticket_number__iexact=clean_num[1:]).first()
+        if not obj and not clean_num.startswith('#'):
+            obj = queryset.filter(ticket_number__iexact=f"#{clean_num}").first()
+        if obj:
+            return obj
+        raise Http404("Support ticket not found.")
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
@@ -1279,15 +1349,14 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
         actual_in_progress = all_tickets.filter(status=SupportTicket.Status.IN_PROGRESS).count()
         actual_resolved = all_tickets.filter(status__in=[SupportTicket.Status.RESOLVED, SupportTicket.Status.CLOSED]).count()
 
-        # Summary baseline matching UI Reference Image 4
         summary = {
-            'total_tickets': max(128, actual_total),
+            'total_tickets': actual_total,
             'total_tickets_change': '↑ 12%',
-            'open': max(24, actual_open),
+            'open': actual_open,
             'open_change': '↑ 5%',
-            'in_progress': max(12, actual_in_progress),
+            'in_progress': actual_in_progress,
             'in_progress_change': '↑ 8%',
-            'resolved': max(92, actual_resolved),
+            'resolved': actual_resolved,
             'resolved_change': '↑ 15%',
             'actual_counts': {
                 'total': actual_total,

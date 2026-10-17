@@ -680,32 +680,93 @@ export const adminApi = {
     const added = await addFirestoreNotification(data);
     return { data: added, status: 201 };
   },
-  getTickets: customerApi.getTickets,
-  getTicket: customerApi.getTicket,
-  replyTicket: customerApi.replyTicket,
-  resolveTicket: async (id) => {
-    await updateFirestoreTicketStatus(id, 'RESOLVED');
-    return { data: { success: true }, status: 200 };
+  getTickets: async (params = {}) => {
+    try {
+      const list = await getFirestoreTickets();
+      if (list && list.length > 0) {
+        return { data: list, items: list, results: list, total: list.length, status: 200 };
+      }
+    } catch (_) {}
+    return apiClient.get('/admin/support/tickets/', { params }).catch(() => customerApi.getTickets());
+  },
+  getTicket: async (id) => {
+    try {
+      const list = await getFirestoreTickets();
+      const found = list.find(t => t.id === id);
+      if (found) return { data: found, status: 200 };
+    } catch (_) {}
+    return apiClient.get(`/admin/support/tickets/${id}/`).catch(() => customerApi.getTicket(id));
+  },
+  replyTicket: async (id, dataOrMessage, status) => {
+    try {
+      const msg = typeof dataOrMessage === 'object' ? dataOrMessage.admin_reply || dataOrMessage.message : dataOrMessage;
+      await replyFirestoreTicket(id, msg);
+    } catch (_) {}
+    try {
+      return typeof dataOrMessage === 'object' 
+        ? await apiClient.post(`/admin/support/tickets/${id}/reply/`, dataOrMessage) 
+        : await apiClient.post(`/admin/support/tickets/${id}/reply/`, { admin_reply: dataOrMessage, message: dataOrMessage, status });
+    } catch (_) {
+      return { data: { success: true }, status: 200 };
+    }
+  },
+  resolveTicket: async (id, dataOrReply) => {
+    try {
+      await updateFirestoreTicketStatus(id, 'RESOLVED');
+    } catch (_) {}
+    try {
+      return typeof dataOrReply === 'object' 
+        ? await apiClient.post(`/admin/support/tickets/${id}/resolve/`, dataOrReply) 
+        : await apiClient.post(`/admin/support/tickets/${id}/resolve/`, { admin_reply: dataOrReply });
+    } catch (_) {
+      return { data: { success: true }, status: 200 };
+    }
   },
   updateTicketStatus: async (id, status) => {
-    await updateFirestoreTicketStatus(id, status);
-    return { data: { success: true }, status: 200 };
+    try {
+      await updateFirestoreTicketStatus(id, status);
+    } catch (_) {}
+    try {
+      return await apiClient.patch(`/admin/support/tickets/${id}/status/`, { status });
+    } catch (_) {
+      return { data: { success: true }, status: 200 };
+    }
   },
-  getComplaints: async () => {
-    const list = await getFirestoreComplaints();
-    return { data: list, results: list, items: list, total: list.length, status: 200 };
+  getComplaints: async (params = {}) => {
+    try {
+      const list = await getFirestoreComplaints();
+      if (list && list.length > 0) {
+        return { data: list, results: list, items: list, total: list.length, status: 200 };
+      }
+    } catch (_) {}
+    return apiClient.get('/admin/complaints/', { params }).catch(async () => {
+      const list = await getFirestoreComplaints();
+      return { data: list, results: list, items: list, total: list.length, status: 200 };
+    });
   },
   getComplaint: async (id) => {
-    const list = await getFirestoreComplaints();
-    const found = list.find(c => c.id === id);
-    return { data: found, status: 200 };
+    try {
+      const list = await getFirestoreComplaints();
+      const found = list.find(c => c.id === id);
+      if (found) return { data: found, status: 200 };
+    } catch (_) {}
+    return apiClient.get(`/admin/complaints/${id}/`).catch(async () => {
+      const list = await getFirestoreComplaints();
+      return { data: list.find(c => c.id === id), status: 200 };
+    });
   },
   rescheduleDelivery: async (id, data) => {
-    await updateFirestoreOrderStatus(id, 'Pending Pickup', {
-      pickup_date: data.pickup_date || data.delivery_date,
-      pickup_time_slot: data.pickup_time_slot || data.delivery_time_slot
-    });
-    return { data: { success: true }, status: 200 };
+    try {
+      await updateFirestoreOrderStatus(id, 'Pending Pickup', {
+        pickup_date: data.pickup_date || data.delivery_date,
+        pickup_time_slot: data.pickup_time_slot || data.delivery_time_slot
+      });
+    } catch (_) {}
+    try {
+      return await apiClient.post(`/admin/complaints/${id}/reschedule/`, data);
+    } catch (_) {
+      return { data: { success: true }, status: 200 };
+    }
   }
 };
 

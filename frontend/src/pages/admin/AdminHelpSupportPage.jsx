@@ -131,7 +131,7 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Total Tickets</span>
-              <span className="stat-number">{supportSummary.total_tickets || 128}</span>
+              <span className="stat-number">{supportSummary?.total_tickets ?? supportTickets?.length ?? 0}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>12%</span>
@@ -149,7 +149,7 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Open</span>
-              <span className="stat-number">{supportSummary.open ?? 24}</span>
+              <span className="stat-number">{supportSummary?.open ?? (supportTickets?.filter(t => t.status === 'OPEN').length || 0)}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>5%</span>
@@ -167,7 +167,7 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">In Progress</span>
-              <span className="stat-number">{supportSummary.in_progress ?? 12}</span>
+              <span className="stat-number">{supportSummary?.in_progress ?? (supportTickets?.filter(t => t.status === 'IN_PROGRESS').length || 0)}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>8%</span>
@@ -185,7 +185,7 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Resolved</span>
-              <span className="stat-number">{supportSummary.resolved ?? 92}</span>
+              <span className="stat-number">{supportSummary?.resolved ?? (supportTickets?.filter(t => t.status === 'RESOLVED').length || 0)}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>15%</span>
@@ -429,8 +429,7 @@ export const AdminHelpSupportPage = () => {
         </div>
       </div>
 
-      {/* 6. Right-Side Support Ticket Drawer */}
-      <SupportTicketDrawer />
+      {/* 6. Right-Side Support Ticket Drawer rendered globally by AdminPortal */}
 
       {/* Scoped CSS Styles matching Reference Image 4 */}
       <style>{`
