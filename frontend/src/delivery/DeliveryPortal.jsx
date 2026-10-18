@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { deliveryApi, notificationsApi, authApi } from '../api/apiClient';
 import { subscribeOrders, updateFirestoreOrderStatus } from '../services/firestoreService';
+import { recordHubDropoff } from '../services/deliveryDataService';
 import { 
   Truck, 
   Package, 
@@ -166,6 +167,27 @@ export const DeliveryPortal = () => {
   const [selectedAddressTask, setSelectedAddressTask] = useState(null);
   const [addressCopied, setAddressCopied] = useState(false);
 
+  // Real-time dynamic memoization of tracker modal task against live tasks list
+  const activeModalTask = useMemo(() => {
+    if (!trackerModalTask) return null;
+    const cleanCode = (val) => String(val || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const modalId = cleanCode(trackerModalTask.id);
+    const modalNum = cleanCode(trackerModalTask.order_number || trackerModalTask.order_id);
+    const modalOid = cleanCode(trackerModalTask.orderId);
+
+    const liveTask = tasks.find(t => {
+      const tId = cleanCode(t.id);
+      const tNum = cleanCode(t.order_number || t.order_id);
+      const tOid = cleanCode(t.orderId);
+      return (modalId && tId && (modalId === tId || modalId.endsWith(tId) || tId.endsWith(modalId))) ||
+             (modalNum && tNum && (modalNum === tNum || modalNum.endsWith(tNum) || tNum.endsWith(modalNum))) ||
+             (modalId && tNum && (modalId === tNum || modalId.endsWith(tNum) || tNum.endsWith(modalId))) ||
+             (modalOid && tOid && modalOid === tOid);
+    });
+
+    return liveTask ? { ...trackerModalTask, ...liveTask } : trackerModalTask;
+  }, [trackerModalTask, tasks]);
+
   // Close pickup filter dropdown on outside click
   useEffect(() => {
     if (!showFilterDropdown) return;
@@ -190,9 +212,20 @@ export const DeliveryPortal = () => {
     }
   });
 
-  const [taskTrackerTimestamps, setTaskTrackerTimestamps] = useState({
-    'FC10285': {
-      ASSIGNED: '9:40 AM'
+  const [taskTrackerTimestamps, setTaskTrackerTimestamps] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fc_delivery_task_tracker_timestamps');
+      return saved ? JSON.parse(saved) : {
+        'FC10285': {
+          ASSIGNED: '9:40 AM'
+        }
+      };
+    } catch (_) {
+      return {
+        'FC10285': {
+          ASSIGNED: '9:40 AM'
+        }
+      };
     }
   });
 
@@ -219,34 +252,101 @@ export const DeliveryPortal = () => {
   }, []);
 
   const getTaskTrackerState = (task) => {
+    // 1. Direct explicit tracker stage if present
+    const trStage = String(task?.tracker_stage || task?.trackerStage || '').toUpperCase();
+    if (trStage && ['ASSIGNED', 'ON_THE_WAY', 'ARRIVED', 'COLLECTED', 'AT_HUB'].includes(trStage)) {
+      return trStage;
+    }
+
     const rawSt = String(task?.status || task?.raw_status || '').toUpperCase();
-    if (['DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'COMPLETED', 'DELIVERED'].includes(rawSt)) return 'AT_HUB';
+    const stageSt = String(task?.stage || '').toLowerCase();
+
+    // 2. Hub Drop-off / Completed
+    if (['DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'COMPLETED', 'DELIVERED'].includes(rawSt) || 
+        ['inspection', 'washing', 'drying', 'ironing', 'ready'].includes(stageSt) ||
+        Boolean(task?.droppedAtHub || task?.droppedOffAt)) {
+      return 'AT_HUB';
+    }
+
+    // 3. Collected / Picked Up
+    if (['PICKED_UP', 'COLLECTED'].includes(rawSt) || stageSt === 'picked' || Boolean(task?.collectedAt || task?.pickup_completed_at)) {
+      return 'COLLECTED';
+    }
+
+    // 4. Arrived at customer location
+    if (rawSt === 'ARRIVED' || stageSt === 'driver_arrived' || stageSt === 'arrived' || Boolean(task?.arrivedAt)) {
+      return 'ARRIVED';
+    }
+
+    // 5. On the way to customer
+    if (['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'ON_THE_WAY'].includes(rawSt) || stageSt === 'driver_on_the_way' || stageSt === 'on_the_way' || Boolean(task?.startedAt)) {
+      return 'ON_THE_WAY';
+    }
+
+    // 6. Check local memory/storage status as fallback
     const id = String(task?.id || task?.order_number || task?.order_id || 'FC10285');
     const orderNum = String(task?.order_number || task?.order_id || '');
     if (taskTrackerStatus[id]) return taskTrackerStatus[id];
     if (orderNum && taskTrackerStatus[orderNum]) return taskTrackerStatus[orderNum];
 
-    if (['PICKED_UP', 'COLLECTED'].includes(rawSt)) return 'COLLECTED';
-    if (rawSt === 'ARRIVED') return 'ARRIVED';
-    if (['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'ON_THE_WAY'].includes(rawSt)) return 'ON_THE_WAY';
     return 'ASSIGNED';
   };
 
-  const handleAdvanceTracker = (task, newStatus) => {
+  const handleAdvanceTracker = async (task, newStatus) => {
     const id = String(task?.id || task?.order_number || task?.order_id || 'FC10285');
     const orderNum = String(task?.order_number || task?.order_id || '');
-    const nowTime = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const now = Date.now();
+    const nowTime = new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-    // Map tracker status to backend task status
-    const statusMapping = {
-      ASSIGNED: 'PICKUP_ASSIGNED',
-      ON_THE_WAY: 'PICKUP_IN_PROGRESS',
-      ARRIVED: 'ARRIVED',
-      COLLECTED: 'PICKED_UP',
-      AT_HUB: 'DROPPED_OFF'
+    // Map tracker status to backend task and order fields
+    let orderStatus = 'Pending Pickup';
+    let rawStatus = 'PICKUP_ASSIGNED';
+    let stage = 'incoming';
+    let statusDisplay = 'Pickup Assigned';
+
+    const extraUpdates = {
+      tracker_stage: newStatus,
+      updatedAt: now
     };
-    const backendStatus = statusMapping[newStatus] || newStatus;
 
+    if (newStatus === 'ASSIGNED') {
+      orderStatus = 'Pending Pickup';
+      rawStatus = 'PICKUP_ASSIGNED';
+      stage = 'incoming';
+      statusDisplay = 'Pickup Assigned';
+    } else if (newStatus === 'ON_THE_WAY') {
+      orderStatus = 'Pending Pickup';
+      rawStatus = 'PICKUP_IN_PROGRESS';
+      stage = 'driver_on_the_way';
+      statusDisplay = 'Driver on the Way';
+      extraUpdates.startedAt = now;
+      extraUpdates.pickup_started_at = now;
+    } else if (newStatus === 'ARRIVED') {
+      orderStatus = 'Pending Pickup';
+      rawStatus = 'ARRIVED';
+      stage = 'driver_arrived';
+      statusDisplay = 'Driver Arrived';
+      extraUpdates.arrivedAt = now;
+    } else if (newStatus === 'COLLECTED') {
+      orderStatus = 'In Cleaning';
+      rawStatus = 'PICKED_UP';
+      stage = 'picked';
+      statusDisplay = 'Picked Up';
+      extraUpdates.collectedAt = now;
+      extraUpdates.pickup_completed_at = now;
+    } else if (newStatus === 'AT_HUB') {
+      orderStatus = 'DROPPED_OFF_AT_LAUNDRY';
+      rawStatus = 'DROPPED_OFF_AT_LAUNDRY';
+      stage = 'inspection';
+      statusDisplay = 'Dropped Off at Hub';
+      extraUpdates.currentLaundryStep = 'inspect';
+      extraUpdates.droppedAtHub = now;
+      extraUpdates.droppedOffAt = now;
+    }
+
+    const backendStatus = rawStatus;
+
+    // Immediate local state update for zero-latency UI feedback
     setTaskTrackerStatus(prev => {
       const next = { ...prev, [id]: newStatus };
       if (orderNum) next[orderNum] = newStatus;
@@ -256,42 +356,111 @@ export const DeliveryPortal = () => {
       return next;
     });
 
-    setTaskTrackerTimestamps(prev => ({
-      ...prev,
-      [id]: {
-        ...(prev[id] || {}),
-        [newStatus]: (prev[id] && prev[id][newStatus]) || nowTime
+    setTaskTrackerTimestamps(prev => {
+      const next = {
+        ...prev,
+        [id]: {
+          ...(prev[id] || {}),
+          [newStatus]: (prev[id] && prev[id][newStatus]) || nowTime
+        }
+      };
+      if (orderNum) {
+        next[orderNum] = {
+          ...(prev[orderNum] || {}),
+          [newStatus]: (prev[orderNum] && prev[orderNum][newStatus]) || nowTime
+        };
       }
-    }));
+      try {
+        localStorage.setItem('fc_delivery_task_tracker_timestamps', JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
 
     // Synchronize tasks state in memory
+    const cleanStr = (val) => String(val || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const cleanTargetId = cleanStr(id);
+    const cleanOrderNum = cleanStr(orderNum);
+
+    const matchesTask = (t) => {
+      if (!t) return false;
+      const tid = cleanStr(t.id);
+      const tNum = cleanStr(t.order_number || t.order_id);
+      const tOid = cleanStr(t.orderId);
+      return (cleanTargetId && (tid === cleanTargetId || tNum === cleanTargetId || tOid === cleanTargetId)) ||
+             (cleanOrderNum && (tid === cleanOrderNum || tNum === cleanOrderNum || tOid === cleanOrderNum)) ||
+             (cleanTargetId && tNum && (cleanTargetId.endsWith(tNum) || tNum.endsWith(cleanTargetId))) ||
+             (cleanOrderNum && tid && (cleanOrderNum.endsWith(tid) || tid.endsWith(cleanOrderNum)));
+    };
+
     setTasks(prev => prev.map(t => {
-      if (String(t.id) === id || String(t.order_number) === id || (orderNum && (String(t.id) === orderNum || String(t.order_number) === orderNum))) {
-        return { ...t, status: backendStatus, raw_status: backendStatus };
+      if (matchesTask(t)) {
+        return {
+          ...t,
+          status: backendStatus,
+          raw_status: backendStatus,
+          tracker_stage: newStatus,
+          stage,
+          ...extraUpdates
+        };
       }
       return t;
     }));
 
     // Synchronize demo fallback tasks
     demoTasks.forEach(dt => {
-      if (String(dt.id) === id || String(dt.order_number) === id || (orderNum && (String(dt.id) === orderNum || String(dt.order_number) === orderNum))) {
+      if (matchesTask(dt)) {
         dt.status = backendStatus;
+        dt.tracker_stage = newStatus;
       }
     });
 
     // Synchronize modal task if currently open
-    if (trackerModalTask && (String(trackerModalTask.id) === id || String(trackerModalTask.order_number) === id)) {
-      setTrackerModalTask(prev => prev ? { ...prev, status: backendStatus } : null);
-    }
-    if (selectedTaskDetail && (String(selectedTaskDetail.id) === id || String(selectedTaskDetail.order_number) === id)) {
-      setSelectedTaskDetail(prev => prev ? { ...prev, status: backendStatus } : null);
+    setTrackerModalTask(prev => {
+      if (!prev) return null;
+      if (matchesTask(prev)) {
+        return {
+          ...prev,
+          status: backendStatus,
+          raw_status: backendStatus,
+          tracker_stage: newStatus,
+          stage,
+          ...extraUpdates
+        };
+      }
+      return prev;
+    });
+
+    if (selectedTaskDetail && matchesTask(selectedTaskDetail)) {
+      setSelectedTaskDetail(prev => prev ? {
+        ...prev,
+        status: backendStatus,
+        raw_status: backendStatus,
+        tracker_stage: newStatus,
+        stage,
+        ...extraUpdates
+      } : null);
     }
 
-    // Call Firestore to update order status in primary database
-    updateFirestoreOrderStatus(id, newStatus === 'AT_HUB' ? 'In Cleaning' : (newStatus === 'COLLECTED' ? 'In Cleaning' : 'Pending Pickup'), {
-      stage: newStatus === 'AT_HUB' ? 'inspection' : 'incoming',
-      raw_status: backendStatus
-    }).catch(e => console.warn('Firestore advance tracker note:', e));
+    // Call Firestore to update order status and stages in real time
+    try {
+      await updateFirestoreOrderStatus(id, orderStatus, {
+        status_display: statusDisplay,
+        raw_status: rawStatus,
+        stage,
+        ...extraUpdates
+      });
+    } catch (e) {
+      console.warn('Firestore advance tracker note:', e);
+    }
+
+    // If dropping off at laundry hub, record official hubDropoff in RTDB so Laundry Staff sees it
+    if (newStatus === 'AT_HUB') {
+      try {
+        await recordHubDropoff(id, 'Central FabriCare Hub', currentUser || { uid: 'driver_01', name: 'Delivery Partner' }, 'Dropped off at hub via Live Tracker');
+      } catch (e) {
+        console.warn('recordHubDropoff note:', e);
+      }
+    }
 
     // Call backend API if real task (not demo)
     if (task?.id && !String(task.id).startsWith('FC1028')) {
@@ -1069,11 +1238,14 @@ export const DeliveryPortal = () => {
     const unsub = subscribeOrders((fireOrders) => {
       if (!isSubscribed) return;
       if (Array.isArray(fireOrders) && fireOrders.length > 0) {
+        const cleanCode = (val) => String(val || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
         const fireTasks = fireOrders.map(o => {
           const rawSt = String(o.raw_status || o.status || '').toUpperCase();
           const dispSt = String(o.status_display || '');
           const stageSt = String(o.stage || '').toLowerCase();
           const typeSt = String(o.type || o.raw_type || '').toLowerCase();
+          const trStage = String(o.tracker_stage || o.taskTrackerStatus || '').toUpperCase();
 
           const isExplicitDelivery = typeSt === 'delivery' || 
                                      ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED'].includes(rawSt) || 
@@ -1084,13 +1256,20 @@ export const DeliveryPortal = () => {
           let taskStatus = 'PICKUP_ASSIGNED';
           const normalizedStatus = rawSt;
           if (isPickup) {
-            if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'DROPPED OFF AT HUB', 'AT_HUB', 'COMPLETED'].includes(normalizedStatus) || o.status === 'Dropped Off at Hub') {
+            if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'DROPPED OFF AT HUB', 'AT_HUB'].includes(normalizedStatus) ||
+                trStage === 'AT_HUB' ||
+                dispSt === 'Dropped Off at Hub' ||
+                stageSt === 'inspection' ||
+                Boolean(o.droppedAtHub || o.droppedOffAt) ||
+                (normalizedStatus === 'COMPLETED' && isPickup)) {
               taskStatus = 'DROPPED_OFF';
-            } else if (['PICKED_UP', 'COLLECTED', 'IN CLEANING', 'IN_CLEANING', 'RECEIVED', 'RECEIVED_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY'].includes(normalizedStatus) || o.status === 'In Cleaning') {
+            } else if (['PICKED_UP', 'COLLECTED', 'IN CLEANING', 'IN_CLEANING', 'RECEIVED', 'RECEIVED_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY'].includes(normalizedStatus) ||
+                       o.status === 'In Cleaning' || stageSt === 'picked' || trStage === 'COLLECTED' || Boolean(o.collectedAt || o.pickup_completed_at)) {
               taskStatus = 'PICKED_UP';
-            } else if (normalizedStatus === 'ARRIVED') {
+            } else if (normalizedStatus === 'ARRIVED' || stageSt === 'driver_arrived' || trStage === 'ARRIVED' || Boolean(o.arrivedAt)) {
               taskStatus = 'ARRIVED';
-            } else if (['PICKUP_IN_PROGRESS', 'ON_THE_WAY', 'IN_TRANSIT'].includes(normalizedStatus)) {
+            } else if (['PICKUP_IN_PROGRESS', 'ON_THE_WAY', 'IN_TRANSIT'].includes(normalizedStatus) ||
+                       stageSt === 'driver_on_the_way' || trStage === 'ON_THE_WAY' || Boolean(o.startedAt || o.pickup_started_at)) {
               taskStatus = 'PICKUP_IN_PROGRESS';
             } else {
               taskStatus = 'PICKUP_ASSIGNED';
@@ -1124,6 +1303,13 @@ export const DeliveryPortal = () => {
 
           const taskTimestamp = o.completedAt || o.deliveredAt || o.delivered_at || o.droppedOffAt || o.updatedAt || o.placedAt || o.createdAt || 0;
 
+          const effectiveTrackerStage = trStage || (
+            taskStatus === 'DROPPED_OFF' ? 'AT_HUB' : 
+            (taskStatus === 'PICKED_UP' ? 'COLLECTED' : 
+            (taskStatus === 'ARRIVED' ? 'ARRIVED' : 
+            (taskStatus === 'PICKUP_IN_PROGRESS' ? 'ON_THE_WAY' : 'ASSIGNED')))
+          );
+
           return {
             id: o.docId || o.id,
             orderId: o.docId || o.id,
@@ -1137,6 +1323,8 @@ export const DeliveryPortal = () => {
             raw_type: isPickup ? 'pickup' : 'delivery',
             raw_status: taskStatus,
             status: taskStatus,
+            tracker_stage: effectiveTrackerStage,
+            stage: o.stage || (taskStatus === 'DROPPED_OFF' ? 'inspection' : (taskStatus === 'PICKED_UP' ? 'picked' : (taskStatus === 'ARRIVED' ? 'driver_arrived' : (taskStatus === 'PICKUP_IN_PROGRESS' ? 'driver_on_the_way' : 'incoming')))),
             time_slot: o.pickup_time_slot || o.timeText || (o.pickup?.from && o.pickup?.to ? `${o.pickup.from} – ${o.pickup.to}` : '10:00 AM – 12:00 PM'),
             pickup_address: o.pickup_address || o.customer?.address || 'Bengaluru',
             delivery_address: o.delivery_address || o.customer?.address || 'Bengaluru',
@@ -1150,9 +1338,13 @@ export const DeliveryPortal = () => {
             estimated_amount: finalAmount,
             delivery_date: o.pickup?.date || o.pickup_date || 'Today',
             pickup_date: o.pickup?.date || o.pickup_date || 'Today',
+            startedAt: o.startedAt || o.started_at || o.pickup_started_at,
+            arrivedAt: o.arrivedAt || o.arrived_at,
+            collectedAt: o.collectedAt || o.collected_at || o.pickup_completed_at,
+            droppedAtHub: o.droppedAtHub || o.droppedOffAt,
             completedAt: o.completedAt || o.deliveredAt || o.delivered_at,
             deliveredAt: o.deliveredAt || o.delivered_at,
-            droppedOffAt: o.droppedOffAt,
+            droppedOffAt: o.droppedOffAt || o.droppedAtHub,
             timestamp: taskTimestamp,
             updatedAt: o.updatedAt || taskTimestamp,
             createdAt: o.createdAt
@@ -1161,16 +1353,20 @@ export const DeliveryPortal = () => {
 
         setTasks(prev => {
           const updated = [...prev];
-          const cleanCode = (val) => String(val || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
           fireTasks.forEach(ft => {
-            const cleanFtNum = cleanCode(ft.order_number || ft.id);
+            const cleanFtId = cleanCode(ft.id);
+            const cleanFtNum = cleanCode(ft.order_number || ft.order_id);
+            const cleanFtOid = cleanCode(ft.orderId);
+
             const idx = updated.findIndex(t => {
               const cleanTId = cleanCode(t.id);
               const cleanTNum = cleanCode(t.order_number || t.order_id);
+              const cleanTOid = cleanCode(t.orderId);
               return (cleanTId && cleanFtNum && (cleanTId === cleanFtNum || cleanTId.endsWith(cleanFtNum) || cleanFtNum.endsWith(cleanTId))) ||
                      (cleanTNum && cleanFtNum && (cleanTNum === cleanFtNum || cleanTNum.endsWith(cleanFtNum) || cleanFtNum.endsWith(cleanTNum))) ||
-                     (t.orderId && ft.orderId && String(t.orderId) === String(ft.orderId));
+                     (cleanTId && cleanFtId && (cleanTId === cleanFtId || cleanTId.endsWith(cleanFtId) || cleanFtId.endsWith(cleanTId))) ||
+                     (cleanTOid && cleanFtOid && cleanTOid === cleanFtOid);
             });
 
             if (idx >= 0) {
@@ -1178,6 +1374,12 @@ export const DeliveryPortal = () => {
                 ...updated[idx],
                 status: ft.status || updated[idx].status,
                 raw_status: ft.raw_status || updated[idx].raw_status,
+                tracker_stage: ft.tracker_stage || updated[idx].tracker_stage,
+                stage: ft.stage || updated[idx].stage,
+                startedAt: ft.startedAt || updated[idx].startedAt,
+                arrivedAt: ft.arrivedAt || updated[idx].arrivedAt,
+                collectedAt: ft.collectedAt || updated[idx].collectedAt,
+                droppedAtHub: ft.droppedAtHub || updated[idx].droppedAtHub,
                 timestamp: ft.timestamp || updated[idx].timestamp,
                 updatedAt: ft.updatedAt || updated[idx].updatedAt,
                 completedAt: ft.completedAt || updated[idx].completedAt,
@@ -1193,18 +1395,88 @@ export const DeliveryPortal = () => {
                 pickup_area: updated[idx].pickup_area || ft.pickup_area,
                 delivery_area: updated[idx].delivery_area || ft.delivery_area
               };
-            } else if (updated.length === 0) {
+            } else {
               const exists = updated.some(existing => {
-                const exCode = cleanCode(existing.order_number || existing.id);
-                return exCode && cleanFtNum && (exCode === cleanFtNum || exCode.endsWith(cleanFtNum) || cleanFtNum.endsWith(exCode));
+                const cleanTId = cleanCode(existing.id);
+                const cleanTNum = cleanCode(existing.order_number || existing.order_id);
+                const cleanTOid = cleanCode(existing.orderId);
+                return (cleanTId && cleanFtNum && (cleanTId === cleanFtNum || cleanTId.endsWith(cleanFtNum) || cleanFtNum.endsWith(cleanTId))) ||
+                       (cleanTNum && cleanFtNum && (cleanTNum === cleanFtNum || cleanTNum.endsWith(cleanFtNum) || cleanFtNum.endsWith(cleanTNum))) ||
+                       (cleanTId && cleanFtId && (cleanTId === cleanFtId || cleanTId.endsWith(cleanFtId) || cleanFtId.endsWith(cleanTId))) ||
+                       (cleanTOid && cleanFtOid && cleanTOid === cleanFtOid);
               });
               if (!exists) {
-                updated.push(ft);
+                updated.unshift(ft);
               }
             }
           });
           return updated;
         });
+
+        // Synchronize tracker modal task in real time if open
+        setTrackerModalTask(currentModal => {
+          if (!currentModal) return null;
+          const currentModalId = cleanCode(currentModal.id);
+          const currentModalNum = cleanCode(currentModal.order_number || currentModal.order_id);
+          const currentModalOid = cleanCode(currentModal.orderId);
+
+          const matchedFt = fireTasks.find(ft => {
+            const cleanFtId = cleanCode(ft.id);
+            const cleanFtNum = cleanCode(ft.order_number || ft.order_id);
+            const cleanFtOid = cleanCode(ft.orderId);
+            return (currentModalId && cleanFtNum && (currentModalId === cleanFtNum || currentModalId.endsWith(cleanFtNum) || cleanFtNum.endsWith(currentModalId))) ||
+                   (currentModalNum && cleanFtNum && (currentModalNum === cleanFtNum || currentModalNum.endsWith(cleanFtNum) || cleanFtNum.endsWith(currentModalNum))) ||
+                   (currentModalId && cleanFtId && (currentModalId === cleanFtId || currentModalId.endsWith(cleanFtId) || cleanFtId.endsWith(currentModalId))) ||
+                   (currentModalOid && cleanFtOid && currentModalOid === cleanFtOid);
+          });
+
+          if (matchedFt) {
+            return {
+              ...currentModal,
+              ...matchedFt,
+              status: matchedFt.status || currentModal.status,
+              raw_status: matchedFt.raw_status || currentModal.raw_status,
+              tracker_stage: matchedFt.tracker_stage || currentModal.tracker_stage,
+              stage: matchedFt.stage || currentModal.stage,
+              startedAt: matchedFt.startedAt || currentModal.startedAt,
+              arrivedAt: matchedFt.arrivedAt || currentModal.arrivedAt,
+              collectedAt: matchedFt.collectedAt || currentModal.collectedAt,
+              droppedAtHub: matchedFt.droppedAtHub || currentModal.droppedAtHub,
+            };
+          }
+          return currentModal;
+        });
+
+        // Synchronize selectedTaskDetail in real time if open
+        setSelectedTaskDetail(currentDetail => {
+          if (!currentDetail) return null;
+          const currentDetailId = cleanCode(currentDetail.id);
+          const currentDetailNum = cleanCode(currentDetail.order_number || currentDetail.order_id);
+          const currentDetailOid = cleanCode(currentDetail.orderId);
+
+          const matchedFt = fireTasks.find(ft => {
+            const cleanFtId = cleanCode(ft.id);
+            const cleanFtNum = cleanCode(ft.order_number || ft.order_id);
+            const cleanFtOid = cleanCode(ft.orderId);
+            return (currentDetailId && cleanFtNum && (currentDetailId === cleanFtNum || currentDetailId.endsWith(cleanFtNum) || cleanFtNum.endsWith(currentDetailId))) ||
+                   (currentDetailNum && cleanFtNum && (currentDetailNum === cleanFtNum || currentDetailNum.endsWith(cleanFtNum) || cleanFtNum.endsWith(currentDetailNum))) ||
+                   (currentDetailId && cleanFtId && (currentDetailId === cleanFtId || currentDetailId.endsWith(cleanFtId) || cleanFtId.endsWith(currentDetailId))) ||
+                   (currentDetailOid && cleanFtOid && currentDetailOid === cleanFtOid);
+          });
+
+          if (matchedFt) {
+            return {
+              ...currentDetail,
+              ...matchedFt,
+              status: matchedFt.status || currentDetail.status,
+              raw_status: matchedFt.raw_status || currentDetail.raw_status,
+              tracker_stage: matchedFt.tracker_stage || currentDetail.tracker_stage,
+              stage: matchedFt.stage || currentDetail.stage,
+            };
+          }
+          return currentDetail;
+        });
+
         setLoading(false);
       }
     });
@@ -4761,7 +5033,8 @@ export const DeliveryPortal = () => {
       )}
 
       {/* MODAL: LIVE PICKUP TRACKER MODAL */}
-      {trackerModalTask && (() => {
+      {activeModalTask && (() => {
+        const trackerModalTask = activeModalTask;
         const currentStatus = getTaskTrackerState(trackerModalTask);
         const taskId = String(trackerModalTask.id || trackerModalTask.order_number || 'FC10285');
         const stepMap = { ASSIGNED: 0, ON_THE_WAY: 1, ARRIVED: 2, COLLECTED: 3, AT_HUB: 4 };
@@ -4923,13 +5196,43 @@ export const DeliveryPortal = () => {
 
                       let stepSubLabel = 'Pending';
                       if (isStepCompleted) {
-                        if (step.id === 'AT_HUB') {
+                        const fmtTime = (ts) => {
+                          if (!ts) return null;
+                          const d = new Date(ts);
+                          return !isNaN(d.getTime()) ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null;
+                        };
+
+                        if (step.id === 'ASSIGNED') {
+                          stepSubLabel = taskTrackerTimestamps[taskId]?.ASSIGNED ||
+                            fmtTime(trackerModalTask.createdAt) ||
+                            fmtTime(trackerModalTask.timestamp) ||
+                            'Order accepted';
+                        } else if (step.id === 'ON_THE_WAY') {
+                          stepSubLabel = taskTrackerTimestamps[taskId]?.ON_THE_WAY ||
+                            fmtTime(trackerModalTask.startedAt) ||
+                            fmtTime(trackerModalTask.pickup_started_at) ||
+                            fmtTime(trackerModalTask.updatedAt) ||
+                            'En route';
+                        } else if (step.id === 'ARRIVED') {
+                          stepSubLabel = taskTrackerTimestamps[taskId]?.ARRIVED ||
+                            fmtTime(trackerModalTask.arrivedAt) ||
+                            fmtTime(trackerModalTask.updatedAt) ||
+                            'Reached';
+                        } else if (step.id === 'COLLECTED') {
+                          stepSubLabel = taskTrackerTimestamps[taskId]?.COLLECTED ||
+                            fmtTime(trackerModalTask.collectedAt) ||
+                            fmtTime(trackerModalTask.pickup_completed_at) ||
+                            fmtTime(trackerModalTask.completedAt) ||
+                            'Bags recorded';
+                        } else if (step.id === 'AT_HUB') {
                           stepSubLabel = taskTrackerTimestamps[taskId]?.AT_HUB ||
-                            (trackerModalTask.completed_at ? new Date(trackerModalTask.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') ||
-                            (trackerModalTask.updated_at ? new Date(trackerModalTask.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') ||
-                            '10:30 AM';
+                            fmtTime(trackerModalTask.droppedAtHub) ||
+                            fmtTime(trackerModalTask.droppedOffAt) ||
+                            fmtTime(trackerModalTask.completedAt) ||
+                            fmtTime(trackerModalTask.updatedAt) ||
+                            'Hub received';
                         } else {
-                          stepSubLabel = taskTrackerTimestamps[taskId]?.[step.id] || (step.id === 'ASSIGNED' ? '9:40 AM' : '10:05 AM');
+                          stepSubLabel = taskTrackerTimestamps[taskId]?.[step.id] || 'Done';
                         }
                       } else if (isStepCurrent) {
                         if (step.id === 'ON_THE_WAY') stepSubLabel = 'Heading to customer';

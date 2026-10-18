@@ -429,12 +429,16 @@ export const normalizeFirestoreOrder = (docData, docId) => {
   // Status mapping
   let uiStatus = d.status_display || d.status || 'Pending Pickup';
   const rawStatus = String(d.status || d.orderStatus || d.raw_status || '').toUpperCase();
-  if (['PENDING', 'ACCEPTED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PLACED', 'PAYMENT_PENDING'].includes(rawStatus)) {
-    uiStatus = 'Pending Pickup';
-  } else if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF'].includes(rawStatus)) {
+  if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF'].includes(rawStatus)) {
     uiStatus = 'Dropped Off at Hub';
   } else if (['PICKED_UP', 'RECEIVED_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'WASHING', 'DRYING', 'IRONING', 'IN_CLEANING'].includes(rawStatus)) {
     uiStatus = 'In Cleaning';
+  } else if (['ARRIVED'].includes(rawStatus)) {
+    uiStatus = 'Driver Arrived';
+  } else if (['PICKUP_IN_PROGRESS', 'ON_THE_WAY', 'IN_TRANSIT'].includes(rawStatus)) {
+    uiStatus = 'Driver on the Way';
+  } else if (['PENDING', 'ACCEPTED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PLACED', 'PAYMENT_PENDING'].includes(rawStatus)) {
+    uiStatus = 'Pending Pickup';
   } else if (['QUALITY_CHECK', 'PACKED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY'].includes(rawStatus)) {
     uiStatus = 'Ready for Delivery';
   } else if (['DELIVERED', 'COMPLETED', 'CLOSED'].includes(rawStatus)) {
@@ -910,7 +914,7 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
         } catch (_) {}
       }
 
-      // If order was dropped off at laundry or updated delivery stage, synchronize associated tasks
+      // If order was dropped off at laundry or updated pickup/delivery stage, synchronize associated tasks
       try {
         const tasksSnap = await get(ref(rtdb, 'tasks'));
         if (tasksSnap.exists()) {
@@ -921,7 +925,43 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
                 if (tVal.type === 'pickup') {
                   await update(ref(rtdb, `tasks/${tId}`), {
                     status: 'completed',
+                    tracker_stage: 'AT_HUB',
                     droppedOffAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'PICKED_UP' || rawStatus === 'COLLECTED' || status === 'Picked Up') {
+                if (tVal.type === 'pickup') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'picked_up',
+                    tracker_stage: 'COLLECTED',
+                    completedAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'ARRIVED') {
+                if (tVal.type === 'pickup') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'arrived',
+                    tracker_stage: 'ARRIVED',
+                    arrivedAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'PICKUP_IN_PROGRESS' || rawStatus === 'ON_THE_WAY') {
+                if (tVal.type === 'pickup') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'on_the_way',
+                    tracker_stage: 'ON_THE_WAY',
+                    startedAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'PICKUP_ASSIGNED' || rawStatus === 'ASSIGNED') {
+                if (tVal.type === 'pickup') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'assigned',
+                    tracker_stage: 'ASSIGNED',
                     updatedAt: now
                   });
                 }
