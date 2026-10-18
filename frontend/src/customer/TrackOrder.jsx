@@ -254,21 +254,138 @@ export const TrackOrder = () => {
     return `${baseDayMonth}, ${fallbackTime}`;
   };
 
-  const getActiveStepIndex = (status) => {
-    if (!status) return 0;
-    const s = String(status).toUpperCase();
-    if (['DELIVERED', 'COMPLETED'].includes(s)) return 6;
-    if (['OUT_FOR_DELIVERY', 'IN_TRANSIT'].includes(s)) return 5;
-    if (['READY_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'READY', 'PACKED'].includes(s)) return 4;
-    if (['IN_PROCESS', 'PROCESSING', 'WASHING', 'DRYING', 'IRONING', 'QUALITY_CHECK', 'INSPECTION', 'IN_CLEANING'].includes(s)) return 3;
-    if (['DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'AT_FACILITY', 'RECEIVED'].includes(s)) return 2;
-    if (['PICKED_UP', 'PICKUP_IN_PROGRESS'].includes(s)) return 1;
-    if (['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PLACED', 'PAYMENT_PENDING'].includes(s)) return 0;
+  const getActiveStepIndex = (status, stage) => {
+    if (!status && !stage) return 0;
+    const clean = String(status || '')
+      .toUpperCase()
+      .replace(/[^A-Z]/g, '');
+    const cleanStage = String(stage || '')
+      .toUpperCase()
+      .replace(/[^A-Z]/g, '');
+
+    // Step 6: Delivered / Completed
+    if (clean.includes('DELIVERED') || clean.includes('COMPLETED') || cleanStage.includes('DELIVERED') || cleanStage.includes('COMPLETED')) return 6;
+
+    // Step 5: Out for delivery / In transit / Dispatched
+    if (
+      clean.includes('OUTFORDELIVERY') ||
+      clean.includes('INTRANSIT') ||
+      clean.includes('DISPATCHED') ||
+      cleanStage === 'OUTFORDELIVERY' ||
+      cleanStage.includes('INTRANSIT')
+    ) return 5;
+
+    // Step 4: Ready for delivery / Packed / Delivery assigned
+    if (
+      clean.includes('READYFORDELIVERY') ||
+      clean === 'READY' ||
+      clean.includes('DELIVERYASSIGNED') ||
+      clean === 'PACKED' ||
+      cleanStage === 'READY' ||
+      cleanStage === 'PACKED' ||
+      cleanStage.includes('READYFORDELIVERY')
+    ) return 4;
+
+    // Step 3: In cleaning / Washing / Drying / Ironing / Quality check / Processing
+    if (
+      clean.includes('CLEANING') ||
+      clean.includes('PROCESS') ||
+      clean.includes('WASH') ||
+      clean.includes('DRY') ||
+      clean.includes('IRON') ||
+      clean.includes('FOLD') ||
+      clean.includes('INSPECT') ||
+      clean.includes('QUALITY') ||
+      cleanStage === 'WASHING' ||
+      cleanStage === 'DRYING' ||
+      cleanStage === 'IRONING' ||
+      cleanStage === 'PROCESSING' ||
+      cleanStage.includes('CLEAN')
+    ) return 3;
+
+    // Step 2: At facility / Hub / Received / Dropped off
+    if (
+      clean.includes('ATLAUNDRY') ||
+      clean.includes('ATFACILITY') ||
+      clean.includes('DROPPEDOFF') ||
+      clean.includes('RECEIVED') ||
+      cleanStage === 'ATFACILITY' ||
+      cleanStage === 'RECEIVED' ||
+      cleanStage.includes('LAUNDRY')
+    ) return 2;
+
+    // Step 1: Picked up / Arrived / Pickup in progress
+    if (
+      clean.includes('PICKEDUP') ||
+      clean.includes('PICKUPINPROGRESS') ||
+      clean.includes('ARRIVED') ||
+      cleanStage === 'PICKEDUP'
+    ) return 1;
+
+    // Step 0: Pending Pickup / Scheduled / Order Placed / Accepted
+    if (
+      clean.includes('PENDING') ||
+      clean.includes('SCHEDULED') ||
+      clean.includes('ACCEPTED') ||
+      clean.includes('PLACED') ||
+      clean.includes('INCOMING') ||
+      cleanStage === 'INCOMING'
+    ) return 0;
+
     return 0;
   };
 
-  const isDelivered = String(order.status || '').toUpperCase() === 'DELIVERED' || String(order.status || '').toUpperCase() === 'COMPLETED';
-  const activeStepIndex = isDelivered ? 6 : getActiveStepIndex(order.status);
+  const isDelivered = String(order.status || '').toUpperCase().includes('DELIVERED') || String(order.status || '').toUpperCase().includes('COMPLETED');
+  const activeStepIndex = isDelivered ? 6 : getActiveStepIndex(order.status_display || order.status, order.stage);
+
+  const verticalMilestones = [
+    {
+      id: 'placed',
+      title: 'Order placed',
+      desc: 'We received your order',
+      icon: ClipboardList
+    },
+    {
+      id: 'picked',
+      title: 'Picked up',
+      desc: order.driver && order.driver !== 'Not Assigned'
+        ? `Collected by ${order.driver}`
+        : (order.assigned_delivery_staff_name ? `Collected by ${order.assigned_delivery_staff_name}` : 'Collected by your delivery partner'),
+      icon: Truck
+    },
+    {
+      id: 'facility',
+      title: 'At the facility',
+      desc: 'Items weighed and quality checked',
+      icon: WashingMachine
+    },
+    {
+      id: 'cleaning',
+      title: 'Cleaning in progress',
+      desc: order.stage ? `Current stage: ${order.stage}` : 'Washing, drying and ironing',
+      icon: Sparkles
+    },
+    {
+      id: 'ready',
+      title: 'Ready for delivery',
+      desc: 'Items inspected, folded and packaged',
+      icon: Package
+    },
+    {
+      id: 'delivery',
+      title: 'Out for delivery',
+      desc: order.driver && order.driver !== 'Not Assigned'
+        ? `${order.driver} is on the way to your address`
+        : 'Delivering safely to your doorstep',
+      icon: Truck
+    },
+    {
+      id: 'delivered',
+      title: 'Delivered',
+      desc: 'Order completed and handed over safely',
+      icon: Home
+    }
+  ];
 
   const trackingSteps = [
     {
@@ -383,9 +500,9 @@ export const TrackOrder = () => {
             <span className="metric-label">Order Number</span>
             <div className="metric-value-row">
               <span className="metric-value-bold">{orderNumberDisplay}</span>
-              <span className="status-pill in-progress">
+              <span className={`status-pill ${isDelivered ? 'completed' : 'in-progress'}`}>
                 <span className="pill-dot"></span>
-                <span>{order.status === 'DELIVERED' ? 'Delivered' : 'In Progress'}</span>
+                <span>{order.status_display || order.status || (isDelivered ? 'Delivered' : 'Live Tracking')}</span>
               </span>
             </div>
           </div>
@@ -509,89 +626,42 @@ export const TrackOrder = () => {
           </div>
 
           <div className="vertical-journey-timeline">
-            {/* Event 1 */}
-            <div className="journey-event-item">
-              <div className="event-node-col">
-                <div className="event-node-bubble checked">
-                  <Check size={11} strokeWidth={3} />
-                </div>
-                <div className="event-timeline-line"></div>
-              </div>
-              <div className="event-info-col">
-                <div className="event-title-time">
-                  <h5 className="event-title">Order placed</h5>
-                  <span className="event-status-tag completed">Completed</span>
-                </div>
-                <p className="event-desc">We received your order</p>
-              </div>
-            </div>
+            {verticalMilestones.map((m, idx) => {
+              const isEventCompleted = isDelivered || idx < activeStepIndex;
+              const isEventActive = !isDelivered && idx === activeStepIndex;
+              const isEventPending = !isDelivered && idx > activeStepIndex;
+              const IconComponent = m.icon;
 
-            {/* Event 2 */}
-            <div className="journey-event-item">
-              <div className="event-node-col">
-                <div className="event-node-bubble checked">
-                  <Check size={11} strokeWidth={3} />
+              return (
+                <div key={m.id} className="journey-event-item">
+                  <div className="event-node-col">
+                    <div className={`event-node-bubble ${isEventCompleted ? 'checked' : isEventActive ? 'active-icon-node' : 'concentric-node'}`}>
+                      {isEventCompleted ? (
+                        <Check size={11} strokeWidth={3} />
+                      ) : isEventActive ? (
+                        <IconComponent size={12} />
+                      ) : (
+                        <span className="concentric-dot"></span>
+                      )}
+                    </div>
+                    {idx < verticalMilestones.length - 1 && (
+                      <div className={`event-timeline-line ${isEventCompleted ? '' : 'pending-timeline-line'}`}></div>
+                    )}
+                  </div>
+                  <div className="event-info-col">
+                    <div className="event-title-time">
+                      <h5 className={`event-title ${isEventActive ? 'active-teal' : isEventPending ? 'pending-title' : ''}`}>
+                        {m.title}
+                      </h5>
+                      <span className={`event-status-tag ${isEventCompleted ? 'completed' : isEventActive ? 'in-progress' : 'pending'}`}>
+                        {isEventCompleted ? 'Completed' : isEventActive ? 'In Progress' : 'Pending'}
+                      </span>
+                    </div>
+                    <p className="event-desc">{m.desc}</p>
+                  </div>
                 </div>
-                <div className="event-timeline-line"></div>
-              </div>
-              <div className="event-info-col">
-                <div className="event-title-time">
-                  <h5 className="event-title">Picked up</h5>
-                  <span className="event-status-tag completed">Completed</span>
-                </div>
-                <p className="event-desc">Collected by your delivery partner</p>
-              </div>
-            </div>
-
-            {/* Event 3 */}
-            <div className="journey-event-item">
-              <div className="event-node-col">
-                <div className="event-node-bubble checked">
-                  <Check size={11} strokeWidth={3} />
-                </div>
-                <div className="event-timeline-line"></div>
-              </div>
-              <div className="event-info-col">
-                <div className="event-title-time">
-                  <h5 className="event-title">At the facility</h5>
-                  <span className="event-status-tag completed">Completed</span>
-                </div>
-                <p className="event-desc">Items weighed and quality checked</p>
-              </div>
-            </div>
-
-            {/* Event 4 */}
-            <div className="journey-event-item">
-              <div className="event-node-col">
-                <div className="event-node-bubble active-icon-node">
-                  <WashingMachine size={12} />
-                </div>
-                <div className="event-timeline-line pending-timeline-line"></div>
-              </div>
-              <div className="event-info-col">
-                <div className="event-title-time">
-                  <h5 className="event-title active-teal">Cleaning in progress</h5>
-                  <span className="event-status-tag in-progress">In Progress</span>
-                </div>
-                <p className="event-desc">Washing, drying and ironing</p>
-              </div>
-            </div>
-
-            {/* Event 5: Delivery */}
-            <div className="journey-event-item">
-              <div className="event-node-col">
-                <div className="event-node-bubble concentric-node">
-                  <span className="concentric-dot"></span>
-                </div>
-              </div>
-              <div className="event-info-col">
-                <div className="event-title-time">
-                  <h5 className="event-title pending-title">Delivery</h5>
-                  <span className="event-status-tag pending">Pending</span>
-                </div>
-                <p className="event-desc">Delivered safely to your doorstep</p>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
 
@@ -628,7 +698,9 @@ export const TrackOrder = () => {
                 <div className="detail-text-stack">
                   <span className="detail-box-label">Pickup Partner</span>
                   <span className="detail-box-value">
-                    {order.assigned_delivery_staff_name || 'Awaiting assignment'}
+                    {order.driver && order.driver !== 'Not Assigned'
+                      ? order.driver
+                      : (order.assigned_delivery_staff_name || 'Awaiting assignment')}
                   </span>
                 </div>
               </div>

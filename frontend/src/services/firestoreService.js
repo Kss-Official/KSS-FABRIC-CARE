@@ -542,7 +542,10 @@ export const subscribeOrders = (callback, errorCallback) => {
 export const subscribeOrderById = (orderId, callback, errorCallback) => {
   if (!isFirebaseConfigured || !orderId) return () => {};
   try {
-    const cleanId = String(orderId).trim();
+    const rawId = String(orderId).trim();
+    const cleanId = rawId.replace(/^#/, '');
+    const withHash = `#${cleanId}`;
+
     if (rtdb) {
       const orderRef = ref(rtdb, `orders/${cleanId}`);
       const unsub = onValue(orderRef, async (snap) => {
@@ -574,23 +577,29 @@ export const subscribeOrderById = (orderId, callback, errorCallback) => {
     }
 
     if (!db) return () => {};
-    const docRef = doc(db, 'orders', cleanId);
+    // Real-time listener on orders collection matching ID
+    const ordersCol = collection(db, 'orders');
     return onSnapshot(
-      docRef,
+      ordersCol,
       (snapshot) => {
-        if (snapshot.exists()) {
-          callback(normalizeFirestoreOrder(snapshot.data(), snapshot.id));
+        const foundDoc = snapshot.docs.find(d => {
+          const docId = d.id;
+          const data = d.data();
+          const dId = String(data.id || '').replace(/^#/, '');
+          const dNum = String(data.order_number || data.orderNumber || data.code || '').replace(/^#/, '');
+          return (
+            docId === rawId ||
+            docId === withHash ||
+            docId === cleanId ||
+            dId === cleanId ||
+            dNum === cleanId
+          );
+        });
+
+        if (foundDoc) {
+          callback(normalizeFirestoreOrder(foundDoc.data(), foundDoc.id));
         } else {
-          // If not found by docId, check query where id == cleanId
-          const q = query(collection(db, 'orders'), where('id', '==', cleanId));
-          getDocs(q).then(qSnap => {
-            if (!qSnap.empty) {
-              const first = qSnap.docs[0];
-              callback(normalizeFirestoreOrder(first.data(), first.id));
-            } else {
-              callback(null);
-            }
-          }).catch(() => callback(null));
+          callback(null);
         }
       },
       (err) => {
@@ -700,35 +709,41 @@ export const createFirestoreOrder = async (orderData) => {
 export const updateFirestoreOrderStatus = async (orderId, status, extraFields = {}) => {
   if (!isFirebaseConfigured || !orderId) return true;
   try {
-    let cleanId = String(orderId).trim();
+    const rawId = String(orderId).trim();
+    let cleanId = rawId.replace(/^#/, '');
+    const candidateIds = [rawId, `#${cleanId}`, cleanId];
     const targetDb = rtdb || db;
     if (!targetDb) return true;
 
     let key = cleanId;
 
     // If cleanId is a task ID (e.g. starts with task_pk_ or in tasks node), resolve to underlying orderId
-    try {
-      const taskSnap = await get(ref(targetDb, `tasks/${cleanId}`));
-      if (taskSnap.exists() && taskSnap.val().orderId) {
-        key = String(taskSnap.val().orderId).trim();
-        cleanId = key;
-      }
-    } catch (_) {}
+    if (rtdb) {
+      try {
+        const taskSnap = await get(ref(rtdb, `tasks/${cleanId}`));
+        if (taskSnap.exists() && taskSnap.val().orderId) {
+          key = String(taskSnap.val().orderId).trim();
+          cleanId = key;
+        }
+      } catch (_) {}
 
-    // Resolve exact RTDB key (handles display codes like FC-10452)
-    const snap = await get(ref(targetDb, `orders/${key}`));
-    if (!snap.exists()) {
-      const allSnap = await get(ref(targetDb, 'orders'));
-      if (allSnap.exists()) {
-        const all = allSnap.val();
-        const found = Object.keys(all).find(k => 
-          String(all[k].code || '').toUpperCase() === cleanId.toUpperCase() ||
-          String(all[k].id || '').toUpperCase() === cleanId.toUpperCase() ||
-          String(all[k].order_number || '').toUpperCase() === cleanId.toUpperCase() ||
-          String(all[k].displayId || '').toUpperCase() === cleanId.toUpperCase()
-        );
-        if (found) key = found;
-      }
+      // Resolve exact RTDB key (handles display codes like FC-10452)
+      try {
+        const snap = await get(ref(rtdb, `orders/${key}`));
+        if (!snap.exists()) {
+          const allSnap = await get(ref(rtdb, 'orders'));
+          if (allSnap.exists()) {
+            const all = allSnap.val();
+            const found = Object.keys(all).find(k => 
+              String(all[k].code || '').toUpperCase() === cleanId.toUpperCase() ||
+              String(all[k].id || '').toUpperCase() === cleanId.toUpperCase() ||
+              String(all[k].order_number || '').toUpperCase() === cleanId.toUpperCase() ||
+              String(all[k].displayId || '').toUpperCase() === cleanId.toUpperCase()
+            );
+            if (found) key = found;
+          }
+        }
+      } catch (_) {}
     }
 
     const now = Date.now();
@@ -758,61 +773,86 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
       updatePayload.stage = extraFields.stage;
     }
 
-    await update(ref(targetDb, `orders/${key}`), updatePayload);
+    if (rtdb) {
+      await update(ref(rtdb, `orders/${key}`), updatePayload);
 
-    if (isDelivered) {
-      try {
-        await update(ref(targetDb, 'ordersByStatus/DELIVERED'), { [key]: now });
-      } catch (_) {}
-    } else if (isCancelled) {
-      try {
-        await update(ref(targetDb, 'ordersByStatus/CANCELLED'), { [key]: now });
-      } catch (_) {}
-    }
+      if (isDelivered) {
+        try {
+          await update(ref(rtdb, 'ordersByStatus/DELIVERED'), { [key]: now });
+        } catch (_) {}
+      } else if (isCancelled) {
+        try {
+          await update(ref(rtdb, 'ordersByStatus/CANCELLED'), { [key]: now });
+        } catch (_) {}
+      }
 
-    // If order was dropped off at laundry or updated delivery stage, synchronize associated tasks
-    try {
-      const tasksSnap = await get(ref(targetDb, 'tasks'));
-      if (tasksSnap.exists()) {
-        const tasks = tasksSnap.val();
-        for (const [tId, tVal] of Object.entries(tasks)) {
-          if (tVal && (tVal.orderId === key || tVal.orderId === cleanId)) {
-            if (rawStatus === 'DROPPED_OFF' || rawStatus === 'DROPPED_OFF_AT_LAUNDRY') {
-              if (tVal.type === 'pickup') {
-                await update(ref(targetDb, `tasks/${tId}`), {
-                  status: 'completed',
-                  droppedOffAt: now,
-                  updatedAt: now
-                });
-              }
-            } else if (rawStatus === 'DELIVERED' || status === 'Delivered') {
-              if (tVal.type === 'delivery') {
-                await update(ref(targetDb, `tasks/${tId}`), {
-                  status: 'completed',
-                  completedAt: now,
-                  updatedAt: now
-                });
-              }
-            } else if (rawStatus === 'OUT_FOR_DELIVERY' || status === 'Out for Delivery') {
-              if (tVal.type === 'delivery') {
-                await update(ref(targetDb, `tasks/${tId}`), {
-                  status: 'on_the_way',
-                  startedAt: now,
-                  updatedAt: now
-                });
-              }
-            } else if (rawStatus === 'READY_FOR_DELIVERY' || status === 'Ready for Delivery') {
-              if (tVal.type === 'delivery') {
-                await update(ref(targetDb, `tasks/${tId}`), {
-                  status: 'assigned',
-                  updatedAt: now
-                });
+      // If order was dropped off at laundry or updated delivery stage, synchronize associated tasks
+      try {
+        const tasksSnap = await get(ref(rtdb, 'tasks'));
+        if (tasksSnap.exists()) {
+          const tasks = tasksSnap.val();
+          for (const [tId, tVal] of Object.entries(tasks)) {
+            if (tVal && (tVal.orderId === key || tVal.orderId === cleanId)) {
+              if (rawStatus === 'DROPPED_OFF' || rawStatus === 'DROPPED_OFF_AT_LAUNDRY') {
+                if (tVal.type === 'pickup') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'completed',
+                    droppedOffAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'DELIVERED' || status === 'Delivered') {
+                if (tVal.type === 'delivery') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'completed',
+                    completedAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'OUT_FOR_DELIVERY' || status === 'Out for Delivery') {
+                if (tVal.type === 'delivery') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'on_the_way',
+                    startedAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'READY_FOR_DELIVERY' || status === 'Ready for Delivery') {
+                if (tVal.type === 'delivery') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'assigned',
+                    updatedAt: now
+                  });
+                }
               }
             }
           }
         }
+      } catch (_) {}
+    }
+
+    if (db) {
+      let updated = false;
+      for (const cId of candidateIds) {
+        try {
+          const orderDocRef = doc(db, 'orders', cId);
+          await updateDoc(orderDocRef, updatePayload);
+          updated = true;
+          break;
+        } catch (err) {
+          // try next
+        }
       }
-    } catch (_) {}
+
+      if (!updated) {
+        const q = query(collection(db, 'orders'), where('id', 'in', candidateIds));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          await updateDoc(qSnap.docs[0].ref, updatePayload);
+          updated = true;
+        }
+      }
+    }
 
     return true;
   } catch (error) {
@@ -827,30 +867,61 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
 export const updateFirestoreOrder = async (orderId, updateFields) => {
   if (!isFirebaseConfigured || !orderId) return true;
   try {
-    const cleanId = String(orderId).trim();
-    const targetDb = rtdb || db;
-    if (!targetDb) return true;
+    const rawId = String(orderId).trim();
+    const cleanId = rawId.replace(/^#/, '');
+    const candidateIds = [rawId, `#${cleanId}`, cleanId];
 
-    let key = cleanId;
-    const snap = await get(ref(targetDb, `orders/${key}`));
-    if (!snap.exists()) {
-      const allSnap = await get(ref(targetDb, 'orders'));
-      if (allSnap.exists()) {
-        const all = allSnap.val();
-        const found = Object.keys(all).find(k => 
-          String(all[k].code || '').toUpperCase() === cleanId.toUpperCase() ||
-          String(all[k].id || '').toUpperCase() === cleanId.toUpperCase() ||
-          String(all[k].order_number || '').toUpperCase() === cleanId.toUpperCase() ||
-          String(all[k].displayId || '').toUpperCase() === cleanId.toUpperCase()
-        );
-        if (found) key = found;
+    if (rtdb) {
+      let key = cleanId;
+      const snap = await get(ref(rtdb, `orders/${key}`));
+      if (!snap.exists()) {
+        const allSnap = await get(ref(rtdb, 'orders'));
+        if (allSnap.exists()) {
+          const all = allSnap.val();
+          const found = Object.keys(all).find(k => 
+            String(all[k].code || '').toUpperCase() === cleanId.toUpperCase() ||
+            String(all[k].id || '').toUpperCase() === cleanId.toUpperCase() ||
+            String(all[k].order_number || '').toUpperCase() === cleanId.toUpperCase() ||
+            String(all[k].displayId || '').toUpperCase() === cleanId.toUpperCase()
+          );
+          if (found) key = found;
+        }
       }
+
+      await update(ref(rtdb, `orders/${key}`), {
+        ...updateFields,
+        updatedAt: Date.now()
+      });
     }
 
-    await update(ref(targetDb, `orders/${key}`), {
-      ...updateFields,
-      updatedAt: Date.now()
-    });
+    if (db) {
+      let updated = false;
+      for (const cId of candidateIds) {
+        try {
+          const orderDocRef = doc(db, 'orders', cId);
+          await updateDoc(orderDocRef, {
+            ...updateFields,
+            updatedAt: serverTimestamp()
+          });
+          updated = true;
+          break;
+        } catch (err) {
+          // try next
+        }
+      }
+
+      if (!updated) {
+        const q = query(collection(db, 'orders'), where('id', 'in', candidateIds));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          await updateDoc(qSnap.docs[0].ref, {
+            ...updateFields,
+            updatedAt: serverTimestamp()
+          });
+          updated = true;
+        }
+      }
+    }
     return true;
   } catch (error) {
     console.error('Error updating order in database:', error);

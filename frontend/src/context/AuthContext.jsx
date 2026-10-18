@@ -181,6 +181,36 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (!fbUserCredential) {
+        // Fallback: check demo users
+        const demoUser = DEMO_USERS[cleanEmail] || DEMO_USERS[email];
+        if (demoUser && VALID_DEMO_PASSWORDS.includes(cleanPwd)) {
+          const role = normalizeRole(demoUser.role);
+          const profileData = {
+            uid: demoUser.id || 'demo-user',
+            id: demoUser.id || 'demo-user',
+            name: demoUser.name,
+            displayName: demoUser.name,
+            fullName: demoUser.name,
+            email: demoUser.email,
+            phone: demoUser.phone || '',
+            phoneNumber: demoUser.phone || '',
+            role,
+            rawRole: demoUser.role,
+            avatarUrl: null,
+            initials: getInitials(demoUser.name)
+          };
+          setCurrentUser(profileData);
+          setUserProfile(profileData);
+          localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+          setIsAuthModalOpen(false);
+          setLoading(false);
+          return {
+            user: profileData,
+            profile: profileData,
+            role,
+            portal: getPortalForRole(role)
+          };
+        }
         throw lastErr || new Error('auth/invalid-credential');
       }
 
@@ -216,6 +246,7 @@ export const AuthProvider = ({ children }) => {
         rtdbData.role = role;
         update(ref(rtdb, `users/${fbUser.uid}`), { role }).catch(() => {});
       }
+
       const profileData = {
         uid: fbUser.uid,
         id: fbUser.uid,
