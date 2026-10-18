@@ -70,6 +70,28 @@ export const STEP_DEFINITIONS = {
     orderIndex: 3,
     label: 'Drying'
   },
+  STEAMING: {
+    status: 'IN_CLEANING',
+    orderStatus: 'IN_CLEANING',
+    status_display: 'Steaming',
+    raw_status: 'STEAMING',
+    stage: 'steaming',
+    processing_stage: 'steaming',
+    currentLaundryStep: 'steam',
+    orderIndex: 3,
+    label: 'Steaming'
+  },
+  DRY_CLEANING: {
+    status: 'IN_CLEANING',
+    orderStatus: 'IN_CLEANING',
+    status_display: 'Dry Cleaning',
+    raw_status: 'DRY_CLEANING',
+    stage: 'dry_cleaning',
+    processing_stage: 'dry_cleaning',
+    currentLaundryStep: 'dry-clean',
+    orderIndex: 3,
+    label: 'Dry Cleaning'
+  },
   IRONING: {
     status: 'IN_CLEANING',
     orderStatus: 'IN_CLEANING',
@@ -80,6 +102,17 @@ export const STEP_DEFINITIONS = {
     currentLaundryStep: 'iron',
     orderIndex: 4,
     label: 'Ironing'
+  },
+  PRESSING: {
+    status: 'IN_CLEANING',
+    orderStatus: 'IN_CLEANING',
+    status_display: 'Pressing',
+    raw_status: 'PRESSING',
+    stage: 'pressing',
+    processing_stage: 'pressing',
+    currentLaundryStep: 'press',
+    orderIndex: 4,
+    label: 'Pressing'
   },
   FOLDING: {
     status: 'IN_CLEANING',
@@ -161,8 +194,11 @@ export const resolveStepKey = (key) => {
   if (s.includes('PACK')) return 'PACKING';
   if (s.includes('QUALIT') || s.includes('QC')) return 'QUALITY_CHECK';
   if (s.includes('FOLD')) return 'FOLDING';
-  if (s.includes('IRON') || s.includes('PRESS') || s.includes('STEAM')) return 'IRONING';
-  if (s.includes('DRY') && !s.includes('CLEAN')) return 'DRYING';
+  if (s.includes('PRESS')) return 'PRESSING';
+  if (s.includes('STEAM')) return 'STEAMING';
+  if (s.includes('DRY_CLEAN') || (s.includes('DRY') && s.includes('CLEAN'))) return 'DRY_CLEANING';
+  if (s.includes('IRON')) return 'IRONING';
+  if (s.includes('DRY')) return 'DRYING';
   if (s.includes('WASH')) return 'WASHING';
   if (s.includes('INSPECT')) return 'INSPECTION';
   return 'RECEIVED';

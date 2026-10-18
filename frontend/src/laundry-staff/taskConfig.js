@@ -121,6 +121,116 @@ export const computeItemTasks = (services = []) => {
 };
 
 /**
+ * Returns the exact sequential status steps for an order based on its services and items.
+ * Guarantees no redundant steps (e.g. no Ironing for Wash & Fold, no Washing for Steam Iron).
+ * @param {object} order
+ * @returns {Array<{num: number, key: string, label: string}>}
+ */
+export const getOrderStatusSteps = (order) => {
+  const fallbackSteps = [
+    { num: 1, key: 'RECEIVED', label: 'Received' },
+    { num: 2, key: 'INSPECTION', label: 'Inspection' },
+    { num: 3, key: 'WASHING', label: 'Washing' },
+    { num: 4, key: 'DRYING', label: 'Drying' },
+    { num: 5, key: 'FOLDING', label: 'Folding' },
+    { num: 6, key: 'QUALITY_CHECK', label: 'Quality Check' },
+    { num: 7, key: 'PACKING', label: 'Packing' },
+    { num: 8, key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
+    { num: 9, key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
+    { num: 10, key: 'DELIVERED', label: 'Delivered' }
+  ];
+
+  if (!order) return fallbackSteps;
+
+  const rawTaskSet = new Set();
+  const items = Array.isArray(order.items) 
+    ? order.items 
+    : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
+
+  items.forEach(it => {
+    if (Array.isArray(it.tasks) && it.tasks.length > 0) {
+      it.tasks.forEach(t => rawTaskSet.add(t));
+    } else if (Array.isArray(it.services) && it.services.length > 0) {
+      it.services.forEach(s => {
+        const key = String(s).toLowerCase().trim();
+        const ts = SERVICE_TASK_CONFIG[key] || [];
+        ts.forEach(t => rawTaskSet.add(t));
+      });
+    } else if (it.category && it.category !== 'General') {
+      const key = String(it.category).toLowerCase().trim();
+      const ts = SERVICE_TASK_CONFIG[key] || [];
+      ts.forEach(t => rawTaskSet.add(t));
+    }
+  });
+
+  const orderServices = Array.isArray(order.services)
+    ? order.services
+    : (order.service ? (order.service.includes('+') ? order.service.split('+') : (order.service.includes(',') ? order.service.split(',') : [order.service])) : []);
+
+  orderServices.forEach(s => {
+    if (!s) return;
+    const str = String(s).toLowerCase().trim();
+    if (str.includes('dry clean')) {
+      rawTaskSet.add('dry-clean');
+      rawTaskSet.add('press');
+    } else if (str.includes('steam')) {
+      rawTaskSet.add('steam');
+      rawTaskSet.add('iron');
+    } else if (str.includes('wash') && str.includes('iron')) {
+      rawTaskSet.add('wash');
+      rawTaskSet.add('dry');
+      rawTaskSet.add('iron');
+    } else if (str.includes('wash') || str.includes('fold')) {
+      rawTaskSet.add('wash');
+      rawTaskSet.add('dry');
+      rawTaskSet.add('fold');
+    } else {
+      const ts = SERVICE_TASK_CONFIG[str] || [];
+      ts.forEach(t => rawTaskSet.add(t));
+    }
+  });
+
+  if (rawTaskSet.size === 0) {
+    rawTaskSet.add('wash');
+    rawTaskSet.add('dry');
+    rawTaskSet.add('fold');
+  }
+
+  const TASK_STEP_MAP = {
+    'wash': { key: 'WASHING', label: 'Washing' },
+    'dry': { key: 'DRYING', label: 'Drying' },
+    'steam': { key: 'STEAMING', label: 'Steaming' },
+    'dry-clean': { key: 'DRY_CLEANING', label: 'Dry Cleaning' },
+    'iron': { key: 'IRONING', label: 'Ironing' },
+    'press': { key: 'PRESSING', label: 'Pressing' },
+    'fold': { key: 'FOLDING', label: 'Folding' }
+  };
+
+  const intermediateSteps = [];
+  ['wash', 'dry', 'steam', 'dry-clean', 'iron', 'press', 'fold'].forEach(t => {
+    if (rawTaskSet.has(t) && TASK_STEP_MAP[t]) {
+      intermediateSteps.push(TASK_STEP_MAP[t]);
+    }
+  });
+
+  const allSteps = [
+    { key: 'RECEIVED', label: 'Received' },
+    { key: 'INSPECTION', label: 'Inspection' },
+    ...intermediateSteps,
+    { key: 'QUALITY_CHECK', label: 'Quality Check' },
+    { key: 'PACKING', label: 'Packing' },
+    { key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
+    { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
+    { key: 'DELIVERED', label: 'Delivered' }
+  ];
+
+  return allSteps.map((st, idx) => ({
+    num: idx + 1,
+    ...st
+  }));
+};
+
+/**
  * Generates a note when services were merged for an item.
  * Example: "Wash included once (Wash & Fold + Wash & Iron)"
  * @param {string[]} services

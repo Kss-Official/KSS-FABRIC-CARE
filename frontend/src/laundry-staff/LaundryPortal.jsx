@@ -77,6 +77,7 @@ import {
   SERVICE_DISPLAY_NAMES,
   computeItemTasks,
   getMergedTaskNote,
+  getOrderStatusSteps,
   checkItemConflict,
   checkOrderConflict,
   buildPlanString,
@@ -467,7 +468,10 @@ export const LaundryPortal = () => {
       INSPECTION: { label: 'Inspection', stage: 'inspection' },
       WASHING: { label: 'Washing', stage: 'washing' },
       DRYING: { label: 'Drying', stage: 'drying' },
+      STEAMING: { label: 'Steaming', stage: 'steaming' },
+      DRY_CLEANING: { label: 'Dry Cleaning', stage: 'dry_cleaning' },
       IRONING: { label: 'Ironing', stage: 'ironing' },
+      PRESSING: { label: 'Pressing', stage: 'pressing' },
       FOLDING: { label: 'Folding', stage: 'folding' },
       QUALITY_CHECK: { label: 'Quality Check', stage: 'quality' },
       PACKING: { label: 'Packing', stage: 'packing' },
@@ -2209,9 +2213,9 @@ export const LaundryPortal = () => {
             if (s.includes('PACK')) return 'packing';
             if (s.includes('QUALIT') || s.includes('QC')) return 'quality';
             if (s.includes('FOLD')) return 'folding';
-            if (s.includes('IRON') || s.includes('PRESS')) return 'ironing';
-            if (s.includes('DRY') && !s.includes('CLEAN')) return 'drying';
-            if (s.includes('WASH')) return 'washing';
+            if (s.includes('IRON') || s.includes('PRESS') || s.includes('STEAM')) return 'ironing';
+            if (s.includes('DRY_CLEAN') || (s.includes('DRY') && s.includes('CLEAN')) || s.includes('WASH')) return 'washing';
+            if (s.includes('DRY')) return 'drying';
             if (s.includes('INSPECT')) return 'inspection';
             return 'received';
           };
@@ -2326,10 +2330,19 @@ export const LaundryPortal = () => {
             if (s.includes('FOLD')) {
               return { bg: '#e6f4f1', color: '#0f766e', dot: '#0f766e', label: 'Folding' };
             }
-            if (s.includes('IRON') || s.includes('PRESS')) {
+            if (s.includes('PRESS')) {
+              return { bg: '#e6f4f1', color: '#0f766e', dot: '#0f766e', label: 'Pressing' };
+            }
+            if (s.includes('STEAM')) {
+              return { bg: '#ede9fe', color: '#6d28d9', dot: '#6d28d9', label: 'Steaming' };
+            }
+            if (s.includes('DRY_CLEAN') || (s.includes('DRY') && s.includes('CLEAN'))) {
+              return { bg: '#fce7f3', color: '#be185d', dot: '#be185d', label: 'Dry Cleaning' };
+            }
+            if (s.includes('IRON')) {
               return { bg: '#e6f4f1', color: '#0f766e', dot: '#0f766e', label: 'Ironing' };
             }
-            if (s.includes('DRY') && !s.includes('CLEAN')) {
+            if (s.includes('DRY')) {
               return { bg: '#e6f4f1', color: '#0f766e', dot: '#0f766e', label: 'Drying' };
             }
             if (s.includes('WASH')) {
@@ -2344,34 +2357,37 @@ export const LaundryPortal = () => {
             return { bg: '#e0e7ff', color: '#4338ca', dot: '#4338ca', label: 'Received' };
           };
 
-          // 11 steps for Update Status dropdown
-          const STATUS_STEPS = [
-            { num: 1, key: 'RECEIVED', label: 'Received' },
-            { num: 2, key: 'INSPECTION', label: 'Inspection' },
-            { num: 3, key: 'WASHING', label: 'Washing' },
-            { num: 4, key: 'DRYING', label: 'Drying' },
-            { num: 5, key: 'IRONING', label: 'Ironing' },
-            { num: 6, key: 'FOLDING', label: 'Folding' },
-            { num: 7, key: 'QUALITY_CHECK', label: 'Quality Check' },
-            { num: 8, key: 'PACKING', label: 'Packing' },
-            { num: 9, key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
-            { num: 10, key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
-            { num: 11, key: 'DELIVERED', label: 'Delivered' }
-          ];
-
-          const getCurrentStepIndex = (status) => {
+          const getCurrentStepIndex = (status, orderSteps = []) => {
+            const steps = Array.isArray(orderSteps) && orderSteps.length > 0 ? orderSteps : [];
             const s = String(status || '').toUpperCase().replace(/[\s-]/g, '_');
-            if (s.includes('DELIVERED') || s.includes('COMPLET')) return 10;
-            if (s.includes('OUT_FOR_DELIVERY') || s.includes('DISPATCH')) return 9;
-            if (s.includes('READY')) return 8;
-            if (s.includes('PACK')) return 7;
-            if (s.includes('QUALIT') || s.includes('QC')) return 6;
-            if (s.includes('FOLD')) return 5;
-            if (s.includes('IRON') || s.includes('PRESS')) return 4;
-            if (s.includes('DRY') && !s.includes('CLEAN')) return 3;
-            if (s.includes('WASH')) return 2;
-            if (s.includes('INSPECT')) return 1;
-            return 0; // Received
+
+            // 1. Exact key match
+            const exactIdx = steps.findIndex(st => st.key === s);
+            if (exactIdx !== -1) return exactIdx;
+
+            // 2. Semantic matching in reverse/priority order
+            let matchedKey = null;
+            if (s.includes('DELIVERED') || s.includes('COMPLET')) matchedKey = 'DELIVERED';
+            else if (s.includes('OUT_FOR_DELIVERY') || s.includes('DISPATCH')) matchedKey = 'OUT_FOR_DELIVERY';
+            else if (s.includes('READY')) matchedKey = 'READY_FOR_DELIVERY';
+            else if (s.includes('PACK')) matchedKey = 'PACKING';
+            else if (s.includes('QUALIT') || s.includes('QC')) matchedKey = 'QUALITY_CHECK';
+            else if (s.includes('FOLD')) matchedKey = 'FOLDING';
+            else if (s.includes('PRESS')) matchedKey = 'PRESSING';
+            else if (s.includes('STEAM')) matchedKey = 'STEAMING';
+            else if (s.includes('DRY_CLEAN') || (s.includes('DRY') && s.includes('CLEAN'))) matchedKey = 'DRY_CLEANING';
+            else if (s.includes('IRON')) matchedKey = 'IRONING';
+            else if (s.includes('DRY')) matchedKey = 'DRYING';
+            else if (s.includes('WASH')) matchedKey = 'WASHING';
+            else if (s.includes('INSPECT')) matchedKey = 'INSPECTION';
+            else if (s.includes('RECEIVED') || s.includes('HUB') || s.includes('DROPPED') || s.includes('PLACED')) matchedKey = 'RECEIVED';
+
+            if (matchedKey) {
+              const semIdx = steps.findIndex(st => st.key === matchedKey);
+              if (semIdx !== -1) return semIdx;
+            }
+
+            return 0; // fallback to first step (Received)
           };
 
           // Filter orders
@@ -2562,10 +2578,12 @@ export const LaundryPortal = () => {
                       const svcBadge = getServiceBadge(order);
                       const statusTarget = order.status_display || order.stage || order.currentLaundryStep || order.status || order.processing_stage;
                       const statusPill = getStatusPill(statusTarget);
-                      const currentIdx = getCurrentStepIndex(statusTarget);
-                      const isDelivered = currentIdx === 10;
-                      const isOutForDelivery = currentIdx === 9;
-                      const isReadyForDelivery = currentIdx === 8;
+                      const orderSteps = getOrderStatusSteps(order);
+                      const currentIdx = getCurrentStepIndex(statusTarget, orderSteps);
+                      const currentStepKey = orderSteps[currentIdx]?.key || 'RECEIVED';
+                      const isDelivered = currentStepKey === 'DELIVERED';
+                      const isOutForDelivery = currentStepKey === 'OUT_FOR_DELIVERY';
+                      const isReadyForDelivery = currentStepKey === 'READY_FOR_DELIVERY';
                       const isDropdownOpen = openDropdownOrderId === (order.id || order.order_number);
 
                       return (
@@ -2681,7 +2699,7 @@ export const LaundryPortal = () => {
                                 </div>
 
                                 <div className="dropdown-steps-list">
-                                  {STATUS_STEPS.map((step, sIdx) => {
+                                  {orderSteps.map((step, sIdx) => {
                                     const isCompleted = sIdx < currentIdx;
                                     const isCurrent = sIdx === currentIdx;
                                     const isNext = sIdx === currentIdx + 1;
@@ -2764,12 +2782,12 @@ export const LaundryPortal = () => {
                                       className="dropdown-revert-action-btn"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleOrdersQuickAdvance(order, STATUS_STEPS[currentIdx - 1].key, true);
+                                        handleOrdersQuickAdvance(order, orderSteps[currentIdx - 1].key, true);
                                       }}
                                       title="Mistakenly updated? Go back to previous status"
                                     >
                                       <RotateCcw size={12} />
-                                      <span>Back to {STATUS_STEPS[currentIdx - 1].label}</span>
+                                      <span>Back to {orderSteps[currentIdx - 1].label}</span>
                                     </button>
                                   </div>
                                 )}

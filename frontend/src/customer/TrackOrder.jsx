@@ -380,9 +380,14 @@ export const TrackOrder = () => {
       clean.includes('FOLD') ||
       clean.includes('INSPECT') ||
       clean.includes('QUALITY') ||
+      clean.includes('STEAM') ||
+      clean.includes('PRESS') ||
       cleanStage === 'WASHING' ||
       cleanStage === 'DRYING' ||
       cleanStage === 'IRONING' ||
+      cleanStage === 'STEAMING' ||
+      cleanStage === 'PRESSING' ||
+      cleanStage === 'DRY_CLEANING' ||
       cleanStage === 'PROCESSING' ||
       cleanStage.includes('CLEAN')
     ) return 3;
