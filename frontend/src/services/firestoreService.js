@@ -12,7 +12,8 @@ import {
   onSnapshot,
   serverTimestamp
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '../config/firebase';
+import { ref, onValue, off, get, set, update, push } from 'firebase/database';
+import { db, rtdb, isFirebaseConfigured } from '../config/firebase.js';
 
 // ===============================================================
 // INITIAL SEED DATA FOR FIRST LAUNCH IN USER'S FIREBASE PROJECT
@@ -355,15 +356,84 @@ export const normalizeFirestoreOrder = (docData, docId) => {
 
   if (d.pickup_phone) custPhone = d.pickup_phone;
   if (d.pickup_address) custAddress = d.pickup_address;
+  if (d.address && typeof d.address === 'object') {
+    const parts = [d.address.flatHouse, d.address.areaColony, d.address.city, d.address.pincode].filter(Boolean);
+    if (parts.length > 0) custAddress = parts.join(', ');
+  }
 
-  const totalAmount = Number(d.total_amount ?? d.amount ?? d.estimatedTotal ?? 0);
+  let totalAmount = 0;
+  if (d.total !== undefined && d.total !== null) {
+    totalAmount = Number(d.total > 500 ? (d.total / 100).toFixed(2) : d.total);
+  } else {
+    totalAmount = Number(d.total_amount ?? d.amount ?? d.estimatedTotal ?? 0);
+  }
+
+  let parsedItems = [];
+  if (Array.isArray(d.items)) {
+    parsedItems = d.items.map((it, idx) => {
+      const q = Number(it.quantity || it.qty || 1);
+      const rawPrice = Number(it.unitPrice ?? it.rate ?? it.price ?? 60);
+      const price = rawPrice > 500 ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
+      const rawTotal = Number(it.lineTotal ?? it.total ?? q * price);
+      const total = rawTotal > 500 ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+      return {
+        id: it.id || `item_${idx + 1}`,
+        item_name: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
+        name: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
+        garment: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
+        category: it.category || 'Wash & Fold',
+        services: it.services || [it.category || 'Wash & Fold'],
+        quantity: q,
+        rate: price,
+        price: price,
+        unitPrice: price,
+        total: total,
+        lineTotal: total
+      };
+    });
+  } else if (d.items && typeof d.items === 'object') {
+    parsedItems = Object.entries(d.items).map(([k, val]) => {
+      if (typeof val === 'object' && val !== null) {
+        const q = Number(val.quantity || val.qty || 1);
+        const rawPrice = Number(val.unitPrice ?? val.rate ?? val.price ?? 60);
+        const price = rawPrice > 500 ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
+        const rawTotal = Number(val.lineTotal ?? val.total ?? q * price);
+        const total = rawTotal > 500 ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+        return {
+          id: k,
+          item_name: val.name || val.item_name || val.garment || k,
+          name: val.name || val.item_name || val.garment || k,
+          garment: val.name || val.item_name || val.garment || k,
+          category: val.category || 'Wash & Fold',
+          services: val.services || [val.category || 'Wash & Fold'],
+          quantity: q,
+          rate: price,
+          price: price,
+          unitPrice: price,
+          total: total,
+          lineTotal: total
+        };
+      }
+      const q = Number(val) || 1;
+      return { id: k, item_name: k, name: k, garment: k, category: 'Wash & Fold', services: ['Wash & Fold'], quantity: q, rate: 60, price: 60, unitPrice: 60, total: q * 60, lineTotal: q * 60 };
+    });
+  }
+
+  const totalItemsCount = parsedItems.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0);
+  const itemsSummaryStr = parsedItems.length > 0
+    ? parsedItems.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ')
+    : '1 Item';
+
+  const placedTime = d.placed || (d.placedAt ? new Date(d.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (d.createdAt ? new Date(d.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''));
 
   // Status mapping
   let uiStatus = d.status_display || d.status || 'Pending Pickup';
-  const rawStatus = String(d.status || '').toUpperCase();
-  if (['PENDING', 'ACCEPTED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PLACED'].includes(rawStatus)) {
+  const rawStatus = String(d.status || d.orderStatus || d.raw_status || '').toUpperCase();
+  if (['PENDING', 'ACCEPTED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PLACED', 'PAYMENT_PENDING'].includes(rawStatus)) {
     uiStatus = 'Pending Pickup';
-  } else if (['PICKED_UP', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'WASHING', 'DRYING', 'IRONING', 'IN_CLEANING'].includes(rawStatus)) {
+  } else if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF'].includes(rawStatus)) {
+    uiStatus = 'Dropped Off at Hub';
+  } else if (['PICKED_UP', 'RECEIVED_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'WASHING', 'DRYING', 'IRONING', 'IN_CLEANING'].includes(rawStatus)) {
     uiStatus = 'In Cleaning';
   } else if (['QUALITY_CHECK', 'PACKED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY'].includes(rawStatus)) {
     uiStatus = 'Ready for Delivery';
@@ -386,6 +456,8 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     code: orderCode,
     date: dateStr,
     dateText: d.dateText || dateStr,
+    placed: placedTime,
+    placedAt: d.placedAt || d.createdAt,
     timeText: d.timeText || d.pickup_time_slot || d.pickupTime || '09:00 AM – 11:00 AM',
     pickupTime: d.pickupTime || `${dateStr}, ${d.pickup_time_slot || '09:00 AM – 11:00 AM'}`,
     pickup_time_slot: d.pickup_time_slot || '09:00 AM – 11:00 AM',
@@ -412,11 +484,12 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     estimatedTotal: totalAmount,
     services: servicesList,
     services_list: servicesList,
-    items: Array.isArray(d.items) ? d.items : [],
-    itemsCount: d.itemsCount || (Array.isArray(d.items) ? d.items.reduce((s, it) => s + (Number(it.quantity) || 1), 0) : 1),
-    status: uiStatus,
-    status_display: uiStatus,
-    raw_status: d.status,
+    items: parsedItems,
+    itemsCount: totalItemsCount || 1,
+    items_summary: itemsSummaryStr,
+    status: d.status || uiStatus,
+    status_display: d.status_display || uiStatus,
+    raw_status: d.raw_status || d.status || rawStatus,
     stage: d.stage || (uiStatus === 'Pending Pickup' ? 'incoming' : uiStatus === 'In Cleaning' ? 'washing' : 'ready'),
     payment: d.payment || 'Paid',
     payment_status: d.payment_status || 'PAID',
@@ -435,28 +508,30 @@ export const normalizeFirestoreOrder = (docData, docId) => {
  * Realtime subscription to all orders in Firestore
  */
 export const subscribeOrders = (callback, errorCallback) => {
-  if (!isFirebaseConfigured || !db) return () => {};
+  if (!isFirebaseConfigured) return () => {};
   try {
-    const ordersCol = collection(db, 'orders');
-    return onSnapshot(
-      ordersCol,
-      (snapshot) => {
-        const orderList = snapshot.docs.map(d => normalizeFirestoreOrder(d.data(), d.id));
-        // Sort descending by date/time
-        orderList.sort((a, b) => {
-          const tA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-          const tB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-          return tB - tA;
-        });
-        callback(orderList);
-      },
-      (err) => {
-        console.warn('Orders snapshot subscription note:', err.message);
-        if (errorCallback) errorCallback(err);
+    const targetDb = rtdb || db;
+    if (!targetDb) return () => {};
+    const ordersRef = ref(targetDb, 'orders');
+    const unsub = onValue(ordersRef, (snap) => {
+      if (!snap.exists()) {
+        callback([]);
+        return;
       }
-    );
+      const data = snap.val();
+      const orderList = Object.keys(data).map(k => normalizeFirestoreOrder(data[k], k));
+      orderList.sort((a, b) => {
+        const timeA = a.updatedAt || a.placedAt || a.createdAt || 0;
+        const timeB = b.updatedAt || b.placedAt || b.createdAt || 0;
+        return timeB - timeA;
+      });
+      callback(orderList);
+    }, (err) => {
+      console.warn('Orders subscription notice:', err.message);
+      if (errorCallback) errorCallback(err);
+    });
+    return () => off(ordersRef, 'value', unsub);
   } catch (err) {
-    console.warn('Orders subscribe exception:', err);
     return () => {};
   }
 };
@@ -465,12 +540,43 @@ export const subscribeOrders = (callback, errorCallback) => {
  * Realtime subscription to a single order by ID
  */
 export const subscribeOrderById = (orderId, callback, errorCallback) => {
-  if (!isFirebaseConfigured || !db || !orderId) return () => {};
+  if (!isFirebaseConfigured || !orderId) return () => {};
   try {
     const rawId = String(orderId).trim();
     const cleanId = rawId.replace(/^#/, '');
     const withHash = `#${cleanId}`;
 
+    if (rtdb) {
+      const orderRef = ref(rtdb, `orders/${cleanId}`);
+      const unsub = onValue(orderRef, async (snap) => {
+        if (snap.exists()) {
+          callback(normalizeFirestoreOrder(snap.val(), cleanId));
+        } else {
+          try {
+            const allSnap = await get(ref(rtdb, 'orders'));
+            if (allSnap.exists()) {
+              const all = allSnap.val();
+              const foundKey = Object.keys(all).find(k => 
+                String(all[k].code || '').toUpperCase() === cleanId.toUpperCase() ||
+                String(all[k].id || '').toUpperCase() === cleanId.toUpperCase() ||
+                String(all[k].order_number || '').toUpperCase() === cleanId.toUpperCase()
+              );
+              if (foundKey) {
+                callback(normalizeFirestoreOrder(all[foundKey], foundKey));
+                return;
+              }
+            }
+          } catch (_) {}
+          callback(null);
+        }
+      }, (err) => {
+        console.warn('RTDB Order subscription error:', err.message);
+        if (errorCallback) errorCallback(err);
+      });
+      return () => off(orderRef, 'value', unsub);
+    }
+
+    if (!db) return () => {};
     // Real-time listener on orders collection matching ID
     const ordersCol = collection(db, 'orders');
     return onSnapshot(
@@ -598,51 +704,160 @@ export const createFirestoreOrder = async (orderData) => {
 };
 
 /**
- * Update an order's status in Firestore
+ * Update an order's status in Realtime Database / Firestore
  */
 export const updateFirestoreOrderStatus = async (orderId, status, extraFields = {}) => {
-  if (!isFirebaseConfigured || !db || !orderId) return true;
+  if (!isFirebaseConfigured || !orderId) return true;
   try {
     const rawId = String(orderId).trim();
-    const cleanId = rawId.replace(/^#/, '');
+    let cleanId = rawId.replace(/^#/, '');
     const candidateIds = [rawId, `#${cleanId}`, cleanId];
+    const targetDb = rtdb || db;
+    if (!targetDb) return true;
+
+    let key = cleanId;
+
+    // If cleanId is a task ID (e.g. starts with task_pk_ or in tasks node), resolve to underlying orderId
+    if (rtdb) {
+      try {
+        const taskSnap = await get(ref(rtdb, `tasks/${cleanId}`));
+        if (taskSnap.exists() && taskSnap.val().orderId) {
+          key = String(taskSnap.val().orderId).trim();
+          cleanId = key;
+        }
+      } catch (_) {}
+
+      // Resolve exact RTDB key (handles display codes like FC-10452)
+      try {
+        const snap = await get(ref(rtdb, `orders/${key}`));
+        if (!snap.exists()) {
+          const allSnap = await get(ref(rtdb, 'orders'));
+          if (allSnap.exists()) {
+            const all = allSnap.val();
+            const found = Object.keys(all).find(k => 
+              String(all[k].code || '').toUpperCase() === cleanId.toUpperCase() ||
+              String(all[k].id || '').toUpperCase() === cleanId.toUpperCase() ||
+              String(all[k].order_number || '').toUpperCase() === cleanId.toUpperCase() ||
+              String(all[k].displayId || '').toUpperCase() === cleanId.toUpperCase()
+            );
+            if (found) key = found;
+          }
+        }
+      } catch (_) {}
+    }
+
+    const now = Date.now();
+    const rawStatus = extraFields.raw_status || status;
+    const isDelivered = ['COMPLETED', 'DELIVERED'].includes(String(status).toUpperCase()) || ['COMPLETED', 'DELIVERED'].includes(String(rawStatus).toUpperCase());
+    const isCancelled = String(status).toUpperCase() === 'CANCELLED' || String(rawStatus).toUpperCase() === 'CANCELLED';
 
     const updatePayload = {
       status,
+      orderStatus: status,
       status_display: status,
-      updatedAt: serverTimestamp(),
+      raw_status: rawStatus,
+      updatedAt: now,
       ...extraFields
     };
+
+    if (isDelivered) {
+      updatePayload.deliveredAt = updatePayload.deliveredAt || now;
+      updatePayload.delivered_at = updatePayload.delivered_at || now;
+      updatePayload.completedAt = updatePayload.completedAt || now;
+    } else if (isCancelled) {
+      updatePayload.cancelledAt = updatePayload.cancelledAt || now;
+      updatePayload.cancelled_at = updatePayload.cancelled_at || now;
+    }
 
     if (extraFields.stage) {
       updatePayload.stage = extraFields.stage;
     }
 
-    let updated = false;
-    for (const cId of candidateIds) {
-      try {
-        const orderDocRef = doc(db, 'orders', cId);
-        await updateDoc(orderDocRef, updatePayload);
-        updated = true;
-        break;
-      } catch (err) {
-        // try next
+    if (rtdb) {
+      await update(ref(rtdb, `orders/${key}`), updatePayload);
+
+      if (isDelivered) {
+        try {
+          await update(ref(rtdb, 'ordersByStatus/DELIVERED'), { [key]: now });
+        } catch (_) {}
+      } else if (isCancelled) {
+        try {
+          await update(ref(rtdb, 'ordersByStatus/CANCELLED'), { [key]: now });
+        } catch (_) {}
       }
+
+      // If order was dropped off at laundry or updated delivery stage, synchronize associated tasks
+      try {
+        const tasksSnap = await get(ref(rtdb, 'tasks'));
+        if (tasksSnap.exists()) {
+          const tasks = tasksSnap.val();
+          for (const [tId, tVal] of Object.entries(tasks)) {
+            if (tVal && (tVal.orderId === key || tVal.orderId === cleanId)) {
+              if (rawStatus === 'DROPPED_OFF' || rawStatus === 'DROPPED_OFF_AT_LAUNDRY') {
+                if (tVal.type === 'pickup') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'completed',
+                    droppedOffAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'DELIVERED' || status === 'Delivered') {
+                if (tVal.type === 'delivery') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'completed',
+                    completedAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'OUT_FOR_DELIVERY' || status === 'Out for Delivery') {
+                if (tVal.type === 'delivery') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'on_the_way',
+                    startedAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'READY_FOR_DELIVERY' || status === 'Ready for Delivery') {
+                if (tVal.type === 'delivery') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'assigned',
+                    updatedAt: now
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
     }
 
-    if (!updated) {
-      const q = query(collection(db, 'orders'), where('id', 'in', candidateIds));
-      const qSnap = await getDocs(q);
-      if (!qSnap.empty) {
-        await updateDoc(qSnap.docs[0].ref, updatePayload);
-        updated = true;
+    if (db) {
+      let updated = false;
+      for (const cId of candidateIds) {
+        try {
+          const orderDocRef = doc(db, 'orders', cId);
+          await updateDoc(orderDocRef, updatePayload);
+          updated = true;
+          break;
+        } catch (err) {
+          // try next
+        }
+      }
+
+      if (!updated) {
+        const q = query(collection(db, 'orders'), where('id', 'in', candidateIds));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          await updateDoc(qSnap.docs[0].ref, updatePayload);
+          updated = true;
+        }
       }
     }
 
     return true;
   } catch (error) {
-    console.error('Error updating order status in Firestore:', error);
-    throw error;
+    console.error('Error updating order status in database:', error);
+    return false;
   }
 };
 
@@ -650,43 +865,67 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
  * Generic update for any order fields
  */
 export const updateFirestoreOrder = async (orderId, updateFields) => {
-  if (!isFirebaseConfigured || !db || !orderId) return true;
+  if (!isFirebaseConfigured || !orderId) return true;
   try {
     const rawId = String(orderId).trim();
     const cleanId = rawId.replace(/^#/, '');
     const candidateIds = [rawId, `#${cleanId}`, cleanId];
 
-    let updated = false;
-    for (const cId of candidateIds) {
-      try {
-        const orderDocRef = doc(db, 'orders', cId);
-        await updateDoc(orderDocRef, {
-          ...updateFields,
-          updatedAt: serverTimestamp()
-        });
-        updated = true;
-        break;
-      } catch (err) {
-        // try next
+    if (rtdb) {
+      let key = cleanId;
+      const snap = await get(ref(rtdb, `orders/${key}`));
+      if (!snap.exists()) {
+        const allSnap = await get(ref(rtdb, 'orders'));
+        if (allSnap.exists()) {
+          const all = allSnap.val();
+          const found = Object.keys(all).find(k => 
+            String(all[k].code || '').toUpperCase() === cleanId.toUpperCase() ||
+            String(all[k].id || '').toUpperCase() === cleanId.toUpperCase() ||
+            String(all[k].order_number || '').toUpperCase() === cleanId.toUpperCase() ||
+            String(all[k].displayId || '').toUpperCase() === cleanId.toUpperCase()
+          );
+          if (found) key = found;
+        }
       }
+
+      await update(ref(rtdb, `orders/${key}`), {
+        ...updateFields,
+        updatedAt: Date.now()
+      });
     }
 
-    if (!updated) {
-      const q = query(collection(db, 'orders'), where('id', 'in', candidateIds));
-      const qSnap = await getDocs(q);
-      if (!qSnap.empty) {
-        await updateDoc(qSnap.docs[0].ref, {
-          ...updateFields,
-          updatedAt: serverTimestamp()
-        });
-        updated = true;
+    if (db) {
+      let updated = false;
+      for (const cId of candidateIds) {
+        try {
+          const orderDocRef = doc(db, 'orders', cId);
+          await updateDoc(orderDocRef, {
+            ...updateFields,
+            updatedAt: serverTimestamp()
+          });
+          updated = true;
+          break;
+        } catch (err) {
+          // try next
+        }
+      }
+
+      if (!updated) {
+        const q = query(collection(db, 'orders'), where('id', 'in', candidateIds));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          await updateDoc(qSnap.docs[0].ref, {
+            ...updateFields,
+            updatedAt: serverTimestamp()
+          });
+          updated = true;
+        }
       }
     }
-
     return true;
   } catch (error) {
-    console.error('Error updating order in Firestore:', error);
-    throw error;
+    console.error('Error updating order in database:', error);
+    return false;
   }
 };
 
@@ -1452,101 +1691,9 @@ export const deleteUserAddress = async (userId, addressId) => {
 // ===============================================================
 
 /**
- * Seeds initial services, FAQs, orders, drivers, customers, and settings
- * into the user's Firebase project if empty.
+ * Legacy stub - database is powered by Firebase Realtime Database
  */
 export const seedInitialFirestoreData = async () => {
-  if (!isFirebaseConfigured || !db) return false;
-  try {
-    // 1. Check services
-    const servicesSnap = await getDocs(collection(db, 'services'));
-    if (servicesSnap.empty) {
-      console.log('Seeding initial Services to Cloud Firestore project fabric-care-1f384...');
-      for (const serv of INITIAL_SERVICES_ADMIN) {
-        await setDoc(doc(db, 'services', String(serv.id)), {
-          ...serv,
-          id: String(serv.id),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    }
-
-    // 2. Check FAQs
-    const faqsSnap = await getDocs(collection(db, 'faqs'));
-    if (faqsSnap.empty) {
-      console.log('Seeding initial FAQs to Cloud Firestore project fabric-care-1f384...');
-      for (const faq of INITIAL_FAQS_ADMIN) {
-        await setDoc(doc(db, 'faqs', String(faq.id)), {
-          ...faq,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    }
-
-    // 3. Check Drivers
-    const driversSnap = await getDocs(collection(db, 'drivers'));
-    if (driversSnap.empty) {
-      console.log('Seeding initial Drivers to Cloud Firestore project fabric-care-1f384...');
-      for (const driver of INITIAL_DRIVERS) {
-        await setDoc(doc(db, 'drivers', driver.id), {
-          ...driver,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    }
-
-    // 4. Check Customers
-    const customersSnap = await getDocs(collection(db, 'customers'));
-    if (customersSnap.empty) {
-      console.log('Seeding initial Customers to Cloud Firestore project fabric-care-1f384...');
-      for (const cust of INITIAL_CUSTOMERS) {
-        await setDoc(doc(db, 'customers', cust.id), {
-          ...cust,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    }
-
-    // 5. Check Orders
-    const ordersSnap = await getDocs(collection(db, 'orders'));
-    if (ordersSnap.empty) {
-      console.log('Seeding initial Orders to Cloud Firestore project fabric-care-1f384...');
-      for (const ord of INITIAL_ORDERS) {
-        await setDoc(doc(db, 'orders', ord.id), {
-          ...ord,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    }
-
-    // 6. Settings Doc
-    const settingsSnap = await getDoc(doc(db, 'settings', 'general'));
-    if (!settingsSnap.exists()) {
-      await setDoc(doc(db, 'settings', 'general'), {
-        ...INITIAL_SETTINGS,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    }
-
-    // 7. Terms Doc
-    const termsSnap = await getDoc(doc(db, 'content', 'terms'));
-    if (!termsSnap.exists()) {
-      await setDoc(doc(db, 'content', 'terms'), {
-        ...INITIAL_TERMS_CONTENT,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    }
-
-    return true;
-  } catch (error) {
-    console.warn('Initial Firestore seeding note:', error.message);
-    return false;
-  }
+  return true;
 };
+

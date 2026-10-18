@@ -447,7 +447,11 @@ export const AdminLayout = ({ children }) => {
                       <button 
                         type="button" 
                         className="notif-pill-btn notif-mark-read-pill"
-                        onClick={() => markAllNotificationsAsRead()}
+                        onClick={() => {
+                          if (typeof markAllNotificationsAsRead === 'function') {
+                            markAllNotificationsAsRead();
+                          }
+                        }}
                         title="Mark all notifications as read"
                       >
                         <CheckCheck size={15} />
@@ -457,12 +461,16 @@ export const AdminLayout = ({ children }) => {
                   </div>
 
                   <div className="notif-cards-scroll-list">
-                    {(!notifications || notifications.length === 0) ? (
-                      <div className="notif-dropdown-empty">
-                        <p>No notifications available</p>
-                      </div>
-                    ) : (
-                      notifications.map((notif) => (
+                    {(() => {
+                      const notifsList = Array.isArray(notifications) ? notifications : Object.values(notifications || {});
+                      if (notifsList.length === 0) {
+                        return (
+                          <div className="notif-dropdown-empty">
+                            <p>No notifications available</p>
+                          </div>
+                        );
+                      }
+                      return notifsList.map((notif) => (
                         <div 
                           key={notif.id}
                           className={`notif-reference-card ${notif.unread ? 'unread' : 'read'}`}
@@ -505,8 +513,8 @@ export const AdminLayout = ({ children }) => {
                             <Check size={15} strokeWidth={2.4} />
                           </button>
                         </div>
-                      ))
-                    )}
+                      ));
+                    })()}
                   </div>
 
                   <div className="notif-dropdown-footer">

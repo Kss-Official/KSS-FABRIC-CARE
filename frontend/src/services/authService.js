@@ -4,21 +4,11 @@ import {
   signOut,
   sendPasswordResetEmail,
   updateProfile,
-  getAuth
+  onAuthStateChanged
 } from 'firebase/auth';
-import { initializeApp } from 'firebase/app';
-import {
-  doc,
-  setDoc,
-  getDoc,
-  updateDoc,
-  serverTimestamp
-} from 'firebase/firestore';
-import { auth, db, isFirebaseConfigured, app } from '../config/firebase.js';
+import { ref, get, set, update, serverTimestamp } from 'firebase/database';
+import { auth, rtdb, isFirebaseConfigured, getSecondaryAuth } from '../config/firebase.js';
 
-/**
- * Maps Firebase Auth error codes to user-friendly messages
- */
 export const mapAuthError = (error) => {
   if (!error) return 'An unknown error occurred.';
   const code = error.code || '';
@@ -49,11 +39,11 @@ export const mapAuthError = (error) => {
 };
 
 /**
- * Register a new user with email & password and create customer profile in Firestore
- * Security Notice: Public registration strictly assigns role = 'customer'
+ * Register a new user with email & password and create customer profile in RTDB
+ * Security Notice: Public self-registration strictly assigns role = 'customer'
  */
 export const registerUser = async ({ email, password, fullName, phone = '' }) => {
-  if (!isFirebaseConfigured || !auth || !db) {
+  if (!isFirebaseConfigured || !auth || !rtdb) {
     throw new Error('Firebase Authentication is not configured.');
   }
   try {
@@ -64,208 +54,135 @@ export const registerUser = async ({ email, password, fullName, phone = '' }) =>
       await updateProfile(user, { displayName: fullName.trim() });
     }
 
-    const userDocRef = doc(db, 'users', user.uid);
+    const cleanName = fullName ? fullName.trim() : (user.displayName || 'Customer');
+    const userRef = ref(rtdb, `users/${user.uid}`);
     const profileData = {
-      uid: user.uid,
+      name: cleanName,
       email: user.email,
-      displayName: fullName ? fullName.trim() : (user.displayName || 'Customer'),
-      phoneNumber: phone.trim(),
-      role: 'customer', // Public registration is always locked to 'customer'
-      avatar: (fullName || 'CU').substring(0, 2).toUpperCase(),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      phone: phone.trim(),
+      role: 'customer',
+      isActive: true,
+      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=0D9488&color=fff`,
+      createdAt: Date.now()
     };
 
-    await setDoc(userDocRef, profileData);
-
-    // Also register in customers collection for laundry directory
-    const customerDocRef = doc(db, 'customers', user.uid);
-    await setDoc(customerDocRef, {
-      id: `#CUS${user.uid.substring(0, 5).toUpperCase()}`,
-      uid: user.uid,
-      name: profileData.displayName,
-      email: user.email,
-      phone: phone.trim() || '+91 98765 00000',
-      avatar: profileData.avatar,
-      location: 'Bengaluru',
-      totalOrders: 0,
-      totalSpent: '₹0',
-      status: 'Active',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-
-    return { user, profile: profileData };
+    await set(userRef, profileData);
+    return { ...profileData, uid: user.uid };
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('Registration failed:', error);
     throw new Error(mapAuthError(error));
   }
 };
 
 /**
- * Admin portal: Create a customer account in Firebase Auth and Cloud Firestore
- * Uses an isolated secondary Firebase App instance so the current Admin session is NEVER logged out.
+ * Sign in user with email and password, returning profile with role from RTDB
  */
-export const createCustomerAccountByAdmin = async ({ email, password, fullName, phone, location, address }) => {
-  if (!email) throw new Error('Email is required.');
-  const tempPassword = password || 'Customer@1234';
-
-  let secondaryApp = null;
-  try {
-    const appName = `AdminCreateUser_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    secondaryApp = initializeApp(app.options, appName);
-    const secondaryAuth = getAuth(secondaryApp);
-
-    const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email.trim(), tempPassword);
-    const user = userCredential.user;
-
-    if (fullName) {
-      await updateProfile(user, { displayName: fullName.trim() });
-    }
-
-    // Save profile under users/{uid}
-    const userDocRef = doc(db, 'users', user.uid);
-    const profileData = {
-      uid: user.uid,
-      email: user.email,
-      displayName: fullName ? fullName.trim() : 'Customer',
-      phoneNumber: phone ? phone.trim() : '',
-      role: 'customer',
-      avatar: (fullName || 'CU').substring(0, 2).toUpperCase(),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    };
-    await setDoc(userDocRef, profileData);
-
-    // Save in customers/{uid}
-    const customerDocRef = doc(db, 'customers', user.uid);
-    const newCustomer = {
-      id: `#CUS${user.uid.substring(0, 5).toUpperCase()}`,
-      uid: user.uid,
-      name: profileData.displayName,
-      email: user.email,
-      phone: phone ? phone.trim() : '+91 98765 00000',
-      avatar: profileData.avatar,
-      location: location || address || 'Bengaluru',
-      totalOrders: 0,
-      totalSpent: '₹0',
-      status: 'Active',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    };
-    await setDoc(customerDocRef, newCustomer);
-
-    await signOut(secondaryAuth);
-    return { user, profile: profileData, customer: newCustomer };
-  } catch (err) {
-    if (err.code === 'auth/email-already-in-use') {
-      const fallbackId = `usr-cust-${Date.now().toString(36)}`;
-      const customerDocRef = doc(db, 'customers', fallbackId);
-      const newCustomer = {
-        id: `#CUS${Math.floor(1000 + Math.random() * 9000)}`,
-        name: fullName || 'Customer',
-        email: email.trim(),
-        phone: phone ? phone.trim() : '+91 98765 00000',
-        avatar: (fullName || 'CU').substring(0, 2).toUpperCase(),
-        location: location || address || 'Bengaluru',
-        totalOrders: 0,
-        totalSpent: '₹0',
-        status: 'Active',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      await setDoc(customerDocRef, newCustomer);
-      return { customer: newCustomer, existingAuth: true };
-    }
-    console.error('Error creating customer auth account by admin:', err);
-    throw new Error(mapAuthError(err));
-  }
-};
-
-/**
- * Sign in an existing user with email and password
- */
-export const loginUser = async (email, password) => {
-  if (!isFirebaseConfigured || !auth) {
+export const loginUser = async ({ email, password, requiredRole = null }) => {
+  if (!isFirebaseConfigured || !auth || !rtdb) {
     throw new Error('Firebase Authentication is not configured.');
   }
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
     const user = userCredential.user;
-    
-    // Retrieve user profile to establish role
-    const profile = await getUserProfile(user.uid);
-    return { user, profile };
+
+    const userSnap = await get(ref(rtdb, `users/${user.uid}`));
+    let profile = userSnap.exists() ? userSnap.val() : null;
+
+    if (!profile) {
+      // Create initial profile if missing
+      profile = {
+        name: user.displayName || 'User',
+        email: user.email,
+        phone: user.phoneNumber || '',
+        role: 'customer',
+        isActive: true,
+        avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'User')}&background=0D9488&color=fff`,
+        createdAt: Date.now()
+      };
+      await set(ref(rtdb, `users/${user.uid}`), profile);
+    }
+
+    // Role Guard Check
+    if (requiredRole && profile.role !== requiredRole && profile.role !== 'admin') {
+      await signOut(auth);
+      throw new Error(`Access Denied: Your account role is "${profile.role}", which does not have permission to access the ${requiredRole} portal.`);
+    }
+
+    return { ...profile, uid: user.uid };
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Login failed:', error);
     throw new Error(mapAuthError(error));
   }
 };
 
 /**
- * Sign out the currently logged in user
+ * Sign out current user
  */
 export const logoutUser = async () => {
-  if (!isFirebaseConfigured || !auth) return;
-  try {
-    await signOut(auth);
-  } catch (error) {
-    console.error('Logout error:', error);
-    throw new Error(mapAuthError(error));
-  }
+  if (!auth) return;
+  await signOut(auth);
 };
 
 /**
- * Send a password reset email
- */
-export const resetPassword = async (email) => {
-  if (!isFirebaseConfigured || !auth) {
-    throw new Error('Firebase Authentication is not configured.');
-  }
-  try {
-    await sendPasswordResetEmail(auth, email.trim());
-    return true;
-  } catch (error) {
-    console.error('Password reset error:', error);
-    throw new Error(mapAuthError(error));
-  }
-};
-
-/**
- * Fetch user profile from Cloud Firestore users/{uid}
+ * Get current user profile from RTDB
  */
 export const getUserProfile = async (uid) => {
-  if (!isFirebaseConfigured || !db) return null;
-  try {
-    const userDocRef = doc(db, 'users', uid);
-    const snapshot = await getDoc(userDocRef);
-    if (snapshot.exists()) {
-      return snapshot.data();
-    }
-    return null;
-  } catch (error) {
-    console.error('Error fetching user profile:', error);
-    return null;
+  if (!uid || !rtdb) return null;
+  const snap = await get(ref(rtdb, `users/${uid}`));
+  if (snap.exists()) {
+    return { ...snap.val(), uid };
   }
+  return null;
 };
 
 /**
- * Update user profile in Firestore
+ * Update current user profile
  */
-export const updateUserProfile = async (uid, data) => {
-  if (!isFirebaseConfigured || !db) return false;
-  try {
-    const userDocRef = doc(db, 'users', uid);
-    // Remove protected fields from client-side direct update
-    const sanitizedData = { ...data };
-    delete sanitizedData.role;
-    delete sanitizedData.uid;
-    sanitizedData.updatedAt = serverTimestamp();
+export const updateUserProfile = async (uid, updates) => {
+  if (!uid || !rtdb) return;
+  const userRef = ref(rtdb, `users/${uid}`);
+  // Exclude role and createdAt to avoid privilege escalation
+  const { role, createdAt, ...safeUpdates } = updates;
+  await update(userRef, safeUpdates);
+};
 
-    await updateDoc(userDocRef, sanitizedData);
-    return true;
-  } catch (error) {
-    console.error('Error updating user profile:', error);
-    throw error;
+/**
+ * Admin creates staff or agent user using secondary Firebase app instance
+ */
+export const createStaffOrAgentByAdmin = async ({ email, password, name, phone, role }) => {
+  const { secondaryAuth, secondaryApp } = getSecondaryAuth();
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email.trim(), password);
+    const newUid = cred.user.uid;
+
+    const profileData = {
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      role,
+      isActive: true,
+      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name.trim())}&background=1E3A8A&color=fff`,
+      createdAt: Date.now()
+    };
+
+    await set(ref(rtdb, `users/${newUid}`), profileData);
+
+    if (role === 'agent') {
+      await set(ref(rtdb, `agents/${newUid}`), {
+        isOnline: true,
+        vehicleType: 'Two-Wheeler',
+        vehicleNumber: '',
+        lastLat: 26.2183,
+        lastLng: 78.1828,
+        lastActiveAt: Date.now()
+      });
+    }
+
+    // Sign out from secondary auth instance so admin state is pristine
+    await signOut(secondaryAuth);
+    return { ...profileData, uid: newUid };
+  } catch (err) {
+    await signOut(secondaryAuth).catch(() => {});
+    throw new Error(mapAuthError(err));
   }
 };

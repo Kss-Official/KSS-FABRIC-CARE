@@ -70,12 +70,15 @@ export const AdminOrdersPage = () => {
     const custPhone = o.customer?.phone || o.customer_phone || '';
     const idStr = String(o.id || o.order_number || o.order_id || '');
 
-    if (activeTab === 'pending' && o.status !== 'Pending Pickup') return false;
+    if (activeTab === 'pending' && o.status !== 'Pending Pickup' && o.status !== 'Pickup Scheduled') return false;
     if (activeTab === 'cleaning' && o.status !== 'In Cleaning') return false;
     if (activeTab === 'ready' && o.status !== 'Ready for Delivery') return false;
     if (activeTab === 'completed' && o.status !== 'Completed' && o.status !== 'Delivered') return false;
 
-    if (statusFilter !== 'all' && o.status !== statusFilter) return false;
+    if (statusFilter !== 'all') {
+      const matchStatus = o.status?.toLowerCase() === statusFilter.toLowerCase();
+      if (!matchStatus) return false;
+    }
     if (serviceFilter !== 'all' && !services.includes(serviceFilter)) return false;
 
     if (searchTerm) {
@@ -86,6 +89,10 @@ export const AdminOrdersPage = () => {
       if (!matchId && !matchName && !matchPhone) return false;
     }
     return true;
+  }).sort((a, b) => {
+    const timeA = a.updatedAt || a.placedAt || a.createdAt || 0;
+    const timeB = b.updatedAt || b.placedAt || b.createdAt || 0;
+    return timeB - timeA;
   });
 
   const resetFilters = () => {
@@ -113,16 +120,26 @@ export const AdminOrdersPage = () => {
   const getStatusBadgeClass = (status) => {
     switch (status) {
       case 'Pending Pickup':
+      case 'Pickup Scheduled':
         return 'status-pending-pickup';
       case 'In Cleaning':
         return 'status-in-cleaning';
       case 'Ready for Delivery':
         return 'status-ready-delivery';
+      case 'In Transit':
+        return 'status-in-transit';
       case 'Completed':
       case 'Delivered':
         return 'status-completed';
-      default:
+      default: {
+        const s = String(status || '').toLowerCase();
+        if (s.includes('pickup') || s.includes('pending')) return 'status-pending-pickup';
+        if (s.includes('clean') || s.includes('process')) return 'status-in-cleaning';
+        if (s.includes('ready')) return 'status-ready-delivery';
+        if (s.includes('transit')) return 'status-in-transit';
+        if (s.includes('complete') || s.includes('deliver')) return 'status-completed';
         return 'status-pending-pickup';
+      }
     }
   };
 
@@ -132,6 +149,7 @@ export const AdminOrdersPage = () => {
         return 'payment-paid';
       case 'cod':
         return 'payment-cod';
+      case 'pending':
       case 'unpaid':
         return 'payment-unpaid';
       default:
@@ -417,7 +435,7 @@ export const AdminOrdersPage = () => {
                       {/* Payment */}
                       <td>
                         <span className={`order-payment-capsule-badge ${getPaymentBadgeClass(ord.payment)}`}>
-                          {ord.payment}
+                          {ord.payment || (ord.paymentStatus === 'Pending' ? 'Pending' : 'Paid')}
                         </span>
                       </td>
 

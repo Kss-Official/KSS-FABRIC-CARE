@@ -255,8 +255,8 @@ export const TrackOrder = () => {
   };
 
   const getActiveStepIndex = (status, stage) => {
-    if (!status) return 0;
-    const clean = String(status)
+    if (!status && !stage) return 0;
+    const clean = String(status || '')
       .toUpperCase()
       .replace(/[^A-Z]/g, '');
     const cleanStage = String(stage || '')
@@ -264,14 +264,15 @@ export const TrackOrder = () => {
       .replace(/[^A-Z]/g, '');
 
     // Step 6: Delivered / Completed
-    if (clean.includes('DELIVERED') || clean.includes('COMPLETED')) return 6;
+    if (clean.includes('DELIVERED') || clean.includes('COMPLETED') || cleanStage.includes('DELIVERED') || cleanStage.includes('COMPLETED')) return 6;
 
     // Step 5: Out for delivery / In transit / Dispatched
     if (
       clean.includes('OUTFORDELIVERY') ||
       clean.includes('INTRANSIT') ||
       clean.includes('DISPATCHED') ||
-      cleanStage === 'OUTFORDELIVERY'
+      cleanStage === 'OUTFORDELIVERY' ||
+      cleanStage.includes('INTRANSIT')
     ) return 5;
 
     // Step 4: Ready for delivery / Packed / Delivery assigned
@@ -281,7 +282,8 @@ export const TrackOrder = () => {
       clean.includes('DELIVERYASSIGNED') ||
       clean === 'PACKED' ||
       cleanStage === 'READY' ||
-      cleanStage === 'PACKED'
+      cleanStage === 'PACKED' ||
+      cleanStage.includes('READYFORDELIVERY')
     ) return 4;
 
     // Step 3: In cleaning / Washing / Drying / Ironing / Quality check / Processing
@@ -293,10 +295,12 @@ export const TrackOrder = () => {
       clean.includes('IRON') ||
       clean.includes('FOLD') ||
       clean.includes('INSPECT') ||
+      clean.includes('QUALITY') ||
       cleanStage === 'WASHING' ||
       cleanStage === 'DRYING' ||
       cleanStage === 'IRONING' ||
-      cleanStage === 'PROCESSING'
+      cleanStage === 'PROCESSING' ||
+      cleanStage.includes('CLEAN')
     ) return 3;
 
     // Step 2: At facility / Hub / Received / Dropped off
@@ -306,7 +310,8 @@ export const TrackOrder = () => {
       clean.includes('DROPPEDOFF') ||
       clean.includes('RECEIVED') ||
       cleanStage === 'ATFACILITY' ||
-      cleanStage === 'RECEIVED'
+      cleanStage === 'RECEIVED' ||
+      cleanStage.includes('LAUNDRY')
     ) return 2;
 
     // Step 1: Picked up / Arrived / Pickup in progress

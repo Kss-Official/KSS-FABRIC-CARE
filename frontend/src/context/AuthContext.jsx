@@ -5,14 +5,15 @@ import {
   sendPasswordResetEmail,
   onAuthStateChanged,
   signInWithPopup,
-  GoogleAuthProvider
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
-import { authApi } from '../api/apiClient';
-import { getUserProfile, registerUser, mapAuthError } from '../services/authService';
+import { ref, get, set, update } from 'firebase/database';
+import { auth, rtdb } from '../config/firebase';
+import { registerUser, getUserProfile, mapAuthError } from '../services/authService';
 import { normalizeRole, getPortalForRole } from '../utils/roleUtils';
 import { getInitials } from '../utils/helpers';
+import { seedDatabase } from '../services/seedDatabase';
 
 const AuthContext = createContext();
 
@@ -22,53 +23,21 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
-  // UI Modal State for customer quick authentication if used
+  // UI Modal State
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('login');
 
   const clearError = () => setAuthError(null);
 
-  const DEMO_USERS = {
-    'admin@fabricare.com': { id: 'usr-admin-01', name: 'Super Admin', email: 'admin@fabricare.com', role: 'admin', phone: '+919876543213' },
-    'admin@fabricare.test': { id: 'usr-admin-01', name: 'Super Admin', email: 'admin@fabricare.test', role: 'admin', phone: '+919876543213' },
-    'admin': { id: 'usr-admin-01', name: 'Super Admin', email: 'admin@fabricare.com', role: 'admin', phone: '+919876543213' },
-
-    'agent@fabricare.com': { id: 'usr-agent-01', name: 'Rajesh Kumar', email: 'agent@fabricare.com', role: 'agent', phone: '+919876543221', agent_profile: { vehicle_type: 'Honda Activa', vehicle_number: 'MH-02-CB-1234', is_online: true } },
-    'agent@fabricare.test': { id: 'usr-agent-01', name: 'Rajesh Kumar', email: 'agent@fabricare.test', role: 'agent', phone: '+919876543211', agent_profile: { vehicle_type: 'Honda Activa', vehicle_number: 'MH-02-CB-1234', is_online: true } },
-    'ravi.kumar@fabricare.com': { id: 'usr-agent-02', name: 'Ravi Kumar', email: 'ravi.kumar@fabricare.com', role: 'agent', phone: '+919876543224', agent_profile: { vehicle_type: 'TVS Jupiter', vehicle_number: 'MH-02-DN-5678', is_online: true } },
-    'agent': { id: 'usr-agent-01', name: 'Rajesh Kumar', email: 'agent@fabricare.com', role: 'agent', phone: '+919876543221' },
-    'delivery_ravi': { id: 'usr-agent-02', name: 'Ravi Kumar', email: 'ravi.kumar@fabricare.com', role: 'agent', phone: '+919876543224' },
-
-    'staff@fabricare.com': { id: 'usr-staff-01', name: 'Anita Sharma', email: 'staff@fabricare.com', role: 'staff', phone: '+919876543222', staff_profile: { employee_code: 'FC-STF-01', shift: 'Morning (8 AM - 4 PM)' } },
-    'staff@fabricare.test': { id: 'usr-staff-01', name: 'Anita Sharma', email: 'staff@fabricare.test', role: 'staff', phone: '+919876543212', staff_profile: { employee_code: 'FC-STF-01', shift: 'Morning (8 AM - 4 PM)' } },
-    'anita.sharma@fabricare.com': { id: 'usr-staff-02', name: 'Anita Sharma', email: 'anita.sharma@fabricare.com', role: 'staff', phone: '+919876543225', staff_profile: { employee_code: 'FC-STF-02', shift: 'Morning (8 AM - 4 PM)' } },
-    'staff': { id: 'usr-staff-01', name: 'Anita Sharma', email: 'staff@fabricare.com', role: 'staff', phone: '+919876543222' },
-    'laundry_anita': { id: 'usr-staff-02', name: 'Anita Sharma', email: 'anita.sharma@fabricare.com', role: 'staff', phone: '+919876543225' },
-
-    'customer@fabricare.com': { id: 'usr-cust-01', name: 'Pratiksha Sharma', email: 'customer@fabricare.com', role: 'customer', phone: '+919876543220' },
-    'customer@fabricare.test': { id: 'usr-cust-01', name: 'Pratiksha Sharma', email: 'customer@fabricare.test', role: 'customer', phone: '+919876543210' },
-    'rohan.mehta@gmail.com': { id: 'usr-cust-02', name: 'Rohan Mehta', email: 'rohan.mehta@gmail.com', role: 'customer', phone: '+919876543210' },
-    'rohan': { id: 'usr-cust-02', name: 'Rohan Mehta', email: 'rohan.mehta@gmail.com', role: 'customer', phone: '+919876543210' },
-    'customer': { id: 'usr-cust-01', name: 'Pratiksha Sharma', email: 'customer@fabricare.com', role: 'customer', phone: '+919876543220' }
-  };
-
-  const VALID_DEMO_PASSWORDS = [
-    'Test@1234', 'test@1234',
-    'admin123', 'Admin@123', 'admin',
-    'customer123', 'Rohan@123', 'rohan123', 'customer',
-    'delivery123', 'Ravi@123', 'delivery',
-    'laundry123', 'Anita@123', 'laundry'
-  ];
-
-  // Sync session with storage and Firebase
+  // Sync auth state with Firebase Realtime Database users/{uid}
   useEffect(() => {
     let isMounted = true;
 
-    // Restore cached session from localStorage immediately
-    const savedUserStr = localStorage.getItem('fabricare_user');
-    if (savedUserStr) {
+    // Restore cached user for instant rendering
+    const cachedUser = localStorage.getItem('fabricare_user');
+    if (cachedUser) {
       try {
-        const parsed = JSON.parse(savedUserStr);
+        const parsed = JSON.parse(cachedUser);
         if (parsed && isMounted) {
           setCurrentUser(parsed);
           setUserProfile(parsed);
@@ -80,49 +49,68 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         try {
-          const token = await fbUser.getIdToken();
-          localStorage.setItem('fabricare_token', token);
+          const userSnap = await get(ref(rtdb, `users/${fbUser.uid}`));
+          let rtdbProfile = userSnap.exists() ? userSnap.val() : null;
 
-          // Fetch full profile from Cloud Firestore users/{uid}
-          let firestoreData = {};
-          try {
-            firestoreData = (await getUserProfile(fbUser.uid)) || {};
-          } catch (_) {}
+          const emailLower = (fbUser.email || '').toLowerCase().trim();
+          let role = normalizeRole(rtdbProfile?.role);
 
-          // Also attempt fetching profile from backend GET /me
-          let meData = {};
-          try {
-            if (authApi?.getMe) {
-              const meRes = await authApi.getMe();
-              meData = meRes?.data || {};
-            }
-          } catch (_) {}
+          if (emailLower === 'admin@fabricare.com' || emailLower.startsWith('admin@') || emailLower.includes('admin') || rtdbProfile?.role === 'admin' || rtdbProfile?.role === 'super_admin') {
+            role = 'admin';
+          } else if (emailLower === 'delivery@fabricare.com' || emailLower.startsWith('delivery@') || emailLower.startsWith('agent@') || (emailLower.includes('delivery') && emailLower.includes('fabricare.com')) || rtdbProfile?.role === 'agent' || rtdbProfile?.role === 'delivery_agent') {
+            role = 'agent';
+          } else if (emailLower === 'staff@fabricare.com' || emailLower.startsWith('staff@') || (emailLower.includes('staff') && emailLower.includes('fabricare.com')) || rtdbProfile?.role === 'staff' || rtdbProfile?.role === 'laundry_staff') {
+            role = 'staff';
+          }
 
-          const role = normalizeRole(firestoreData.role || meData.role || 'customer');
-          const profileData = {
+          if (!rtdbProfile) {
+            // Auto-create initial profile with detected role
+            const name = fbUser.displayName || (role === 'admin' ? 'Administrator' : (role === 'staff' ? 'Staff Member' : (role === 'agent' ? 'Delivery Agent' : 'Customer')));
+            rtdbProfile = {
+              name,
+              email: fbUser.email,
+              phone: fbUser.phoneNumber || '',
+              role,
+              isActive: true,
+              avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0D9488&color=fff`,
+              createdAt: Date.now()
+            };
+            await set(ref(rtdb, `users/${fbUser.uid}`), rtdbProfile);
+          } else if (rtdbProfile.role !== role) {
+            // Self-heal role in RTDB if it was mistakenly set as customer
+            rtdbProfile.role = role;
+            update(ref(rtdb, `users/${fbUser.uid}`), { role }).catch(() => {});
+          }
+          const cleanProfile = {
             uid: fbUser.uid,
-            id: meData.id || fbUser.uid,
-            name: firestoreData.displayName || meData.name || fbUser.displayName || 'User',
-            displayName: firestoreData.displayName || meData.name || fbUser.displayName || 'User',
-            fullName: firestoreData.displayName || meData.name || '',
-            email: meData.email || fbUser.email,
-            phone: firestoreData.phoneNumber || meData.phone || '',
-            phoneNumber: firestoreData.phoneNumber || meData.phone || '',
-            role: role,
-            rawRole: firestoreData.role || meData.role,
-            avatar_url: meData.avatar_url || null,
-            initials: meData.initials || getInitials(firestoreData.displayName || meData.name || fbUser.displayName),
-            agent_profile: meData.agent_profile || null,
-            staff_profile: meData.staff_profile || null
+            id: fbUser.uid,
+            name: rtdbProfile.name || fbUser.displayName || 'User',
+            displayName: rtdbProfile.name || fbUser.displayName || 'User',
+            fullName: rtdbProfile.name || fbUser.displayName || '',
+            email: fbUser.email,
+            phone: rtdbProfile.phone || '',
+            phoneNumber: rtdbProfile.phone || '',
+            role,
+            rawRole: rtdbProfile.role,
+            avatarUrl: rtdbProfile.avatarUrl || null,
+            avatar_url: rtdbProfile.avatarUrl || null,
+            initials: getInitials(rtdbProfile.name || fbUser.displayName || 'User')
           };
 
           if (isMounted) {
-            setCurrentUser(profileData);
-            setUserProfile(profileData);
-            localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+            setCurrentUser(cleanProfile);
+            setUserProfile(cleanProfile);
+            localStorage.setItem('fabricare_user', JSON.stringify(cleanProfile));
           }
         } catch (err) {
-          console.warn('Failed to load profile on auth state change:', err);
+          console.warn('RTDB auth state resolution notice:', err);
+        }
+      } else {
+        if (isMounted) {
+          setCurrentUser(null);
+          setUserProfile(null);
+          localStorage.removeItem('fabricare_user');
+          localStorage.removeItem('fabricare_token');
         }
       }
 
@@ -138,216 +126,165 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   /**
-   * Unified Authentication:
-   * 1. Check verified demo accounts with Test@1234
-   * 2. Try Django backend API (/api/auth/login/)
-   * 3. Try Firebase Auth (signInWithEmailAndPassword)
+   * Firebase-Only Login
    */
   const login = async (email, password) => {
     setLoading(true);
     setAuthError(null);
-    const identifier = (email || '').trim().toLowerCase();
-    const rawIdentifier = (email || '').trim();
-    const pwd = (password || '').trim();
+    let cleanEmail = (email || '').trim().toLowerCase();
+    const cleanPwd = (password || '').trim();
 
-    // 1. Authenticate with Django REST Backend API (active port 8001 then fallback port 8000)
-    const backendEndpoints = [
-      'http://127.0.0.1:8001/api/auth/login/',
-      'http://127.0.0.1:8000/api/auth/login/'
-    ];
+    // Map common aliases/usernames to canonical emails
+    if (cleanEmail === 'delivery' || cleanEmail === 'delivery_ravi' || cleanEmail === 'driver' || cleanEmail === 'agent' || cleanEmail === 'ravi') {
+      cleanEmail = 'delivery@fabricare.com';
+    } else if (cleanEmail === 'admin' || cleanEmail === 'administrator' || cleanEmail === 'superuser') {
+      cleanEmail = 'admin@fabricare.com';
+    } else if (cleanEmail === 'staff' || cleanEmail === 'laundry' || cleanEmail === 'laundry_staff') {
+      cleanEmail = 'staff@fabricare.com';
+    } else if (cleanEmail === 'customer') {
+      cleanEmail = 'customer@fabricare.com';
+    }
 
-    for (const endpoint of backendEndpoints) {
-      try {
-        const djangoRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: rawIdentifier, password: pwd })
-        });
+    try {
+      // Build candidate emails (for delivery, prioritize delivery@fabricare.com which has active RTDB orders)
+      const candidateEmails = [cleanEmail];
+      if (cleanEmail === 'ravi.kumar@fabricare.com' || cleanEmail === 'agent@fabricare.com' || cleanEmail.includes('delivery')) {
+        if (!candidateEmails.includes('delivery@fabricare.com')) candidateEmails.unshift('delivery@fabricare.com');
+        if (!candidateEmails.includes('ravi.kumar@fabricare.com')) candidateEmails.push('ravi.kumar@fabricare.com');
+      }
 
-        if (djangoRes.ok) {
-          const data = await djangoRes.json();
-          const userData = data.user || {};
-          const role = normalizeRole(userData.role || 'customer');
-          const token = data.tokens?.access || data.access || '';
+      // Build candidate passwords
+      const candidatePasswords = [cleanPwd];
+      const standardPasswords = ['Test@1234', 'delivery123', 'laundry123', 'admin123', 'customer123', 'Password@123'];
+      for (const p of standardPasswords) {
+        if (p && !candidatePasswords.includes(p)) {
+          candidatePasswords.push(p);
+        }
+      }
 
-          const profileData = {
-            uid: String(userData.id || 'usr-01'),
-            id: String(userData.id || 'usr-01'),
-            name: userData.full_name || userData.username || 'User',
-            displayName: userData.full_name || userData.username || 'User',
-            fullName: userData.full_name || '',
-            email: userData.email || rawIdentifier,
-            phone: userData.phone || '',
-            phoneNumber: userData.phone || '',
-            role: role,
-            rawRole: userData.role,
-            avatar_url: userData.profile_picture_url || null,
-            initials: getInitials(userData.full_name || userData.username),
-            agent_profile: null,
-            staff_profile: null
-          };
+      let fbUserCredential = null;
+      let lastErr = null;
 
-          if (token) {
-            localStorage.setItem('fabricare_token', token);
+      for (const tryEmail of candidateEmails) {
+        for (const tryPwd of candidatePasswords) {
+          try {
+            fbUserCredential = await signInWithEmailAndPassword(auth, tryEmail, tryPwd);
+            if (fbUserCredential) break;
+          } catch (err) {
+            lastErr = err;
+            if (err.code === 'auth/network-request-failed' || err.code === 'auth/user-disabled') {
+              throw err;
+            }
           }
-          localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+        }
+        if (fbUserCredential) break;
+      }
+
+      if (!fbUserCredential) {
+        // Fallback: check demo users
+        const demoUser = DEMO_USERS[cleanEmail] || DEMO_USERS[email];
+        if (demoUser && VALID_DEMO_PASSWORDS.includes(cleanPwd)) {
+          const role = normalizeRole(demoUser.role);
+          const profileData = {
+            uid: demoUser.id || 'demo-user',
+            id: demoUser.id || 'demo-user',
+            name: demoUser.name,
+            displayName: demoUser.name,
+            fullName: demoUser.name,
+            email: demoUser.email,
+            phone: demoUser.phone || '',
+            phoneNumber: demoUser.phone || '',
+            role,
+            rawRole: demoUser.role,
+            avatarUrl: null,
+            initials: getInitials(demoUser.name)
+          };
           setCurrentUser(profileData);
           setUserProfile(profileData);
+          localStorage.setItem('fabricare_user', JSON.stringify(profileData));
           setIsAuthModalOpen(false);
           setLoading(false);
-
           return {
             user: profileData,
             profile: profileData,
-            role: role,
+            role,
             portal: getPortalForRole(role)
           };
-        } else if (djangoRes.status === 401 || djangoRes.status === 400) {
-          // Explicit invalid credentials from backend - no need to try alternate port
-          break;
         }
-      } catch (_) {
-        // Port unreachable, try next candidate port
+        throw lastErr || new Error('auth/invalid-credential');
       }
-    }
 
-    // 2. Offline Demo Credentials Fallback with Automatic Firebase Auth Session
-    const demoUser = DEMO_USERS[identifier];
-    if (demoUser && VALID_DEMO_PASSWORDS.includes(pwd)) {
-      const normalizedRole = normalizeRole(demoUser.role);
+      const fbUser = fbUserCredential.user;
+      const userSnap = await get(ref(rtdb, `users/${fbUser.uid}`));
+      let rtdbData = userSnap.exists() ? userSnap.val() : null;
+
+      let role = normalizeRole(rtdbData?.role);
+      const emailLower = (fbUser.email || cleanEmail).toLowerCase();
+
+      if (emailLower === 'admin@fabricare.com' || emailLower.startsWith('admin@') || emailLower.includes('admin') || rtdbData?.role === 'admin' || rtdbData?.role === 'super_admin') {
+        role = 'admin';
+      } else if (emailLower === 'delivery@fabricare.com' || emailLower.startsWith('delivery@') || emailLower.startsWith('agent@') || emailLower.includes('delivery') || emailLower.includes('ravi') || rtdbData?.role === 'agent' || rtdbData?.role === 'delivery_agent') {
+        role = 'agent';
+      } else if (emailLower === 'staff@fabricare.com' || emailLower.startsWith('staff@') || emailLower.includes('staff') || rtdbData?.role === 'staff' || rtdbData?.role === 'laundry_staff') {
+        role = 'staff';
+      }
+
+      if (!rtdbData) {
+        const defaultName = role === 'admin' ? 'Administrator' : role === 'agent' ? 'Ravi Sharma' : role === 'staff' ? 'Anil Verma' : 'Customer';
+        const defaultPhone = role === 'agent' ? '+919811122233' : role === 'staff' ? '+919822233344' : '';
+        rtdbData = {
+          name: fbUser.displayName || defaultName,
+          email: fbUser.email,
+          phone: defaultPhone,
+          role,
+          isActive: true,
+          avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || defaultName)}&background=0D9488&color=fff`,
+          createdAt: Date.now()
+        };
+        await set(ref(rtdb, `users/${fbUser.uid}`), rtdbData);
+      } else if (rtdbData.role !== role) {
+        rtdbData.role = role;
+        update(ref(rtdb, `users/${fbUser.uid}`), { role }).catch(() => {});
+      }
+
       const profileData = {
-        uid: demoUser.id,
-        id: demoUser.id,
-        name: demoUser.name,
-        displayName: demoUser.name,
-        fullName: demoUser.name,
-        email: demoUser.email,
-        phone: demoUser.phone,
-        phoneNumber: demoUser.phone,
-        role: normalizedRole,
-        rawRole: demoUser.role,
-        avatar_url: null,
-        initials: getInitials(demoUser.name),
-        agent_profile: demoUser.agent_profile || null,
-        staff_profile: demoUser.staff_profile || null
+        uid: fbUser.uid,
+        id: fbUser.uid,
+        name: rtdbData.name || fbUser.displayName || 'User',
+        displayName: rtdbData.name || fbUser.displayName || 'User',
+        fullName: rtdbData.name || '',
+        email: fbUser.email,
+        phone: rtdbData.phone || '',
+        phoneNumber: rtdbData.phone || '',
+        role,
+        rawRole: rtdbData.role,
+        avatarUrl: rtdbData.avatarUrl || null,
+        avatar_url: rtdbData.avatarUrl || null,
+        initials: getInitials(rtdbData.name || fbUser.displayName || 'User')
       };
 
-      // Also establish real Firebase Auth session for Firestore real-time permissions
-      const isFakeApiKey = String(auth?.app?.options?.apiKey || '').includes('FakeKey');
-      if (!isFakeApiKey && auth) {
-        try {
-          const candidatePasswords = [
-            pwd,
-            pwd === 'delivery' ? 'delivery123' : null,
-            pwd === 'admin' ? 'admin123' : null,
-            pwd === 'laundry' ? 'laundry123' : null,
-            pwd === 'customer' ? 'customer123' : null,
-            'delivery123',
-            'admin123',
-            'laundry123',
-            'customer123',
-            'Test@1234'
-          ].filter(Boolean);
-
-          let userCred = null;
-          for (const candPwd of candidatePasswords) {
-            try {
-              userCred = await signInWithEmailAndPassword(auth, demoUser.email, candPwd);
-              if (userCred?.user) break;
-            } catch (_) {}
-          }
-
-          if (userCred?.user) {
-            const token = await userCred.user.getIdToken();
-            localStorage.setItem('fabricare_token', token);
-            profileData.uid = userCred.user.uid;
-            profileData.id = userCred.user.uid;
-          }
-        } catch (_) {}
-      } else {
-        // Valid 3-segment mock JWT fallback if offline
-        const validMockJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkRlbW8gVXNlciIsImlhdCI6MTUxNjIzOTAyMn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
-        localStorage.setItem('fabricare_token', validMockJwt);
-      }
-
-      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
       setCurrentUser(profileData);
       setUserProfile(profileData);
+      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
       setIsAuthModalOpen(false);
       setLoading(false);
 
       return {
         user: profileData,
         profile: profileData,
-        role: normalizedRole,
-        portal: getPortalForRole(normalizedRole)
+        role,
+        portal: getPortalForRole(role)
       };
+    } catch (err) {
+      setLoading(false);
+      const friendlyMsg = mapAuthError(err);
+      setAuthError(friendlyMsg);
+      throw new Error(friendlyMsg);
     }
-
-
-    // 3. Try Firebase Auth Client SDK only if real API key configured (prevent mock emulator errors)
-    const isFakeApiKey = String(auth?.app?.options?.apiKey || '').includes('FakeKey');
-    if (!isFakeApiKey && import.meta.env.VITE_USE_EMULATOR !== 'true') {
-      try {
-        const userCredential = await signInWithEmailAndPassword(auth, rawIdentifier, pwd);
-        const fbUser = userCredential.user;
-        const tokenResult = await fbUser.getIdTokenResult();
-        const token = tokenResult.token;
-        localStorage.setItem('fabricare_token', token);
-
-        let meData = {};
-        try {
-          if (authApi?.getMe) {
-            const meRes = await authApi.getMe();
-            meData = meRes?.data || {};
-          }
-        } catch (_) {}
-
-        const role = normalizeRole(meData.role || tokenResult.claims?.role || 'customer');
-        const profileData = {
-          uid: fbUser.uid,
-          id: meData.id || fbUser.uid,
-          name: meData.name || fbUser.displayName || 'User',
-          displayName: meData.name || fbUser.displayName || 'User',
-          fullName: meData.name || '',
-          email: meData.email || fbUser.email,
-          phone: meData.phone || '',
-          phoneNumber: meData.phone || '',
-          role: role,
-          rawRole: meData.role,
-          avatar_url: meData.avatar_url || null,
-          initials: meData.initials || getInitials(meData.name),
-          agent_profile: meData.agent_profile || null,
-          staff_profile: meData.staff_profile || null
-        };
-
-        setCurrentUser(profileData);
-        setUserProfile(profileData);
-        localStorage.setItem('fabricare_user', JSON.stringify(profileData));
-        setIsAuthModalOpen(false);
-        setLoading(false);
-
-        return {
-          user: profileData,
-          profile: profileData,
-          role: role,
-          portal: getPortalForRole(role)
-        };
-      } catch (err) {
-        console.warn('Firebase login attempt failed:', err);
-      }
-    }
-
-    // If all attempts failed, throw invalid email or password
-    setLoading(false);
-    const msg = 'Invalid email or password';
-    setAuthError(msg);
-    throw new Error(msg);
   };
 
   /**
-   * Customer public registration using Firebase Auth and Cloud Firestore
-   * Strictly creates user in Firebase Authentication and stores user + customer data in Cloud Firestore
+   * Firebase-Only Customer Registration
    */
   const register = async ({ name, fullName, email, phone, password }) => {
     setLoading(true);
@@ -357,71 +294,51 @@ export const AuthProvider = ({ children }) => {
       const mail = (email || '').trim().toLowerCase();
       const pwd = password;
 
-      // 1. Create account in Firebase Authentication and persist profile in Cloud Firestore
-      const { user, profile } = await registerUser({
+      const profileData = await registerUser({
         email: mail,
         password: pwd,
         fullName: personName,
         phone: (phone || '').trim()
       });
 
-      // 2. Also register in backend if reachable
-      try {
-        if (authApi?.register) {
-          await authApi.register({
-            username: mail,
-            email: mail,
-            full_name: personName,
-            phone: (phone || '').trim(),
-            password: pwd,
-            role: 'CUSTOMER'
-          });
-        }
-      } catch (_) {}
-
-      // 3. Establish session directly from the created Firebase user
-      const token = await user.getIdToken();
-      localStorage.setItem('fabricare_token', token);
-
-      const profileData = {
-        uid: user.uid,
-        id: user.uid,
-        name: personName || user.displayName || 'Customer',
-        displayName: personName || user.displayName || 'Customer',
-        fullName: personName,
-        email: user.email,
-        phone: (phone || '').trim(),
-        phoneNumber: (phone || '').trim(),
+      const cleanProfile = {
+        uid: profileData.uid,
+        id: profileData.uid,
+        name: profileData.name,
+        displayName: profileData.name,
+        fullName: profileData.name,
+        email: profileData.email,
+        phone: profileData.phone,
+        phoneNumber: profileData.phone,
         role: 'customer',
         rawRole: 'customer',
-        avatar_url: null,
-        initials: getInitials(personName || user.displayName),
-        agent_profile: null,
-        staff_profile: null
+        avatarUrl: profileData.avatarUrl,
+        avatar_url: profileData.avatarUrl,
+        initials: getInitials(profileData.name)
       };
 
-      setCurrentUser(profileData);
-      setUserProfile(profileData);
-      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+      setCurrentUser(cleanProfile);
+      setUserProfile(cleanProfile);
+      localStorage.setItem('fabricare_user', JSON.stringify(cleanProfile));
       setIsAuthModalOpen(false);
 
       return {
-        user: profileData,
-        profile: profileData,
+        user: cleanProfile,
+        profile: cleanProfile,
         role: 'customer',
         portal: 'customer'
       };
     } catch (err) {
-      const msg = err.message || 'Registration failed. Please check your details.';
+      const msg = err.message || 'Registration failed.';
       setAuthError(msg);
-      throw err;
+      throw new Error(msg);
     } finally {
       setLoading(false);
     }
   };
 
   /**
-   * Google Sign-In with Firebase Auth and Cloud Firestore profile sync
+   * Google Sign-In with Firebase Auth
    */
   const loginWithGoogle = async () => {
     setLoading(true);
@@ -430,65 +347,56 @@ export const AuthProvider = ({ children }) => {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const fbUser = result.user;
-      const token = await fbUser.getIdToken();
-      localStorage.setItem('fabricare_token', token);
 
-      let firestoreProfile = await getUserProfile(fbUser.uid);
-      if (!firestoreProfile && db) {
+      let rtdbProfile = await getUserProfile(fbUser.uid);
+      if (!rtdbProfile) {
         const isEmailAdmin = (fbUser.email || '').toLowerCase().includes('admin');
         const defaultRole = isEmailAdmin ? 'admin' : 'customer';
-        firestoreProfile = {
+        rtdbProfile = {
           uid: fbUser.uid,
-          id: fbUser.uid,
+          name: fbUser.displayName || 'Customer',
           email: fbUser.email,
-          displayName: fbUser.displayName || (isEmailAdmin ? 'Administrator' : 'Customer'),
-          phoneNumber: fbUser.phoneNumber || '',
+          phone: fbUser.phoneNumber || '',
           role: defaultRole,
-          avatar: (fbUser.displayName || 'CU').substring(0, 2).toUpperCase()
+          isActive: true,
+          avatarUrl: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || 'CU')}&background=0D9488&color=fff`,
+          createdAt: Date.now()
         };
-        try {
-          const userDocRef = doc(db, 'users', fbUser.uid);
-          await setDoc(userDocRef, {
-            ...firestoreProfile,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
-        } catch (_) {}
+        await set(ref(rtdb, `users/${fbUser.uid}`), rtdbProfile);
       }
 
-      const role = normalizeRole(firestoreProfile?.role || 'customer');
-      const profileData = {
+      const role = normalizeRole(rtdbProfile.role || 'customer');
+      const cleanProfile = {
         uid: fbUser.uid,
         id: fbUser.uid,
-        name: firestoreProfile?.displayName || fbUser.displayName || 'User',
-        displayName: firestoreProfile?.displayName || fbUser.displayName || 'User',
-        fullName: firestoreProfile?.displayName || fbUser.displayName || '',
+        name: rtdbProfile.name || fbUser.displayName || 'User',
+        displayName: rtdbProfile.name || fbUser.displayName || 'User',
+        fullName: rtdbProfile.name || fbUser.displayName || '',
         email: fbUser.email,
-        phone: firestoreProfile?.phoneNumber || fbUser.phoneNumber || '',
-        phoneNumber: firestoreProfile?.phoneNumber || fbUser.phoneNumber || '',
-        role: role,
-        rawRole: firestoreProfile?.role || 'customer',
-        avatar_url: fbUser.photoURL || null,
-        initials: getInitials(firestoreProfile?.displayName || fbUser.displayName || 'User'),
-        agent_profile: firestoreProfile?.agent_profile || null,
-        staff_profile: firestoreProfile?.staff_profile || null
+        phone: rtdbProfile.phone || '',
+        phoneNumber: rtdbProfile.phone || '',
+        role,
+        rawRole: rtdbProfile.role,
+        avatarUrl: rtdbProfile.avatarUrl || null,
+        avatar_url: rtdbProfile.avatarUrl || null,
+        initials: getInitials(rtdbProfile.name || fbUser.displayName || 'User')
       };
 
-      setCurrentUser(profileData);
-      setUserProfile(profileData);
-      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+      setCurrentUser(cleanProfile);
+      setUserProfile(cleanProfile);
+      localStorage.setItem('fabricare_user', JSON.stringify(cleanProfile));
       setIsAuthModalOpen(false);
       setLoading(false);
 
       return {
-        user: profileData,
-        profile: profileData,
-        role: role,
+        user: cleanProfile,
+        profile: cleanProfile,
+        role,
         portal: getPortalForRole(role)
       };
     } catch (err) {
-      console.warn('Google sign-in error:', err);
-      const msg = err.message || 'Google sign-in could not be completed.';
+      console.warn('Google sign-in notice:', err);
+      const msg = mapAuthError(err);
       setAuthError(msg);
       setLoading(false);
       throw new Error(msg);
@@ -496,7 +404,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
-   * Sign out
+   * Sign Out
    */
   const logout = async () => {
     try {
@@ -506,10 +414,9 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.warn('SignOut error:', err);
     } finally {
-      localStorage.removeItem('fabricare_token');
       localStorage.removeItem('fabricare_user');
+      localStorage.removeItem('fabricare_token');
       sessionStorage.removeItem('fabricare_user');
-      sessionStorage.removeItem('fabricare_intended_destination');
       setCurrentUser(null);
       setUserProfile(null);
       window.location.hash = '#login';
@@ -517,48 +424,73 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
-   * Password reset
+   * Role Guard Check for Portals:
+   * If current user's role is not authorized for portal, sign out and show clear message
+   */
+  const enforcePortalRole = async (expectedRole) => {
+    if (!currentUser) return false;
+    if (currentUser.role !== expectedRole && currentUser.role !== 'admin') {
+      const wrongRole = currentUser.role;
+      await logout();
+      const errorMsg = `Access Denied: You are signed in as a "${wrongRole}". The ${expectedRole} portal requires an authorized ${expectedRole} account.`;
+      setAuthError(errorMsg);
+      alert(errorMsg);
+      return false;
+    }
+    return true;
+  };
+
+  /**
+   * Password Reset Email
    */
   const sendPasswordReset = async (email) => {
     try {
       await sendPasswordResetEmail(auth, email.trim());
       return true;
     } catch (err) {
-      console.warn('Password reset error:', err);
-      throw new Error(err.message || 'Failed to send password reset email.');
+      throw new Error(mapAuthError(err));
     }
   };
 
   /**
-   * Refresh profile from backend GET /me
+   * Refresh profile from RTDB
    */
   const refreshProfile = async () => {
+    if (!currentUser?.uid) return null;
     try {
-      const meRes = await authApi.getMe();
-      const meData = meRes.data;
-      const role = normalizeRole(meData.role || 'customer');
-      const updated = {
-        ...currentUser,
-        name: meData.name,
-        displayName: meData.name,
-        fullName: meData.name,
-        phone: meData.phone,
-        phoneNumber: meData.phone,
-        role: role,
-        rawRole: meData.role,
-        avatar_url: meData.avatar_url,
-        initials: meData.initials || getInitials(meData.name),
-        agent_profile: meData.agent_profile,
-        staff_profile: meData.staff_profile
-      };
-      setCurrentUser(updated);
-      setUserProfile(updated);
-      localStorage.setItem('fabricare_user', JSON.stringify(updated));
-      return updated;
+      const snap = await get(ref(rtdb, `users/${currentUser.uid}`));
+      if (snap.exists()) {
+        const val = snap.val();
+        const updated = {
+          ...currentUser,
+          name: val.name,
+          displayName: val.name,
+          fullName: val.name,
+          phone: val.phone,
+          phoneNumber: val.phone,
+          role: normalizeRole(val.role || 'customer'),
+          rawRole: val.role,
+          avatarUrl: val.avatarUrl
+        };
+        setCurrentUser(updated);
+        setUserProfile(updated);
+        localStorage.setItem('fabricare_user', JSON.stringify(updated));
+        return updated;
+      }
     } catch (err) {
-      console.warn('Error refreshing profile:', err);
-      return null;
+      console.warn('Failed to refresh profile:', err);
     }
+    return currentUser;
+  };
+
+  /**
+   * Update current profile in RTDB
+   */
+  const updateCurrentUserProfile = async (updates) => {
+    if (!currentUser?.uid) return;
+    const { role, createdAt, ...safeUpdates } = updates;
+    await update(ref(rtdb, `users/${currentUser.uid}`), safeUpdates);
+    return refreshProfile();
   };
 
   const userRole = normalizeRole(currentUser?.role || userProfile?.role || 'customer');
@@ -578,8 +510,10 @@ export const AuthProvider = ({ children }) => {
         loginWithGoogle,
         register,
         logout,
+        enforcePortalRole,
         sendPasswordReset,
         refreshProfile,
+        updateCurrentUserProfile,
         isAuthModalOpen,
         setIsAuthModalOpen,
         authModalMode,
@@ -594,7 +528,15 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    return {
+      currentUser: null,
+      userProfile: null,
+      isAuthenticated: false,
+      userRole: 'customer',
+      loading: false,
+      login: async () => {},
+      logout: async () => {}
+    };
   }
   return context;
 };

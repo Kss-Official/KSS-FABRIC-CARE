@@ -234,24 +234,26 @@ export const AdminCustomersPage = () => {
   // Filtering
   const filteredCustomers = useMemo(() => {
     return allCustomers.filter(c => {
+      const statusStr = String(c?.status || '').toLowerCase();
+      const locStr = String(c?.location || '').toLowerCase();
       // Status filter
-      if (statusFilter !== 'all' && c.status.toLowerCase() !== statusFilter.toLowerCase()) {
+      if (statusFilter !== 'all' && statusStr !== statusFilter.toLowerCase()) {
         return false;
       }
       
       // Area filter
-      if (areaFilter !== 'all' && !c.location.toLowerCase().includes(areaFilter.toLowerCase())) {
+      if (areaFilter !== 'all' && !locStr.includes(areaFilter.toLowerCase())) {
         return false;
       }
 
       // Search query
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase().trim();
-        const matchName = c.name.toLowerCase().includes(q) || c.fullName.toLowerCase().includes(q);
-        const matchId = c.id.toLowerCase().includes(q);
-        const matchPhone = c.phone.includes(q);
-        const matchEmail = c.email.toLowerCase().includes(q);
-        const matchLoc = c.location.toLowerCase().includes(q);
+        const matchName = String(c?.name || '').toLowerCase().includes(q) || String(c?.fullName || '').toLowerCase().includes(q);
+        const matchId = String(c?.id || '').toLowerCase().includes(q);
+        const matchPhone = String(c?.phone || '').includes(q);
+        const matchEmail = String(c?.email || '').toLowerCase().includes(q);
+        const matchLoc = locStr.includes(q);
         if (!matchName && !matchId && !matchPhone && !matchEmail && !matchLoc) {
           return false;
         }

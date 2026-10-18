@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { notificationsApi } from '../api/apiClient';
+import { useAuth } from '../context/AuthContext';
+import { subscribeCustomerNotifications, markNotificationRead } from '../services/customerDataService';
 import { 
   Bell, 
   Check, 
@@ -13,39 +14,46 @@ import {
 } from 'lucide-react';
 
 export const Notifications = () => {
+  const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchNotifications = async () => {
-    setLoading(true);
-    try {
-      const res = await notificationsApi.getNotifications();
-      const list = Array.isArray(res.data) ? res.data : res.data?.results || [];
-      setNotifications(list);
-    } catch (err) {
-      console.error('Failed to load notifications:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchNotifications();
-  }, []);
+    if (!currentUser?.uid) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const unsubscribe = subscribeCustomerNotifications(
+      currentUser.uid,
+      (list) => {
+        setNotifications(list || []);
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Notifications listener notice:', err);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser?.uid]);
 
   const handleMarkRead = async (id) => {
+    if (!currentUser?.uid || !id) return;
     try {
-      await notificationsApi.markRead(id);
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+      await markNotificationRead(currentUser.uid, id);
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
     }
   };
 
   const handleMarkAllRead = async () => {
+    if (!currentUser?.uid) return;
     try {
-      await notificationsApi.markAllRead();
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      const promises = notifications.filter(n => !n.isRead).map(n => markNotificationRead(currentUser.uid, n.id));
+      await Promise.all(promises);
     } catch (err) {
       console.error('Failed to mark all as read:', err);
     }
@@ -61,14 +69,6 @@ export const Notifications = () => {
           <p className="text-sm text-muted">Stay informed on order status changes, delivery alerts, and service updates</p>
         </div>
         <div className="flex items-center gap-2">
-          <button 
-            onClick={fetchNotifications} 
-            className="btn btn-outline-secondary btn-sm flex items-center gap-1"
-            disabled={loading}
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
-          </button>
           <button 
             onClick={handleMarkAllRead} 
             className="btn btn-outline-primary btn-sm flex items-center gap-1.5"
@@ -98,22 +98,22 @@ export const Notifications = () => {
           {notifications.map((notif) => (
             <div 
               key={notif.id} 
-              className={`p-4 rounded-xl border transition-all flex items-start justify-between gap-4 ${notif.is_read ? 'bg-white border-slate-200' : 'bg-blue-50/50 border-blue-200 shadow-sm'}`}
+              className={`p-4 rounded-xl border transition-all flex items-start justify-between gap-4 ${notif.isRead ? 'bg-white border-slate-200' : 'bg-teal-50/50 border-teal-200 shadow-sm'}`}
             >
               <div className="flex items-start gap-3.5">
-                <div className={`p-2.5 rounded-xl shrink-0 ${notif.is_read ? 'bg-slate-100 text-slate-500' : 'bg-primary text-white'}`}>
+                <div className={`p-2.5 rounded-xl shrink-0 ${notif.isRead ? 'bg-slate-100 text-slate-500' : 'bg-primary text-white'}`}>
                   <Bell size={18} />
                 </div>
                 <div>
                   <h4 className="font-bold text-navy text-sm">{notif.title}</h4>
-                  <p className="text-sm text-slate-600 mt-0.5">{notif.message}</p>
+                  <p className="text-sm text-slate-600 mt-0.5">{notif.body || notif.message}</p>
                   <span className="text-xs text-muted mt-2 block">
-                    {notif.created_at ? new Date(notif.created_at).toLocaleString() : 'Just now'}
+                    {notif.createdAt ? new Date(notif.createdAt).toLocaleString() : 'Just now'}
                   </span>
                 </div>
               </div>
 
-              {!notif.is_read && (
+              {!notif.isRead && (
                 <button 
                   onClick={() => handleMarkRead(notif.id)}
                   className="btn btn-outline-primary btn-sm shrink-0"

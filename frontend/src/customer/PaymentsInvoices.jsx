@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
-import { ordersApi } from '../api/apiClient';
+import { subscribeCustomerInvoices, subscribeCustomerOrders } from '../services/customerDataService';
 import { 
   Download, 
   Printer, 
@@ -15,9 +15,10 @@ import {
   Package, 
   Shirt, 
   Check, 
-  RefreshCw,
-  Search,
-  X
+  RefreshCw, 
+  Search, 
+  X,
+  Loader2
 } from 'lucide-react';
 
 export const PaymentsInvoices = () => {
@@ -69,8 +70,8 @@ export const PaymentsInvoices = () => {
   const filteredOrders = orders.filter((ord) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
-    const ordNum = (ord.order_number || ord.order_id || `#FC${ord.id}` || '').toLowerCase();
-    const ordDate = formatOrderDate(ord.created_at || ord.pickup_date).toLowerCase();
+    const ordNum = (ord.order_number || ord.order_id || ord.code || `#FC${ord.id}` || '').toLowerCase();
+    const ordDate = formatOrderDate(ord.date || ord.created_at || ord.pickup_date).toLowerCase();
     const cleanSlot = getCleanPickupSlot(ord).toLowerCase();
     const status = (ord.status || 'paid').toLowerCase();
     const amount = `${parseFloat(ord.total_amount || 735).toFixed(2)}`.toLowerCase();
@@ -94,30 +95,85 @@ export const PaymentsInvoices = () => {
     );
   });
 
+  const normalizeInvoiceOrder = (ord) => {
+    const totalInr = ord.total ? (ord.total / 100).toFixed(2) : (ord.total_amount || ord.amount || '0.00');
+    const orderNum = ord.code || ord.order_number || ord.order_id || `#FC${ord.id}`;
+    
+    // Parse items
+    let parsedItems = [];
+    if (Array.isArray(ord.items)) {
+      parsedItems = ord.items;
+    } else if (ord.items && typeof ord.items === 'object') {
+      parsedItems = Object.entries(ord.items).map(([k, val]) => {
+        if (typeof val === 'object' && val !== null) {
+          return {
+            item_name: val.name || val.item_name || k,
+            name: val.name || val.item_name || k,
+            quantity: Number(val.quantity || val.qty || 1),
+            qty: Number(val.quantity || val.qty || 1),
+            rate: Number(val.rate || val.price || val.unitPrice || 60),
+            unitPrice: Number(val.rate || val.price || val.unitPrice || 60),
+            total: Number(val.total || val.lineTotal || (val.quantity || 1) * 60)
+          };
+        }
+        return { item_name: k, name: k, quantity: Number(val) || 1, qty: Number(val) || 1, rate: 60, total: (Number(val) || 1) * 60 };
+      });
+    }
+
+    let addrStr = ord.pickup_address || '';
+    if (!addrStr && ord.address) {
+      if (typeof ord.address === 'string') {
+        addrStr = ord.address;
+      } else {
+        const parts = [ord.address.flatHouse, ord.address.areaColony, ord.address.city, ord.address.pincode].filter(Boolean);
+        addrStr = parts.join(', ');
+      }
+    }
+
+    return {
+      ...ord,
+      id: ord.id || ord.code,
+      order_number: orderNum,
+      order_id: orderNum,
+      code: ord.code || orderNum,
+      date: ord.createdAt ? new Date(ord.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today',
+      created_at: ord.createdAt || ord.created_at,
+      pickup_date: ord.pickup?.date || ord.pickup_date || 'Scheduled',
+      pickup_time_slot: ord.pickup ? `${ord.pickup.from || '09:00 AM'} - ${ord.pickup.to || '11:00 AM'}` : (ord.pickup_time_slot || '09:00 AM - 11:00 AM'),
+      pickup_address: addrStr,
+      total_amount: totalInr,
+      amount: totalInr,
+      items: parsedItems,
+      status: ord.paymentStatus || ord.payment_status || (ord.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid')
+    };
+  };
+
   const fetchOrdersAndInvoices = async () => {
     setIsRefreshing(true);
     setLoading(true);
     try {
       const res = await ordersApi.getOrders();
       const ordList = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
-      setOrders([...ordList]);
-
       if (ordList.length > 0) {
+        const mapped = ordList.map(normalizeInvoiceOrder);
+        setOrders(mapped);
+
         if (activeTrackingOrderId) {
-          const match = ordList.find(o => 
+          const match = mapped.find(o => 
             String(o.id) === String(activeTrackingOrderId) || 
             o.order_number === activeTrackingOrderId || 
-            o.order_id === activeTrackingOrderId
+            o.order_id === activeTrackingOrderId ||
+            o.code === activeTrackingOrderId
           );
           if (match) {
             setSelectedOrder(match);
           } else {
-            setSelectedOrder(ordList[0]);
+            setSelectedOrder(mapped[0]);
           }
         } else {
           setSelectedOrder(prev => {
-            if (!prev) return ordList[0];
-            return ordList.find(o => o.id === prev.id) || ordList[0];
+            if (!prev) return mapped[0];
+            return mapped.find(o => o.id === prev.id) || mapped[0];
           });
         }
       }
@@ -135,8 +191,26 @@ export const PaymentsInvoices = () => {
   };
 
   useEffect(() => {
+    const uid = currentUser?.uid || currentUser?.id;
+    if (!uid) {
+      fetchOrdersAndInvoices();
+      return;
+    }
+
+    const unsub = subscribeCustomerOrders(uid, (liveOrders) => {
+      if (liveOrders && liveOrders.length > 0) {
+        const mapped = liveOrders.map(normalizeInvoiceOrder);
+        setOrders(mapped);
+        setSelectedOrder(prev => prev ? (mapped.find(m => m.id === prev.id) || mapped[0]) : mapped[0]);
+        setLoading(false);
+      } else {
+        fetchOrdersAndInvoices();
+      }
+    });
+
     fetchOrdersAndInvoices();
-  }, [activeTrackingOrderId]);
+    return () => unsub();
+  }, [currentUser?.uid, activeTrackingOrderId]);
 
   // Synchronously reset modal scroll to top before browser paint
   useLayoutEffect(() => {

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { createFirestoreOrder, subscribeServices } from '../services/firestoreService';
-import { servicesApi, ordersApi, addressApi } from '../api/apiClient';
+import { createCustomerOrder, confirmCustomerPayment } from '../services/customerDataService';
 import { useAuth } from './AuthContext';
+import { addressApi, servicesApi } from '../api/apiClient';
 import { INITIAL_SERVICES } from '../constants/servicesConstants';
 import { PRICING_CATEGORIES, PRICING_SUBCATEGORIES, PRICING_ITEMS } from '../data/pricingData';
 
@@ -340,22 +340,24 @@ export const BookingProvider = ({ children }) => {
         pincode: currentUser.pincode || prev.pincode || '560043'
       }));
 
-      // Fetch saved default address from backend
-      addressApi.getAddresses()
-        .then(res => {
-          const addrs = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-          if (addrs.length > 0) {
-            const def = addrs.find(a => a.is_default) || addrs[0];
-            setPickupDetails(prev => ({
-              ...prev,
-              address: def.address_line || def.address_line1 || prev.address,
-              landmark: def.landmark || def.address_line2 || prev.landmark,
-              city: def.city || prev.city,
-              pincode: def.pincode || prev.pincode
-            }));
-          }
-        })
-        .catch(err => console.warn('Saved addresses notice:', err.message));
+      // Fetch saved default address safely
+      if (addressApi && typeof addressApi.getAddresses === 'function') {
+        addressApi.getAddresses()
+          .then(res => {
+            const addrs = Array.isArray(res?.data) ? res.data : (res?.data?.results || []);
+            if (addrs.length > 0) {
+              const def = addrs.find(a => a.is_default) || addrs[0];
+              setPickupDetails(prev => ({
+                ...prev,
+                address: def.address_line || def.address_line1 || prev.address,
+                landmark: def.landmark || def.address_line2 || prev.landmark,
+                city: def.city || prev.city,
+                pincode: def.pincode || prev.pincode
+              }));
+            }
+          })
+          .catch(err => console.warn('Saved addresses notice:', err?.message));
+      }
     }
   }, [currentUser]);
 
@@ -364,8 +366,8 @@ export const BookingProvider = ({ children }) => {
     const loadRealServices = async () => {
       try {
         const [catRes, srvRes] = await Promise.allSettled([
-          servicesApi.getCategories(),
-          servicesApi.getServices()
+          servicesApi && typeof servicesApi.getCategories === 'function' ? servicesApi.getCategories() : Promise.resolve({ data: [] }),
+          servicesApi && typeof servicesApi.getServices === 'function' ? servicesApi.getServices() : Promise.resolve({ data: [] })
         ]);
 
         if (catRes.status === 'fulfilled' && catRes.value?.data) {
@@ -517,199 +519,70 @@ export const BookingProvider = ({ children }) => {
 
       const total = calculateTotal() || 300;
 
-      // 1. Get or create customer address
-      let addressId = null;
-      try {
-        const addrRes = await addressApi.getAddresses();
-        const addrList = Array.isArray(addrRes.data) ? addrRes.data : [];
-        if (addrList.length > 0) {
-          const def = addrList.find(a => a.is_default) || addrList[0];
-          addressId = def.id;
-        } else {
-          const createAddrRes = await addressApi.createAddress({
-            label: 'Home',
-            line1: pickupDetails.address || 'Banaswadi, Bengaluru',
-            city: pickupDetails.city || 'Bengaluru',
-            pincode: pickupDetails.pincode || '560043',
-            is_default: true
-          });
-          addressId = createAddrRes.data.id;
-        }
-      } catch (addrErr) {
-        console.warn('Address setup note:', addrErr);
-      }
-
-      // 2. Map items to catalog garment_type_id and service_ids
-      const availableGarments = [
-        { id: 'shirt', name: 'Shirt' },
-        { id: 'tshirt', name: 'T-Shirt' },
-        { id: 'trousers', name: 'Trousers' },
-        { id: 'jeans', name: 'Jeans' },
-        { id: 'dress', name: 'Dress' },
-        { id: 'saree', name: 'Saree' },
-        { id: 'jacket', name: 'Jacket' },
-        { id: 'bedsheet', name: 'Bedsheet' }
-      ];
-
-      const availableServices = [
-        { id: 'wash-fold', name: 'Wash & Fold' },
-        { id: 'wash-iron', name: 'Wash + Iron' },
-        { id: 'steam-iron', name: 'Steam + Iron' },
-        { id: 'dry-clean', name: 'Dry Clean' },
-        { id: 'wash', name: 'Wash' },
-        { id: 'iron', name: 'Iron' }
-      ];
-
-      const mappedItems = selectedItemsList.map(it => {
-        const itNameLower = (it.name || '').toLowerCase();
-        const matchedGarment = availableGarments.find(g => 
-          itNameLower.includes(g.id.toLowerCase()) || 
-          itNameLower.includes(g.name.toLowerCase()) ||
-          g.id.toLowerCase().includes(itNameLower)
-        ) || availableGarments[0];
-
-        const itCatLower = (it.categoryId || it.categoryName || '').toLowerCase().replace(/[^a-z]/g, '');
-        const matchedService = availableServices.find(s => {
-          const sLower = s.id.toLowerCase().replace(/[^a-z]/g, '');
-          const sNameLower = s.name.toLowerCase().replace(/[^a-z]/g, '');
-          return itCatLower.includes(sLower) || itCatLower.includes(sNameLower) || sLower.includes(itCatLower);
-        }) || availableServices[0];
-
-        return {
-          garment_type_id: matchedGarment.id,
-          quantity: Math.max(1, Number(it.quantity) || 1),
-          service_ids: [matchedService.id]
+      // Prepare order items dictionary
+      const orderItemsMap = {};
+      selectedItemsList.forEach((it, idx) => {
+        orderItemsMap[`item_${idx + 1}`] = {
+          name: it.name || 'Laundry Item',
+          category: it.categoryName || 'General',
+          quantity: it.quantity || 1,
+          unitPrice: Math.round((it.unitPrice || 60) * 100),
+          lineTotal: Math.round(((it.unitPrice || 60) * (it.quantity || 1)) * 100)
         };
       });
-
-      const finalItems = mappedItems.length > 0 ? mappedItems : [
-        { garment_type_id: 'shirt', quantity: 1, service_ids: ['wash-fold'] }
-      ];
 
       let formattedPickupDate = pickupSchedule.dateValue;
       if (!formattedPickupDate || !/^\d{4}-\d{2}-\d{2}$/.test(formattedPickupDate)) {
         formattedPickupDate = new Date().toISOString().split('T')[0];
       }
 
-      const orderPayload = {
-        pickup_full_name: pickupDetails.name || currentUser?.displayName || 'Customer',
-        pickup_phone: pickupDetails.mobile || currentUser?.phoneNumber || '+91 98765 43210',
-        pickup_address: pickupDetails.address || 'Banaswadi, Bengaluru - 560043',
-        pickup_city: pickupDetails.city || 'Bengaluru',
-        pickup_pincode: pickupDetails.pincode || '560043',
-        pickup_date: formattedPickupDate,
-        pickup_time_slot: pickupSchedule.timeSlot || '9:00 AM – 11:00 AM',
-        special_instructions: specialInstructions || '',
-        total_amount: total,
-        services_list: serviceNames,
-        address_id: addressId,
-        pickup_slot: {
+      const bookingPayload = {
+        customerName: pickupDetails.name || currentUser?.name || currentUser?.displayName || 'Valued Customer',
+        customerPhone: pickupDetails.mobile || currentUser?.phone || '',
+        address: {
+          flatHouse: pickupDetails.address || '',
+          areaColony: pickupDetails.landmark || '',
+          city: pickupDetails.city || 'Bengaluru',
+          pincode: pickupDetails.pincode || '560043',
+          label: 'Home'
+        },
+        pickup: {
           date: formattedPickupDate,
-          from: '09:00',
-          to: '11:00'
+          from: pickupSchedule.timeSlot?.split('–')[0]?.trim() || '09:00',
+          to: pickupSchedule.timeSlot?.split('–')[1]?.trim() || '11:00'
         },
-        is_express: Boolean(isExpressDelivery),
-        notes: specialInstructions || undefined,
-        items: itemsPayload.length > 0 ? itemsPayload : finalItems
+        isExpress: Boolean(isExpressDelivery),
+        notes: specialInstructions || '',
+        items: orderItemsMap,
+        subtotal: total,
+        total: total
       };
 
-      const generatedId = `#FC${Math.floor(10000 + Math.random() * 90000)}`;
+      // 1. Create order in RTDB (status: PAYMENT_PENDING)
+      const { orderId, code, orderData } = await createCustomerOrder(bookingPayload, currentUser);
 
-      let created = null;
-      let orderNumber = generatedId;
-
-      try {
-        const res = await ordersApi.createOrder(orderPayload);
-        created = res?.data;
-        if (created) {
-          const rawOrderId = created.order_id || created.order_number || created.code;
-          orderNumber = rawOrderId
-            ? (String(rawOrderId).startsWith('#') ? String(rawOrderId) : `#${rawOrderId}`)
-            : (created.id != null ? `#FC${String(created.id).padStart(5, '0')}` : generatedId);
-        }
-      } catch (backendErr) {
-        console.warn('Backend order creation notice, continuing with Firebase:', backendErr);
-      }
-
-      // Primary Persistence: Save directly to Firebase Cloud Firestore
-      const firestoreOrderPayload = {
-        id: orderNumber,
-        order_number: orderNumber,
-        order_id: orderNumber,
-        customerId: currentUser?.uid || currentUser?.id || 'guest',
-        customer: {
-          name: pickupDetails.name || currentUser?.displayName || 'Customer',
-          phone: pickupDetails.mobile || currentUser?.phoneNumber || '+91 98765 43210',
-          email: currentUser?.email || 'customer@gmail.com',
-          address: pickupDetails.address || 'Bengaluru',
-          avatar: ((pickupDetails.name || currentUser?.displayName || 'CU').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CU')
-        },
-        customer_name: pickupDetails.name || currentUser?.displayName || 'Customer',
-        customer_phone: pickupDetails.mobile || currentUser?.phoneNumber || '+91 98765 43210',
-        pickup_full_name: pickupDetails.name || currentUser?.displayName || 'Customer',
-        pickup_phone: pickupDetails.mobile || currentUser?.phoneNumber || '+91 98765 43210',
-        pickup_address: pickupDetails.address || 'Bengaluru',
-        delivery_address: pickupDetails.deliveryAddress || pickupDetails.address || 'Bengaluru',
-        services: serviceNames,
-        services_list: serviceNames,
-        items: itemsPayload.length > 0 ? itemsPayload : finalItems,
-        pickupTime: `${pickupSchedule.dateLabel || formattedPickupDate}, ${pickupSchedule.timeSlot || '09:00 AM – 11:00 AM'}`,
-        pickup_time_slot: pickupSchedule.timeSlot || '09:00 AM – 11:00 AM',
-        pickup_date: formattedPickupDate,
-        amount: total,
-        total_amount: total,
-        estimatedTotal: total,
-        status: 'Pending Pickup',
-        status_display: 'Pending Pickup',
-        stage: 'incoming',
-        payment: 'Paid',
-        payment_status: 'PAID',
-        type: 'Pickup',
-        driver: 'Not Assigned',
-        specialInstructions: specialInstructions || ''
-      };
-
-      try {
-        await createFirestoreOrder(firestoreOrderPayload);
-      } catch (fireErr) {
-        console.warn('Firebase order creation note:', fireErr);
-      }
-
-      // Pay and verify order automatically in mock gateway mode if backend returned order id
-      if (created?.id) {
-        try {
-          const payRes = await ordersApi.pay(created.id, 'upi');
-          if (payRes.data?.payment_id) {
-            await customerApi.verifyPayment(payRes.data.payment_id, {
-              razorpay_order_id: payRes.data.gateway_order_id || 'mock_order_id',
-              razorpay_payment_id: `pay_${Date.now()}`,
-              razorpay_signature: 'mock_signature'
-            });
-          }
-        } catch (payErr) {
-          console.warn('Auto-payment notice:', payErr);
-        }
-      }
+      // 2. Automatically confirm mock payment -> transitions to PLACED, creates unassigned pickup task & invoice
+      await confirmCustomerPayment(orderId, 'UPI_MOCK', currentUser);
 
       const confirmedOrderData = {
-        orderId: orderNumber,
-        id: created?.id || orderNumber,
-        order_number: orderNumber,
-        order_id: created?.order_id || orderNumber,
+        orderId: code,
+        id: code,
+        order_number: code,
+        order_id: code,
         dateText: pickupSchedule.dateLabel || pickupSchedule.dateValue,
         timeText: pickupSchedule.timeSlot || '09:00 AM – 11:00 AM',
         addressTitle: pickupDetails.address,
         addressDetail: pickupDetails.landmark || '',
         services: serviceNames,
-        items: created?.items || itemsPayload.length > 0 ? itemsPayload : finalItems,
-        estimatedTotal: created?.total_paise ? created.total_paise / 100 : (created?.total_amount ? Number(created.total_amount) : total),
-        status: created?.status || 'Pending Pickup',
-        payment_status: created?.payment_status || 'PAID',
-        createdOrder: created || firestoreOrderPayload
+        items: selectedItemsList,
+        estimatedTotal: total,
+        status: 'Pending Pickup',
+        payment_status: 'Paid',
+        createdOrder: orderData
       };
 
       setLastOrder(confirmedOrderData);
-      setActiveTrackingOrderId(orderNumber);
+      setActiveTrackingOrderId(orderId);
 
       // Clear selected items upon successful booking
       setSelectedItems({});
@@ -723,7 +596,7 @@ export const BookingProvider = ({ children }) => {
       return confirmedOrderData;
     } catch (err) {
       console.error('Order creation error:', err);
-      const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Failed to confirm pickup. Please try again.';
+      const msg = err.message || 'Failed to confirm pickup. Please try again.';
       setOrderError(msg);
       alert(msg);
       throw err;
@@ -789,7 +662,15 @@ export const BookingProvider = ({ children }) => {
 export const useBooking = () => {
   const context = useContext(BookingContext);
   if (!context) {
-    throw new Error('useBooking must be used within a BookingProvider');
+    return {
+      currentPage: typeof window !== 'undefined' ? (window.location.hash.replace(/^#\/?/, '').trim().toLowerCase() || 'home') : 'home',
+      navigateTo: (page) => {
+        if (typeof window !== 'undefined') window.location.hash = page;
+      },
+      bookingState: {},
+      allServices: [],
+      serviceCategories: []
+    };
   }
   return context;
 };

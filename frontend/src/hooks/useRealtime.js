@@ -1,45 +1,45 @@
-import { useState, useEffect } from 'react';
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  doc,
-  orderBy
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { useState, useEffect, useRef } from 'react';
+import { ref, onValue, off } from 'firebase/database';
+import { rtdb } from '../config/firebase';
 
 /**
  * Realtime hook for bell badge unread notification count
- * Firestore security rule: read if resource.data.user_id == request.auth.uid
+ * Listens to Realtime Database notifications for the user and staff role
  */
 export const useUnreadNotificationsCount = (userId) => {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    if (!userId || !db) {
+    if (!rtdb) {
       setUnreadCount(0);
       return;
     }
 
     try {
-      const q = query(
-        collection(db, 'notifications'),
-        where('user_id', '==', userId),
-        where('is_read', '==', false)
-      );
+      const targetPath = userId ? `notifications/${userId}` : 'notificationsByRole/staff';
+      const notifRef = ref(rtdb, targetPath);
 
-      const unsubscribe = onSnapshot(
-        q,
+      const unsub = onValue(
+        notifRef,
         (snapshot) => {
-          setUnreadCount(snapshot.size);
+          if (!snapshot.exists()) {
+            setUnreadCount((prev) => (prev !== 0 ? 0 : prev));
+            return;
+          }
+          const val = snapshot.val();
+          if (typeof val === 'object' && val !== null) {
+            const count = Object.values(val).filter((n) => n && !n.isRead && !n.is_read).length;
+            setUnreadCount((prev) => (prev !== count ? count : prev));
+          } else {
+            setUnreadCount((prev) => (prev !== 0 ? 0 : prev));
+          }
         },
         (error) => {
-          console.warn('Realtime notifications listener error:', error.message);
+          console.warn('Realtime notifications listener note:', error.message);
         }
       );
 
-      return () => unsubscribe();
+      return () => off(notifRef, 'value', unsub);
     } catch (err) {
       console.warn('Failed to attach notification listener:', err);
     }
@@ -49,31 +49,38 @@ export const useUnreadNotificationsCount = (userId) => {
 };
 
 /**
- * Realtime hook for Customer Track Order (order document + history subcollection)
+ * Realtime hook for Customer Track Order (order document + history)
  */
 export const useOrderRealtimeTracking = (orderId, onOrderUpdate = null) => {
   const [order, setOrder] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(Boolean(orderId));
+  const onOrderUpdateRef = useRef(onOrderUpdate);
 
   useEffect(() => {
-    if (!orderId || !db) {
+    onOrderUpdateRef.current = onOrderUpdate;
+  }, [onOrderUpdate]);
+
+  useEffect(() => {
+    if (!orderId || !rtdb) {
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    let unsubHistory = () => {};
+    const cleanId = String(orderId).trim();
+    const orderRef = ref(rtdb, `orders/${cleanId}`);
+    const historyRef = ref(rtdb, `orderHistory/${cleanId}`);
 
-    // 1. Listen to order doc
-    const orderDocRef = doc(db, 'orders', orderId);
-    const unsubOrder = onSnapshot(
-      orderDocRef,
+    const unsubOrder = onValue(
+      orderRef,
       (snapshot) => {
         if (snapshot.exists()) {
-          const data = { id: snapshot.id, ...snapshot.data() };
+          const data = { id: cleanId, ...snapshot.val() };
           setOrder(data);
-          if (onOrderUpdate) onOrderUpdate(data);
+          if (typeof onOrderUpdateRef.current === 'function') {
+            onOrderUpdateRef.current(data);
+          }
         }
         setLoading(false);
       },
@@ -83,29 +90,26 @@ export const useOrderRealtimeTracking = (orderId, onOrderUpdate = null) => {
       }
     );
 
-    // 2. Listen to history subcollection
-    try {
-      const histQuery = query(
-        collection(db, 'orders', orderId, 'history'),
-        orderBy('created_at', 'asc')
-      );
-      unsubHistory = onSnapshot(
-        histQuery,
-        (snapshot) => {
-          const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const unsubHistory = onValue(
+      historyRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          const items = Object.keys(val).map((k) => ({ id: k, ...val[k] }));
+          items.sort((a, b) => (a.at || a.created_at || 0) - (b.at || b.created_at || 0));
           setHistory(items);
-        },
-        (err) => {
-          console.warn('Order history realtime error:', err.message);
+        } else {
+          setHistory([]);
         }
-      );
-    } catch (err) {
-      console.warn('Failed to listen to order history:', err);
-    }
+      },
+      (err) => {
+        console.warn('Order history realtime error:', err.message);
+      }
+    );
 
     return () => {
-      unsubOrder();
-      unsubHistory();
+      off(orderRef, 'value', unsubOrder);
+      off(historyRef, 'value', unsubHistory);
     };
   }, [orderId]);
 
@@ -116,66 +120,82 @@ export const useOrderRealtimeTracking = (orderId, onOrderUpdate = null) => {
  * Realtime hook for Delivery Agent tasks
  */
 export const useAgentTasksRealtime = (agentId, onTaskChange = null) => {
+  const onTaskChangeRef = useRef(onTaskChange);
   useEffect(() => {
-    if (!agentId || !db) return;
+    onTaskChangeRef.current = onTaskChange;
+  }, [onTaskChange]);
+
+  useEffect(() => {
+    if (!agentId || !rtdb) return;
 
     try {
-      const q = query(
-        collection(db, 'tasks'),
-        where('agent_id', '==', agentId)
-      );
-
-      const unsubscribe = onSnapshot(
-        q,
+      const tasksRef = ref(rtdb, 'tasks');
+      const unsub = onValue(
+        tasksRef,
         (snapshot) => {
-          if (onTaskChange) {
-            const tasks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-            onTaskChange(tasks);
+          if (!snapshot.exists()) {
+            if (typeof onTaskChangeRef.current === 'function') onTaskChangeRef.current([]);
+            return;
           }
+          const val = snapshot.val();
+          const allTasks = Object.keys(val).map((k) => ({ id: k, ...val[k] }));
+          const agentTasks = allTasks.filter(
+            (t) => t.agentId === agentId || t.agent_id === agentId
+          );
+          if (typeof onTaskChangeRef.current === 'function') onTaskChangeRef.current(agentTasks);
         },
         (err) => {
           console.warn('Agent tasks realtime error:', err.message);
         }
       );
 
-      return () => unsubscribe();
+      return () => off(tasksRef, 'value', unsub);
     } catch (err) {
       console.warn('Failed to attach agent tasks listener:', err);
     }
-  }, [agentId, onTaskChange]);
+  }, [agentId]);
 };
 
 /**
- * Realtime hook for Staff active orders (refetches REST API on change)
+ * Realtime hook for Staff active orders (refetches orders on database change)
+ * Uses stable ref and debouncing to prevent infinite re-render loops
  */
 export const useStaffActiveOrdersRealtime = (onRefresh) => {
+  const onRefreshRef = useRef(onRefresh);
   useEffect(() => {
-    if (!db || !onRefresh) return;
-
-    try {
-      // Listen to active orders
-      const q = query(
-        collection(db, 'orders'),
-        where('status', 'in', [
-          'RECEIVED_BY_LAUNDRY', 'INSPECTION', 'PROCESSING',
-          'QUALITY_CHECK', 'PACKING', 'READY_FOR_DELIVERY',
-          'DELIVERY_ASSIGNED', 'OUT_FOR_DELIVERY'
-        ])
-      );
-
-      const unsubscribe = onSnapshot(
-        q,
-        () => {
-          onRefresh();
-        },
-        (err) => {
-          console.warn('Staff orders realtime listener note:', err.message);
-        }
-      );
-
-      return () => unsubscribe();
-    } catch (err) {
-      console.warn('Failed to attach staff orders listener:', err);
-    }
+    onRefreshRef.current = onRefresh;
   }, [onRefresh]);
+
+  useEffect(() => {
+    if (!rtdb) return;
+
+    let timer = null;
+    let isInitial = true;
+    const ordersRef = ref(rtdb, 'orders');
+
+    const unsub = onValue(
+      ordersRef,
+      () => {
+        // Skip initial snapshot to avoid duplicate fetch on mount
+        if (isInitial) {
+          isInitial = false;
+          return;
+        }
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (typeof onRefreshRef.current === 'function') {
+            onRefreshRef.current();
+          }
+        }, 1000);
+      },
+      (err) => {
+        console.warn('Staff orders realtime listener note:', err.message);
+      }
+    );
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      off(ordersRef, 'value', unsub);
+    };
+  }, []);
 };

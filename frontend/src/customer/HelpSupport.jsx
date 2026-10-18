@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supportApi, contentApi } from '../api/apiClient';
+import { subscribeCustomerComplaints, submitCustomerComplaint } from '../services/customerDataService';
+import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { 
   HelpCircle, 
@@ -48,36 +49,40 @@ export const HelpSupport = () => {
     };
   }, [expandedFaq]);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const ticketsRes = await supportApi.getTickets().catch(() => ({ data: [] }));
-      const list = Array.isArray(ticketsRes.data) ? ticketsRes.data : (ticketsRes.data?.items || ticketsRes.data?.results || []);
-      setTickets(list);
-    } catch (err) {
-      console.error('Failed to load support data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (!currentUser?.uid) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const unsubscribe = subscribeCustomerComplaints(
+      currentUser.uid,
+      (list) => {
+        setTickets(list || []);
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Complaints listener error:', err);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser?.uid]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!subject || !message) return;
+    if (!subject || !message || !currentUser?.uid) return;
     setSubmitting(true);
     try {
-      await supportApi.createTicket({ subject, message, priority });
+      await submitCustomerComplaint({ subject, message, priority }, currentUser);
       setSubject('');
       setMessage('');
       setSuccessMsg('Support ticket submitted successfully. Our helpdesk will contact you shortly!');
-      fetchData();
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch (err) {
-      alert('Failed to submit ticket');
+      alert(err.message || 'Failed to submit ticket');
     } finally {
       setSubmitting(false);
     }

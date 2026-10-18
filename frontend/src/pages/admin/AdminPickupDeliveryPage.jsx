@@ -422,6 +422,7 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
 export const AdminPickupDeliveryPage = () => {
   const { 
     orders: contextOrders, 
+    tasks: contextTasks,
     setIsAssignOrderModalOpen, 
     setAssigningOrder 
   } = useAdmin();
@@ -484,7 +485,7 @@ export const AdminPickupDeliveryPage = () => {
       persistedMap = JSON.parse(localStorage.getItem('fabricare_pickup_delivery_assignments') || '{}');
     } catch (e) {}
 
-    return BASELINE_PICKUP_DELIVERY_ORDERS.map(baseOrd => {
+    const updatedBaseline = BASELINE_PICKUP_DELIVERY_ORDERS.map(baseOrd => {
       const live = contextMap.get(baseOrd.id);
       const persisted = persistedMap[baseOrd.id];
 
@@ -528,6 +529,82 @@ export const AdminPickupDeliveryPage = () => {
         }
       };
     });
+
+    // Real live orders (e.g. FC-10452, FC-43719, etc.) from RTDB
+    const baseIdSet = new Set(BASELINE_PICKUP_DELIVERY_ORDERS.map(b => b.id));
+    const dynamicPickupOrders = (contextOrders || []).filter(o => {
+      const idStr = String(o?.id || '');
+      const orderNum = String(o?.order_number || '');
+      const orderId = String(o?.order_id || '');
+      return !baseIdSet.has(o?.id) && !baseIdSet.has(idStr) && !baseIdSet.has(orderNum) && !baseIdSet.has(orderId);
+    }).map(o => {
+      const orderIdDisplay = o.order_number || o.order_id || (typeof o.id === 'string' && o.id.startsWith('#') ? o.id : `#FC${String(o.id || '00000').padStart(5, '0')}`);
+      const custName = o.customer_name || o.customer?.name || 'Customer';
+      const custPhone = o.customer_phone || o.customer?.phone || '+91 98765 00000';
+      const custAddress = o.pickup_address || o.customer?.address || 'Bengaluru';
+      const custInitials = String(custName || 'CU').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'CU';
+
+      const isDelivery = o.status === 'Ready for Delivery' || o.status === 'In Transit' || o.deliveryTaskId || (o.type && String(o.type).toLowerCase() === 'delivery');
+      const type = isDelivery ? 'Delivery' : 'Pickup';
+
+      const persisted = persistedMap[o.id] || persistedMap[orderIdDisplay] || persistedMap[o.rawId];
+      const hasDriver = Boolean(o.assignedAgentName || (o.driver && o.driver !== 'Not Assigned') || persisted);
+
+      let driverName = 'Ravi Kumar';
+      let driverPhone = '+91 98765 43210';
+      if (persisted) {
+        driverName = persisted.driverName || driverName;
+        driverPhone = persisted.driverPhone || driverPhone;
+      } else if (o.assignedAgentName) {
+        driverName = o.assignedAgentName;
+        driverPhone = o.assignedAgentPhone || '+91 98765 43210';
+      } else if (o.driver && o.driver !== 'Not Assigned') {
+        const match = String(o.driver).match(/^(.*?)\s*\((.*?)\)$/);
+        driverName = match ? match[1].trim() : o.driver;
+        driverPhone = match ? match[2].trim() : '+91 98765 43210';
+      }
+
+      const driverInitials = String(driverName || 'DR').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
+
+      let status = 'Pending';
+      if (hasDriver) {
+        status = 'Assigned';
+      }
+      if (o.status === 'Completed' || o.status === 'Delivered') {
+        status = 'Completed';
+      } else if (o.status === 'In Transit') {
+        status = 'In Transit';
+      }
+
+      const timeSlot = o.pickup?.from ? `${o.pickup.from} – ${o.pickup.to || ''}` : (o.pickupTime || '09:00 AM – 11:00 AM');
+      const timeParts = timeSlot.split('–').map(s => s.trim());
+
+      return {
+        id: orderIdDisplay,
+        rawId: o.rawId || o.id,
+        date: o.pickup?.date || o.date || 'Today',
+        timeStart: timeParts[0] || '09:00 AM',
+        timeEnd: timeParts[1] || '11:00 AM',
+        customer: {
+          name: custName,
+          phone: custPhone,
+          avatar: custInitials,
+          avatarBg: '#CFFAFE',
+          avatarColor: '#0891B2',
+          address: custAddress
+        },
+        type,
+        status,
+        driver: {
+          name: driverName,
+          phone: driverPhone,
+          initials: driverInitials,
+          assigned: hasDriver
+        }
+      };
+    });
+
+    return [...dynamicPickupOrders, ...updatedBaseline];
   }, [contextOrders, updateTick]);
 
   // Tab counts

@@ -220,7 +220,8 @@ export const AdminDashboardPage = () => {
   const scaleMax = chartTimeframe === '30d' ? 80 : 40;
 
   const getAvatarStyle = (avatar) => {
-    switch (avatar) {
+    const avStr = typeof avatar === 'string' ? avatar : 'CU';
+    switch (avStr) {
       case 'RM': return { background: '#E0F2FE', color: '#0284C7' }; // Soft Sky Blue
       case 'PS': return { background: '#EDE9FE', color: '#7C3AED' }; // Soft Lavender
       case 'AN': return { background: '#F3E8FF', color: '#9333EA' }; // Soft Violet
@@ -235,7 +236,7 @@ export const AdminDashboardPage = () => {
           { background: '#FEF08A', color: '#854D0E' },
           { background: '#DCFCE7', color: '#16A34A' }
         ];
-        const hash = (avatar || 'CU').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+        const hash = avStr.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
         return palettes[hash % palettes.length];
       }
     }
@@ -278,10 +279,16 @@ export const AdminDashboardPage = () => {
                idStr !== '#LDX10281';
       })
       .map(o => {
-        const idDisplay = o.order_number || o.order_id || (typeof o.id === 'string' && o.id.startsWith('#') ? o.id : `#FC${String(o.id).padStart(5, '0')}`);
-        const custName = o.pickup_full_name || o.customer_name || o.customer?.name || 'Customer';
-        const custAvatar = o.customer?.avatar || custName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-        const servicesList = o.services_list || (Array.isArray(o.services) ? o.services : (o.items ? o.items.map(it => it.service_name || it.item_name) : ['Wash & Fold']));
+        const idDisplay = o.order_number || o.order_id || (typeof o.id === 'string' && o.id.startsWith('#') ? o.id : `#FC${String(o.id || '00000').padStart(5, '0')}`);
+        const rawCust = o.pickup_full_name || o.customer_name || (typeof o.customer === 'string' ? o.customer : o.customer?.name) || 'Customer';
+        const custName = typeof rawCust === 'string' ? rawCust : 'Customer';
+        const custAvatar = (o.customer && typeof o.customer === 'object' && typeof o.customer.avatar === 'string' && o.customer.avatar)
+          ? o.customer.avatar
+          : (custName.trim() ? custName.trim().split(/\s+/).map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'CU');
+        const itemsList = Array.isArray(o.items)
+          ? o.items
+          : (o.items && typeof o.items === 'object' ? Object.values(o.items) : []);
+        const servicesList = o.services_list || (Array.isArray(o.services) ? o.services : (itemsList.length > 0 ? itemsList.map(it => it.service_name || it.item_name || it.name).filter(Boolean) : ['Wash & Fold']));
         const pickupStr = o.pickup_time_slot ? `${o.pickup_date || 'Today'}, ${o.pickup_time_slot}` : (o.pickupTime || o.date || 'Today');
         const amt = o.total_amount ? Number(o.total_amount) : (o.amount ? Number(o.amount) : 0);
         const stat = o.status_display || o.status || 'Pickup Scheduled';
@@ -373,12 +380,15 @@ export const AdminDashboardPage = () => {
       const live = (orders || []).find(o => o?.id === id || String(o?.id) === String(id) || o?.order_number === id || o?.order_id === id);
       const fallback = fallbackBaseOrders.find(f => f.id === id);
       if (!live) return fallback;
+      const liveCust = typeof live.customer === 'object' && live.customer !== null 
+        ? live.customer 
+        : (typeof live.customer === 'string' ? { name: live.customer } : {});
       return {
         ...fallback,
         ...live,
         customer: {
           ...(fallback?.customer || {}),
-          ...(live.customer || {})
+          ...liveCust
         }
       };
     });
@@ -631,7 +641,11 @@ export const AdminDashboardPage = () => {
                         className="cust-mini-avatar"
                         style={getAvatarStyle(ord.customer?.avatar)}
                       >
-                        {ord.customer?.avatar || (ord.customer?.name ? ord.customer.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'CU')}
+                        {typeof ord.customer?.avatar === 'string' && ord.customer.avatar
+                          ? ord.customer.avatar
+                          : (typeof ord.customer?.name === 'string' && ord.customer.name.trim()
+                            ? ord.customer.name.trim().split(/\s+/).map(n => n[0]).join('').slice(0, 2).toUpperCase()
+                            : 'CU')}
                       </span>
                       <span className="cust-name-txt">{ord.customer?.name}</span>
                     </div>
@@ -770,8 +784,8 @@ export const AdminDashboardPage = () => {
                 </div>
 
                 <div className="pickup-right-col">
-                  <span className={`pickup-type-pill ${item.type.toLowerCase()}`}>{item.type}</span>
-                  <span className={`pickup-status-pill ${item.status.toLowerCase()}`}>{item.status}</span>
+                  <span className={`pickup-type-pill ${String(item.type || '').toLowerCase()}`}>{item.type || 'Pickup'}</span>
+                  <span className={`pickup-status-pill ${String(item.status || '').toLowerCase()}`}>{item.status || 'Pending'}</span>
                   <ChevronRight size={17} className="pickup-arrow-icon" />
                 </div>
               </div>

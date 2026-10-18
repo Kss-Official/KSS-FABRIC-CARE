@@ -271,8 +271,8 @@ export const CustomerDashboard = () => {
                     </td>
                     <td>
                       <div className="text-sm">
-                        {order.items && order.items.length > 0 
-                          ? order.items.map(i => `${i.item_name} (${i.quantity})`).join(', ')
+                        {Array.isArray(order.items) && order.items.length > 0 
+                          ? order.items.map(i => `${i.item_name || i.name || 'Item'} (${i.quantity || 1})`).join(', ')
                           : 'General Laundry'}
                       </div>
                       <div className="text-xs text-muted">{order.pickup_address}</div>

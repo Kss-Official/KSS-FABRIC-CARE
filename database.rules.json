@@ -1,0 +1,36 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+
+    "users": {
+      ".indexOn": ["role", "email"]
+    },
+    "agents": {
+      ".indexOn": ["isOnline"]
+    },
+    "orders": {
+      ".indexOn": ["customerId", "status", "createdAt", "pickupTaskId", "deliveryTaskId"]
+    },
+    "ordersByStatus": {
+      "$status": {
+        ".indexOn": [".value"]
+      }
+    },
+    "tasks": {
+      ".indexOn": ["agentId", "type", "status", "scheduledAt"]
+    },
+    "hubDropoffs": {
+      ".indexOn": ["orderId", "agentId", "droppedAt"]
+    },
+    "payments": {
+      ".indexOn": ["orderId", "customerId"]
+    },
+    "invoices": {
+      ".indexOn": ["orderId", "customerId"]
+    },
+    "complaints": {
+      ".indexOn": ["customerId", "status", "createdAt"]
+    }
+  }
+}

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
+import { useAuth } from '../context/AuthContext';
+import { subscribeCustomerOrders, cancelCustomerOrder } from '../services/customerDataService';
 import { ordersApi } from '../api/apiClient';
-import { subscribeOrders, cancelFirestoreOrder } from '../services/firestoreService';
 import { 
   Package, 
   Search, 
@@ -16,7 +17,8 @@ import {
 } from 'lucide-react';
 
 export const MyOrders = () => {
-  const { navigateTo, startBooking } = useBooking();
+  const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
+  const { currentUser } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -26,23 +28,124 @@ export const MyOrders = () => {
   const [cancelReason, setCancelReason] = useState('');
   const cancelModalRef = useRef(null);
 
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
+  const normalizeOrders = useCallback((rawOrders) => {
+    return (rawOrders || []).map(o => {
+      const totalInr = o.total ? (o.total / 100).toFixed(2) : (o.estimatedTotal || o.total_amount || '0.00');
+
+      // Normalize items list
+      let itemsList = [];
+      if (Array.isArray(o.items)) {
+        itemsList = o.items;
+      } else if (o.items && typeof o.items === 'object') {
+        itemsList = Object.entries(o.items).map(([name, qty]) => {
+          if (typeof qty === 'object' && qty !== null) {
+            return { item_name: qty.name || qty.item_name || name, quantity: qty.quantity || qty.count || 1 };
+          }
+          return { item_name: name, quantity: qty };
+        });
+      }
+
+      // Address
+      let addrStr = o.pickup_address || '';
+      if (!addrStr && o.address) {
+        if (typeof o.address === 'string') {
+          addrStr = o.address;
+        } else {
+          const parts = [o.address.flatHouse, o.address.areaColony, o.address.city, o.address.pincode].filter(Boolean);
+          addrStr = parts.join(', ');
+        }
+      }
+      if (!addrStr) addrStr = 'Bengaluru';
+
+      const formatPrettyDate = (dVal) => {
+        if (!dVal) return '';
+        try {
+          const d = new Date(dVal);
+          if (isNaN(d.getTime())) return String(dVal);
+          return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        } catch {
+          return String(dVal);
+        }
+      };
+
+      // Pickup schedule
+      let rawPickupDate = o.pickup_date || '';
+      let pickupSlot = o.pickup_time_slot || '';
+      if (o.pickup && typeof o.pickup === 'object') {
+        rawPickupDate = o.pickup.date || rawPickupDate;
+        if (o.pickup.from && o.pickup.to) {
+          pickupSlot = `${o.pickup.from} - ${o.pickup.to}`;
+        }
+      }
+
+      let deliveryDate = null;
+      if (o.delivery_date) {
+        deliveryDate = formatPrettyDate(o.delivery_date);
+      } else if (o.delivery && typeof o.delivery === 'object' && o.delivery.date) {
+        deliveryDate = formatPrettyDate(o.delivery.date);
+      }
+
+      return {
+        ...o,
+        id: o.id || o.code,
+        rawId: o.id,
+        order_number: o.order_number || o.code || o.id,
+        code: o.code || o.order_number || o.id,
+        created_at: o.createdAt || o.created_at,
+        total_amount: totalInr,
+        pickup_address: addrStr,
+        pickup_date: formatPrettyDate(rawPickupDate) || 'Scheduled',
+        pickup_time_slot: pickupSlot || 'Standard Slot',
+        delivery_date: deliveryDate,
+        delivery_time_slot: o.delivery_time_slot || '',
+        items: itemsList,
+        payment_status: o.paymentStatus || o.payment_status || (o.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid')
+      };
+    });
+  }, []);
+
+  const fetchOrdersFromApi = useCallback(async () => {
     try {
       const res = await ordersApi.getOrders();
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
       if (list.length > 0) {
+        const mapped = normalizeOrders(list);
         setOrders(prev => {
           const ids = new Set(prev.map(p => p.id));
-          return [...prev, ...list.filter(item => !ids.has(item.id || item.order_number))];
+          return [...prev, ...mapped.filter(item => !ids.has(item.id))];
         });
       }
     } catch (err) {
-      console.warn('MyOrders fetch orders notice:', err);
-    } finally {
-      setLoading(false);
+      console.warn('Orders API fetch notice:', err);
     }
-  }, []);
+  }, [normalizeOrders]);
+
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setLoading(false);
+      fetchOrdersFromApi().finally(() => setLoading(false));
+      return;
+    }
+
+    setLoading(true);
+    const unsubscribe = subscribeCustomerOrders(
+      currentUser.uid,
+      (liveOrders) => {
+        if (liveOrders && liveOrders.length > 0) {
+          setOrders(normalizeOrders(liveOrders));
+        } else {
+          fetchOrdersFromApi();
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Orders subscription note:', err);
+        fetchOrdersFromApi().finally(() => setLoading(false));
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser, normalizeOrders, fetchOrdersFromApi]);
 
   useEffect(() => {
     if (!cancelModalOrder) return;
@@ -70,30 +173,12 @@ export const MyOrders = () => {
     };
   }, [cancelModalOrder]);
 
-  useEffect(() => {
-    let isSubscribed = true;
-    const unsubscribe = subscribeOrders((fireOrders) => {
-      if (!isSubscribed) return;
-      if (fireOrders && fireOrders.length > 0) {
-        setOrders(fireOrders);
-      }
-      setLoading(false);
-    });
-
-    fetchOrders();
-
-    return () => {
-      isSubscribed = false;
-      unsubscribe();
-    };
-  }, [fetchOrders]);
-
   const handleCancelOrder = async () => {
     if (!cancelModalOrder) return;
-    const targetId = cancelModalOrder.id || cancelModalOrder.order_number || cancelModalOrder.order_id;
+    const targetId = cancelModalOrder.rawId || cancelModalOrder.id || cancelModalOrder.code || cancelModalOrder.order_number;
     setCancellingId(targetId);
     try {
-      await cancelFirestoreOrder(targetId, cancelReason || 'Customer requested cancellation');
+      await cancelCustomerOrder(targetId, cancelReason || 'Customer requested cancellation', currentUser);
       try {
         await ordersApi.cancelOrder(targetId, cancelReason || 'Customer requested cancellation');
       } catch (_) {}
@@ -109,12 +194,12 @@ export const MyOrders = () => {
   const filteredOrders = orders.filter(order => {
     const term = (searchQuery || '').trim().toLowerCase();
     const orderNo = (order.order_number || order.code || '').toLowerCase();
-    const addr = (order.pickup_address || (order.address ? `${order.address.line1 || ''} ${order.address.city || ''}` : '')).toLowerCase();
+    const addr = (order.pickup_address || '').toLowerCase();
     const matchesSearch = !term || orderNo.includes(term) || addr.includes(term);
     
     if (statusFilter === 'ALL') return matchesSearch;
     if (statusFilter === 'PENDING') return matchesSearch && ['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PLACED', 'PAYMENT_PENDING'].includes(order.status);
-    if (statusFilter === 'PROCESSING') return matchesSearch && ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKING', 'PACKED'].includes(order.status);
+    if (statusFilter === 'PROCESSING') return matchesSearch && ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKING', 'PACKED', 'IN_CLEANING'].includes(order.status);
     if (statusFilter === 'DELIVERY') return matchesSearch && ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.status);
     if (statusFilter === 'COMPLETED') return matchesSearch && ['DELIVERED', 'COMPLETED'].includes(order.status);
     if (statusFilter === 'CANCELLED') return matchesSearch && order.status === 'CANCELLED';
@@ -125,7 +210,10 @@ export const MyOrders = () => {
     switch (status) {
       case 'PENDING':
       case 'PENDING_REVIEW':
-        return <span className="badge badge-warning">Booking Received</span>;
+      case 'PAYMENT_PENDING':
+        return <span className="badge badge-warning">Payment Pending</span>;
+      case 'PLACED':
+        return <span className="badge badge-info">Booking Confirmed</span>;
       case 'ACCEPTED':
       case 'PICKUP_ASSIGNED':
       case 'PICKUP_SCHEDULED':
@@ -136,14 +224,16 @@ export const MyOrders = () => {
       case 'DROPPED_OFF_AT_LAUNDRY':
       case 'RECEIVED_BY_LAUNDRY':
       case 'RECEIVED_AT_LAUNDRY':
-        return <span className="badge badge-info">Received at Hub</span>;
+      case 'RECEIVED':
+        return <span className="badge badge-primary">Received at Hub</span>;
       case 'INSPECTION':
         return <span className="badge badge-primary">Clothes Inspection</span>;
       case 'IN_PROCESS':
+      case 'IN_CLEANING':
       case 'WASHING':
       case 'DRYING':
       case 'IRONING':
-        return <span className="badge badge-primary">In Process ({status})</span>;
+        return <span className="badge badge-primary">In Cleaning</span>;
       case 'QUALITY_CHECK':
         return <span className="badge badge-primary">Quality Check</span>;
       case 'PACKING':
@@ -164,7 +254,7 @@ export const MyOrders = () => {
   };
 
   return (
-    <div className="portal-container">
+    <div className="portal-container" style={{ minHeight: '65vh' }}>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
@@ -174,7 +264,10 @@ export const MyOrders = () => {
         </div>
         <div className="flex items-center gap-3">
           <button 
-            onClick={fetchOrders} 
+            onClick={() => {
+              setLoading(true);
+              fetchOrdersFromApi().finally(() => setLoading(false));
+            }} 
             className="btn btn-outline-secondary btn-sm flex items-center gap-1"
             disabled={loading}
           >
@@ -205,7 +298,7 @@ export const MyOrders = () => {
             />
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
+          <div className="flex flex-wrap items-center gap-2">
             {['ALL', 'PENDING', 'PROCESSING', 'DELIVERY', 'COMPLETED', 'CANCELLED'].map((tab) => (
               <button
                 key={tab}
@@ -249,7 +342,7 @@ export const MyOrders = () => {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-lg text-navy">{order.order_number}</span>
+                      <span className="font-mono font-bold text-lg text-navy">{order.order_number || order.code}</span>
                       {getStatusBadge(order.status)}
                     </div>
                     <span className="text-xs text-muted">
@@ -259,16 +352,22 @@ export const MyOrders = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {order.status === 'PENDING' && (
+                  {['PENDING', 'PAYMENT_PENDING', 'PLACED', 'PICKUP_SCHEDULED'].includes(order.status) && (
                     <button
                       onClick={() => setCancelModalOrder(order)}
+                      disabled={cancellingId === order.id}
                       className="btn btn-outline-danger btn-sm"
                     >
                       Cancel Order
                     </button>
                   )}
                   <button
-                    onClick={() => navigateTo('customer-track', order.id.toString())}
+                    onClick={() => {
+                      if (setActiveTrackingOrderId) {
+                        setActiveTrackingOrderId(order.id || order.code);
+                      }
+                      navigateTo('customer-track', (order.id || order.code).toString());
+                    }}
                     className="btn btn-primary btn-sm flex items-center gap-1.5"
                   >
                     <span>Track Live</span>
@@ -299,8 +398,8 @@ export const MyOrders = () => {
                 <div>
                   <span className="text-xs text-muted block mb-1">Items & Services</span>
                   <div className="font-medium text-navy">
-                    {order.items && order.items.length > 0
-                      ? order.items.map(i => `${i.item_name || i.service_name || 'Item'} ×${i.quantity}`).join(', ')
+                    {Array.isArray(order.items) && order.items.length > 0
+                      ? order.items.map(i => `${i.item_name || i.name || i.service_name || 'Item'} ×${i.quantity || 1}`).join(', ')
                       : 'General Laundry Service'}
                   </div>
                   <div className="text-xs text-slate-500 truncate max-w-xs">{order.pickup_address}</div>
@@ -308,8 +407,8 @@ export const MyOrders = () => {
 
                 <div>
                   <span className="text-xs text-muted block mb-1">Total Bill & Payment</span>
-                  <div className="text-base font-bold text-navy">₹{order.total_amount || order.estimated_amount || '0.00'}</div>
-                  <span className={`text-xs font-semibold ${order.payment_status === 'PAID' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  <div className="text-base font-bold text-navy">₹{order.total_amount || '0.00'}</div>
+                  <span className={`text-xs font-semibold ${order.payment_status === 'Paid' || order.payment_status === 'PAID' ? 'text-emerald-600' : 'text-amber-600'}`}>
                     Payment: {order.payment_status || 'Pending'}
                   </span>
                 </div>
@@ -332,7 +431,7 @@ export const MyOrders = () => {
           >
             <div className="flex items-center gap-3 text-red-600 mb-3">
               <AlertCircle size={24} />
-              <h3 className="text-lg font-bold">Cancel Order {cancelModalOrder.order_number}?</h3>
+              <h3 className="text-lg font-bold">Cancel Order {cancelModalOrder.order_number || cancelModalOrder.code}?</h3>
             </div>
             <p className="text-sm text-slate-600 mb-4">
               Are you sure you want to cancel this booking? This action cannot be undone once confirmed.
