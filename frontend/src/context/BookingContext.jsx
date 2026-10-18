@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { createCustomerOrder, confirmCustomerPayment } from '../services/customerDataService';
 import { useAuth } from './AuthContext';
+import { addressApi, servicesApi } from '../api/apiClient';
 import { INITIAL_SERVICES } from '../constants/servicesConstants';
 import { PRICING_CATEGORIES, PRICING_SUBCATEGORIES, PRICING_ITEMS } from '../data/pricingData';
 
@@ -339,22 +340,24 @@ export const BookingProvider = ({ children }) => {
         pincode: currentUser.pincode || prev.pincode || '560043'
       }));
 
-      // Fetch saved default address from backend
-      addressApi.getAddresses()
-        .then(res => {
-          const addrs = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-          if (addrs.length > 0) {
-            const def = addrs.find(a => a.is_default) || addrs[0];
-            setPickupDetails(prev => ({
-              ...prev,
-              address: def.address_line || def.address_line1 || prev.address,
-              landmark: def.landmark || def.address_line2 || prev.landmark,
-              city: def.city || prev.city,
-              pincode: def.pincode || prev.pincode
-            }));
-          }
-        })
-        .catch(err => console.warn('Saved addresses notice:', err.message));
+      // Fetch saved default address safely
+      if (addressApi && typeof addressApi.getAddresses === 'function') {
+        addressApi.getAddresses()
+          .then(res => {
+            const addrs = Array.isArray(res?.data) ? res.data : (res?.data?.results || []);
+            if (addrs.length > 0) {
+              const def = addrs.find(a => a.is_default) || addrs[0];
+              setPickupDetails(prev => ({
+                ...prev,
+                address: def.address_line || def.address_line1 || prev.address,
+                landmark: def.landmark || def.address_line2 || prev.landmark,
+                city: def.city || prev.city,
+                pincode: def.pincode || prev.pincode
+              }));
+            }
+          })
+          .catch(err => console.warn('Saved addresses notice:', err?.message));
+      }
     }
   }, [currentUser]);
 
@@ -363,8 +366,8 @@ export const BookingProvider = ({ children }) => {
     const loadRealServices = async () => {
       try {
         const [catRes, srvRes] = await Promise.allSettled([
-          servicesApi.getCategories(),
-          servicesApi.getServices()
+          servicesApi && typeof servicesApi.getCategories === 'function' ? servicesApi.getCategories() : Promise.resolve({ data: [] }),
+          servicesApi && typeof servicesApi.getServices === 'function' ? servicesApi.getServices() : Promise.resolve({ data: [] })
         ]);
 
         if (catRes.status === 'fulfilled' && catRes.value?.data) {
@@ -659,7 +662,15 @@ export const BookingProvider = ({ children }) => {
 export const useBooking = () => {
   const context = useContext(BookingContext);
   if (!context) {
-    throw new Error('useBooking must be used within a BookingProvider');
+    return {
+      currentPage: typeof window !== 'undefined' ? (window.location.hash.replace(/^#\/?/, '').trim().toLowerCase() || 'home') : 'home',
+      navigateTo: (page) => {
+        if (typeof window !== 'undefined') window.location.hash = page;
+      },
+      bookingState: {},
+      allServices: [],
+      serviceCategories: []
+    };
   }
   return context;
 };

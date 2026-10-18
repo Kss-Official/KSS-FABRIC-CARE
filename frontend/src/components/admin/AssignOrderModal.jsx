@@ -87,7 +87,27 @@ export const AssignOrderModal = () => {
     }
     const driver = driversList.find(d => d.id === selectedDriverId);
     if (driver) {
-      assignDriverToOrder(currentOrder.id, `${driver.name} (${driver.phone})`);
+      const orderIdentifier = assigningOrder?.rawId || assigningOrder?.id || currentOrder.id;
+      const taskType = (assigningOrder?.type === 'Delivery' || currentOrder.type === 'Delivery') ? 'delivery' : 'pickup';
+
+      assignDriverToOrder(orderIdentifier, driver, taskType);
+
+      try {
+        const stored = JSON.parse(localStorage.getItem('fabricare_pickup_delivery_assignments') || '{}');
+        const driverInitials = String(driver.name || 'DR').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
+        const assignmentRecord = {
+          driverName: driver.name,
+          driverPhone: driver.phone,
+          driverInitials,
+          assigned: true
+        };
+        stored[currentOrder.id] = assignmentRecord;
+        if (assigningOrder?.id) stored[assigningOrder.id] = assignmentRecord;
+        if (assigningOrder?.rawId) stored[assigningOrder.rawId] = assignmentRecord;
+        localStorage.setItem('fabricare_pickup_delivery_assignments', JSON.stringify(stored));
+        window.dispatchEvent(new Event('storage'));
+      } catch (e) {}
+
       setIsAssignOrderModalOpen(false);
     } else {
       setIsAssignOrderModalOpen(false);

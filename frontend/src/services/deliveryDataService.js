@@ -9,7 +9,7 @@ import {
   query,
   limitToLast
 } from 'firebase/database';
-import { rtdb } from '../config/firebase';
+import { rtdb } from '../config/firebase.js';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 
@@ -142,40 +142,112 @@ export const verifyAndCompletePickup = async (taskId, orderId, enteredOtp, agent
 /**
  * 3. Agent drops clothes at laundry hub -> hubDropoffs record
  */
-export const recordHubDropoff = async (orderId, facilityName, agentUser) => {
-  const orderSnap = await get(ref(rtdb, `orders/${orderId}`));
-  if (!orderSnap.exists()) throw new Error('Order not found.');
-  const order = orderSnap.val();
+export const recordHubDropoff = async (orderId, facilityName, agentUser, notes = '') => {
+  const targetDb = rtdb;
+  let orderKey = String(orderId).trim();
+
+  // If a task ID was passed (e.g., task_pk_... or from tasks table), resolve underlying orderId first
+  try {
+    const taskSnap = await get(ref(targetDb, `tasks/${orderKey}`));
+    if (taskSnap.exists() && taskSnap.val().orderId) {
+      orderKey = String(taskSnap.val().orderId).trim();
+    }
+  } catch (_) {}
+
+  let orderSnap = await get(ref(targetDb, `orders/${orderKey}`));
+  if (!orderSnap.exists()) {
+    const allSnap = await get(ref(targetDb, 'orders'));
+    if (allSnap.exists()) {
+      const all = allSnap.val();
+      const found = Object.keys(all).find(k => 
+        String(all[k].code || '').toUpperCase() === String(orderId).toUpperCase() ||
+        String(all[k].id || '').toUpperCase() === String(orderId).toUpperCase() ||
+        String(all[k].order_number || '').toUpperCase() === String(orderId).toUpperCase() ||
+        String(all[k].displayId || '').toUpperCase() === String(orderId).toUpperCase()
+      );
+      if (found) {
+        orderKey = found;
+        orderSnap = await get(ref(targetDb, `orders/${orderKey}`));
+      }
+    }
+  }
 
   const now = Date.now();
-  const dropPush = push(ref(rtdb, 'hubDropoffs'));
+  const order = orderSnap.exists() ? orderSnap.val() : {};
+  const dropPush = push(ref(targetDb, 'hubDropoffs'));
   const dropId = dropPush.key;
-  const histPush = push(ref(rtdb, `orderHistory/${orderId}`));
+  const histPush = push(ref(targetDb, `orderHistory/${orderKey}`));
 
   const updates = {};
   updates[`hubDropoffs/${dropId}`] = {
     id: dropId,
-    orderId,
-    orderCode: order.code,
+    orderId: orderKey,
+    orderCode: order.code || order.displayId || orderId,
     agentId: agentUser.uid,
     agentName: agentUser.name || 'Delivery Partner',
     facilityName: facilityName || 'Central FabriCare Hub',
     droppedAt: now,
     itemCount: Object.keys(order.items || {}).length,
+    notes: notes || '',
     receivedByStaffId: null,
     receivedAt: null
   };
 
-  updates[`orderHistory/${orderId}/${histPush.key}`] = {
-    from: order.status,
-    to: order.status,
+  // Crucial: Update order status so Laundry Staff sees it in Incoming / Intake queue
+  updates[`orders/${orderKey}/status`] = 'DROPPED_OFF_AT_LAUNDRY';
+  updates[`orders/${orderKey}/orderStatus`] = 'DROPPED_OFF_AT_LAUNDRY';
+  updates[`orders/${orderKey}/raw_status`] = 'DROPPED_OFF_AT_LAUNDRY';
+  updates[`orders/${orderKey}/status_display`] = 'Dropped Off at Hub';
+  updates[`orders/${orderKey}/stage`] = 'incoming';
+  updates[`orders/${orderKey}/currentLaundryStep`] = 'inspect';
+  updates[`orders/${orderKey}/droppedAtHub`] = now;
+  updates[`orders/${orderKey}/facilityName`] = facilityName || 'Central FabriCare Hub';
+  if (notes) {
+    updates[`orders/${orderKey}/dropoffNotes`] = notes;
+  }
+
+  // Also move status indexes
+  updates[`ordersByStatus/PICKED_UP/${orderKey}`] = null;
+  updates[`ordersByStatus/DROPPED_OFF_AT_LAUNDRY/${orderKey}`] = now;
+
+  updates[`orderHistory/${orderKey}/${histPush.key}`] = {
+    from: order.status || 'PICKED_UP',
+    to: 'DROPPED_OFF_AT_LAUNDRY',
     byUid: agentUser.uid,
     byName: agentUser.name || 'Delivery Partner',
-    note: `Dropped off clothes at ${facilityName || 'Central Hub'}`,
+    note: notes ? `Dropped off clothes at ${facilityName || 'Central Hub'}: ${notes}` : `Dropped off clothes at ${facilityName || 'Central Hub'}`,
     at: now
   };
 
-  await update(ref(rtdb), updates);
+  // Staff notification for incoming laundry intake
+  const staffNotifPush = push(ref(targetDb, 'staffNotifications'));
+  updates[`staffNotifications/${staffNotifPush.key}`] = {
+    id: staffNotifPush.key,
+    type: 'incoming_dropoff',
+    title: 'New Laundry Dropped Off at Hub',
+    body: `Driver ${agentUser.name || 'Agent'} dropped off order ${order.code || order.displayId || orderId} at ${facilityName || 'Central Hub'}. Ready for inspection.`,
+    orderId: orderKey,
+    orderCode: order.code || order.displayId || orderId,
+    isRead: false,
+    createdAt: now
+  };
+
+  await update(ref(targetDb), updates);
+
+  // Mark task completed in tasks node
+  const tasksSnap = await get(ref(targetDb, 'tasks'));
+  if (tasksSnap.exists()) {
+    const tasks = tasksSnap.val();
+    for (const [tId, tVal] of Object.entries(tasks)) {
+      if (tVal.orderId === orderKey || tVal.orderId === orderId) {
+        await update(ref(targetDb, `tasks/${tId}`), {
+          status: 'completed',
+          droppedOffAt: now,
+          updatedAt: now
+        });
+      }
+    }
+  }
 };
 
 /**

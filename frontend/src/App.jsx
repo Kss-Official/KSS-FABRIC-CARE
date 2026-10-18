@@ -2,7 +2,6 @@ import React, { useEffect, lazy, Suspense } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { AdminProvider } from './context/AdminContext';
-import { seedInitialFirestoreData } from './services/firestoreService';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { HomePage } from './pages/HomePage';
@@ -172,10 +171,7 @@ const AppContent = () => {
   const isLaundryRoute = LAUNDRY_STAFF_ROUTES.includes(cleanPageName) || 
     ((cleanPageName === 'notifications' || cleanPageName === 'profile') && (userRole === 'staff' || userRole === 'laundry_staff' || userRole === 'admin'));
 
-  // Initialize and seed Firebase Cloud Firestore on app startup
-  useEffect(() => {
-    seedInitialFirestoreData().catch(e => console.warn('Firestore initial seeding note:', e));
-  }, []);
+
 
   // Protected route redirects inside useEffect to avoid updating BookingProvider during render
   useEffect(() => {

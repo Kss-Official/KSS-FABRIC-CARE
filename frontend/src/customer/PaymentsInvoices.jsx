@@ -95,51 +95,122 @@ export const PaymentsInvoices = () => {
     );
   });
 
-  useEffect(() => {
-    if (!currentUser?.uid) return;
-    setLoading(true);
-
-    const unsub = subscribeCustomerInvoices(
-      currentUser.uid,
-      (invoicesList) => {
-        const mapped = (invoicesList || []).map(inv => ({
-          ...inv,
-          id: inv.id,
-          order_number: inv.orderCode || inv.orderId,
-          order_id: inv.orderCode || inv.orderId,
-          total_amount: inv.total ? (inv.total / 100).toFixed(2) : '0.00',
-          amount: inv.total ? (inv.total / 100).toFixed(2) : '0.00',
-          status: inv.paymentStatus || 'Paid',
-          created_at: inv.date,
-          pickup_date: inv.date,
-          items: Object.values(inv.items || {}).map((it, idx) => ({
-            index: idx + 1,
-            name: it.name || 'Laundry Care',
-            title: it.name || 'Laundry Care',
-            category: it.category || 'General',
-            quantity: it.quantity || 1,
-            qty: it.quantity || 1,
-            rate: it.unitPrice ? (it.unitPrice / 100).toFixed(2) : '60.00',
-            price: it.unitPrice ? (it.unitPrice / 100).toFixed(2) : '60.00',
-            amount: it.lineTotal ? (it.lineTotal / 100).toFixed(2) : '60.00',
-            iconType: 'shirt'
-          }))
-        }));
-
-        setOrders(mapped);
-        if (mapped.length > 0) {
-          setSelectedOrder(prev => prev ? (mapped.find(m => m.id === prev.id) || mapped[0]) : mapped[0]);
+  const normalizeInvoiceOrder = (ord) => {
+    const totalInr = ord.total ? (ord.total / 100).toFixed(2) : (ord.total_amount || ord.amount || '0.00');
+    const orderNum = ord.code || ord.order_number || ord.order_id || `#FC${ord.id}`;
+    
+    // Parse items
+    let parsedItems = [];
+    if (Array.isArray(ord.items)) {
+      parsedItems = ord.items;
+    } else if (ord.items && typeof ord.items === 'object') {
+      parsedItems = Object.entries(ord.items).map(([k, val]) => {
+        if (typeof val === 'object' && val !== null) {
+          return {
+            item_name: val.name || val.item_name || k,
+            name: val.name || val.item_name || k,
+            quantity: Number(val.quantity || val.qty || 1),
+            qty: Number(val.quantity || val.qty || 1),
+            rate: Number(val.rate || val.price || val.unitPrice || 60),
+            unitPrice: Number(val.rate || val.price || val.unitPrice || 60),
+            total: Number(val.total || val.lineTotal || (val.quantity || 1) * 60)
+          };
         }
-        setLoading(false);
-      },
-      (err) => {
-        console.warn('Invoices listener error:', err);
-        setLoading(false);
-      }
-    );
+        return { item_name: k, name: k, quantity: Number(val) || 1, qty: Number(val) || 1, rate: 60, total: (Number(val) || 1) * 60 };
+      });
+    }
 
+    let addrStr = ord.pickup_address || '';
+    if (!addrStr && ord.address) {
+      if (typeof ord.address === 'string') {
+        addrStr = ord.address;
+      } else {
+        const parts = [ord.address.flatHouse, ord.address.areaColony, ord.address.city, ord.address.pincode].filter(Boolean);
+        addrStr = parts.join(', ');
+      }
+    }
+
+    return {
+      ...ord,
+      id: ord.id || ord.code,
+      order_number: orderNum,
+      order_id: orderNum,
+      code: ord.code || orderNum,
+      date: ord.createdAt ? new Date(ord.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today',
+      created_at: ord.createdAt || ord.created_at,
+      pickup_date: ord.pickup?.date || ord.pickup_date || 'Scheduled',
+      pickup_time_slot: ord.pickup ? `${ord.pickup.from || '09:00 AM'} - ${ord.pickup.to || '11:00 AM'}` : (ord.pickup_time_slot || '09:00 AM - 11:00 AM'),
+      pickup_address: addrStr,
+      total_amount: totalInr,
+      amount: totalInr,
+      items: parsedItems,
+      status: ord.paymentStatus || ord.payment_status || (ord.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid')
+    };
+  };
+
+  const fetchOrdersAndInvoices = async () => {
+    setIsRefreshing(true);
+    setLoading(true);
+    try {
+      const res = await ordersApi.getOrders();
+      const ordList = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
+      if (ordList.length > 0) {
+        const mapped = ordList.map(normalizeInvoiceOrder);
+        setOrders(mapped);
+
+        if (activeTrackingOrderId) {
+          const match = mapped.find(o => 
+            String(o.id) === String(activeTrackingOrderId) || 
+            o.order_number === activeTrackingOrderId || 
+            o.order_id === activeTrackingOrderId ||
+            o.code === activeTrackingOrderId
+          );
+          if (match) {
+            setSelectedOrder(match);
+          } else {
+            setSelectedOrder(mapped[0]);
+          }
+        } else {
+          setSelectedOrder(prev => {
+            if (!prev) return mapped[0];
+            return mapped.find(o => o.id === prev.id) || mapped[0];
+          });
+        }
+      }
+
+      setRefreshSuccess(true);
+      setTimeout(() => setRefreshSuccess(false), 2000);
+    } catch (err) {
+      console.warn('Orders refresh notice:', err);
+    } finally {
+      setTimeout(() => {
+        setIsRefreshing(false);
+        setLoading(false);
+      }, 500);
+    }
+  };
+
+  useEffect(() => {
+    const uid = currentUser?.uid || currentUser?.id;
+    if (!uid) {
+      fetchOrdersAndInvoices();
+      return;
+    }
+
+    const unsub = subscribeCustomerOrders(uid, (liveOrders) => {
+      if (liveOrders && liveOrders.length > 0) {
+        const mapped = liveOrders.map(normalizeInvoiceOrder);
+        setOrders(mapped);
+        setSelectedOrder(prev => prev ? (mapped.find(m => m.id === prev.id) || mapped[0]) : mapped[0]);
+        setLoading(false);
+      } else {
+        fetchOrdersAndInvoices();
+      }
+    });
+
+    fetchOrdersAndInvoices();
     return () => unsub();
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, activeTrackingOrderId]);
 
   // Synchronously reset modal scroll to top before browser paint
   useLayoutEffect(() => {

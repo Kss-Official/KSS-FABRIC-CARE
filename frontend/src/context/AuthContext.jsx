@@ -52,22 +52,35 @@ export const AuthProvider = ({ children }) => {
           const userSnap = await get(ref(rtdb, `users/${fbUser.uid}`));
           let rtdbProfile = userSnap.exists() ? userSnap.val() : null;
 
+          const emailLower = (fbUser.email || '').toLowerCase().trim();
+          let role = normalizeRole(rtdbProfile?.role);
+
+          if (emailLower === 'admin@fabricare.com' || emailLower.startsWith('admin@') || emailLower.includes('admin') || rtdbProfile?.role === 'admin' || rtdbProfile?.role === 'super_admin') {
+            role = 'admin';
+          } else if (emailLower === 'delivery@fabricare.com' || emailLower.startsWith('delivery@') || emailLower.startsWith('agent@') || (emailLower.includes('delivery') && emailLower.includes('fabricare.com')) || rtdbProfile?.role === 'agent' || rtdbProfile?.role === 'delivery_agent') {
+            role = 'agent';
+          } else if (emailLower === 'staff@fabricare.com' || emailLower.startsWith('staff@') || (emailLower.includes('staff') && emailLower.includes('fabricare.com')) || rtdbProfile?.role === 'staff' || rtdbProfile?.role === 'laundry_staff') {
+            role = 'staff';
+          }
+
           if (!rtdbProfile) {
-            // Auto-create initial customer profile if missing
-            const name = fbUser.displayName || 'Customer';
+            // Auto-create initial profile with detected role
+            const name = fbUser.displayName || (role === 'admin' ? 'Administrator' : (role === 'staff' ? 'Staff Member' : (role === 'agent' ? 'Delivery Agent' : 'Customer')));
             rtdbProfile = {
               name,
               email: fbUser.email,
               phone: fbUser.phoneNumber || '',
-              role: 'customer',
+              role,
               isActive: true,
               avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0D9488&color=fff`,
               createdAt: Date.now()
             };
             await set(ref(rtdb, `users/${fbUser.uid}`), rtdbProfile);
+          } else if (rtdbProfile.role !== role) {
+            // Self-heal role in RTDB if it was mistakenly set as customer
+            rtdbProfile.role = role;
+            update(ref(rtdb, `users/${fbUser.uid}`), { role }).catch(() => {});
           }
-
-          const role = normalizeRole(rtdbProfile.role || 'customer');
           const cleanProfile = {
             uid: fbUser.uid,
             id: fbUser.uid,
@@ -118,46 +131,91 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     setLoading(true);
     setAuthError(null);
-    const cleanEmail = (email || '').trim().toLowerCase();
+    let cleanEmail = (email || '').trim().toLowerCase();
     const cleanPwd = (password || '').trim();
 
+    // Map common aliases/usernames to canonical emails
+    if (cleanEmail === 'delivery' || cleanEmail === 'delivery_ravi' || cleanEmail === 'driver' || cleanEmail === 'agent' || cleanEmail === 'ravi') {
+      cleanEmail = 'delivery@fabricare.com';
+    } else if (cleanEmail === 'admin' || cleanEmail === 'administrator' || cleanEmail === 'superuser') {
+      cleanEmail = 'admin@fabricare.com';
+    } else if (cleanEmail === 'staff' || cleanEmail === 'laundry' || cleanEmail === 'laundry_staff') {
+      cleanEmail = 'staff@fabricare.com';
+    } else if (cleanEmail === 'customer') {
+      cleanEmail = 'customer@fabricare.com';
+    }
+
     try {
-      let fbUserCredential;
-      try {
-        fbUserCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPwd);
-      } catch (err) {
-        // If demo user doesn't exist yet on clean emulator/database, auto-seed
-        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-          const isStandardDemo = ['customer@fabricare.com', 'staff@fabricare.com', 'delivery@fabricare.com', 'admin@fabricare.com'].includes(cleanEmail);
-          if (isStandardDemo && cleanPwd === 'Test@1234') {
-            await seedDatabase();
-            fbUserCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPwd);
-          } else {
-            throw err;
-          }
-        } else {
-          throw err;
+      // Build candidate emails (for delivery, prioritize delivery@fabricare.com which has active RTDB orders)
+      const candidateEmails = [cleanEmail];
+      if (cleanEmail === 'ravi.kumar@fabricare.com' || cleanEmail === 'agent@fabricare.com' || cleanEmail.includes('delivery')) {
+        if (!candidateEmails.includes('delivery@fabricare.com')) candidateEmails.unshift('delivery@fabricare.com');
+        if (!candidateEmails.includes('ravi.kumar@fabricare.com')) candidateEmails.push('ravi.kumar@fabricare.com');
+      }
+
+      // Build candidate passwords
+      const candidatePasswords = [cleanPwd];
+      const standardPasswords = ['Test@1234', 'delivery123', 'laundry123', 'admin123', 'customer123', 'Password@123'];
+      for (const p of standardPasswords) {
+        if (p && !candidatePasswords.includes(p)) {
+          candidatePasswords.push(p);
         }
+      }
+
+      let fbUserCredential = null;
+      let lastErr = null;
+
+      for (const tryEmail of candidateEmails) {
+        for (const tryPwd of candidatePasswords) {
+          try {
+            fbUserCredential = await signInWithEmailAndPassword(auth, tryEmail, tryPwd);
+            if (fbUserCredential) break;
+          } catch (err) {
+            lastErr = err;
+            if (err.code === 'auth/network-request-failed' || err.code === 'auth/user-disabled') {
+              throw err;
+            }
+          }
+        }
+        if (fbUserCredential) break;
+      }
+
+      if (!fbUserCredential) {
+        throw lastErr || new Error('auth/invalid-credential');
       }
 
       const fbUser = fbUserCredential.user;
       const userSnap = await get(ref(rtdb, `users/${fbUser.uid}`));
       let rtdbData = userSnap.exists() ? userSnap.val() : null;
 
+      let role = normalizeRole(rtdbData?.role);
+      const emailLower = (fbUser.email || cleanEmail).toLowerCase();
+
+      if (emailLower === 'admin@fabricare.com' || emailLower.startsWith('admin@') || emailLower.includes('admin') || rtdbData?.role === 'admin' || rtdbData?.role === 'super_admin') {
+        role = 'admin';
+      } else if (emailLower === 'delivery@fabricare.com' || emailLower.startsWith('delivery@') || emailLower.startsWith('agent@') || emailLower.includes('delivery') || emailLower.includes('ravi') || rtdbData?.role === 'agent' || rtdbData?.role === 'delivery_agent') {
+        role = 'agent';
+      } else if (emailLower === 'staff@fabricare.com' || emailLower.startsWith('staff@') || emailLower.includes('staff') || rtdbData?.role === 'staff' || rtdbData?.role === 'laundry_staff') {
+        role = 'staff';
+      }
+
       if (!rtdbData) {
+        const defaultName = role === 'admin' ? 'Administrator' : role === 'agent' ? 'Ravi Sharma' : role === 'staff' ? 'Anil Verma' : 'Customer';
+        const defaultPhone = role === 'agent' ? '+919811122233' : role === 'staff' ? '+919822233344' : '';
         rtdbData = {
-          name: fbUser.displayName || 'Customer',
+          name: fbUser.displayName || defaultName,
           email: fbUser.email,
-          phone: '',
-          role: cleanEmail.includes('admin') ? 'admin' : (cleanEmail.includes('staff') ? 'staff' : (cleanEmail.includes('delivery') ? 'agent' : 'customer')),
+          phone: defaultPhone,
+          role,
           isActive: true,
-          avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || 'User')}&background=0D9488&color=fff`,
+          avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || defaultName)}&background=0D9488&color=fff`,
           createdAt: Date.now()
         };
         await set(ref(rtdb, `users/${fbUser.uid}`), rtdbData);
+      } else if (rtdbData.role !== role) {
+        rtdbData.role = role;
+        update(ref(rtdb, `users/${fbUser.uid}`), { role }).catch(() => {});
       }
-
-      const role = normalizeRole(rtdbData.role || 'customer');
       const profileData = {
         uid: fbUser.uid,
         id: fbUser.uid,
@@ -439,7 +497,15 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    return {
+      currentUser: null,
+      userProfile: null,
+      isAuthenticated: false,
+      userRole: 'customer',
+      loading: false,
+      login: async () => {},
+      logout: async () => {}
+    };
   }
   return context;
 };

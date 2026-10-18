@@ -10,7 +10,7 @@ import {
   orderByChild,
   limitToLast
 } from 'firebase/database';
-import { rtdb } from '../config/firebase';
+import { rtdb } from '../config/firebase.js';
 
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 const getTodayKey = () => new Date().toISOString().split('T')[0];

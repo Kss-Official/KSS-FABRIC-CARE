@@ -555,7 +555,7 @@ img {
   margin-bottom: 6px;
 }
 
-.form-input, .form-select, .form-textarea {
+.form-input, .form-control, .form-select, .form-textarea {
   width: 100%;
   padding: 10px 14px;
   border: 1.5px solid #CBD5E1;
@@ -566,11 +566,13 @@ img {
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.form-input:focus, .form-select:focus, .form-textarea:focus {
+.form-input:focus, .form-control:focus, .form-select:focus, .form-textarea:focus {
   border-color: #0D7A75;
   box-shadow: 0 0 0 3px rgba(13,122,117,.12);
 }
 .form-textarea { resize: vertical; min-height: 80px; }
+
+.btn-xs { padding: 4px 10px; font-size: 0.75rem; border-radius: 6px; }
 
 /* ============================================================
    UTILITY CLASSES (replaces Tailwind)

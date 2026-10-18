@@ -60,6 +60,13 @@ export const AdminProvider = ({ children }) => {
   const { currentUser, userRole } = useAuth();
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(true);
 
+  useEffect(() => {
+    if (userRole === 'admin' || userRole === 'super_admin') {
+      setIsAdminAuthenticated(true);
+      setAdminTab(prev => (prev === 'login' ? 'dashboard' : prev));
+    }
+  }, [userRole]);
+
   // RTDB Live Data States
   const [orders, setOrders] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -96,6 +103,10 @@ export const AdminProvider = ({ children }) => {
   // REAL-TIME RTDB SUBSCRIPTIONS (Strict cleanup on unmount)
   // ========================================================
   useEffect(() => {
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
 
     const unsubOrders = subscribeAdminOrders((rtdbOrders) => {
@@ -103,19 +114,81 @@ export const AdminProvider = ({ children }) => {
       const mapped = (rtdbOrders || []).map((o) => {
         const totalPaise = o.total || 0;
         const totalInr = totalPaise > 0 ? (totalPaise / 100).toFixed(2) : '0.00';
+        const rawItems = o.items;
+        const normItems = Array.isArray(rawItems)
+          ? rawItems
+          : (rawItems && typeof rawItems === 'object'
+            ? Object.values(rawItems).map(it => ({
+                name: it.name || it.item_name || 'Laundry Care',
+                item_name: it.name || it.item_name || 'Laundry Care',
+                quantity: it.quantity || 1,
+                price: it.price || it.unitPrice || 60,
+                service_name: it.service_name || it.service || 'Wash & Fold'
+              }))
+            : []);
+        const rawStat = String(o.status || '').toUpperCase();
+        const hasDriver = Boolean(o.assignedAgentName || (o.driver && o.driver !== 'Not Assigned'));
+
+        let normalizedStatus = 'Pending Pickup';
+        if (rawStat === 'PLACED' || rawStat === 'PAYMENT_PENDING') {
+          normalizedStatus = hasDriver ? 'Pickup Scheduled' : 'Pending Pickup';
+        } else if (rawStat === 'PICKUP_SCHEDULED' || rawStat === 'PICKUP_ASSIGNED') {
+          normalizedStatus = 'Pickup Scheduled';
+        } else if (rawStat === 'PICKED_UP' || rawStat === 'IN_CLEANING' || rawStat === 'PROCESSING' || rawStat === 'WASHING') {
+          normalizedStatus = 'In Cleaning';
+        } else if (rawStat === 'READY_FOR_DELIVERY') {
+          normalizedStatus = 'Ready for Delivery';
+        } else if (rawStat === 'OUT_FOR_DELIVERY' || rawStat === 'DELIVERY_ASSIGNED' || rawStat === 'IN_TRANSIT') {
+          normalizedStatus = 'In Transit';
+        } else if (rawStat === 'DELIVERED' || rawStat === 'COMPLETED') {
+          normalizedStatus = 'Completed';
+        } else if (rawStat === 'CANCELLED') {
+          normalizedStatus = 'Cancelled';
+        } else if (o.status) {
+          normalizedStatus = o.status;
+        }
+
+        const driverDisplay = o.assignedAgentName
+          ? (o.assignedAgentPhone ? `${o.assignedAgentName} (${o.assignedAgentPhone})` : o.assignedAgentName)
+          : (o.driver || 'Not Assigned');
+
+        const custName = o.customerName || o.pickup_full_name || 'Customer';
+        const custPhone = o.customerPhone || o.pickup_phone || '';
+        const custAddress = o.address 
+          ? `${o.address.flatHouse || ''}, ${o.address.areaColony || ''}, ${o.address.city || ''}` 
+          : (o.pickup_address || 'Bengaluru');
+
+        const servicesList = Array.isArray(o.services)
+          ? o.services
+          : (Array.isArray(o.services_list)
+            ? o.services_list
+            : (normItems.length > 0
+              ? normItems.map(it => it.service_name || it.item_name || it.name).filter(Boolean)
+              : ['Wash & Fold']));
+
         return {
           ...o,
+          rawId: o.id,
+          items: normItems,
+          services: servicesList,
           id: o.code || o.id,
           order_id: o.code || o.id,
           order_number: o.code || o.id,
           total_amount: totalInr,
           amount: totalInr,
-          customer_name: o.customerName || 'Customer',
-          customer_phone: o.customerPhone || '',
-          pickup_address: o.address ? `${o.address.flatHouse || ''}, ${o.address.areaColony || ''}, ${o.address.city || ''}` : 'Bengaluru',
+          customer_name: custName,
+          customer_phone: custPhone,
+          pickup_address: custAddress,
+          customer: {
+            name: custName,
+            phone: custPhone,
+            address: custAddress,
+            avatar: custName.substring(0, 2).toUpperCase()
+          },
           pickupTime: `${o.pickup?.date || 'Tomorrow'}, ${o.pickup?.from || '09:00'} - ${o.pickup?.to || '11:00'}`,
-          driver: o.assignedAgentName || 'Not Assigned',
-          status: o.status === 'PLACED' ? 'Pending Pickup' : (o.status === 'IN_CLEANING' ? 'In Cleaning' : (o.status === 'READY_FOR_DELIVERY' ? 'Ready for Delivery' : (o.status === 'OUT_FOR_DELIVERY' ? 'In Transit' : (o.status === 'DELIVERED' ? 'Completed' : (o.status === 'CANCELLED' ? 'Cancelled' : o.status)))))
+          driver: driverDisplay,
+          status: normalizedStatus,
+          payment: o.paymentStatus || (o.payment_status === 'PAID' ? 'Paid' : (o.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid'))
         };
       });
       setOrders(mapped);
@@ -167,30 +240,71 @@ export const AdminProvider = ({ children }) => {
     });
 
     return () => {
-      unsubOrders();
-      unsubTasks();
-      unsubAgents();
-      unsubCustomers();
-      unsubStats();
-      unsubComplaints();
-      unsubNotifs();
+      if (typeof unsubOrders === 'function') unsubOrders();
+      if (typeof unsubTasks === 'function') unsubTasks();
+      if (typeof unsubAgents === 'function') unsubAgents();
+      if (typeof unsubCustomers === 'function') unsubCustomers();
+      if (typeof unsubStats === 'function') unsubStats();
+      if (typeof unsubComplaints === 'function') unsubComplaints();
+      if (typeof unsubNotifs === 'function') unsubNotifs();
     };
-  }, []);
+  }, [currentUser]);
 
   // Workflow Handlers
-  const assignDriverToOrder = async (orderId, driverId, taskType = 'pickup') => {
-    if (!orderId || !driverId) throw new Error('Order and driver must be specified.');
-    const order = orders.find(o => o.id === orderId || o.code === orderId || o.order_id === orderId);
+  const assignDriverToOrder = async (orderId, driverParam, taskType = 'pickup') => {
+    if (!orderId || !driverParam) throw new Error('Order and driver must be specified.');
+    const order = (orders || []).find(o => o.id === orderId || o.code === orderId || o.order_id === orderId || o.rawId === orderId);
     const targetOrderId = order?.rawId || order?.id || orderId;
 
-    const task = tasks.find(t => t.orderId === targetOrderId || t.orderCode === orderId);
+    let driverName = 'Assigned Driver';
+    let driverPhone = '+91 98765 43210';
+    let driverId = 'd1';
+
+    if (typeof driverParam === 'object' && driverParam !== null) {
+      driverName = driverParam.name || driverName;
+      driverPhone = driverParam.phone || driverPhone;
+      driverId = driverParam.uid || driverParam.id || driverId;
+    } else if (typeof driverParam === 'string') {
+      const match = driverParam.match(/^(.*?)\s*\((.*?)\)$/);
+      if (match) {
+        driverName = match[1].trim();
+        driverPhone = match[2].trim();
+      } else {
+        driverName = driverParam;
+      }
+    }
+
+    // Match with real availableAgents in RTDB if possible
+    const realAgent = (availableAgents || []).find(a => 
+      a.uid === driverId || a.id === driverId || 
+      (a.name && driverName && a.name.toLowerCase() === driverName.toLowerCase())
+    ) || (availableAgents && availableAgents.length > 0 ? availableAgents[0] : null);
+
+    const effectiveAgentId = realAgent?.uid || realAgent?.id || driverId;
+
+    const task = tasks.find(t => t.orderId === targetOrderId || t.orderCode === orderId || t.orderId === order?.code);
     const taskId = task ? task.id : (taskType === 'pickup' ? order?.pickupTaskId : order?.deliveryTaskId);
 
     if (taskType === 'delivery') {
-      await assignDeliveryAgent(targetOrderId, taskId, driverId, currentUser);
+      await assignDeliveryAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone);
     } else {
-      await assignPickupAgent(targetOrderId, taskId, driverId, currentUser);
+      await assignPickupAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone);
     }
+
+    // Optimistically update local orders so UI updates instantaneously
+    const newStatus = taskType === 'delivery' ? 'In Transit' : 'Pickup Scheduled';
+    setOrders(prev => (prev || []).map(o => {
+      if (o.id === orderId || o.rawId === targetOrderId || o.code === orderId) {
+        return {
+          ...o,
+          status: newStatus,
+          assignedAgentName: driverName,
+          assignedAgentPhone: driverPhone,
+          driver: `${driverName} (${driverPhone})`
+        };
+      }
+      return o;
+    }));
   };
 
   const updateOrderStatus = async (orderId, newStatus, reason = 'Admin updated order status') => {
@@ -236,6 +350,58 @@ export const AdminProvider = ({ children }) => {
     setActiveRescheduleComplaint(null);
   };
 
+  const markNotificationAsRead = useCallback((notifId) => {
+    setNotifications(prev => {
+      const list = Array.isArray(prev) ? prev : Object.values(prev || {});
+      return list.map(n => n.id === notifId ? { ...n, unread: false, isRead: true } : n);
+    });
+  }, []);
+
+  const markNotificationAsUnread = useCallback((notifId) => {
+    setNotifications(prev => {
+      const list = Array.isArray(prev) ? prev : Object.values(prev || {});
+      return list.map(n => n.id === notifId ? { ...n, unread: true, isRead: false } : n);
+    });
+  }, []);
+
+  const markAllNotificationsAsRead = useCallback(() => {
+    setNotifications(prev => {
+      const list = Array.isArray(prev) ? prev : Object.values(prev || {});
+      return list.map(n => ({ ...n, unread: false, isRead: true }));
+    });
+  }, []);
+
+  const deleteNotification = useCallback((notifId) => {
+    setNotifications(prev => {
+      const list = Array.isArray(prev) ? prev : Object.values(prev || {});
+      return list.filter(n => n.id !== notifId);
+    });
+  }, []);
+
+  const clearAllNotifications = useCallback(() => {
+    setNotifications([]);
+  }, []);
+
+  const addAdminNotification = useCallback((notif) => {
+    setNotifications(prev => {
+      const list = Array.isArray(prev) ? prev : Object.values(prev || {});
+      const newNotif = {
+        id: notif.id || `notif_${Date.now()}`,
+        title: notif.title || 'Notice',
+        desc: notif.desc || '',
+        unread: true,
+        isRead: false,
+        time: 'Just now',
+        timestamp: Date.now(),
+        ...notif
+      };
+      return [newNotif, ...list];
+    });
+  }, []);
+
+  const safeNotifications = Array.isArray(notifications) ? notifications : Object.values(notifications || {});
+  const unreadNotifsCount = safeNotifications.filter(n => !n.isRead && n.unread !== false).length;
+
   return (
     <AdminContext.Provider
       value={{
@@ -247,11 +413,20 @@ export const AdminProvider = ({ children }) => {
         setOrders,
         tasks,
         availableAgents,
+        drivers: availableAgents,
         customers,
         services,
         setServices,
         complaints,
-        notifications,
+        notifications: safeNotifications,
+        setNotifications,
+        markNotificationAsRead,
+        markNotificationAsUnread,
+        markAllNotificationsAsRead,
+        deleteNotification,
+        clearAllNotifications,
+        addAdminNotification,
+        unreadNotificationsCount: unreadNotifsCount,
         dashboardData,
         dashboardPeriod,
         setDashboardPeriod,
@@ -293,8 +468,7 @@ export const AdminProvider = ({ children }) => {
         setIsRescheduleDrawerOpen,
         activeRescheduleComplaint,
         openRescheduleDrawer,
-        closeRescheduleDrawer,
-        unreadNotificationsCount: (notifications || []).filter(n => !n.isRead).length
+        closeRescheduleDrawer
       }}
     >
       {children}
@@ -305,7 +479,22 @@ export const AdminProvider = ({ children }) => {
 export const useAdmin = () => {
   const context = useContext(AdminContext);
   if (!context) {
-    throw new Error('useAdmin must be used within an AdminProvider');
+    return {
+      adminTab: 'dashboard',
+      setAdminTab: () => {},
+      isAdminAuthenticated: true,
+      setIsAdminAuthenticated: () => {},
+      orders: [],
+      tasks: [],
+      availableAgents: [],
+      drivers: [],
+      customers: [],
+      services: [],
+      notifications: [],
+      dashboardData: {},
+      assignDriverToOrder: async () => {},
+      updateOrderStatus: async () => {}
+    };
   }
   return context;
 };

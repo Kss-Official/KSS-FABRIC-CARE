@@ -223,13 +223,31 @@ export const buildPlanString = (tasks = []) => {
  * @returns {object}
  */
 export const normalizeOrderItem = (item, index = 0) => {
+  if (!item || typeof item !== 'object') {
+    return {
+      id: `item-${index + 1}-${Date.now()}`,
+      name: String(item || 'Garment'),
+      quantity: 1,
+      price: 0,
+      unitPrice: 0,
+      rate: 0,
+      total: 0,
+      lineTotal: 0,
+      services: ['wash-fold'],
+      tasks: computeItemTasks(['wash-fold']),
+      currentTaskIndex: 0,
+      status: 'PENDING'
+    };
+  }
+
   let services = item.services;
   if (!services || !Array.isArray(services) || services.length === 0) {
     if (item.service_key) {
       services = [item.service_key];
-    } else if (item.service_name) {
+    } else if (item.service_name || item.service) {
+      const sName = item.service_name || item.service;
       const matchKey = Object.keys(SERVICE_DISPLAY_NAMES).find(
-        k => SERVICE_DISPLAY_NAMES[k].toLowerCase() === item.service_name.toLowerCase()
+        k => SERVICE_DISPLAY_NAMES[k].toLowerCase() === sName.toLowerCase() || k.toLowerCase() === sName.toLowerCase()
       );
       services = [matchKey || 'wash-fold'];
     } else {
@@ -241,9 +259,33 @@ export const normalizeOrderItem = (item, index = 0) => {
     ? item.tasks
     : computeItemTasks(services);
 
+  const name = item.name || item.item_name || item.itemName || 'Garment';
+  const quantity = Number(item.quantity || item.qty || 1);
+
+  // Normalize price and unitPrice (convert paise to rupees if > 500)
+  let rawPrice = item.price ?? item.unitPrice ?? item.rate ?? item.unit_price ?? 0;
+  if (typeof rawPrice === 'string') rawPrice = parseFloat(rawPrice) || 0;
+  let finalUnitPrice = rawPrice > 500 ? (rawPrice / 100) : rawPrice;
+
+  // Normalize total and lineTotal
+  let rawTotal = item.total ?? item.lineTotal ?? item.subtotal ?? (finalUnitPrice * quantity);
+  if (typeof rawTotal === 'string') rawTotal = parseFloat(rawTotal) || 0;
+  let finalLineTotal = rawTotal > 500 ? (rawTotal / 100) : rawTotal;
+  if (!finalLineTotal && finalUnitPrice) {
+    finalLineTotal = finalUnitPrice * quantity;
+  }
+
   return {
     ...item,
     id: item.id || `item-${index + 1}-${Date.now()}`,
+    name,
+    item_name: name,
+    quantity,
+    price: finalUnitPrice,
+    unitPrice: finalUnitPrice,
+    rate: finalUnitPrice,
+    total: finalLineTotal,
+    lineTotal: finalLineTotal,
     services,
     tasks,
     currentTaskIndex: typeof item.currentTaskIndex === 'number' ? item.currentTaskIndex : 0,
@@ -258,7 +300,15 @@ export const normalizeOrderItem = (item, index = 0) => {
  */
 export const normalizeOrder = (order) => {
   if (!order) return order;
-  const items = (order.items || []).map((item, idx) => normalizeOrderItem(item, idx));
+
+  // Normalize items array or object
+  let rawItems = [];
+  if (Array.isArray(order.items)) {
+    rawItems = order.items;
+  } else if (order.items && typeof order.items === 'object') {
+    rawItems = Object.values(order.items);
+  }
+  const items = rawItems.map((item, idx) => normalizeOrderItem(item, idx));
   const conflict = checkOrderConflict({ ...order, items });
 
   // Safe extraction of customer string name (prevents React object child crash)
@@ -286,6 +336,36 @@ export const normalizeOrder = (order) => {
     custPhone = String(order.pickup_phone);
   }
 
+  // Items summary string & item counts
+  const items_summary = items.length > 0
+    ? items.map(it => `${it.name} × ${it.quantity}`).join(', ')
+    : (order.items_summary || '1 Item');
+  const itemsCount = items.reduce((sum, it) => sum + (it.quantity || 1), 0);
+
+  // Normalize total order amount (convert paise if > 500)
+  let rawTotal = order.total ?? order.total_amount ?? order.amount ?? order.totalPaise;
+  let totalRupees = 0;
+  if (typeof rawTotal === 'string') rawTotal = parseFloat(rawTotal) || 0;
+  if (typeof rawTotal === 'number' && !isNaN(rawTotal)) {
+    totalRupees = rawTotal > 500 ? (rawTotal / 100) : rawTotal;
+  }
+  if (!totalRupees && items.length > 0) {
+    totalRupees = items.reduce((sum, it) => sum + (it.total || it.lineTotal || 0), 0);
+  }
+
+  // Formatted placed time
+  let placedTime = order.placed;
+  if (!placedTime && (order.placedAt || order.createdAt)) {
+    try {
+      const dt = new Date(order.placedAt || order.createdAt);
+      if (!isNaN(dt.getTime())) {
+        placedTime = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      }
+    } catch {
+      placedTime = '10:42 AM';
+    }
+  }
+
   return {
     ...order,
     customer_name: custName,
@@ -293,6 +373,12 @@ export const normalizeOrder = (order) => {
     customer_phone: custPhone,
     customerPhone: custPhone,
     items,
+    itemsCount,
+    items_summary,
+    total_amount: totalRupees.toFixed(2),
+    amount: totalRupees.toFixed(2),
+    total: totalRupees,
+    placed: placedTime || order.placed || '10:42 AM',
     is_express: Boolean(order.is_express || order.express || order.priority === 'EXPRESS'),
     has_conflict: conflict.hasConflict,
     conflict_reason: conflict.reason,

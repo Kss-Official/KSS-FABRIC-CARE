@@ -1,209 +1,36 @@
 {
   "rules": {
-    ".read": false,
-    ".write": false,
+    ".read": "auth != null",
+    ".write": "auth != null",
 
     "users": {
-      ".indexOn": ["role", "email"],
-      "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (auth.uid === $uid && (!data.exists() ? newData.child('role').val() === 'customer' : (!newData.child('role').exists() || newData.child('role').val() === data.child('role').val()))))",
-        ".validate": "newData.hasChildren(['name', 'email', 'role', 'isActive']) && (newData.child('role').val() === 'customer' || newData.child('role').val() === 'agent' || newData.child('role').val() === 'staff' || newData.child('role').val() === 'admin')"
-      }
+      ".indexOn": ["role", "email"]
     },
-
     "agents": {
-      ".indexOn": ["isOnline"],
-      "$agentUid": {
-        ".read": "auth != null",
-        ".write": "auth != null && (auth.uid === $agentUid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
-      }
+      ".indexOn": ["isOnline"]
     },
-
-    "garments": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
-    },
-
-    "services": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
-    },
-
-    "prices": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
-    },
-
     "orders": {
-      ".indexOn": ["customerId", "status", "createdAt", "pickupTaskId", "deliveryTaskId"],
-      "$orderId": {
-        ".read": "auth != null && (data.child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'staff' || root.child('agentTasks').child(auth.uid).child(data.child('pickupTaskId').val()).exists() || root.child('agentTasks').child(auth.uid).child(data.child('deliveryTaskId').val()).exists())",
-
-        ".write": "auth != null && (
-          root.child('users').child(auth.uid).child('role').val() === 'admin' ||
-          (!data.exists() && newData.child('customerId').val() === auth.uid && newData.child('status').val() === 'PAYMENT_PENDING' && newData.child('paymentStatus').val() === 'Pending') ||
-          (data.exists() && data.child('customerId').val() === auth.uid && data.child('status').val() === 'PAYMENT_PENDING' && newData.child('status').val() === 'PLACED' && newData.child('paymentStatus').val() === 'Paid') ||
-          (data.exists() && data.child('customerId').val() === auth.uid && (data.child('status').val() === 'PAYMENT_PENDING' || data.child('status').val() === 'PLACED' || data.child('status').val() === 'PICKUP_SCHEDULED') && newData.child('status').val() === 'CANCELLED') ||
-          (data.exists() && root.child('users').child(auth.uid).child('role').val() === 'agent' && (
-            (data.child('status').val() === 'PICKUP_SCHEDULED' && newData.child('status').val() === 'PICKED_UP') ||
-            (data.child('status').val() === 'OUT_FOR_DELIVERY' && newData.child('status').val() === 'DELIVERED')
-          )) ||
-          (data.exists() && root.child('users').child(auth.uid).child('role').val() === 'staff' && (
-            (data.child('status').val() === 'PICKED_UP' && newData.child('status').val() === 'RECEIVED') ||
-            (data.child('status').val() === 'RECEIVED' && newData.child('status').val() === 'IN_CLEANING') ||
-            (data.child('status').val() === 'IN_CLEANING' && (newData.child('status').val() === 'IN_CLEANING' || newData.child('status').val() === 'READY_FOR_DELIVERY'))
-          ))
-        )",
-
-        ".validate": "newData.hasChildren(['code', 'customerId', 'status', 'total', 'createdAt'])"
-      }
+      ".indexOn": ["customerId", "status", "createdAt", "pickupTaskId", "deliveryTaskId"]
     },
-
-    "orderHistory": {
-      "$orderId": {
-        ".read": "auth != null && (root.child('orders').child($orderId).child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'staff')",
-        "$pushId": {
-          ".write": "auth != null && !data.exists() && newData.exists() && newData.child('byUid').val() === auth.uid",
-          ".validate": "newData.hasChildren(['from', 'to', 'byUid', 'byName', 'at'])"
-        }
-      }
-    },
-
-    "userOrders": {
-      "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
-      }
-    },
-
     "ordersByStatus": {
       "$status": {
-        ".indexOn": [".value"],
-        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'staff')",
-        ".write": "auth != null"
+        ".indexOn": [".value"]
       }
     },
-
-    "orderSecrets": {
-      "$orderId": {
-        ".read": "auth != null && (root.child('orders').child($orderId).child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (root.child('orders').child($orderId).child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'agent')",
-        ".validate": "newData.hasChildren(['pickupOtp', 'deliveryOtp', 'otpAttempts']) && newData.child('otpAttempts').isNumber() && newData.child('otpAttempts').val() <= 5"
-      }
-    },
-
     "tasks": {
-      ".indexOn": ["agentId", "type", "status", "scheduledAt"],
-      "$taskId": {
-        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || data.child('agentId').val() === auth.uid || root.child('agentTasks').child(auth.uid).child($taskId).exists())",
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (root.child('users').child(auth.uid).child('role').val() === 'agent' && (data.child('agentId').val() === auth.uid || newData.child('agentId').val() === auth.uid)))"
-      }
+      ".indexOn": ["agentId", "type", "status", "scheduledAt"]
     },
-
-    "agentTasks": {
-      "$agentUid": {
-        ".read": "auth != null && (auth.uid === $agentUid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $agentUid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
-      }
-    },
-
     "hubDropoffs": {
-      ".indexOn": ["orderId", "agentId", "droppedAt"],
-      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'staff' || root.child('users').child(auth.uid).child('role').val() === 'agent')",
-      "$dropId": {
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'agent' || root.child('users').child(auth.uid).child('role').val() === 'staff')"
-      }
+      ".indexOn": ["orderId", "agentId", "droppedAt"]
     },
-
     "payments": {
-      ".indexOn": ["orderId", "customerId"],
-      "$paymentId": {
-        ".read": "auth != null && (data.child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (newData.child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
-      }
+      ".indexOn": ["orderId", "customerId"]
     },
-
-    "userPayments": {
-      "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
-      }
-    },
-
     "invoices": {
-      ".indexOn": ["orderId", "customerId"],
-      "$invoiceId": {
-        ".read": "auth != null && (data.child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (newData.child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
-      }
+      ".indexOn": ["orderId", "customerId"]
     },
-
-    "userInvoices": {
-      "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
-      }
-    },
-
-    "notifications": {
-      "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        "$notifId": {
-          ".write": "auth != null && (auth.uid === $uid || !data.exists())",
-          ".validate": "newData.hasChildren(['type', 'title', 'body', 'isRead', 'createdAt'])"
-        }
-      }
-    },
-
-    "notificationsByRole": {
-      "admin": {
-        ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-        ".write": "auth != null"
-      },
-      "staff": {
-        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'staff' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null"
-      }
-    },
-
     "complaints": {
-      ".indexOn": ["customerId", "status", "createdAt"],
-      "$complaintId": {
-        ".read": "auth != null && (data.child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (newData.child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
-      }
-    },
-
-    "complaintMessages": {
-      "$complaintId": {
-        ".read": "auth != null && (root.child('complaints').child($complaintId).child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        "$msgId": {
-          ".write": "auth != null && (root.child('complaints').child($complaintId).child('customerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-          ".validate": "newData.hasChildren(['senderUid', 'senderRole', 'message', 'sentAt'])"
-        }
-      }
-    },
-
-    "userComplaints": {
-      "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
-      }
-    },
-
-    "counters": {
-      ".read": "auth != null",
-      ".write": "auth != null"
-    },
-
-    "stats": {
-      "daily": {
-        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'staff')",
-        "$date": {
-          ".write": "auth != null"
-        }
-      }
+      ".indexOn": ["customerId", "status", "createdAt"]
     }
   }
 }

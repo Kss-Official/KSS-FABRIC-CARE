@@ -28,9 +28,10 @@ export const Navbar = () => {
     };
   }, [profileDropdownOpen]);
 
-  const isDeliveryAgent = userRole === 'delivery_agent' || userRole === 'delivery';
-  const isLaundryStaff = userRole === 'laundry_staff' || userRole === 'laundry';
-  const isCustomer = !isDeliveryAgent && !isLaundryStaff && userRole !== 'admin' && userRole !== 'super_admin';
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isDeliveryAgent = userRole === 'delivery_agent' || userRole === 'delivery' || userRole === 'agent';
+  const isLaundryStaff = userRole === 'laundry_staff' || userRole === 'laundry' || userRole === 'staff';
+  const isCustomer = !isAdmin && !isDeliveryAgent && !isLaundryStaff;
 
   const navItems = [
     { 
@@ -129,11 +130,17 @@ export const Navbar = () => {
                   <div className="dropdown-user-info">
                     <p className="dropdown-name">{userProfile?.displayName || 'Customer'}</p>
                     <p className="dropdown-email">{currentUser?.email}</p>
-                    <span style={{ display: 'inline-block', marginTop: 4, padding: '2px 8px', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', background: isDeliveryAgent ? '#DBEAFE' : isLaundryStaff ? '#EDE9FE' : '#ECFDF5', color: isDeliveryAgent ? '#1D4ED8' : isLaundryStaff ? '#6D28D9' : '#059669' }}>
-                      {isDeliveryAgent ? '🚚 Delivery Agent' : isLaundryStaff ? '✨ Laundry Staff' : '👤 Customer'}
+                    <span style={{ display: 'inline-block', marginTop: 4, padding: '2px 8px', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', background: isAdmin ? '#FEF3C7' : isDeliveryAgent ? '#DBEAFE' : isLaundryStaff ? '#EDE9FE' : '#ECFDF5', color: isAdmin ? '#B45309' : isDeliveryAgent ? '#1D4ED8' : isLaundryStaff ? '#6D28D9' : '#059669' }}>
+                      {isAdmin ? '👑 Administrator' : isDeliveryAgent ? '🚚 Delivery Agent' : isLaundryStaff ? '✨ Laundry Staff' : '👤 Customer'}
                     </span>
                   </div>
                   <div className="dropdown-divider" />
+                  {isAdmin && (
+                    <button className="dropdown-action-item" style={{ color: '#0D7A75', fontWeight: 600 }} onClick={() => { setProfileDropdownOpen(false); navigateTo('admin'); }}>
+                      <LayoutDashboard size={15} />
+                      <span>Admin Portal</span>
+                    </button>
+                  )}
                   {isCustomer && (
                     <>
                       <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-orders'); }}>

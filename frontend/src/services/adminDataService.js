@@ -11,76 +11,119 @@ import {
   equalTo,
   limitToLast
 } from 'firebase/database';
-import { rtdb } from '../config/firebase';
+import { rtdb } from '../config/firebase.js';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 
 /**
  * 1. Admin assigns pickup agent -> PICKUP_SCHEDULED
  */
-export const assignPickupAgent = async (orderId, taskId, agentId, adminUser) => {
-  const [orderSnap, agentSnap] = await Promise.all([
-    get(ref(rtdb, `orders/${orderId}`)),
-    get(ref(rtdb, `users/${agentId}`))
-  ]);
+export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, driverNameOverride, driverPhoneOverride) => {
+  let actualOrderId = orderId;
+  let orderSnap = await get(ref(rtdb, `orders/${orderId}`));
 
-  if (!orderSnap.exists()) throw new Error('Order not found.');
+  if (!orderSnap.exists()) {
+    // Attempt lookup by order code without requiring server index
+    const allOrdersSnap = await get(ref(rtdb, 'orders'));
+    if (allOrdersSnap.exists()) {
+      const allOrders = allOrdersSnap.val() || {};
+      for (const [k, v] of Object.entries(allOrders)) {
+        if (v && (v.code === orderId || v.order_number === orderId || v.id === orderId || k === orderId)) {
+          actualOrderId = k;
+          orderSnap = { exists: () => true, val: () => v };
+          break;
+        }
+      }
+    }
+  }
+
+  if (!orderSnap.exists()) throw new Error(`Order ${orderId} not found.`);
   const order = orderSnap.val();
-  const agent = agentSnap.exists() ? agentSnap.val() : { name: 'Assigned Agent' };
+
+  let agent = { name: driverNameOverride || 'Assigned Driver', phone: driverPhoneOverride || '+91 98765 43210' };
+  if (agentId && typeof agentId === 'string' && !agentId.startsWith('d') && !agentId.includes(' ')) {
+    const agentSnap = await get(ref(rtdb, `users/${agentId}`));
+    if (agentSnap.exists()) {
+      agent = agentSnap.val();
+    }
+  }
+
+  const cleanAgentId = agentId || 'agent_default';
+  const effectiveTaskId = taskId || order.pickupTaskId || `task_pk_${actualOrderId}`;
   const now = Date.now();
 
-  const histPush = push(ref(rtdb, `orderHistory/${orderId}`));
-  const agentNotifPush = push(ref(rtdb, `notifications/${agentId}`));
-  const custNotifPush = push(ref(rtdb, `notifications/${order.customerId}`));
-
   const updates = {};
-  updates[`orders/${orderId}/status`] = 'PICKUP_SCHEDULED';
-  updates[`orders/${orderId}/assignedAgentId`] = agentId;
-  updates[`orders/${orderId}/assignedAgentName`] = agent.name;
-  updates[`orders/${orderId}/pickupTaskId`] = taskId;
+  updates[`orders/${actualOrderId}/status`] = 'PICKUP_SCHEDULED';
+  updates[`orders/${actualOrderId}/assignedAgentId`] = cleanAgentId;
+  updates[`orders/${actualOrderId}/assignedAgentName`] = agent.name;
+  updates[`orders/${actualOrderId}/assignedAgentPhone`] = agent.phone || driverPhoneOverride || '+91 98765 43210';
+  updates[`orders/${actualOrderId}/driver`] = `${agent.name} (${agent.phone || driverPhoneOverride || '+91 98765 43210'})`;
+  updates[`orders/${actualOrderId}/pickupTaskId`] = effectiveTaskId;
 
   // Move status index
-  updates[`ordersByStatus/PLACED/${orderId}`] = null;
-  updates[`ordersByStatus/PICKUP_SCHEDULED/${orderId}`] = now;
+  updates[`ordersByStatus/PLACED/${actualOrderId}`] = null;
+  updates[`ordersByStatus/PAYMENT_PENDING/${actualOrderId}`] = null;
+  updates[`ordersByStatus/PICKUP_SCHEDULED/${actualOrderId}`] = now;
 
-  // Update Task
-  updates[`tasks/${taskId}/status`] = 'assigned';
-  updates[`tasks/${taskId}/agentId`] = agentId;
-  updates[`tasks/${taskId}/agentName`] = agent.name;
-  updates[`agentTasks/${agentId}/${taskId}`] = true;
+  // Ensure Task in tasks/
+  updates[`tasks/${effectiveTaskId}/id`] = effectiveTaskId;
+  updates[`tasks/${effectiveTaskId}/orderId`] = actualOrderId;
+  updates[`tasks/${effectiveTaskId}/orderCode`] = order.code || order.order_number || actualOrderId;
+  updates[`tasks/${effectiveTaskId}/type`] = 'pickup';
+  updates[`tasks/${effectiveTaskId}/status`] = 'assigned';
+  updates[`tasks/${effectiveTaskId}/agentId`] = cleanAgentId;
+  updates[`tasks/${effectiveTaskId}/agentName`] = agent.name;
+  updates[`tasks/${effectiveTaskId}/agentPhone`] = agent.phone || driverPhoneOverride || '+91 98765 43210';
+  updates[`tasks/${effectiveTaskId}/scheduledAt`] = order.pickup?.date ? new Date(order.pickup.date).getTime() : now;
+  updates[`tasks/${effectiveTaskId}/customer`] = {
+    name: order.customerName || order.pickup_full_name || 'Customer',
+    phone: order.customerPhone || order.pickup_phone || '+91 98765 43210'
+  };
+  updates[`tasks/${effectiveTaskId}/address`] = order.address || {
+    areaColony: order.pickup_address || 'Bengaluru',
+    city: 'Bengaluru'
+  };
+
+  const cleanAgentKey = cleanAgentId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  updates[`agentTasks/${cleanAgentKey}/${effectiveTaskId}`] = true;
 
   // Order history
-  updates[`orderHistory/${orderId}/${histPush.key}`] = {
+  const histPush = push(ref(rtdb, `orderHistory/${actualOrderId}`));
+  updates[`orderHistory/${actualOrderId}/${histPush.key}`] = {
     from: order.status,
     to: 'PICKUP_SCHEDULED',
-    byUid: adminUser.uid,
-    byName: adminUser.name || 'Admin',
+    byUid: adminUser?.uid || 'admin',
+    byName: adminUser?.name || 'Admin',
     note: `Assigned pickup agent: ${agent.name}`,
     at: now
   };
 
   // Agent notification
-  updates[`notifications/${agentId}/${agentNotifPush.key}`] = {
+  const agentNotifPush = push(ref(rtdb, `notifications/${cleanAgentKey}`));
+  updates[`notifications/${cleanAgentKey}/${agentNotifPush.key}`] = {
     id: agentNotifPush.key,
     type: 'task_assigned',
     title: 'New Pickup Task',
-    body: `Pickup assigned for order ${order.code} at ${order.address?.areaColony || 'Customer Address'}.`,
-    orderId,
-    taskId,
+    body: `Pickup assigned for order ${order.code || actualOrderId} at ${order.address?.areaColony || order.pickup_address || 'Customer Address'}.`,
+    orderId: actualOrderId,
+    taskId: effectiveTaskId,
     isRead: false,
     createdAt: now
   };
 
   // Customer notification
-  updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
-    id: custNotifPush.key,
-    type: 'driver_assigned',
-    title: 'Pickup Agent Assigned',
-    body: `${agent.name} has been assigned to pick up your laundry order ${order.code}.`,
-    orderId,
-    isRead: false,
-    createdAt: now
-  };
+  if (order.customerId) {
+    const custNotifPush = push(ref(rtdb, `notifications/${order.customerId}`));
+    updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
+      id: custNotifPush.key,
+      type: 'driver_assigned',
+      title: 'Pickup Agent Assigned',
+      body: `${agent.name} has been assigned to pick up your laundry order ${order.code || actualOrderId}.`,
+      orderId: actualOrderId,
+      isRead: false,
+      createdAt: now
+    };
+  }
 
   await update(ref(rtdb), updates);
 };
@@ -88,64 +131,105 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser) => 
 /**
  * 2. Admin assigns delivery agent -> OUT_FOR_DELIVERY
  */
-export const assignDeliveryAgent = async (orderId, taskId, agentId, adminUser) => {
-  const [orderSnap, agentSnap] = await Promise.all([
-    get(ref(rtdb, `orders/${orderId}`)),
-    get(ref(rtdb, `users/${agentId}`))
-  ]);
+export const assignDeliveryAgent = async (orderId, taskId, agentId, adminUser, driverNameOverride, driverPhoneOverride) => {
+  let actualOrderId = orderId;
+  let orderSnap = await get(ref(rtdb, `orders/${orderId}`));
 
-  if (!orderSnap.exists()) throw new Error('Order not found.');
+  if (!orderSnap.exists()) {
+    const allOrdersSnap = await get(ref(rtdb, 'orders'));
+    if (allOrdersSnap.exists()) {
+      const allOrders = allOrdersSnap.val() || {};
+      for (const [k, v] of Object.entries(allOrders)) {
+        if (v && (v.code === orderId || v.order_number === orderId || v.id === orderId || k === orderId)) {
+          actualOrderId = k;
+          orderSnap = { exists: () => true, val: () => v };
+          break;
+        }
+      }
+    }
+  }
+
+  if (!orderSnap.exists()) throw new Error(`Order ${orderId} not found.`);
   const order = orderSnap.val();
-  const agent = agentSnap.exists() ? agentSnap.val() : { name: 'Assigned Agent' };
+
+  let agent = { name: driverNameOverride || 'Assigned Driver', phone: driverPhoneOverride || '+91 98765 43210' };
+  if (agentId && typeof agentId === 'string' && !agentId.startsWith('d') && !agentId.includes(' ')) {
+    const agentSnap = await get(ref(rtdb, `users/${agentId}`));
+    if (agentSnap.exists()) {
+      agent = agentSnap.val();
+    }
+  }
+
+  const cleanAgentId = agentId || 'agent_default';
+  const effectiveTaskId = taskId || order.deliveryTaskId || `task_dl_${actualOrderId}`;
   const now = Date.now();
 
-  const histPush = push(ref(rtdb, `orderHistory/${orderId}`));
-  const agentNotifPush = push(ref(rtdb, `notifications/${agentId}`));
-  const custNotifPush = push(ref(rtdb, `notifications/${order.customerId}`));
-
   const updates = {};
-  updates[`orders/${orderId}/deliveryTaskId`] = taskId;
-  updates[`orders/${orderId}/assignedDeliveryAgentId`] = agentId;
-  updates[`orders/${orderId}/assignedDeliveryAgentName`] = agent.name;
+  updates[`orders/${actualOrderId}/deliveryTaskId`] = effectiveTaskId;
+  updates[`orders/${actualOrderId}/assignedDeliveryAgentId`] = cleanAgentId;
+  updates[`orders/${actualOrderId}/assignedDeliveryAgentName`] = agent.name;
+  updates[`orders/${actualOrderId}/assignedDeliveryAgentPhone`] = agent.phone || driverPhoneOverride || '+91 98765 43210';
+  updates[`orders/${actualOrderId}/driver`] = `${agent.name} (${agent.phone || driverPhoneOverride || '+91 98765 43210'})`;
+  updates[`orders/${actualOrderId}/status`] = 'OUT_FOR_DELIVERY';
 
-  // Update Task
-  updates[`tasks/${taskId}/status`] = 'assigned';
-  updates[`tasks/${taskId}/agentId`] = agentId;
-  updates[`tasks/${taskId}/agentName`] = agent.name;
-  updates[`agentTasks/${agentId}/${taskId}`] = true;
+  // Ensure Task in tasks/
+  updates[`tasks/${effectiveTaskId}/id`] = effectiveTaskId;
+  updates[`tasks/${effectiveTaskId}/orderId`] = actualOrderId;
+  updates[`tasks/${effectiveTaskId}/orderCode`] = order.code || order.order_number || actualOrderId;
+  updates[`tasks/${effectiveTaskId}/type`] = 'delivery';
+  updates[`tasks/${effectiveTaskId}/status`] = 'assigned';
+  updates[`tasks/${effectiveTaskId}/agentId`] = cleanAgentId;
+  updates[`tasks/${effectiveTaskId}/agentName`] = agent.name;
+  updates[`tasks/${effectiveTaskId}/agentPhone`] = agent.phone || driverPhoneOverride || '+91 98765 43210';
+  updates[`tasks/${effectiveTaskId}/scheduledAt`] = order.dueBy || now;
+  updates[`tasks/${effectiveTaskId}/customer`] = {
+    name: order.customerName || order.pickup_full_name || 'Customer',
+    phone: order.customerPhone || order.pickup_phone || '+91 98765 43210'
+  };
+  updates[`tasks/${effectiveTaskId}/address`] = order.address || {
+    areaColony: order.pickup_address || 'Bengaluru',
+    city: 'Bengaluru'
+  };
+
+  const cleanAgentKey = cleanAgentId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  updates[`agentTasks/${cleanAgentKey}/${effectiveTaskId}`] = true;
 
   // Order history
-  updates[`orderHistory/${orderId}/${histPush.key}`] = {
+  const histPush = push(ref(rtdb, `orderHistory/${actualOrderId}`));
+  updates[`orderHistory/${actualOrderId}/${histPush.key}`] = {
     from: order.status,
-    to: order.status,
-    byUid: adminUser.uid,
-    byName: adminUser.name || 'Admin',
+    to: 'OUT_FOR_DELIVERY',
+    byUid: adminUser?.uid || 'admin',
+    byName: adminUser?.name || 'Admin',
     note: `Assigned delivery agent: ${agent.name}`,
     at: now
   };
 
-  // Agent notification
-  updates[`notifications/${agentId}/${agentNotifPush.key}`] = {
+  // Notifications
+  const agentNotifPush = push(ref(rtdb, `notifications/${cleanAgentKey}`));
+  updates[`notifications/${cleanAgentKey}/${agentNotifPush.key}`] = {
     id: agentNotifPush.key,
     type: 'task_assigned',
     title: 'New Delivery Task',
-    body: `Delivery task assigned for order ${order.code} to ${order.address?.areaColony || 'Customer Address'}.`,
-    orderId,
-    taskId,
+    body: `Delivery task assigned for order ${order.code || actualOrderId} to ${order.address?.areaColony || 'Customer Address'}.`,
+    orderId: actualOrderId,
+    taskId: effectiveTaskId,
     isRead: false,
     createdAt: now
   };
 
-  // Customer notification
-  updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
-    id: custNotifPush.key,
-    type: 'delivery_driver_assigned',
-    title: 'Delivery Agent Assigned',
-    body: `${agent.name} is assigned to deliver your clean clothes soon.`,
-    orderId,
-    isRead: false,
-    createdAt: now
-  };
+  if (order.customerId) {
+    const custNotifPush = push(ref(rtdb, `notifications/${order.customerId}`));
+    updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
+      id: custNotifPush.key,
+      type: 'delivery_assigned',
+      title: 'Order Out For Delivery',
+      body: `${agent.name} is on the way to deliver your order ${order.code || actualOrderId}.`,
+      orderId: actualOrderId,
+      isRead: false,
+      createdAt: now
+    };
+  }
 
   await update(ref(rtdb), updates);
 };
@@ -231,7 +315,11 @@ export const subscribeAdminOrders = (onOrdersUpdated, onError) => {
       return;
     }
     const data = snap.val();
-    const list = Object.keys(data).map(k => ({ ...data[k], id: k })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const list = Object.keys(data).map(k => ({ ...data[k], id: k })).sort((a, b) => {
+      const timeA = a.updatedAt || a.placedAt || a.createdAt || 0;
+      const timeB = b.updatedAt || b.placedAt || b.createdAt || 0;
+      return timeB - timeA;
+    });
     onOrdersUpdated(list);
   }, onError);
 
@@ -246,7 +334,11 @@ export const subscribeAdminTasks = (onTasksUpdated, onError) => {
       return;
     }
     const data = snap.val();
-    const list = Object.keys(data).map(k => ({ ...data[k], id: k })).reverse();
+    const list = Object.keys(data).map(k => ({ ...data[k], id: k })).sort((a, b) => {
+      const timeA = a.updatedAt || a.createdAt || a.scheduledAt || 0;
+      const timeB = b.updatedAt || b.createdAt || b.scheduledAt || 0;
+      return timeB - timeA;
+    });
     onTasksUpdated(list);
   }, onError);
 

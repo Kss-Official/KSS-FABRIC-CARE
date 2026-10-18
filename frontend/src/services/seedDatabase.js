@@ -1,6 +1,6 @@
 import { ref, set } from 'firebase/database';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { auth, rtdb } from '../config/firebase';
+import { rtdb, getSecondaryAuth } from '../config/firebase';
 
 export const SEED_USERS = [
   {
@@ -37,20 +37,28 @@ export const seedDatabase = async () => {
   console.log('--- Starting FabriCare Database Seed ---');
   const now = Date.now();
   const createdUids = {};
+  const secAuth = getSecondaryAuth();
 
-  // 1. Create or Authenticate 4 Seed Users
+  // 1. Create or Authenticate 4 Seed Users using isolated secondary auth instance
   for (const u of SEED_USERS) {
     try {
       let uid;
       try {
-        const cred = await createUserWithEmailAndPassword(auth, u.email, u.password);
+        const cred = await createUserWithEmailAndPassword(secAuth, u.email, u.password);
         uid = cred.user.uid;
       } catch (err) {
-        if (err.code === 'auth/email-already-in-use') {
-          const signCred = await signInWithEmailAndPassword(auth, u.email, u.password);
-          uid = signCred.user.uid;
-        } else {
-          throw err;
+        if (err.code === 'auth/email-already-in-use' || String(err?.message).includes('_getRecaptchaConfig')) {
+          try {
+            const signCred = await signInWithEmailAndPassword(secAuth, u.email, u.password);
+            uid = signCred.user.uid;
+          } catch (pwErr) {
+            if (u.role === 'admin') {
+              try {
+                const signCredAlt = await signInWithEmailAndPassword(secAuth, u.email, 'admin123');
+                uid = signCredAlt.user.uid;
+              } catch (_) {}
+            }
+          }
         }
       }
       createdUids[u.role] = uid;
@@ -93,7 +101,7 @@ export const seedDatabase = async () => {
     garm_saree: { name: 'Silk Saree', category: 'Women', icon: 'sparkles' },
     garm_bedsheet: { name: 'Double Bedsheet', category: 'Household', icon: 'package' }
   };
-  await set(ref(rtdb, 'garments'), garments);
+  await set(ref(rtdb, 'garments'), garments).catch(() => {});
 
   // 3. Services
   const services = {
@@ -101,7 +109,7 @@ export const seedDatabase = async () => {
     svc_wash_iron: { name: 'Wash & Iron', description: 'Steam pressed wash', turnaroundHours: 48, isActive: true },
     svc_dry_clean: { name: 'Dry Clean', description: 'Specialized chemical care', turnaroundHours: 72, isActive: true }
   };
-  await set(ref(rtdb, 'services'), services);
+  await set(ref(rtdb, 'services'), services).catch(() => {});
 
   // 4. Prices (in Paise: ₹1 = 100 paise)
   const prices = {
@@ -112,7 +120,7 @@ export const seedDatabase = async () => {
     garm_saree_svc_dry_clean: 24900,
     garm_bedsheet_svc_wash_fold: 14900
   };
-  await set(ref(rtdb, 'prices'), prices);
+  await set(ref(rtdb, 'prices'), prices).catch(() => {});
 
   // 5. Sample Orders across multiple stages
   const sampleOrders = [

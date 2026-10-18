@@ -336,7 +336,19 @@ export const LaundryPortal = () => {
       setLoading(true);
       const res = await staffApi.getOrders({ page_size: 100 });
       if (res.data && Array.isArray(res.data.items)) {
-        setOrders(res.data.items.map(normalizeOrder));
+        const normalizedItems = res.data.items.map(normalizeOrder);
+        setOrders((prev) => {
+          const map = new Map();
+          prev.forEach((o) => {
+            const k = String(o.id || o.order_number || o.code || '');
+            if (k) map.set(k, o);
+          });
+          normalizedItems.forEach((no) => {
+            const k = String(no.id || no.order_number || no.code || '');
+            if (k) map.set(k, no);
+          });
+          return Array.from(map.values());
+        });
       }
     } catch (err) {
       console.warn('Failed to fetch staff orders:', err);
@@ -376,12 +388,20 @@ export const LaundryPortal = () => {
     fetchHistory();
   }, [fetchOrders, fetchCounts, fetchDashboard, fetchHistory, dashServicePeriod]);
 
-  // Realtime active orders listener (refetches REST API on order update)
-  useStaffActiveOrdersRealtime(() => {
-    fetchOrders();
+  // Refresh history whenever navigating to Order History page
+  useEffect(() => {
+    if (activePage === 'history') {
+      fetchHistory();
+    }
+  }, [activePage, fetchHistory]);
+
+  // Realtime active orders listener (refetches counts and metrics on order update)
+  const handleRealtimeRefresh = useCallback(() => {
     fetchCounts();
     fetchDashboard(dashServicePeriod);
-  });
+  }, [fetchCounts, fetchDashboard, dashServicePeriod]);
+
+  useStaffActiveOrdersRealtime(handleRealtimeRefresh);
 
   // Realtime Firebase Firestore Orders Listener (loads and syncs orders directly from Firebase)
   useEffect(() => {
@@ -440,11 +460,62 @@ export const LaundryPortal = () => {
   // Quick advance/revert handler for Orders Table
   const handleOrdersQuickAdvance = async (order, nextStageKey, isRevert = false) => {
     setOpenDropdownOrderId(null);
+    const orderIdentifier = order.key || order.id || order.order_number || order.code || order.raw_id;
+
+    const STEP_LABELS = {
+      RECEIVED: { label: 'Received', stage: 'received' },
+      INSPECTION: { label: 'Inspection', stage: 'inspection' },
+      WASHING: { label: 'Washing', stage: 'washing' },
+      DRYING: { label: 'Drying', stage: 'drying' },
+      IRONING: { label: 'Ironing', stage: 'ironing' },
+      FOLDING: { label: 'Folding', stage: 'folding' },
+      QUALITY_CHECK: { label: 'Quality Check', stage: 'quality' },
+      PACKING: { label: 'Packing', stage: 'packing' },
+      READY_FOR_DELIVERY: { label: 'Ready for Delivery', stage: 'ready' },
+      OUT_FOR_DELIVERY: { label: 'Out for Delivery', stage: 'delivery' },
+      DELIVERED: { label: 'Delivered', stage: 'delivered' }
+    };
+    const sInfo = STEP_LABELS[nextStageKey] || { label: nextStageKey, stage: String(nextStageKey).toLowerCase() };
+
+    // Optimistically update orders list immediately for instantaneous feedback
+    setOrders((prev) =>
+      prev.map((o) => {
+        const isMatch = (
+          (order.id && o.id === order.id) ||
+          (order.order_number && o.order_number === order.order_number) ||
+          (order.code && o.code === order.code) ||
+          (order.key && o.key === order.key)
+        );
+        if (isMatch) {
+          return {
+            ...o,
+            status: sInfo.label,
+            orderStatus: sInfo.label,
+            status_display: sInfo.label,
+            processing_stage: sInfo.stage,
+            stage: sInfo.stage,
+            raw_status: nextStageKey
+          };
+        }
+        return o;
+      })
+    );
+
     try {
-      await staffApi.updateStatus(order.id || order.raw_id, nextStageKey, isRevert ? `Reverted to ${nextStageKey}` : `Advanced to ${nextStageKey}`);
-      await Promise.all([fetchOrders(), fetchCounts(), fetchDashboard()]);
+      await staffApi.updateStatus(
+        orderIdentifier,
+        nextStageKey,
+        isRevert ? `Reverted to ${sInfo.label}` : `Advanced to ${sInfo.label}`
+      );
+      await Promise.all([
+        fetchOrders(),
+        fetchCounts(),
+        fetchHistory(),
+        fetchDashboard ? fetchDashboard(dashServicePeriod) : Promise.resolve()
+      ]);
     } catch (err) {
-      alert(err.message || 'Status transition failed. Please check the next allowed step.');
+      console.error('Status transition error:', err);
+      alert(err.message || 'Status transition failed. Please try again.');
       await Promise.all([fetchOrders(), fetchCounts()]);
     }
   };
@@ -1027,14 +1098,41 @@ export const LaundryPortal = () => {
   };
 
   // Filter queues based on status
-  const incomingOrders = orders.filter(o => ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY'].includes(o.status));
-  const receivedOrders = orders.filter(o => ['RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY'].includes(o.status));
-  const inspectionOrders = orders.filter(o => o.status === 'INSPECTION');
-  const processingOrders = orders.filter(o => ['PROCESSING', 'WASHING', 'DRYING', 'IRONING'].includes(o.status));
-  const qcOrders = orders.filter(o => o.status === 'QUALITY_CHECK');
-  const packingOrders = orders.filter(o => ['PACKING', 'PACKED'].includes(o.status));
-  const readyOrders = orders.filter(o => ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(o.status));
-  const completedOrders = orders.filter(o => ['DELIVERED', 'COMPLETED'].includes(o.status));
+  const incomingOrders = orders.filter(o => {
+    const s = String(o.status || o.raw_status || '').toUpperCase();
+    return ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'IN_TRANSIT_TO_HUB'].includes(s) ||
+           (s === 'IN CLEANING' && (o.stage === 'incoming' || o.stage === 'inspection')) ||
+           o.stage === 'incoming';
+  });
+  const receivedOrders = orders.filter(o => {
+    const s = String(o.status || o.raw_status || '').toUpperCase();
+    return ['RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED'].includes(s);
+  });
+  const inspectionOrders = orders.filter(o => {
+    const s = String(o.status || o.raw_status || '').toUpperCase();
+    return s === 'INSPECTION' || o.stage === 'inspection';
+  });
+  const processingOrders = orders.filter(o => {
+    const s = String(o.status || o.raw_status || '').toUpperCase();
+    return ['PROCESSING', 'WASHING', 'DRYING', 'IRONING', 'IN_PROCESS', 'IN_CLEANING'].includes(s) ||
+           (s === 'IN CLEANING' && o.stage !== 'incoming' && o.stage !== 'inspection');
+  });
+  const qcOrders = orders.filter(o => {
+    const s = String(o.status || o.raw_status || '').toUpperCase();
+    return ['QUALITY_CHECK', 'QC'].includes(s) || o.stage === 'qc' || o.stage === 'quality-check';
+  });
+  const packingOrders = orders.filter(o => {
+    const s = String(o.status || o.raw_status || '').toUpperCase();
+    return ['PACKING', 'PACKED'].includes(s) || o.stage === 'packing';
+  });
+  const readyOrders = orders.filter(o => {
+    const s = String(o.status || o.raw_status || '').toUpperCase();
+    return ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'READY'].includes(s) || o.stage === 'ready';
+  });
+  const completedOrders = orders.filter(o => {
+    const s = String(o.status || o.raw_status || '').toUpperCase();
+    return ['DELIVERED', 'COMPLETED'].includes(s);
+  });
 
   // Compute dashboard counts strictly by active task stage
   // "Dashboard counts are by task stage (an item in Ironing counts only in Ironing)."
@@ -2119,18 +2217,20 @@ export const LaundryPortal = () => {
           };
 
           // Compute counts for all chips
+          const hasOrders = orders && orders.length > 0;
+          const getTargetStatus = (o) => o.status_display || o.stage || o.currentLaundryStep || o.status || o.processing_stage;
           const chipCounts = {
-            all: orders.length || 29,
-            received: orders.filter(o => normalizeStatusKey(o.status || o.processing_stage) === 'received').length || 5,
-            inspection: orders.filter(o => normalizeStatusKey(o.status || o.processing_stage) === 'inspection').length || 2,
-            washing: orders.filter(o => normalizeStatusKey(o.status || o.processing_stage) === 'washing').length || 3,
-            drying: orders.filter(o => normalizeStatusKey(o.status || o.processing_stage) === 'drying').length || 2,
-            ironing: orders.filter(o => normalizeStatusKey(o.status || o.processing_stage) === 'ironing').length || 3,
-            folding: orders.filter(o => normalizeStatusKey(o.status || o.processing_stage) === 'folding').length || 2,
-            quality: orders.filter(o => normalizeStatusKey(o.status || o.processing_stage) === 'quality').length || 3,
-            packing: orders.filter(o => normalizeStatusKey(o.status || o.processing_stage) === 'packing').length || 2,
-            delivery: orders.filter(o => normalizeStatusKey(o.status || o.processing_stage) === 'delivery').length || 3,
-            delivered: orders.filter(o => normalizeStatusKey(o.status || o.processing_stage) === 'delivered').length || 4,
+            all: hasOrders ? orders.length : 29,
+            received: hasOrders ? orders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'received').length : 5,
+            inspection: hasOrders ? orders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'inspection').length : 2,
+            washing: hasOrders ? orders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'washing').length : 3,
+            drying: hasOrders ? orders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'drying').length : 2,
+            ironing: hasOrders ? orders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'ironing').length : 3,
+            folding: hasOrders ? orders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'folding').length : 2,
+            quality: hasOrders ? orders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'quality').length : 3,
+            packing: hasOrders ? orders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'packing').length : 2,
+            delivery: hasOrders ? orders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'delivery').length : 3,
+            delivered: hasOrders ? orders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'delivered').length : 4,
           };
 
           const handleChipClick = (key) => {
@@ -2194,6 +2294,9 @@ export const LaundryPortal = () => {
             if (s.includes('INSPECT')) {
               return { bg: '#fef3c7', color: '#b45309', dot: '#b45309', label: 'Inspection' };
             }
+            if (s.includes('DROPPED') || s.includes('HUB') || s.includes('INCOMING')) {
+              return { bg: '#e0e7ff', color: '#4338ca', dot: '#4338ca', label: 'Hub Intake' };
+            }
             return { bg: '#e0e7ff', color: '#4338ca', dot: '#4338ca', label: 'Received' };
           };
 
@@ -2231,7 +2334,8 @@ export const LaundryPortal = () => {
           let filteredOrders = orders.filter(order => {
             // Chip filter
             if (ordersActiveChip !== 'all') {
-              const statusKey = normalizeStatusKey(order.status || order.processing_stage);
+              const statusTarget = order.status_display || order.stage || order.currentLaundryStep || order.status || order.processing_stage;
+              const statusKey = normalizeStatusKey(statusTarget);
               if (statusKey !== ordersActiveChip) return false;
             }
 
@@ -2257,13 +2361,23 @@ export const LaundryPortal = () => {
             return true;
           });
 
-          // Sort orders
+          // Sort orders: ensure latest and updated data appears at the top
+          const getOrderTime = (o) => {
+            const t = o.updatedAt || o.placedAt || o.createdAt || 0;
+            if (typeof t === 'number') return t;
+            const parsed = new Date(t).getTime();
+            return isNaN(parsed) ? 0 : parsed;
+          };
+
           if (ordersSortBy === 'oldest') {
-            filteredOrders = [...filteredOrders].reverse();
+            filteredOrders = [...filteredOrders].sort((a, b) => getOrderTime(a) - getOrderTime(b));
           } else if (ordersSortBy === 'order_id') {
             filteredOrders = [...filteredOrders].sort((a, b) => 
               String(a.order_number || a.order_id).localeCompare(String(b.order_number || b.order_id))
             );
+          } else {
+            // Default / 'newest': latest and updated data always appears at the top
+            filteredOrders = [...filteredOrders].sort((a, b) => getOrderTime(b) - getOrderTime(a));
           }
 
           // Pagination
@@ -2375,12 +2489,37 @@ export const LaundryPortal = () => {
                         : ((typeof order.customer === 'string' && order.customer)
                           ? order.customer
                           : (order.customer?.name || order.customerName || order.pickup_full_name || 'Customer'));
-                      const itemsStr = order.items_summary || (order.items && order.items[0]?.name ? `${order.items[0].name} x ${order.items[0].quantity || 1}` : '1 Item');
-                      const placedStr = order.placed || '10:42 AM';
+                      const itemsList = Array.isArray(order.items) ? order.items : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
+                      const itemsCount = order.itemsCount || itemsList.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1)), 0) || (itemsList.length > 0 ? itemsList.length : 1);
+                      const itemsFullSummary = order.items_summary || (itemsList.length > 0 ? itemsList.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ') : '1 Item');
+
+                      let totalVal = order.total ?? order.total_amount ?? order.amount;
+                      if (typeof totalVal === 'string') totalVal = parseFloat(totalVal) || 0;
+                      if (typeof totalVal === 'number' && totalVal > 500) totalVal = totalVal / 100;
+                      if (!totalVal && itemsList.length > 0) {
+                        totalVal = itemsList.reduce((sum, it) => sum + (Number(it.total || it.lineTotal || (it.price * (it.quantity || 1))) || 0), 0);
+                      }
+                      const formattedTotal = Number(totalVal || 0).toFixed(2);
+
+                      let placedStr = order.placed;
+                      if (!placedStr && (order.placedAt || order.createdAt)) {
+                        try {
+                          const dt = new Date(order.placedAt || order.createdAt);
+                          if (!isNaN(dt.getTime())) {
+                            placedStr = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                          }
+                        } catch {
+                          placedStr = '10:42 AM';
+                        }
+                      }
+                      if (!placedStr) placedStr = '10:42 AM';
                       const svcBadge = getServiceBadge(order);
-                      const statusPill = getStatusPill(order.status || order.processing_stage);
-                      const currentIdx = getCurrentStepIndex(order.status || order.processing_stage);
+                      const statusTarget = order.status_display || order.stage || order.currentLaundryStep || order.status || order.processing_stage;
+                      const statusPill = getStatusPill(statusTarget);
+                      const currentIdx = getCurrentStepIndex(statusTarget);
                       const isDelivered = currentIdx === 10;
+                      const isOutForDelivery = currentIdx === 9;
+                      const isReadyForDelivery = currentIdx === 8;
                       const isDropdownOpen = openDropdownOrderId === (order.id || order.order_number);
 
                       return (
@@ -2388,9 +2527,30 @@ export const LaundryPortal = () => {
                           key={order.id || order.order_number || idx}
                           className={`orders-grid-row orders-table-row ${isDropdownOpen ? 'row-open' : ''} ${idx % 2 === 1 ? 'row-alt' : ''}`}
                         >
-                          <div className="col-order-id">{orderIdStr}</div>
+                          <div
+                            className="col-order-id"
+                            onClick={() => setTrackerModalOrder(order)}
+                            style={{ cursor: 'pointer' }}
+                            title="Click to view full order tracking and item plan"
+                          >
+                            {orderIdStr}
+                          </div>
                           <div className="col-customer">{customerName}</div>
-                          <div className="col-items">{itemsStr}</div>
+                          <div
+                            className="col-items"
+                            title={`${itemsFullSummary} • Total: ₹${formattedTotal}`}
+                            onClick={() => setTrackerModalOrder(order)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#1E293B', fontWeight: 600 }}>
+                              {itemsFullSummary}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#0F766E', fontWeight: 600, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>{itemsCount} {itemsCount === 1 ? 'item' : 'items'}</span>
+                              <span>•</span>
+                              <span style={{ color: '#059669', fontWeight: 700 }}>₹{formattedTotal}</span>
+                            </div>
+                          </div>
                           <div className="col-service">
                             <span
                               className="orders-service-badge"
@@ -2414,10 +2574,31 @@ export const LaundryPortal = () => {
                           <div className="col-placed">{placedStr}</div>
                           <div className="col-action orders-action-col">
                             {isDelivered ? (
-                              <div className="orders-completed-label">
+                              <div className="orders-completed-label" title="Customer delivery completed">
                                 <CheckCircle2 size={16} color="#10b981" />
                                 <span>Completed</span>
                               </div>
+                            ) : isOutForDelivery ? (
+                              <div className="orders-completed-label" style={{ color: '#0284C7', background: '#F0F9FF', border: '1px solid #BAE6FD' }} title="With delivery driver on route to customer">
+                                <Truck size={15} color="#0284C7" />
+                                <span>On Route</span>
+                              </div>
+                            ) : isReadyForDelivery ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenDropdownOrderId(isDropdownOpen ? null : (order.id || order.order_number));
+                                }}
+                                className={`orders-update-status-btn ${isDropdownOpen ? 'open' : ''}`}
+                                aria-expanded={isDropdownOpen}
+                                style={{ borderColor: '#0D9488', color: '#0D9488', background: '#F0FDFA', fontWeight: 600 }}
+                                title="Packed & dispatched to Delivery Portal"
+                              >
+                                <Truck size={14} />
+                                <span>Ready for Driver</span>
+                                {isDropdownOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                              </button>
                             ) : (
                               <button
                                 type="button"
@@ -2467,6 +2648,8 @@ export const LaundryPortal = () => {
                                             handleOrdersQuickAdvance(order, step.key, false);
                                           } else if (isCompleted) {
                                             handleOrdersQuickAdvance(order, step.key, true);
+                                          } else if (!isCurrent) {
+                                            handleOrdersQuickAdvance(order, step.key, sIdx < currentIdx);
                                           }
                                         }}
                                         title={isCompleted ? `Click to revert status back to ${step.label}` : undefined}
@@ -2479,7 +2662,15 @@ export const LaundryPortal = () => {
                                           )}
                                         </div>
 
-                                        <span className="step-label-text">{step.label}</span>
+                                        <span className="step-label-text">
+                                          {step.label}
+                                          {step.key === 'READY_FOR_DELIVERY' && (
+                                            <small style={{ color: '#0D9488', fontSize: '10px', display: 'block', fontWeight: 600 }}>Dispatches to Delivery Portal</small>
+                                          )}
+                                          {(step.key === 'OUT_FOR_DELIVERY' || step.key === 'DELIVERED') && (
+                                            <small style={{ color: '#64748B', fontSize: '10px', display: 'block' }}>Delivery Driver Step</small>
+                                          )}
+                                        </span>
 
                                         {isCurrent && (
                                           <span className="step-current-tag">Current</span>
@@ -2503,12 +2694,13 @@ export const LaundryPortal = () => {
                                           <button
                                             type="button"
                                             className="step-next-btn"
+                                            style={step.key === 'READY_FOR_DELIVERY' ? { background: '#0D9488', color: '#fff', padding: '3px 9px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 } : {}}
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               handleOrdersQuickAdvance(order, step.key, false);
                                             }}
                                           >
-                                            Next &gt;
+                                            {step.key === 'READY_FOR_DELIVERY' ? 'Dispatch >' : 'Next >'}
                                           </button>
                                         )}
                                       </div>
@@ -2568,31 +2760,100 @@ export const LaundryPortal = () => {
             PAGE 6: ORDER HISTORY (Matching Image 2 Exactly)
            ======================================================== */}
         {activePage === 'history' && (() => {
-          const referenceHistoryOrders = (historyOrders && historyOrders.length > 0) ? historyOrders.map(ord => {
-            const delDate = ord.delivered_at || ord.created_at;
+          // Combine database historyOrders with completed/delivered/cancelled orders from realtime orders state
+          const combinedHistoryMap = new Map();
+
+          // 1. Seed from explicit history query
+          (historyOrders || []).forEach(o => {
+            const k = String(o.code || o.order_number || o.order_id || o.id || o.key || '');
+            if (k) combinedHistoryMap.set(k, o);
+          });
+
+          // 2. Supplement from realtime active orders list
+          (orders || []).forEach(o => {
+            const s = String(o.status_display || o.status || o.orderStatus || o.raw_status || '').toUpperCase();
+            const stage = String(o.stage || o.processing_stage || '').toUpperCase();
+            const isDelivered = s.includes('DELIVER') || s.includes('COMPLET') || stage === 'DELIVERED';
+            const isCancelled = s.includes('CANCEL');
+
+            if (isDelivered || isCancelled) {
+              const k = String(o.code || o.order_number || o.order_id || o.id || o.key || '');
+              if (k) {
+                const prev = combinedHistoryMap.get(k) || {};
+                combinedHistoryMap.set(k, { ...prev, ...o, historyStatus: isCancelled ? 'cancelled' : 'delivered' });
+              }
+            }
+          });
+
+          const rawHistoryList = Array.from(combinedHistoryMap.values());
+
+          const referenceHistoryOrders = rawHistoryList.map(ord => {
+            const delDate = ord.deliveredAt || ord.delivered_at || ord.completedAt || ord.updatedAt || ord.placedAt || ord.createdAt || ord.created_at;
             const d = delDate ? new Date(delDate) : new Date();
-            const amt = ord.amount_paise ? ord.amount_paise / 100 : (ord.total_paise ? ord.total_paise / 100 : 0);
+
+            let amt = 0;
+            if (ord.total_amount != null || ord.amount != null || ord.total != null) {
+              let rawA = ord.total_amount ?? ord.amount ?? ord.total;
+              if (typeof rawA === 'string') rawA = parseFloat(rawA) || 0;
+              if (typeof rawA === 'number' && !isNaN(rawA)) {
+                amt = rawA > 500 ? (rawA / 100) : rawA;
+              }
+            } else if (ord.amount_paise || ord.total_paise) {
+              amt = (ord.amount_paise || ord.total_paise) / 100;
+            }
+
+            const itemsList = Array.isArray(ord.items)
+              ? ord.items
+              : (ord.items && typeof ord.items === 'object' ? Object.values(ord.items) : []);
+
+            if (!amt && itemsList.length > 0) {
+              amt = itemsList.reduce((sum, it) => sum + (Number(it.lineTotal || it.total || (it.price * (it.quantity || 1))) || 0), 0);
+            }
+
+            const custName = (typeof ord.customer_name === 'string' && ord.customer_name)
+              ? ord.customer_name
+              : ((typeof ord.customer === 'string' && ord.customer)
+                ? ord.customer
+                : (ord.customer?.name || ord.customerName || ord.pickup_full_name || 'Customer'));
+
+            const custPhone = ord.customer_phone || ord.customerPhone || ord.customer?.phone || ord.pickup_phone || '-';
+
+            const itemsSummary = ord.items_summary || (
+              itemsList.length > 0
+                ? itemsList.map(i => `${i.name || i.item_name || i.garment || 'Item'} × ${i.quantity || 1}`).join(', ')
+                : 'Garments'
+            );
+
+            const servicesSummary = Array.isArray(ord.services)
+              ? ord.services.join(', ')
+              : (ord.service || ord.services || 'Wash & Fold');
+
+            const rawSt = String(ord.historyStatus || ord.raw_status || ord.status_display || ord.status || '').toUpperCase();
+            const isCancelled = rawSt.includes('CANCEL');
+            const statusKey = isCancelled ? 'cancelled' : 'delivered';
+            const statusLabel = isCancelled ? 'Cancelled' : 'Delivered';
+
             return {
-              orderId: ord.code || ord.id,
-              rawId: ord.id,
-              customerName: ord.customer?.name || 'Customer',
-              customerPhone: ord.customer?.phone || '-',
-              itemsSummary: ord.items_summary || (ord.items ? ord.items.map(i => `${i.garment || 'Item'} × ${i.quantity}`).join(', ') : 'Garments'),
-              servicesSummary: Array.isArray(ord.services) ? ord.services.join(', ') : (ord.services || 'Laundry'),
+              orderId: ord.code || ord.order_number || ord.order_id || ord.id,
+              rawId: ord.id || ord.code,
+              customerName: custName,
+              customerPhone: custPhone,
+              itemsSummary,
+              servicesSummary,
               dateStr: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
               timeStr: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
               timestamp: d.getTime(),
               amount: amt,
-              price: `₹${amt}`,
-              status: (ord.status || 'delivered').toLowerCase(),
-              statusLabel: ord.status === 'DELIVERED' ? 'Delivered' : (ord.status === 'CANCELLED' ? 'Cancelled' : ord.status || 'Delivered'),
-              items: ord.items || [],
+              price: `₹${amt.toFixed(2)}`,
+              status: statusKey,
+              statusLabel,
+              items: itemsList,
               services: ord.services || []
             };
-          }) : [];
+          });
 
           // Compute chip counts across the full dataset
-          const allCount = historyTotal || referenceHistoryOrders.length;
+          const allCount = referenceHistoryOrders.length;
           const deliveredCount = referenceHistoryOrders.filter(o => o.status === 'delivered').length;
           const cancelledCount = referenceHistoryOrders.filter(o => o.status === 'cancelled').length;
 
@@ -2660,6 +2921,9 @@ export const LaundryPortal = () => {
           const handleViewDetails = (ord) => {
             const matchingRealOrder = orders.find(o => 
               o.id === ord.rawId || 
+              o.code === ord.orderId ||
+              o.order_number === ord.orderId ||
+              o.order_id === ord.orderId ||
               o.order_number?.replace(/^#/, '') === ord.orderId.replace(/^FC-/, '') ||
               o.order_id?.replace(/^#/, '') === ord.orderId.replace(/^FC-/, '')
             ) || {
@@ -2669,7 +2933,13 @@ export const LaundryPortal = () => {
               pickup_phone: ord.customerPhone,
               total_amount: ord.amount,
               status: ord.statusLabel.toUpperCase(),
-              items: ord.items ? ord.items.map(i => ({ name: i.name, quantity: 1, services: [i.tag] })) : [],
+              items: Array.isArray(ord.items) ? ord.items.map(i => ({ 
+                name: i.name || i.item_name || 'Item', 
+                quantity: i.quantity || 1, 
+                unitPrice: i.unitPrice || i.price || 0,
+                lineTotal: i.lineTotal || i.total || 0,
+                services: i.services || [i.tag || 'Standard'] 
+              })) : [],
               created_at: `${ord.dateStr} • ${ord.timeStr}`,
               services: ord.services || []
             };
@@ -3576,6 +3846,8 @@ export const LaundryPortal = () => {
                       <span>Customer: <strong style={{ color: '#0F172A' }}>{order.customer_name || (typeof order.customer === 'object' ? order.customer?.name : order.customer) || order.pickup_full_name || 'Customer'}</strong></span>
                       <span>•</span>
                       <span>{items.length} {items.length === 1 ? 'Garment Item' : 'Garment Items'}</span>
+                      <span>•</span>
+                      <span>Total: <strong style={{ color: '#047857' }}>₹{Number(order.total_amount || order.amount || order.total || 0).toFixed(2)}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -3665,10 +3937,22 @@ export const LaundryPortal = () => {
                                   <div className="tracker-item-icon-box">
                                     <Shirt size={17} />
                                   </div>
-                                  <h5 className="tracker-item-name">
-                                    {item.name || item.item_name}
-                                    <span className="tracker-qty-badge">×{item.quantity || 1}</span>
-                                  </h5>
+                                  <div>
+                                    <h5 className="tracker-item-name">
+                                      {item.name || item.item_name}
+                                      <span className="tracker-qty-badge">×{item.quantity || 1}</span>
+                                    </h5>
+                                    {((item.lineTotal || item.total || item.unitPrice || item.price) > 0) && (
+                                      <div style={{ fontSize: '12px', color: '#047857', fontWeight: 600, marginTop: '2px' }}>
+                                        ₹{Number(item.lineTotal || item.total || ((item.unitPrice || item.price) * (item.quantity || 1))).toFixed(2)}
+                                        {item.quantity > 1 && (item.unitPrice || item.price) > 0 && (
+                                          <span style={{ color: '#64748B', fontWeight: 500, marginLeft: '5px' }}>
+                                            (₹{Number(item.unitPrice || item.price).toFixed(2)} each)
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 <span className={`tracker-stage-badge ${isReadyForQC || isQC || isPacking || isReadyDel || isDelivered ? '' : 'teal'}`}>
                                   {itemStageLabel}
@@ -3798,7 +4082,7 @@ export const LaundryPortal = () => {
                           )}
 
                           <div style={{ fontSize: '12px', color: '#64748B', paddingTop: '4px' }}>
-                            Items in this order: {items.map(it => `${it.name || it.item_name} (×${it.quantity || 1})`).join(', ')}
+                            Items in this order: {items.map(it => `${it.name || it.item_name} (×${it.quantity || 1}${it.lineTotal || it.total ? ` • ₹${Number(it.lineTotal || it.total).toFixed(2)}` : ''})`).join(', ')}
                           </div>
                         </div>
 
@@ -5280,7 +5564,7 @@ export const LaundryPortal = () => {
         /* GRID SYSTEM MATCHING SECTION B SPECIFICATION */
         .orders-grid-row {
           display: grid;
-          grid-template-columns: 110px 160px 150px 190px 175px 110px minmax(0, 1fr);
+          grid-template-columns: 110px 145px minmax(180px, 1.3fr) 130px 140px 105px minmax(130px, 1fr);
           column-gap: 12px;
           align-items: center;
         }
@@ -5344,9 +5628,8 @@ export const LaundryPortal = () => {
           font-size: 13px;
           font-weight: 500;
           color: #475569;
-          white-space: nowrap;
+          min-width: 0;
           overflow: hidden;
-          text-overflow: ellipsis;
         }
 
         .col-placed {

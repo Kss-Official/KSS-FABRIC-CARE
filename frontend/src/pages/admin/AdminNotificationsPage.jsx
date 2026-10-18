@@ -106,10 +106,10 @@ export const AdminNotificationsPage = () => {
       // Search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        const matchesTitle = notif.title?.toLowerCase().includes(query);
-        const matchesDesc = notif.desc?.toLowerCase().includes(query);
-        const matchesId = notif.meta?.orderId?.toLowerCase().includes(query);
-        const matchesCustomer = notif.meta?.customer?.toLowerCase().includes(query);
+        const matchesTitle = String(notif.title || '').toLowerCase().includes(query);
+        const matchesDesc = String(notif.desc || '').toLowerCase().includes(query);
+        const matchesId = String(notif.meta?.orderId || notif.orderId || '').toLowerCase().includes(query);
+        const matchesCustomer = String(notif.meta?.customer || '').toLowerCase().includes(query);
         if (!matchesTitle && !matchesDesc && !matchesId && !matchesCustomer) return false;
       }
 

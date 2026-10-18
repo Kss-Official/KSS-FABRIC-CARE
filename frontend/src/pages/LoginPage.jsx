@@ -364,6 +364,51 @@ export const LoginPage = () => {
                     Sign Up
                   </button>
                 </div>
+
+                {/* Quick Demo Access Pills */}
+                <div className="auth-quick-demo-container">
+                  <div className="auth-quick-demo-divider">
+                    <span>Quick Demo Logins</span>
+                  </div>
+                  <div className="auth-quick-demo-chips">
+                    <button
+                      type="button"
+                      className="auth-demo-chip delivery"
+                      onClick={() => {
+                        setIdentifier('delivery@fabricare.com');
+                        setPassword('Test@1234');
+                      }}
+                      title="Quick fill Delivery Agent login"
+                    >
+                      <span className="demo-chip-icon">🛵</span>
+                      <span>Delivery Agent</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="auth-demo-chip admin"
+                      onClick={() => {
+                        setIdentifier('admin@fabricare.com');
+                        setPassword('Test@1234');
+                      }}
+                      title="Quick fill Admin login"
+                    >
+                      <span className="demo-chip-icon">👑</span>
+                      <span>Admin</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="auth-demo-chip staff"
+                      onClick={() => {
+                        setIdentifier('staff@fabricare.com');
+                        setPassword('Test@1234');
+                      }}
+                      title="Quick fill Laundry Staff login"
+                    >
+                      <span className="demo-chip-icon">👔</span>
+                      <span>Staff</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -717,6 +762,59 @@ export const LoginPage = () => {
         .auth-text-link:hover {
           text-decoration: underline;
           color: #016885;
+        }
+
+        /* Quick Demo Logins Section */
+        .auth-quick-demo-container {
+          margin-top: 22px;
+          padding-top: 16px;
+          border-top: 1px dashed #E2E8F0;
+          text-align: center;
+        }
+
+        .auth-quick-demo-divider {
+          font-size: 0.72rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: #94A3B8;
+          margin-bottom: 10px;
+        }
+
+        .auth-quick-demo-chips {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .auth-demo-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 9999px;
+          padding: 6px 13px;
+          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #334155;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          user-select: none;
+        }
+
+        .auth-demo-chip:hover {
+          background: #017C9E;
+          color: #FFFFFF;
+          border-color: #017C9E;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 10px -2px rgba(1, 124, 158, 0.25);
+        }
+
+        .demo-chip-icon {
+          font-size: 0.95rem;
         }
 
         /* Responsive Breakpoints */
