@@ -445,7 +445,129 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     ? d.services
     : (Array.isArray(d.services_list) && d.services_list.length > 0 ? d.services_list : ['Wash & Fold']);
 
-  const dateStr = d.date || (d.createdAt?.toDate ? d.createdAt.toDate().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today');
+  const formatIsoDate = (val) => {
+    if (!val) return '';
+    try {
+      if (typeof val === 'string') {
+        const tr = val.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(tr)) return tr.slice(0, 10);
+      }
+      const dt = val?.toDate ? val.toDate() : new Date(typeof val === 'number' ? val : (typeof val === 'string' && /^\d+$/.test(val) ? Number(val) : val));
+      if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+    } catch (_) {}
+    return String(val);
+  };
+
+  const formatTime12h = (t) => {
+    if (!t) return '';
+    const s = String(t).trim();
+    if (/am|pm/i.test(s)) return s;
+    const parts = s.split(':');
+    if (parts.length >= 2) {
+      let h = parseInt(parts[0], 10);
+      const m = parts[1].slice(0, 2);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${m} ${ampm}`;
+    }
+    return s;
+  };
+
+  // 1. Resolve pickup date (priority to actual structured pickup date)
+  let rawPickupDate = '';
+  if (d.pickup && typeof d.pickup === 'object' && d.pickup.date) {
+    rawPickupDate = d.pickup.date;
+  }
+  if (!rawPickupDate && d.pickup_date && d.pickup_date !== 'Today' && d.pickup_date !== 'Scheduled') {
+    rawPickupDate = d.pickup_date;
+  }
+  if (!rawPickupDate && d.pickupDate) {
+    rawPickupDate = d.pickupDate;
+  }
+  if (!rawPickupDate && d.dateText && d.dateText !== 'Today') {
+    rawPickupDate = d.dateText;
+  }
+  if (!rawPickupDate && d.date && d.date !== 'Today') {
+    rawPickupDate = d.date;
+  }
+  if (!rawPickupDate && (d.placedAt || d.createdAt)) {
+    rawPickupDate = formatIsoDate(d.placedAt || d.createdAt);
+  }
+  if (!rawPickupDate) {
+    rawPickupDate = new Date().toISOString().split('T')[0];
+  }
+
+  // 2. Resolve pickup time slot
+  let resolvedPickupSlot = '';
+  if (d.pickup && typeof d.pickup === 'object') {
+    if (d.pickup.time_slot || d.pickup.timeSlot) {
+      resolvedPickupSlot = d.pickup.time_slot || d.pickup.timeSlot;
+    } else if (d.pickup.from && d.pickup.to) {
+      resolvedPickupSlot = `${formatTime12h(d.pickup.from)} – ${formatTime12h(d.pickup.to)}`;
+    }
+  }
+  if (!resolvedPickupSlot && d.pickup_time_slot && d.pickup_time_slot !== 'Standard Slot') {
+    resolvedPickupSlot = d.pickup_time_slot;
+  }
+  if (!resolvedPickupSlot && d.timeText) {
+    resolvedPickupSlot = d.timeText;
+  }
+  if (!resolvedPickupSlot) {
+    resolvedPickupSlot = '11:00 AM – 1:00 PM';
+  }
+
+  // 3. Resolve delivery date
+  let rawDeliveryDate = '';
+  if (d.delivery && typeof d.delivery === 'object' && d.delivery.date) {
+    rawDeliveryDate = d.delivery.date;
+  }
+  if (!rawDeliveryDate && d.delivery_date && d.delivery_date !== '14 Oct 2026') {
+    rawDeliveryDate = d.delivery_date;
+  }
+  if (!rawDeliveryDate && d.deliveryDate) {
+    rawDeliveryDate = d.deliveryDate;
+  }
+  if (!rawDeliveryDate && d.estimated_delivery) {
+    rawDeliveryDate = d.estimated_delivery;
+  }
+  if (!rawDeliveryDate && d.dueBy) {
+    rawDeliveryDate = formatIsoDate(d.dueBy);
+  }
+  if (!rawDeliveryDate) {
+    try {
+      const pDt = new Date(rawPickupDate);
+      if (!isNaN(pDt.getTime())) {
+        pDt.setDate(pDt.getDate() + (d.isExpress ? 1 : 2));
+        rawDeliveryDate = pDt.toISOString().split('T')[0];
+      }
+    } catch (_) {}
+  }
+  if (!rawDeliveryDate) {
+    const fallbackDt = new Date();
+    fallbackDt.setDate(fallbackDt.getDate() + 2);
+    rawDeliveryDate = fallbackDt.toISOString().split('T')[0];
+  }
+
+  // 4. Resolve delivery time slot
+  let resolvedDeliverySlot = '';
+  if (d.delivery && typeof d.delivery === 'object') {
+    if (d.delivery.time_slot || d.delivery.timeSlot) {
+      resolvedDeliverySlot = d.delivery.time_slot || d.delivery.timeSlot;
+    } else if (d.delivery.from && d.delivery.to) {
+      resolvedDeliverySlot = `${formatTime12h(d.delivery.from)} – ${formatTime12h(d.delivery.to)}`;
+    }
+  }
+  if (!resolvedDeliverySlot && d.delivery_time_slot) {
+    resolvedDeliverySlot = d.delivery_time_slot;
+  }
+  if (!resolvedDeliverySlot && d.deliveryTimeSlot) {
+    resolvedDeliverySlot = d.deliveryTimeSlot;
+  }
+  if (!resolvedDeliverySlot) {
+    resolvedDeliverySlot = '02:00 PM – 05:00 PM';
+  }
+
+  const dateStr = d.date || rawPickupDate;
 
   return {
     ...d,
@@ -458,10 +580,12 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     dateText: d.dateText || dateStr,
     placed: placedTime,
     placedAt: d.placedAt || d.createdAt,
-    timeText: d.timeText || d.pickup_time_slot || d.pickupTime || '09:00 AM – 11:00 AM',
-    pickupTime: d.pickupTime || `${dateStr}, ${d.pickup_time_slot || '09:00 AM – 11:00 AM'}`,
-    pickup_time_slot: d.pickup_time_slot || '09:00 AM – 11:00 AM',
-    pickup_date: d.pickup_date || dateStr,
+    timeText: resolvedPickupSlot,
+    pickupTime: `${rawPickupDate}, ${resolvedPickupSlot}`,
+    pickup_time_slot: resolvedPickupSlot,
+    pickup_date: rawPickupDate,
+    delivery_date: rawDeliveryDate,
+    delivery_time_slot: resolvedDeliverySlot,
     pickup_address: custAddress,
     delivery_address: d.delivery_address || custAddress,
     addressTitle: custAddress,

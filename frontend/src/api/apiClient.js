@@ -42,8 +42,127 @@ export class ApiError extends Error {
 export const normalizeOrder = (o) => {
   if (!o || typeof o !== 'object') return o;
   const addressStr = o.pickup_address || (o.address ? [o.address.flatHouse, o.address.areaColony, o.address.city].filter(Boolean).join(', ') : 'Default Location');
-  const pickupDate = o.pickup?.date || (o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : 'Today');
-  const pickupSlot = o.pickup ? `${o.pickup.from || '09:00'} - ${o.pickup.to || '11:00'}` : '09:00 AM - 11:00 AM';
+  const formatIsoDate = (val) => {
+    if (!val) return '';
+    try {
+      if (typeof val === 'string') {
+        const tr = val.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(tr)) return tr.slice(0, 10);
+      }
+      const dt = val?.toDate ? val.toDate() : new Date(typeof val === 'number' ? val : (typeof val === 'string' && /^\d+$/.test(val) ? Number(val) : val));
+      if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+    } catch (_) {}
+    return String(val);
+  };
+
+  const formatTime12h = (t) => {
+    if (!t) return '';
+    const s = String(t).trim();
+    if (/am|pm/i.test(s)) return s;
+    const parts = s.split(':');
+    if (parts.length >= 2) {
+      let h = parseInt(parts[0], 10);
+      const m = parts[1].slice(0, 2);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${m} ${ampm}`;
+    }
+    return s;
+  };
+
+  // Resolve pickup date (priority to actual structured pickup date)
+  let pickupDate = '';
+  if (o.pickup && typeof o.pickup === 'object' && o.pickup.date) {
+    pickupDate = o.pickup.date;
+  }
+  if (!pickupDate && o.pickup_date && o.pickup_date !== 'Today' && o.pickup_date !== 'Scheduled') {
+    pickupDate = o.pickup_date;
+  }
+  if (!pickupDate && o.pickupDate) {
+    pickupDate = o.pickupDate;
+  }
+  if (!pickupDate && o.dateText && o.dateText !== 'Today') {
+    pickupDate = o.dateText;
+  }
+  if (!pickupDate && o.date && o.date !== 'Today') {
+    pickupDate = o.date;
+  }
+  if (!pickupDate && (o.placedAt || o.createdAt)) {
+    pickupDate = formatIsoDate(o.placedAt || o.createdAt);
+  }
+  if (!pickupDate) {
+    pickupDate = new Date().toISOString().split('T')[0];
+  }
+
+  // Resolve pickup time slot
+  let pickupSlot = '';
+  if (o.pickup && typeof o.pickup === 'object') {
+    if (o.pickup.time_slot || o.pickup.timeSlot) {
+      pickupSlot = o.pickup.time_slot || o.pickup.timeSlot;
+    } else if (o.pickup.from && o.pickup.to) {
+      pickupSlot = `${formatTime12h(o.pickup.from)} – ${formatTime12h(o.pickup.to)}`;
+    }
+  }
+  if (!pickupSlot && o.pickup_time_slot && o.pickup_time_slot !== 'Standard Slot') {
+    pickupSlot = o.pickup_time_slot;
+  }
+  if (!pickupSlot && o.timeText) {
+    pickupSlot = o.timeText;
+  }
+  if (!pickupSlot) {
+    pickupSlot = '11:00 AM – 1:00 PM';
+  }
+
+  // Resolve delivery date
+  let deliveryDate = '';
+  if (o.delivery && typeof o.delivery === 'object' && o.delivery.date) {
+    deliveryDate = o.delivery.date;
+  }
+  if (!deliveryDate && o.delivery_date && o.delivery_date !== '14 Oct 2026') {
+    deliveryDate = o.delivery_date;
+  }
+  if (!deliveryDate && o.deliveryDate) {
+    deliveryDate = o.deliveryDate;
+  }
+  if (!deliveryDate && o.estimated_delivery) {
+    deliveryDate = o.estimated_delivery;
+  }
+  if (!deliveryDate && o.dueBy) {
+    deliveryDate = formatIsoDate(o.dueBy);
+  }
+  if (!deliveryDate) {
+    try {
+      const pDt = new Date(pickupDate);
+      if (!isNaN(pDt.getTime())) {
+        pDt.setDate(pDt.getDate() + (o.isExpress ? 1 : 2));
+        deliveryDate = pDt.toISOString().split('T')[0];
+      }
+    } catch (_) {}
+  }
+  if (!deliveryDate) {
+    const fallbackDt = new Date();
+    fallbackDt.setDate(fallbackDt.getDate() + 2);
+    deliveryDate = fallbackDt.toISOString().split('T')[0];
+  }
+
+  // Resolve delivery time slot
+  let deliverySlot = '';
+  if (o.delivery && typeof o.delivery === 'object') {
+    if (o.delivery.time_slot || o.delivery.timeSlot) {
+      deliverySlot = o.delivery.time_slot || o.delivery.timeSlot;
+    } else if (o.delivery.from && o.delivery.to) {
+      deliverySlot = `${formatTime12h(o.delivery.from)} – ${formatTime12h(o.delivery.to)}`;
+    }
+  }
+  if (!deliverySlot && o.delivery_time_slot) {
+    deliverySlot = o.delivery_time_slot;
+  }
+  if (!deliverySlot && o.deliveryTimeSlot) {
+    deliverySlot = o.deliveryTimeSlot;
+  }
+  if (!deliverySlot) {
+    deliverySlot = '02:00 PM – 05:00 PM';
+  }
 
   let rawItems = [];
   if (Array.isArray(o.items)) {
@@ -99,6 +218,8 @@ export const normalizeOrder = (o) => {
     pickup_date: pickupDate,
     pickup_time_slot: pickupSlot,
     pickupTime: `${pickupDate}, ${pickupSlot}`,
+    delivery_date: deliveryDate,
+    delivery_time_slot: deliverySlot,
     total_amount: totalAmount,
     amount: totalAmount,
     total: finalTotal,

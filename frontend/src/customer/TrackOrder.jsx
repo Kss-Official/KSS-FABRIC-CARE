@@ -188,19 +188,117 @@ export const TrackOrder = () => {
     );
   }
 
-  // Format pickup date safely
-  const formatPickupDate = (dateVal) => {
-    if (!dateVal) return '12 Oct 2026';
+  // Helper to parse any date value (Timestamp, milliseconds, ISO string, YYYY-MM-DD)
+  const parseAnyDate = (val) => {
+    if (!val) return null;
     try {
-      const d = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal);
-      if (isNaN(d.getTime())) return String(dateVal);
-      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    } catch {
-      return String(dateVal);
-    }
+      if (typeof val?.toDate === 'function') return val.toDate();
+      if (typeof val === 'number') return new Date(val);
+      if (typeof val === 'string') {
+        const tr = val.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(tr)) {
+          const [y, m, d] = tr.split('-').map(Number);
+          return new Date(y, m - 1, d);
+        }
+        if (/^\d+$/.test(tr)) return new Date(Number(tr));
+        const parsed = new Date(tr);
+        if (!isNaN(parsed.getTime())) return parsed;
+      }
+    } catch (_) {}
+    return null;
   };
 
-  const formattedPickupDate = formatPickupDate(order.pickup_date);
+  // Format date cleanly e.g. "19 Oct 2026"
+  const formatDisplayDate = (dateVal, fallback = '') => {
+    if (!dateVal || dateVal === 'Today' || dateVal === 'Scheduled') {
+      return fallback;
+    }
+    const d = parseAnyDate(dateVal);
+    if (d && !isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    return String(dateVal);
+  };
+
+  // Format 12-hour time
+  const formatTime12h = (t) => {
+    if (!t) return '';
+    const s = String(t).trim();
+    if (/am|pm/i.test(s)) return s;
+    const parts = s.split(':');
+    if (parts.length >= 2) {
+      let h = parseInt(parts[0], 10);
+      const m = parts[1].slice(0, 2);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${m} ${ampm}`;
+    }
+    return s;
+  };
+
+  // Format time slot string cleanly
+  const formatSlot = (from, to, rawSlot, fallback = '11:00 AM – 1:00 PM') => {
+    if (rawSlot && rawSlot !== 'Standard Slot') {
+      const parts = rawSlot.split(/[–-]/).map(s => s.trim());
+      if (parts.length === 2) {
+        return `${formatTime12h(parts[0])} – ${formatTime12h(parts[1])}`;
+      }
+      return rawSlot;
+    }
+    if (from && to) {
+      return `${formatTime12h(from)} – ${formatTime12h(to)}`;
+    }
+    return fallback;
+  };
+
+  // 1. Raw Pickup Date & Formatted Pickup Date
+  const rawPickupDate = 
+    (order.pickup && typeof order.pickup === 'object' && order.pickup.date) ||
+    (order.pickup_date && order.pickup_date !== 'Today' && order.pickup_date !== 'Scheduled' && order.pickup_date) ||
+    order.pickupDate ||
+    (order.date && order.date !== 'Today' && order.date) ||
+    (order.dateText && order.dateText !== 'Today' && order.dateText) ||
+    order.placedAt ||
+    order.createdAt ||
+    order.created_at;
+
+  const formattedPickupDate = formatDisplayDate(rawPickupDate, '19 Oct 2026');
+
+  // 2. Pickup Time Slot
+  const resolvedPickupSlot = formatSlot(
+    order.pickup?.from,
+    order.pickup?.to,
+    order.pickup_time_slot || order.time_slot || order.timeText,
+    '11:00 AM – 1:00 PM'
+  );
+
+  // 3. Raw Delivery Date & Formatted Delivery Date
+  let rawDeliveryDate = 
+    (order.delivery && typeof order.delivery === 'object' && order.delivery.date) ||
+    (order.delivery_date && order.delivery_date !== '14 Oct 2026' && order.delivery_date) ||
+    order.deliveryDate ||
+    order.estimated_delivery ||
+    order.dueBy;
+
+  if (!rawDeliveryDate) {
+    const pickupParsed = parseAnyDate(rawPickupDate);
+    if (pickupParsed && !isNaN(pickupParsed.getTime())) {
+      const calcDelivery = new Date(pickupParsed);
+      calcDelivery.setDate(calcDelivery.getDate() + (order.isExpress ? 1 : 2));
+      rawDeliveryDate = calcDelivery;
+    }
+  }
+
+  const deliveryDateFormatted = formatDisplayDate(rawDeliveryDate, '21 Oct 2026');
+
+  // 4. Delivery Time Slot
+  const resolvedDeliverySlot = formatSlot(
+    order.delivery?.from,
+    order.delivery?.to,
+    order.delivery_time_slot || order.deliveryTimeSlot,
+    '02:00 PM – 05:00 PM'
+  );
+
   const rawOrderNum = order.order_number || order.orderNumber || order.id || 'FC8F71E';
   const orderNumberDisplay = `#${String(rawOrderNum).replace(/^#/, '')}`;
   const orderPlacedTime = `${formattedPickupDate} · 08:45 AM`;
@@ -208,25 +306,26 @@ export const TrackOrder = () => {
   const facilityTime = `${formattedPickupDate} · 11:30 AM`;
   const cleaningEstTime = `${formattedPickupDate} · 02:00 PM (est.)`;
 
-  const formatDeliveryDate = (dateVal) => {
-    if (!dateVal) return null;
-    try {
-      const d = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal);
-      if (isNaN(d.getTime())) return String(dateVal);
-      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    } catch {
-      return String(dateVal);
+  const isRescheduled = Boolean(order.delivery_date && (order.status === 'READY_FOR_DELIVERY' || order.status === 'FAILED_DELIVERY' || order.delivery_time_slot));
+
+  // Dynamic day & month helpers for stepper fallbacks
+  const getDayMonth = (dateVal, fallback) => {
+    const parsed = parseAnyDate(dateVal);
+    if (parsed && !isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     }
+    return fallback;
   };
 
-  const deliveryDateFormatted = formatDeliveryDate(order.delivery_date) || '14 Oct 2026';
-  const isRescheduled = Boolean(order.delivery_date && (order.status === 'READY_FOR_DELIVERY' || order.status === 'FAILED_DELIVERY' || order.delivery_time_slot));
+  const placedDayMonth = getDayMonth(order.placedAt || order.createdAt || order.created_at || rawPickupDate, '18 Oct');
+  const pickupDayMonth = getDayMonth(rawPickupDate, '19 Oct');
+  const deliveryDayMonth = getDayMonth(rawDeliveryDate, '21 Oct');
 
   const formatStepTimestamp = (timestamp, fallbackDayMonth, fallbackTime) => {
     if (timestamp) {
       try {
-        const d = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
-        if (!isNaN(d.getTime())) {
+        const d = parseAnyDate(timestamp);
+        if (d && !isNaN(d.getTime())) {
           const dayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
           const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
           return `${dayMonth}, ${time}`;
@@ -235,22 +334,7 @@ export const TrackOrder = () => {
         // fallback
       }
     }
-    let baseDayMonth = fallbackDayMonth || '13 Oct';
-    if (order?.pickup_date) {
-      try {
-        const d = order.pickup_date?.toDate ? order.pickup_date.toDate() : new Date(order.pickup_date);
-        if (!isNaN(d.getTime())) {
-          baseDayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-        }
-      } catch {}
-    } else if (order?.created_at) {
-      try {
-        const d = order.created_at?.toDate ? order.created_at.toDate() : new Date(order.created_at);
-        if (!isNaN(d.getTime())) {
-          baseDayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-        }
-      } catch {}
-    }
+    const baseDayMonth = fallbackDayMonth || pickupDayMonth || '19 Oct';
     return `${baseDayMonth}, ${fallbackTime}`;
   };
 
@@ -392,43 +476,43 @@ export const TrackOrder = () => {
       id: 'placed',
       title: 'Order placed',
       icon: ClipboardList,
-      time: formatStepTimestamp(order.created_at, '13 Oct', '9:12 AM')
+      time: formatStepTimestamp(order.created_at || order.placedAt, placedDayMonth, '9:12 AM')
     },
     {
       id: 'picked',
       title: 'Picked up',
       icon: Truck,
-      time: formatStepTimestamp(order.pickup_completed_at, '13 Oct', '11:05 AM')
+      time: formatStepTimestamp(order.pickup_completed_at, pickupDayMonth, '11:05 AM')
     },
     {
       id: 'laundry',
       title: 'At laundry',
       icon: WashingMachine,
-      time: formatStepTimestamp(order.facility_received_at, '13 Oct', '1:30 PM')
+      time: formatStepTimestamp(order.facility_received_at, pickupDayMonth, '1:30 PM')
     },
     {
       id: 'processing',
       title: 'Processing',
       icon: Sparkles,
-      time: formatStepTimestamp(order.processing_started_at, '13 Oct', '3:45 PM')
+      time: formatStepTimestamp(order.processing_started_at, pickupDayMonth, '3:45 PM')
     },
     {
       id: 'ready',
       title: 'Ready',
       icon: Package,
-      time: formatStepTimestamp(order.ready_at, '14 Oct', '10:00 AM')
+      time: formatStepTimestamp(order.ready_at, deliveryDayMonth, '10:00 AM')
     },
     {
       id: 'delivery',
       title: 'Out for delivery',
       icon: Truck,
-      time: formatStepTimestamp(order.out_for_delivery_at, '14 Oct', '1:15 PM')
+      time: formatStepTimestamp(order.out_for_delivery_at, deliveryDayMonth, '1:15 PM')
     },
     {
       id: 'delivered',
       title: 'Delivered',
       icon: Home,
-      time: formatStepTimestamp(order.delivered_at, '14 Oct', '3:00 PM')
+      time: formatStepTimestamp(order.delivered_at, deliveryDayMonth, '3:00 PM')
     }
   ];
 
@@ -517,7 +601,7 @@ export const TrackOrder = () => {
           <div className="metric-text-stack">
             <span className="metric-label">Pickup Date & Time</span>
             <span className="metric-value-text">
-              {formattedPickupDate} · {order.pickup_time_slot || '9:00 AM – 11:00 AM'}
+              {formattedPickupDate} · {resolvedPickupSlot}
             </span>
           </div>
         </div>
@@ -725,9 +809,9 @@ export const TrackOrder = () => {
                   <span className="detail-box-value bold">
                     {deliveryDateFormatted}
                   </span>
-                  {order.delivery_time_slot && (
+                  {resolvedDeliverySlot && (
                     <span className="text-xs text-slate-500 font-medium">
-                      Slot: {order.delivery_time_slot}
+                      Slot: {resolvedDeliverySlot}
                     </span>
                   )}
                 </div>
