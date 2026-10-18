@@ -230,6 +230,29 @@ const resolveLaundryRoute = (rawPath, tabParam, counts = null) => {
   return { page: 'orders', subTab: null, redirect: false };
 };
 
+export const getItemCareHint = (item) => {
+  if (!item) return null;
+  if (item.fabric) return item.fabric;
+  if (item.care) return item.care;
+  const name = String(item.name || item.item_name || item.garment || '').toLowerCase();
+  if (name.includes('silk') || name.includes('saree') || name.includes('gown')) return 'Delicate / Silk';
+  if (name.includes('wool') || name.includes('blazer') || name.includes('coat')) return 'Wool / Gentle';
+  if (name.includes('denim') || name.includes('jeans')) return 'Heavy Denim';
+  if (name.includes('linen')) return 'Linen';
+  if (name.includes('shirt') || name.includes('t-shirt') || name.includes('cotton')) return 'Cotton';
+  return null;
+};
+
+export const getItemServiceHint = (item, order) => {
+  if (!item) return null;
+  if (item.category && item.category !== 'General') return item.category;
+  if (item.service_category) return item.service_category;
+  if (Array.isArray(item.services) && item.services.length > 0 && item.services[0] !== 'General') return item.services[0];
+  if (item.service) return item.service;
+  if (order && order.service && !order.service.includes('+') && !order.service.includes(',')) return order.service;
+  return null;
+};
+
 export const LaundryPortal = () => {
   const { currentUser, logout } = useAuth();
   const { navigateTo } = useBooking();
@@ -2555,14 +2578,6 @@ export const LaundryPortal = () => {
                       const itemsCount = order.itemsCount || itemsList.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1)), 0) || (itemsList.length > 0 ? itemsList.length : 1);
                       const itemsFullSummary = order.items_summary || (itemsList.length > 0 ? itemsList.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ') : '1 Item');
 
-                      let totalVal = order.total ?? order.total_amount ?? order.amount;
-                      if (typeof totalVal === 'string') totalVal = parseFloat(totalVal) || 0;
-                      if (typeof totalVal === 'number' && totalVal > 500) totalVal = totalVal / 100;
-                      if (!totalVal && itemsList.length > 0) {
-                        totalVal = itemsList.reduce((sum, it) => sum + (Number(it.total || it.lineTotal || (it.price * (it.quantity || 1))) || 0), 0);
-                      }
-                      const formattedTotal = Number(totalVal || 0).toFixed(2);
-
                       let placedStr = order.placed;
                       if (!placedStr && (order.placedAt || order.createdAt)) {
                         try {
@@ -2586,6 +2601,12 @@ export const LaundryPortal = () => {
                       const isReadyForDelivery = currentStepKey === 'READY_FOR_DELIVERY';
                       const isDropdownOpen = openDropdownOrderId === (order.id || order.order_number);
 
+                      const orderItemsBreakdownTooltip = `Order ${orderIdStr} Garments Breakdown:\n${
+                        itemsList.length > 0
+                          ? itemsList.map(it => `• ${it.name || it.item_name || it.garment || 'Garment'} × ${it.quantity || it.qty || 1}${getItemServiceHint(it, order) ? ` [${getItemServiceHint(it, order)}]` : ''}${getItemCareHint(it) ? ` (${getItemCareHint(it)})` : ''}`).join('\n')
+                          : itemsFullSummary
+                      }\n\nTotal: ${itemsCount} ${itemsCount === 1 ? 'Garment' : 'Garments'}${order.is_express ? ' • Express Priority' : ''}${order.notes || order.specialInstructions ? `\nNote: ${order.notes || order.specialInstructions}` : ''}`;
+
                       return (
                         <div
                           key={order.id || order.order_number || idx}
@@ -2602,17 +2623,88 @@ export const LaundryPortal = () => {
                           <div className="col-customer">{customerName}</div>
                           <div
                             className="col-items"
-                            title={`${itemsFullSummary} • Total: ₹${formattedTotal}`}
+                            title={orderItemsBreakdownTooltip}
                             onClick={() => setTrackerModalOrder(order)}
                             style={{ cursor: 'pointer' }}
                           >
-                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#1E293B', fontWeight: 600 }}>
-                              {itemsFullSummary}
-                            </div>
-                            <div style={{ fontSize: '11px', color: '#0F766E', fontWeight: 600, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span>{itemsCount} {itemsCount === 1 ? 'item' : 'items'}</span>
-                              <span>•</span>
-                              <span style={{ color: '#059669', fontWeight: 700 }}>₹{formattedTotal}</span>
+                            <div className="order-items-cell-wrap">
+                              {/* Garment entries with small relevant operational details */}
+                              {itemsList.length > 0 ? (
+                                <div className="order-items-list-box">
+                                  {itemsList.slice(0, 2).map((it, iIdx) => {
+                                    const itName = it.name || it.item_name || it.garment || 'Garment';
+                                    const itQty = Number(it.quantity || it.qty || 1);
+                                    const itSvc = getItemServiceHint(it, order);
+                                    const itCare = getItemCareHint(it);
+
+                                    return (
+                                      <div key={iIdx} className="order-item-detail-row">
+                                        <span className="order-item-detail-name" title={itName}>
+                                          {itName}
+                                        </span>
+                                        <span className="order-item-detail-qty" title={`Quantity: ${itQty}`}>
+                                          ×{itQty}
+                                        </span>
+                                        {itSvc && (
+                                          <span className="order-item-detail-svc" title={`Service: ${itSvc}`}>
+                                            {itSvc}
+                                          </span>
+                                        )}
+                                        {itCare && (
+                                          <span className="order-item-detail-care" title={`Care/Fabric: ${itCare}`}>
+                                            • {itCare}
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+
+                                  {itemsList.length > 2 && (
+                                    <div
+                                      className="order-items-more-tag"
+                                      title={itemsList.slice(2).map(it => `${it.name || it.item_name || it.garment || 'Garment'} ×${it.quantity || it.qty || 1}`).join(', ')}
+                                    >
+                                      +{itemsList.length - 2} more garments ({itemsList.slice(2).map(it => `${it.name || it.item_name || it.garment || 'Garment'} ×${it.quantity || it.qty || 1}`).join(', ')})
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="order-item-detail-row">
+                                  <span className="order-item-detail-name">{itemsFullSummary}</span>
+                                </div>
+                              )}
+
+                              {/* Operational metadata: total garments, express alert, notes snippet */}
+                              <div className="order-items-op-meta">
+                                <span className="order-items-count-pill">
+                                  <Shirt size={11} style={{ flexShrink: 0 }} />
+                                  {itemsCount} {itemsCount === 1 ? 'Garment' : 'Garments'}
+                                </span>
+
+                                {order.is_express && (
+                                  <>
+                                    <span className="order-items-sep-dot">•</span>
+                                    <span className="order-items-express-chip">
+                                      <Flame size={10} style={{ flexShrink: 0 }} /> Express
+                                    </span>
+                                  </>
+                                )}
+
+                                {(order.notes || order.specialInstructions) && (
+                                  <>
+                                    <span className="order-items-sep-dot">•</span>
+                                    <span
+                                      className="order-items-note-chip"
+                                      title={order.notes || order.specialInstructions}
+                                    >
+                                      <FileText size={10} style={{ flexShrink: 0 }} />
+                                      <span className="order-items-note-text">
+                                        {order.notes || order.specialInstructions}
+                                      </span>
+                                    </span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="col-service" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
@@ -3914,7 +4006,7 @@ export const LaundryPortal = () => {
                       <span>•</span>
                       <span>{items.length} {items.length === 1 ? 'Garment Item' : 'Garment Items'}</span>
                       <span>•</span>
-                      <span>Total: <strong style={{ color: '#047857' }}>₹{Number(order.total_amount || order.amount || order.total || 0).toFixed(2)}</strong></span>
+                      <span>Turnaround: <strong style={{ color: order.is_express ? '#DC2626' : '#0F766E' }}>{order.is_express ? '⚡ Express Priority' : 'Standard Turnaround'}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -4009,16 +4101,21 @@ export const LaundryPortal = () => {
                                       {item.name || item.item_name}
                                       <span className="tracker-qty-badge">×{item.quantity || 1}</span>
                                     </h5>
-                                    {((item.lineTotal || item.total || item.unitPrice || item.price) > 0) && (
-                                      <div style={{ fontSize: '12px', color: '#047857', fontWeight: 600, marginTop: '2px' }}>
-                                        ₹{Number(item.lineTotal || item.total || ((item.unitPrice || item.price) * (item.quantity || 1))).toFixed(2)}
-                                        {item.quantity > 1 && (item.unitPrice || item.price) > 0 && (
-                                          <span style={{ color: '#64748B', fontWeight: 500, marginLeft: '5px' }}>
-                                            (₹{Number(item.unitPrice || item.price).toFixed(2)} each)
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
+                                    <div style={{ fontSize: '12px', color: '#0F766E', fontWeight: 600, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span>{item.quantity || 1} {item.quantity === 1 ? 'Garment Piece' : 'Garment Pieces'}</span>
+                                      {getItemCareHint(item) && (
+                                        <>
+                                          <span style={{ color: '#CBD5E1' }}>•</span>
+                                          <span style={{ color: '#475569', fontWeight: 500 }}>Fabric: {getItemCareHint(item)}</span>
+                                        </>
+                                      )}
+                                      {tasks.length > 0 && (
+                                        <>
+                                          <span style={{ color: '#CBD5E1' }}>•</span>
+                                          <span style={{ color: '#64748B', fontWeight: 500 }}>{tasks.length} Care Tasks</span>
+                                        </>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                                 <span className={`tracker-stage-badge ${isReadyForQC || isQC || isPacking || isReadyDel || isDelivered ? '' : 'teal'}`}>
@@ -4148,8 +4245,8 @@ export const LaundryPortal = () => {
                             </div>
                           )}
 
-                          <div style={{ fontSize: '12px', color: '#64748B', paddingTop: '4px' }}>
-                            Items in this order: {items.map(it => `${it.name || it.item_name} (×${it.quantity || 1}${it.lineTotal || it.total ? ` • ₹${Number(it.lineTotal || it.total).toFixed(2)}` : ''})`).join(', ')}
+                          <div style={{ fontSize: '12px', color: '#475569', paddingTop: '4px', fontWeight: 500 }}>
+                            Garments in this order: {items.map(it => `${it.name || it.item_name || 'Item'} (Qty: ${it.quantity || 1}${it.category ? ` • ${it.category}` : ''}${getItemCareHint(it) ? ` • ${getItemCareHint(it)}` : ''})`).join(', ')}
                           </div>
                         </div>
 
@@ -5697,6 +5794,152 @@ export const LaundryPortal = () => {
           color: #475569;
           min-width: 0;
           overflow: hidden;
+        }
+
+        .order-items-cell-wrap {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          min-width: 0;
+        }
+
+        .order-items-list-box {
+          display: flex;
+          flex-direction: column;
+          gap: 2.5px;
+          min-width: 0;
+        }
+
+        .order-item-detail-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          min-width: 0;
+          line-height: 1.3;
+        }
+
+        .order-item-detail-name {
+          font-size: 12.5px;
+          font-weight: 600;
+          color: #1E293B;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 140px;
+        }
+
+        .order-item-detail-qty {
+          font-size: 10.5px;
+          font-weight: 700;
+          color: #0F766E;
+          background: #E6FFFA;
+          border: 1px solid #CCFBF1;
+          padding: 1px 5px;
+          border-radius: 9999px;
+          flex-shrink: 0;
+          line-height: 1.2;
+        }
+
+        .order-item-detail-svc {
+          font-size: 10px;
+          font-weight: 600;
+          color: #334155;
+          background: #F1F5F9;
+          border: 1px solid #E2E8F0;
+          padding: 1px 5px;
+          border-radius: 4px;
+          white-space: nowrap;
+          flex-shrink: 0;
+          line-height: 1.2;
+        }
+
+        .order-item-detail-care {
+          font-size: 10.5px;
+          font-weight: 500;
+          color: #64748B;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 95px;
+        }
+
+        .order-items-more-tag {
+          font-size: 11px;
+          font-weight: 600;
+          color: #0F766E;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 250px;
+          line-height: 1.3;
+        }
+
+        .order-items-op-meta {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          color: #64748B;
+          font-weight: 500;
+          margin-top: 2px;
+          flex-wrap: nowrap;
+          overflow: hidden;
+        }
+
+        .order-items-count-pill {
+          font-size: 11px;
+          font-weight: 700;
+          color: #0F766E;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .order-items-sep-dot {
+          color: #CBD5E1;
+          font-size: 10px;
+          flex-shrink: 0;
+        }
+
+        .order-items-express-chip {
+          font-size: 10.5px;
+          font-weight: 700;
+          color: #DC2626;
+          background: #FEF2F2;
+          border: 1px solid #FEE2E2;
+          padding: 1px 6px;
+          border-radius: 9999px;
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .order-items-note-chip {
+          font-size: 10.5px;
+          font-weight: 500;
+          color: #475569;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          padding: 1px 6px;
+          border-radius: 9999px;
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          white-space: nowrap;
+          max-width: 140px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          flex-shrink: 0;
+        }
+
+        .order-items-note-text {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .col-placed {
