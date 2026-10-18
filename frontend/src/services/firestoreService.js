@@ -368,6 +368,19 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     totalAmount = Number(d.total_amount ?? d.amount ?? d.estimatedTotal ?? 0);
   }
 
+  const detectItemCategory = (rawCat, rawName) => {
+    const sCat = String(rawCat || '').trim();
+    if (sCat && sCat.toLowerCase() !== 'general') return sCat;
+    const sName = String(rawName || '').toLowerCase();
+    if (sName.includes('dry clean')) return 'Dry Clean';
+    if (sName.includes('steam')) return 'Steam Iron';
+    if (sName.includes('wash & iron') || sName.includes('wash + iron') || sName.includes('wash and iron')) return 'Wash + Iron';
+    if (sName.includes('iron') && sName.includes('fold')) return 'Wash & Fold + Iron';
+    if (sName.includes('iron')) return 'Steam Iron';
+    if (sName.includes('wash') || sName.includes('fold')) return 'Wash & Fold';
+    return sCat || 'Wash & Fold';
+  };
+
   let parsedItems = [];
   if (Array.isArray(d.items)) {
     parsedItems = d.items.map((it, idx) => {
@@ -376,13 +389,14 @@ export const normalizeFirestoreOrder = (docData, docId) => {
       const price = rawPrice > 500 ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
       const rawTotal = Number(it.lineTotal ?? it.total ?? q * price);
       const total = rawTotal > 500 ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+      const cat = detectItemCategory(it.category || it.categoryName || it.service_category, it.name || it.item_name || it.garment);
       return {
         id: it.id || `item_${idx + 1}`,
         item_name: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
         name: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
         garment: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
-        category: it.category || 'Wash & Fold',
-        services: it.services || [it.category || 'Wash & Fold'],
+        category: cat,
+        services: it.services || [cat],
         quantity: q,
         rate: price,
         price: price,
@@ -399,13 +413,14 @@ export const normalizeFirestoreOrder = (docData, docId) => {
         const price = rawPrice > 500 ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
         const rawTotal = Number(val.lineTotal ?? val.total ?? q * price);
         const total = rawTotal > 500 ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+        const cat = detectItemCategory(val.category || val.categoryName || val.service_category, val.name || val.item_name || val.garment || k);
         return {
           id: k,
           item_name: val.name || val.item_name || val.garment || k,
           name: val.name || val.item_name || val.garment || k,
           garment: val.name || val.item_name || val.garment || k,
-          category: val.category || 'Wash & Fold',
-          services: val.services || [val.category || 'Wash & Fold'],
+          category: cat,
+          services: val.services || [cat],
           quantity: q,
           rate: price,
           price: price,
@@ -445,9 +460,38 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     uiStatus = 'Completed';
   }
 
-  const servicesList = Array.isArray(d.services) && d.services.length > 0
-    ? d.services
-    : (Array.isArray(d.services_list) && d.services_list.length > 0 ? d.services_list : ['Wash & Fold']);
+  // Extract all distinct services from items
+  const itemServices = [
+    ...new Set(
+      parsedItems.map(it => it.category || it.service_category || (it.services && it.services[0]))
+    )
+  ].filter(s => s && s !== 'General');
+
+  let servicesList = [];
+  if (Array.isArray(d.services) && d.services.length > 0) {
+    servicesList = [...d.services];
+  } else if (Array.isArray(d.services_list) && d.services_list.length > 0) {
+    servicesList = [...d.services_list];
+  } else if (d.service) {
+    if (d.service.includes('+')) {
+      servicesList = d.service.split('+').map(s => s.trim());
+    } else if (d.service.includes(',')) {
+      servicesList = d.service.split(',').map(s => s.trim());
+    } else {
+      servicesList = [d.service.trim()];
+    }
+  }
+
+  // Merge any distinct services found in items that might not yet be in servicesList
+  itemServices.forEach(s => {
+    if (!servicesList.some(existing => existing.toLowerCase() === s.toLowerCase())) {
+      servicesList.push(s);
+    }
+  });
+
+  if (servicesList.length === 0) {
+    servicesList = ['Wash & Fold'];
+  }
 
   const formatIsoDate = (val) => {
     if (!val) return '';
@@ -612,6 +656,7 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     estimatedTotal: totalAmount,
     services: servicesList,
     services_list: servicesList,
+    service: servicesList.join(' + '),
     items: parsedItems,
     itemsCount: totalItemsCount || 1,
     items_summary: itemsSummaryStr,

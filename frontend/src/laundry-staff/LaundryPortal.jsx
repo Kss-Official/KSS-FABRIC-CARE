@@ -2242,23 +2242,67 @@ export const LaundryPortal = () => {
             setOrdersCurrentPage(1);
           };
 
-          // Service badge helper matching Section B
-          const getServiceBadge = (order) => {
-            const svcRaw = order.service || (order.services && order.services[0]) || '';
-            const s = String(svcRaw).toLowerCase();
-            if (s.includes('dry clean')) {
-              return { bg: '#fce7f3', color: '#be185d', label: 'Dry Clean' };
-            }
-            if (s.includes('steam')) {
-              return { bg: '#ede9fe', color: '#6d28d9', label: 'Steam Iron' };
-            }
-            if (s.includes('iron')) {
-              if (s.includes('fold')) {
-                return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold + Iron' };
+          // Service badges helper returning array of badges for all services
+          const getServiceBadges = (order) => {
+            const rawList = [];
+            if (Array.isArray(order.services)) {
+              rawList.push(...order.services);
+            } else if (order.service) {
+              if (order.service.includes('+')) {
+                rawList.push(...order.service.split('+').map(s => s.trim()));
+              } else if (order.service.includes(',')) {
+                rawList.push(...order.service.split(',').map(s => s.trim()));
+              } else {
+                rawList.push(order.service);
               }
-              return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash + Iron' };
             }
-            return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold' };
+
+            if (Array.isArray(order.items)) {
+              order.items.forEach(it => {
+                if (it.category && it.category !== 'General') rawList.push(it.category);
+                if (Array.isArray(it.services)) {
+                  it.services.forEach(s => rawList.push(SERVICE_DISPLAY_NAMES[s] || s));
+                }
+              });
+            }
+
+            const formatBadge = (raw) => {
+              const s = String(raw || '').toLowerCase().trim();
+              if (s.includes('dry clean')) {
+                return { bg: '#fce7f3', color: '#be185d', label: 'Dry Clean' };
+              }
+              if (s.includes('steam')) {
+                return { bg: '#ede9fe', color: '#6d28d9', label: 'Steam Iron' };
+              }
+              if (s.includes('iron')) {
+                if (s.includes('fold')) {
+                  return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold + Iron' };
+                }
+                return { bg: '#fef3c7', color: '#b45309', label: 'Wash + Iron' };
+              }
+              return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold' };
+            };
+
+            const badgesMap = new Map();
+            rawList.forEach(item => {
+              if (!item) return;
+              const badge = formatBadge(item);
+              if (!badgesMap.has(badge.label)) {
+                badgesMap.set(badge.label, badge);
+              }
+            });
+
+            if (badgesMap.size === 0) {
+              const def = { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold' };
+              badgesMap.set(def.label, def);
+            }
+
+            return Array.from(badgesMap.values());
+          };
+
+          const getServiceBadge = (order) => {
+            const badges = getServiceBadges(order);
+            return badges[0] || { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold' };
           };
 
           // Status pill helper with dot matching Section B
@@ -2341,9 +2385,11 @@ export const LaundryPortal = () => {
 
             // Service filter dropdown
             if (ordersServiceFilter !== 'all') {
-              const svcStr = (order.service || (order.services && order.services.join(' ')) || '').toLowerCase();
-              if (ordersServiceFilter === 'wash-fold' && !svcStr.includes('wash & fold') && !svcStr.includes('wash and fold')) return false;
-              if (ordersServiceFilter === 'wash-iron' && !svcStr.includes('wash + iron') && !svcStr.includes('wash and iron') && !svcStr.includes('wash & iron')) return false;
+              const badges = getServiceBadges(order);
+              const badgeLabels = badges.map(b => b.label.toLowerCase()).join(' ');
+              const svcStr = `${badgeLabels} ${(order.service || (order.services && order.services.join(' ')) || '').toLowerCase()}`;
+              if (ordersServiceFilter === 'wash-fold' && !svcStr.includes('wash & fold') && !svcStr.includes('wash and fold') && !svcStr.includes('wash-fold')) return false;
+              if (ordersServiceFilter === 'wash-iron' && !svcStr.includes('wash + iron') && !svcStr.includes('wash and iron') && !svcStr.includes('wash & iron') && !svcStr.includes('wash-iron')) return false;
               if (ordersServiceFilter === 'steam-iron' && !svcStr.includes('steam')) return false;
               if (ordersServiceFilter === 'dry-clean' && !svcStr.includes('dry clean')) return false;
             }
@@ -2551,13 +2597,16 @@ export const LaundryPortal = () => {
                               <span style={{ color: '#059669', fontWeight: 700 }}>₹{formattedTotal}</span>
                             </div>
                           </div>
-                          <div className="col-service">
-                            <span
-                              className="orders-service-badge"
-                              style={{ background: svcBadge.bg, color: svcBadge.color }}
-                            >
-                              {svcBadge.label}
-                            </span>
+                          <div className="col-service" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+                            {getServiceBadges(order).map((b, bIdx) => (
+                              <span
+                                key={bIdx}
+                                className="orders-service-badge"
+                                style={{ background: b.bg, color: b.color }}
+                              >
+                                {b.label}
+                              </span>
+                            ))}
                           </div>
                           <div className="col-status">
                             <span
@@ -5564,7 +5613,7 @@ export const LaundryPortal = () => {
         /* GRID SYSTEM MATCHING SECTION B SPECIFICATION */
         .orders-grid-row {
           display: grid;
-          grid-template-columns: 110px 145px minmax(180px, 1.3fr) 130px 140px 105px minmax(130px, 1fr);
+          grid-template-columns: 105px 135px minmax(170px, 1.2fr) minmax(130px, auto) 135px 100px minmax(130px, 1fr);
           column-gap: 12px;
           align-items: center;
         }
@@ -5641,11 +5690,12 @@ export const LaundryPortal = () => {
         .orders-service-badge {
           display: inline-flex;
           align-items: center;
-          padding: 4px 10px;
+          padding: 3px 8px;
           border-radius: 9999px;
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 600;
           white-space: nowrap;
+          line-height: 1.2;
         }
 
         .orders-status-pill {

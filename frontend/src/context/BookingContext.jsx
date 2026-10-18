@@ -522,9 +522,12 @@ export const BookingProvider = ({ children }) => {
       // Prepare order items dictionary
       const orderItemsMap = {};
       selectedItemsList.forEach((it, idx) => {
+        const itemCat = it.categoryName || it.category || 'Wash & Fold';
         orderItemsMap[`item_${idx + 1}`] = {
           name: it.name || 'Laundry Item',
-          category: it.categoryName || 'General',
+          category: itemCat,
+          service_category: itemCat,
+          services: [itemCat],
           quantity: it.quantity || 1,
           unitPrice: Math.round((it.unitPrice || 60) * 100),
           lineTotal: Math.round(((it.unitPrice || 60) * (it.quantity || 1)) * 100)
@@ -553,6 +556,9 @@ export const BookingProvider = ({ children }) => {
         },
         isExpress: Boolean(isExpressDelivery),
         notes: specialInstructions || '',
+        services: serviceNames.length > 0 ? serviceNames : ['Wash & Fold'],
+        services_list: serviceNames.length > 0 ? serviceNames : ['Wash & Fold'],
+        service: serviceNames.join(' + ') || 'Wash & Fold',
         items: orderItemsMap,
         subtotal: total,
         total: total

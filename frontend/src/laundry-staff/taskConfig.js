@@ -242,17 +242,34 @@ export const normalizeOrderItem = (item, index = 0) => {
 
   let services = item.services;
   if (!services || !Array.isArray(services) || services.length === 0) {
-    if (item.service_key) {
-      services = [item.service_key];
-    } else if (item.service_name || item.service) {
-      const sName = item.service_name || item.service;
-      const matchKey = Object.keys(SERVICE_DISPLAY_NAMES).find(
+    const rawSvc = item.category || item.categoryName || item.service_category || item.service_key || item.service_name || item.service || '';
+    const sName = String(rawSvc).trim();
+    const itemName = String(item.name || item.item_name || item.itemName || '').toLowerCase();
+
+    let matchedKey = null;
+    if (sName) {
+      matchedKey = Object.keys(SERVICE_DISPLAY_NAMES).find(
         k => SERVICE_DISPLAY_NAMES[k].toLowerCase() === sName.toLowerCase() || k.toLowerCase() === sName.toLowerCase()
       );
-      services = [matchKey || 'wash-fold'];
-    } else {
-      services = ['wash-fold'];
+      if (!matchedKey) {
+        const sLower = sName.toLowerCase();
+        if (sLower.includes('dry clean')) matchedKey = 'dry-clean';
+        else if (sLower.includes('steam')) matchedKey = 'steam-iron';
+        else if (sLower.includes('iron') && sLower.includes('fold')) matchedKey = 'wash-iron';
+        else if (sLower.includes('iron')) matchedKey = 'wash-iron';
+        else if (sLower.includes('wash') || sLower.includes('fold')) matchedKey = 'wash-fold';
+      }
     }
+
+    if (!matchedKey && itemName) {
+      if (itemName.includes('dry clean')) matchedKey = 'dry-clean';
+      else if (itemName.includes('steam iron')) matchedKey = 'steam-iron';
+      else if (itemName.includes('wash & iron') || itemName.includes('wash + iron') || itemName.includes('wash and iron')) matchedKey = 'wash-iron';
+      else if (itemName.includes('iron')) matchedKey = 'steam-iron';
+      else if (itemName.includes('wash & fold') || itemName.includes('wash and fold')) matchedKey = 'wash-fold';
+    }
+
+    services = [matchedKey || 'wash-fold'];
   }
 
   const tasks = (item.tasks && item.tasks.length > 0)
@@ -366,8 +383,36 @@ export const normalizeOrder = (order) => {
     }
   }
 
+  // Derive all unique services for the order from order.services, order.service and items
+  const extractedServices = new Set();
+  if (Array.isArray(order.services)) {
+    order.services.forEach(s => s && extractedServices.add(SERVICE_DISPLAY_NAMES[s] || s));
+  } else if (order.service) {
+    if (order.service.includes('+')) {
+      order.service.split('+').forEach(s => s.trim() && extractedServices.add(SERVICE_DISPLAY_NAMES[s.trim()] || s.trim()));
+    } else if (order.service.includes(',')) {
+      order.service.split(',').forEach(s => s.trim() && extractedServices.add(SERVICE_DISPLAY_NAMES[s.trim()] || s.trim()));
+    } else {
+      extractedServices.add(SERVICE_DISPLAY_NAMES[order.service] || order.service);
+    }
+  }
+
+  items.forEach(it => {
+    if (Array.isArray(it.services)) {
+      it.services.forEach(s => s && extractedServices.add(SERVICE_DISPLAY_NAMES[s] || s));
+    }
+    if (it.category && it.category !== 'General') {
+      extractedServices.add(SERVICE_DISPLAY_NAMES[it.category] || it.category);
+    }
+  });
+
+  const finalServices = extractedServices.size > 0 ? Array.from(extractedServices) : ['Wash & Fold'];
+
   return {
     ...order,
+    services: finalServices,
+    services_list: finalServices,
+    service: finalServices.join(' + '),
     customer_name: custName,
     customerName: custName,
     customer_phone: custPhone,
