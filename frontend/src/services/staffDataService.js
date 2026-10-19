@@ -196,11 +196,12 @@ export const resolveStepKey = (key) => {
   if (s.includes('FOLD')) return 'FOLDING';
   if (s.includes('PRESS')) return 'PRESSING';
   if (s.includes('STEAM')) return 'STEAMING';
-  if (s.includes('DRY_CLEAN') || (s.includes('DRY') && s.includes('CLEAN'))) return 'DRY_CLEANING';
+  if (s.includes('DRY_CLEAN') || (s.includes('DRY') && !s.includes('LAUNDRY') && s.includes('CLEAN'))) return 'DRY_CLEANING';
   if (s.includes('IRON')) return 'IRONING';
-  if (s.includes('DRY')) return 'DRYING';
+  if (s.includes('DRYING') || (s.includes('DRY') && !s.includes('LAUNDRY'))) return 'DRYING';
   if (s.includes('WASH')) return 'WASHING';
   if (s.includes('INSPECT')) return 'INSPECTION';
+  if (s.includes('RECEIVED') || s.includes('HUB') || s.includes('DROPPED') || s.includes('INTAKE') || s.includes('PLACED')) return 'RECEIVED';
   return 'RECEIVED';
 };
 

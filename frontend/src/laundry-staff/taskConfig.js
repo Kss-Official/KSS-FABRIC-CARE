@@ -135,9 +135,7 @@ export const getOrderStatusSteps = (order) => {
     { num: 5, key: 'FOLDING', label: 'Folding' },
     { num: 6, key: 'QUALITY_CHECK', label: 'Quality Check' },
     { num: 7, key: 'PACKING', label: 'Packing' },
-    { num: 8, key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
-    { num: 9, key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
-    { num: 10, key: 'DELIVERED', label: 'Delivered' }
+    { num: 8, key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' }
   ];
 
   if (!order) return fallbackSteps;
@@ -219,9 +217,7 @@ export const getOrderStatusSteps = (order) => {
     ...intermediateSteps,
     { key: 'QUALITY_CHECK', label: 'Quality Check' },
     { key: 'PACKING', label: 'Packing' },
-    { key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
-    { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
-    { key: 'DELIVERED', label: 'Delivered' }
+    { key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' }
   ];
 
   return allSteps.map((st, idx) => ({

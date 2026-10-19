@@ -375,7 +375,8 @@ export const TrackOrder = () => {
       clean.includes('CLEANING') ||
       clean.includes('PROCESS') ||
       clean.includes('WASH') ||
-      clean.includes('DRY') ||
+      clean.includes('DRYING') ||
+      (clean.includes('DRY') && !clean.includes('LAUNDRY')) ||
       clean.includes('IRON') ||
       clean.includes('FOLD') ||
       clean.includes('INSPECT') ||

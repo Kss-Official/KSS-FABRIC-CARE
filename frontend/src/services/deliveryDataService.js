@@ -172,8 +172,13 @@ export const recordHubDropoff = async (orderId, facilityName, agentUser, notes =
     }
   }
 
+  if (!orderSnap.exists()) {
+    console.warn(`Cannot record hub dropoff: Order "${orderKey}" not found in database.`);
+    return { success: false, error: 'Order not found' };
+  }
+
   const now = Date.now();
-  const order = orderSnap.exists() ? orderSnap.val() : {};
+  const order = orderSnap.val() || {};
   const dropPush = push(ref(targetDb, 'hubDropoffs'));
   const dropId = dropPush.key;
   const histPush = push(ref(targetDb, `orderHistory/${orderKey}`));
