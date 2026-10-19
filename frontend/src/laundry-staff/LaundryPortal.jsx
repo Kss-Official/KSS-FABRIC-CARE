@@ -2545,14 +2545,23 @@ export const LaundryPortal = () => {
                     </div>
                   ) : (
                     paginatedOrders.map((order, idx) => {
-                      const orderIdStr = order.order_number || order.order_id || `FC-${order.id}`;
+                      const orderIdStr = (order.order_number && order.order_number !== '#-')
+                        ? order.order_number
+                        : ((order.order_id && order.order_id !== '#-')
+                          ? order.order_id
+                          : (order.id && order.id !== '-'
+                            ? (String(order.id).startsWith('FC-') ? order.id : `FC-${order.id}`)
+                            : 'FC-10499'));
                       const customerName = (typeof order.customer_name === 'string' && order.customer_name)
                         ? order.customer_name
                         : ((typeof order.customer === 'string' && order.customer)
                           ? order.customer
                           : (order.customer?.name || order.customerName || order.pickup_full_name || 'Customer'));
                       const itemsList = Array.isArray(order.items) ? order.items : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
-                      const itemsFullSummary = order.items_summary || (itemsList.length > 0 ? itemsList.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ') : '1 Item');
+                      const rawItemsSummary = order.items_summary || (itemsList.length > 0 ? itemsList.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ') : '');
+                      const itemsFullSummary = rawItemsSummary && rawItemsSummary !== '1 Item'
+                        ? rawItemsSummary
+                        : (order.service ? `${order.service} Garment × 1` : 'Garment × 1');
                       const typesCount = itemsList.length > 0
                         ? itemsList.length
                         : (itemsFullSummary.includes(',') ? itemsFullSummary.split(',').length : 1);
@@ -4021,7 +4030,7 @@ export const LaundryPortal = () => {
                       <span>•</span>
                       <span>{items.length} {items.length === 1 ? 'Garment Item' : 'Garment Items'}</span>
                       <span>•</span>
-                      <span>Total: <strong style={{ color: '#047857' }}>₹{Number(order.total_amount || order.amount || order.total || 0).toFixed(2)}</strong></span>
+                      <span>Plan: <strong style={{ color: '#0D7A75' }}>{Array.isArray(order.services) ? order.services.join(' + ') : (order.service || 'Standard Care')}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -4116,16 +4125,13 @@ export const LaundryPortal = () => {
                                       {item.name || item.item_name}
                                       <span className="tracker-qty-badge">×{item.quantity || 1}</span>
                                     </h5>
-                                    {((item.lineTotal || item.total || item.unitPrice || item.price) > 0) && (
-                                      <div style={{ fontSize: '12px', color: '#047857', fontWeight: 600, marginTop: '2px' }}>
-                                        ₹{Number(item.lineTotal || item.total || ((item.unitPrice || item.price) * (item.quantity || 1))).toFixed(2)}
-                                        {item.quantity > 1 && (item.unitPrice || item.price) > 0 && (
-                                          <span style={{ color: '#64748B', fontWeight: 500, marginLeft: '5px' }}>
-                                            (₹{Number(item.unitPrice || item.price).toFixed(2)} each)
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
+                                    <div style={{ fontSize: '11.5px', color: '#0D7A75', fontWeight: 600, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <span>{item.quantity || 1} {(item.quantity || 1) === 1 ? 'Garment Unit' : 'Garment Units'}</span>
+                                      <span style={{ color: '#CBD5E1' }}>•</span>
+                                      <span style={{ color: '#64748B', fontWeight: 500 }}>
+                                        {(item.services || []).map(s => SERVICE_DISPLAY_NAMES[s] || s).join(', ') || 'Standard Care'}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                                 <span className={`tracker-stage-badge ${isReadyForQC || isQC || isPacking || isReadyDel || isDelivered ? '' : 'teal'}`}>
@@ -4256,7 +4262,7 @@ export const LaundryPortal = () => {
                           )}
 
                           <div style={{ fontSize: '12px', color: '#64748B', paddingTop: '4px' }}>
-                            Items in this order: {items.map(it => `${it.name || it.item_name} (×${it.quantity || 1}${it.lineTotal || it.total ? ` • ₹${Number(it.lineTotal || it.total).toFixed(2)}` : ''})`).join(', ')}
+                            Items in this order: {items.map(it => `${it.name || it.item_name} (×${it.quantity || 1})`).join(', ')}
                           </div>
                         </div>
 
