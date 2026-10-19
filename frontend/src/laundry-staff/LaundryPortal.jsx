@@ -2551,10 +2551,88 @@ export const LaundryPortal = () => {
                         : ((typeof order.customer === 'string' && order.customer)
                           ? order.customer
                           : (order.customer?.name || order.customerName || order.pickup_full_name || 'Customer'));
+                      // Clean Garment Item Extraction & Deduplication (Operational Focus, No Rs)
+                      const cleanGarmentTitle = (raw) => {
+                        if (!raw) return 'Garment';
+                        return String(raw)
+                          .replace(/\s*\((Wash & Fold|Wash & Iron|Wash \+ Iron|Steam Iron|Dry Clean|Dry Cleaning|Ironing|Washing)[^)]*\)/gi, '')
+                          .replace(/\s*-\s*(Wash & Fold|Wash & Iron|Wash \+ Iron|Steam Iron|Dry Clean)/gi, '')
+                          .trim() || 'Garment';
+                      };
+
                       const itemsList = Array.isArray(order.items) ? order.items : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
-                      const itemsCount = order.itemsCount || itemsList.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1)), 0) || (itemsList.length > 0 ? itemsList.length : 1);
-                      const itemsFullSummary = order.items_summary || (itemsList.length > 0 ? itemsList.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ') : '1 Item');
-                      const orderNote = order.notes || order.special_instructions || order.instruction || '';
+
+                      // Aggregate items by cleaned garment name
+                      const garmentCountMap = new Map();
+                      let totalItemsCount = 0;
+                      let hasSpecialItemCare = false;
+                      let hasDelicateItem = false;
+
+                      if (itemsList.length > 0) {
+                        itemsList.forEach((it) => {
+                          const rawName = it.name || it.item_name || it.itemName || it.title || it.garment || 'Garment';
+                          const cleanName = cleanGarmentTitle(rawName);
+                          const qty = Math.max(1, Number(it.quantity || it.qty || 1));
+                          totalItemsCount += qty;
+                          garmentCountMap.set(cleanName, (garmentCountMap.get(cleanName) || 0) + qty);
+
+                          if (it.careInstruction || it.instructions || it.notes) {
+                            hasSpecialItemCare = true;
+                          }
+                          const sText = String(it.service || it.category || (Array.isArray(it.services) ? it.services.join(' ') : '') || '').toLowerCase();
+                          if (sText.includes('dry') || sText.includes('delicate') || sText.includes('silk') || sText.includes('wool') || sText.includes('suit')) {
+                            hasDelicateItem = true;
+                          }
+                        });
+                      } else if (order.items_summary && typeof order.items_summary === 'string' && order.items_summary.trim().toLowerCase() !== '1 item') {
+                        // Parse existing items_summary string: e.g. "T-shirt × 1, Formal shirt × 1, T-shirt × 1"
+                        const rawParts = order.items_summary.split(',').map(s => s.trim()).filter(Boolean);
+                        rawParts.forEach((part) => {
+                          const match = part.match(/^(.+?)(?:\s*[×x*]\s*(\d+))?$/);
+                          if (match) {
+                            const cleanName = cleanGarmentTitle(match[1].trim());
+                            const qty = match[2] ? Math.max(1, parseInt(match[2], 10)) : 1;
+                            totalItemsCount += qty;
+                            garmentCountMap.set(cleanName, (garmentCountMap.get(cleanName) || 0) + qty);
+                          } else {
+                            const cleanName = cleanGarmentTitle(part);
+                            garmentCountMap.set(cleanName, (garmentCountMap.get(cleanName) || 0) + 1);
+                            totalItemsCount += 1;
+                          }
+                        });
+                      }
+
+                      // Fallback count if not derived from items
+                      if (!totalItemsCount) {
+                        totalItemsCount = Number(order.itemsCount) || (itemsList.length > 0 ? itemsList.length : 1);
+                      }
+
+                      // Form garment preview string
+                      const aggregatedGarments = Array.from(garmentCountMap.entries()).map(([name, qty]) => ({ name, qty }));
+                      const garmentsSummary = aggregatedGarments.length > 0
+                        ? aggregatedGarments.map(g => `${g.name} × ${g.qty}`).join(', ')
+                        : (order.items_summary || (totalItemsCount === 1 ? '1 Garment' : `${totalItemsCount} Garments`));
+
+                      const garmentTypesCount = aggregatedGarments.length || (totalItemsCount > 1 ? 2 : 1);
+
+                      // Order-level operational flags
+                      const isExpressOrder = Boolean(
+                        order.isExpress ||
+                        order.is_express ||
+                        order.deliveryType === 'express' ||
+                        (typeof order.service === 'string' && order.service.toLowerCase().includes('express'))
+                      );
+                      const orderSpecialNotes = order.special_instructions || order.notes || order.instructions || order.order_notes || null;
+                      const hasNotes = Boolean(orderSpecialNotes || hasSpecialItemCare);
+
+                      // Clean tooltip without any price / Rs mentions
+                      const tooltipParts = [
+                        `${totalItemsCount} ${totalItemsCount === 1 ? 'item' : 'items'} (${garmentTypesCount} ${garmentTypesCount === 1 ? 'type' : 'types'})`,
+                        garmentsSummary
+                      ];
+                      if (orderSpecialNotes) tooltipParts.push(`Note: ${orderSpecialNotes}`);
+                      tooltipParts.push('Click to view Order Tracker');
+                      const itemsCellTitle = tooltipParts.join(' • ');
 
                       let placedStr = order.placed;
                       if (!placedStr && (order.placedAt || order.createdAt)) {
@@ -2595,39 +2673,129 @@ export const LaundryPortal = () => {
                           <div className="col-customer">{customerName}</div>
                           <div
                             className="col-items"
-                            title={`${itemsFullSummary} (${itemsCount} ${itemsCount === 1 ? 'item' : 'items'}${orderNote ? ` • Note: ${orderNote}` : ''})`}
+                            title={itemsCellTitle}
                             onClick={() => setTrackerModalOrder(order)}
                             style={{ cursor: 'pointer' }}
                           >
-                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#1E293B', fontWeight: 600, fontSize: '13px' }}>
-                              {itemsFullSummary}
+                            <div
+                              style={{
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                color: '#0F172A',
+                                fontWeight: 600,
+                                fontSize: '13px',
+                                lineHeight: '1.3'
+                              }}
+                            >
+                              {garmentsSummary}
                             </div>
-                            <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 500, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ color: '#0F766E', fontWeight: 600 }}>{itemsCount} {itemsCount === 1 ? 'item' : 'items'}</span>
-                              {itemsList.length > 1 && (
-                                <>
-                                  <span style={{ color: '#CBD5E1' }}>•</span>
-                                  <span style={{ color: '#64748B' }}>{itemsList.length} types</span>
-                                </>
-                              )}
-                              {(order.is_express || order.isExpress || order.delivery_speed === 'express') && (
-                                <>
-                                  <span style={{ color: '#CBD5E1' }}>•</span>
-                                  <span style={{ color: '#D97706', fontWeight: 600, background: '#FEF3C7', padding: '1px 5px', borderRadius: '4px', fontSize: '10px' }}>
-                                    Express
-                                  </span>
-                                </>
-                              )}
-                              {orderNote && (
-                                <>
-                                  <span style={{ color: '#CBD5E1' }}>•</span>
-                                  <span
-                                    style={{ color: '#475569', background: '#F1F5F9', padding: '1px 5px', borderRadius: '4px', fontSize: '10px', fontWeight: 500 }}
-                                    title={orderNote}
-                                  >
-                                    Note
-                                  </span>
-                                </>
+                            <div
+                              style={{
+                                fontSize: '11px',
+                                marginTop: '3px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                lineHeight: '1.2',
+                                flexWrap: 'nowrap',
+                                overflow: 'hidden'
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  background: '#F1F5F9',
+                                  color: '#334155',
+                                  fontWeight: 700,
+                                  fontSize: '10.5px',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  letterSpacing: '0.01em',
+                                  flexShrink: 0
+                                }}
+                              >
+                                {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'items'}
+                              </span>
+
+                              <span style={{ color: '#64748B', fontSize: '11px', fontWeight: 500, flexShrink: 0 }}>
+                                {garmentTypesCount > 1 ? `${garmentTypesCount} types` : '1 type'}
+                              </span>
+
+                              <span style={{ color: '#CBD5E1', fontSize: '10px', flexShrink: 0 }}>•</span>
+
+                              {isExpressOrder ? (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2px',
+                                    background: '#FEF3C7',
+                                    color: '#B45309',
+                                    fontWeight: 600,
+                                    fontSize: '10px',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    flexShrink: 0
+                                  }}
+                                >
+                                  ⚡ Express
+                                </span>
+                              ) : hasNotes ? (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    background: '#EFF6FF',
+                                    color: '#1D4ED8',
+                                    fontWeight: 600,
+                                    fontSize: '10px',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    maxWidth: '110px',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    flexShrink: 0
+                                  }}
+                                  title={orderSpecialNotes || 'Special care requested'}
+                                >
+                                  📝 Note
+                                </span>
+                              ) : hasDelicateItem ? (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2px',
+                                    background: '#F5F3FF',
+                                    color: '#6D28D9',
+                                    fontWeight: 600,
+                                    fontSize: '10px',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    flexShrink: 0
+                                  }}
+                                >
+                                  ✦ Delicate
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    color: '#0F766E',
+                                    fontSize: '10.5px',
+                                    fontWeight: 600,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    flexShrink: 0
+                                  }}
+                                >
+                                  <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#0D9488' }} />
+                                  Standard Care
+                                </span>
                               )}
                             </div>
                           </div>
