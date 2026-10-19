@@ -25,6 +25,7 @@ import {
   Sparkles,
   Home
 } from 'lucide-react';
+import { formatOrderId } from '../utils/helpers';
 
 export const TrackOrder = () => {
   const { activeTrackingOrderId, navigateTo, startBooking } = useBooking();
@@ -299,8 +300,8 @@ export const TrackOrder = () => {
     '02:00 PM – 05:00 PM'
   );
 
-  const rawOrderNum = order.order_number || order.orderNumber || order.id || 'FC8F71E';
-  const orderNumberDisplay = `#${String(rawOrderNum).replace(/^#/, '')}`;
+  const rawOrderNum = order.order_number || order.orderNumber || order.id || 'FC-75668';
+  const orderNumberDisplay = formatOrderId(rawOrderNum) || `#${String(rawOrderNum).replace(/^#/, '')}`;
   const orderPlacedTime = `${formattedPickupDate} · 08:45 AM`;
   const pickedUpTime = `${formattedPickupDate} · 10:15 AM`;
   const facilityTime = `${formattedPickupDate} · 11:30 AM`;

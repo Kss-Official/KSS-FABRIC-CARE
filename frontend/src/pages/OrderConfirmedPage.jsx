@@ -126,7 +126,7 @@ export const OrderConfirmedPage = () => {
             <button
               id="confirmed-view-orders-btn"
               className="btn btn-teal confirmed-btn"
-              onClick={() => navigateTo('customer-orders')}
+              onClick={() => navigateTo('customer-dashboard')}
             >
               <span>View My Orders</span>
             </button>

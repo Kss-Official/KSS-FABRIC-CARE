@@ -44,14 +44,16 @@ class ServiceViewSet(viewsets.ModelViewSet):
     serializer_class = ServiceSerializer
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
-            return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+        return [permissions.AllowAny()]
 
     def get_queryset(self):
-        if self.action in ['list', 'retrieve']:
-            return Service.objects.filter(is_active=True)
-        return Service.objects.all()
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            if status_param.lower() == 'active':
+                return Service.objects.filter(is_active=True)
+            elif status_param.lower() == 'inactive':
+                return Service.objects.filter(is_active=False)
+        return Service.objects.all().order_by('id')
 
 
 class ContentFAQViewSet(viewsets.ModelViewSet):

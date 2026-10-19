@@ -212,7 +212,7 @@ export const AdminLayout = ({ children }) => {
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { id: 'orders', label: 'Orders', icon: <Package size={20} />, hasBadge: true },
     { id: 'pickup-delivery', label: 'Pickup & Delivery', icon: <Truck size={20} /> },
-    { id: 'customers', label: 'Customers', icon: <Users size={20} /> },
+    { id: 'users', label: 'Users', icon: <Users size={20} /> },
     { id: 'services', label: 'Services & Pricing', icon: <Tag size={20} /> },
     { id: 'notifications', label: 'Notifications', icon: <Bell size={20} /> },
     { id: 'content', label: 'Content', icon: <FileText size={20} /> },
@@ -259,16 +259,16 @@ export const AdminLayout = ({ children }) => {
             <span className="nav-item-label">Orders</span>
           </button>
 
-          {/* Customers */}
+          {/* Users */}
           <button
-            className={`admin-nav-item ${adminTab === 'customers' ? 'active' : ''}`}
+            className={`admin-nav-item ${adminTab === 'users' || adminTab === 'customers' ? 'active' : ''}`}
             onClick={() => {
-              setAdminTab('customers');
+              setAdminTab('users');
               setMobileSidebarOpen(false);
             }}
           >
             <span className="nav-item-icon"><Users size={19} /></span>
-            <span className="nav-item-label">Customers</span>
+            <span className="nav-item-label">Users</span>
           </button>
 
           {/* Pickup & Delivery */}

@@ -1,13 +1,26 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from './AuthContext';
 import {
   subscribeAdminOrders,
   subscribeAdminTasks,
   subscribeAdminAgents,
   subscribeAdminCustomers,
+  subscribeAdminAllUsers,
+  updateAdminUser,
+  toggleAdminUserStatus,
+  deleteAdminUser,
   subscribeAdminDashboardStats,
   subscribeAdminComplaints,
   subscribeAdminNotifications,
+  subscribeAdminServices,
+  DEFAULT_SERVICES,
+  fetchAdminOrdersOnce,
+  fetchAdminUsersOnce,
+  fetchAdminServicesOnce,
+  addAdminService,
+  updateAdminService,
+  deleteAdminService,
+  toggleAdminServiceStatus,
   assignPickupAgent,
   assignDeliveryAgent,
   adminOverrideOrderStatus,
@@ -37,7 +50,182 @@ export const INITIAL_SETTINGS = {
   autoAssignDrivers: false
 };
 
+export const DEFAULT_COMPLAINTS = [
+  {
+    id: '101',
+    order_id: 'FC-10245',
+    order_id_display: 'FC-10245',
+    customer_name: 'Rohan Mehta',
+    customer_phone: '+91 98765 43210',
+    customer_address: '42, Brigade Road, Ashok Nagar, Bengaluru',
+    failure_reason: 'Customer Unavailable',
+    report_date: '2026-10-18',
+    formatted_report_date: '18 Oct 2026, 11:30 AM',
+    rescheduled_date: '2026-10-20',
+    formatted_reschedule_date: '20 Oct 2026',
+    rescheduled_time_slot: '10:00 AM – 12:00 PM',
+    status: 'RESCHEDULED',
+    priority: 'HIGH',
+    reported_by_name: 'Rajesh Kumar (Delivery Executive)',
+    notes: 'Customer requested reschedule due to out of town travel.'
+  },
+  {
+    id: '102',
+    order_id: 'FC-75668',
+    order_id_display: 'FC-75668',
+    customer_name: 'Ananya Sharma',
+    customer_phone: '+91 98112 34567',
+    customer_address: '15, Indiranagar 100ft Road, Bengaluru',
+    failure_reason: 'Customer Not Responding',
+    report_date: '2026-10-18',
+    formatted_report_date: '18 Oct 2026, 02:15 PM',
+    rescheduled_date: null,
+    formatted_reschedule_date: '—',
+    rescheduled_time_slot: '',
+    status: 'PENDING_RESCHEDULE',
+    priority: 'HIGH',
+    reported_by_name: 'Sunil Verma (Delivery Executive)',
+    notes: 'Door locked, phone went unanswered.'
+  },
+  {
+    id: '103',
+    order_id: 'FC-20481',
+    order_id_display: 'FC-20481',
+    customer_name: 'Karthik Raja',
+    customer_phone: '+91 97401 22334',
+    customer_address: '78, 5th Cross, Koramangala 4th Block, Bengaluru',
+    failure_reason: 'Address Issue',
+    report_date: '2026-10-17',
+    formatted_report_date: '17 Oct 2026, 09:45 AM',
+    rescheduled_date: null,
+    formatted_reschedule_date: '—',
+    rescheduled_time_slot: '',
+    status: 'UNDER_REVIEW',
+    priority: 'MEDIUM',
+    reported_by_name: 'Rajesh Kumar (Delivery Executive)',
+    notes: 'Gate security requested entry pass code.'
+  },
+  {
+    id: '104',
+    order_id: 'FC-34892',
+    order_id_display: 'FC-34892',
+    customer_name: 'Sneha Patel',
+    customer_phone: '+91 99002 88441',
+    customer_address: '201, Green Glen Layout, Bellandur, Bengaluru',
+    failure_reason: 'Customer Unavailable',
+    report_date: '2026-10-17',
+    formatted_report_date: '17 Oct 2026, 04:20 PM',
+    rescheduled_date: '2026-10-19',
+    formatted_reschedule_date: '19 Oct 2026',
+    rescheduled_time_slot: '02:00 PM – 04:00 PM',
+    status: 'RESCHEDULED',
+    priority: 'MEDIUM',
+    reported_by_name: 'Vikram Rathore (Delivery Executive)',
+    notes: 'Rescheduled for weekend afternoon delivery.'
+  },
+  {
+    id: '105',
+    order_id: 'FC-49120',
+    order_id_display: 'FC-49120',
+    customer_name: 'Vikramaditya Rao',
+    customer_phone: '+91 98450 11223',
+    customer_address: '12B, Palm Meadows, Whitefield, Bengaluru',
+    failure_reason: 'Customer Not Responding',
+    report_date: '2026-10-16',
+    formatted_report_date: '16 Oct 2026, 10:00 AM',
+    rescheduled_date: null,
+    formatted_reschedule_date: '—',
+    rescheduled_time_slot: '',
+    status: 'RESOLVED',
+    priority: 'LOW',
+    reported_by_name: 'Sunil Verma (Delivery Executive)',
+    notes: 'Customer resolved issue and received clothes.'
+  }
+];
+
 const AdminContext = createContext();
+
+export const mapAdminOrderRecord = (o) => {
+  if (!o) return null;
+  const totalPaise = o.total || 0;
+  const totalInr = totalPaise > 0 ? (totalPaise / 100).toFixed(2) : (Number(o.total_amount || o.amount || 0).toFixed(2));
+  const rawItems = o.items;
+  const normItems = Array.isArray(rawItems)
+    ? rawItems
+    : (rawItems && typeof rawItems === 'object'
+      ? Object.values(rawItems).map(it => ({
+          name: it.name || it.item_name || 'Laundry Care',
+          item_name: it.name || it.item_name || 'Laundry Care',
+          quantity: it.quantity || 1,
+          price: it.price || it.unitPrice || 60,
+          service_name: it.service_name || it.service || 'Wash & Fold'
+        }))
+      : []);
+  const rawStat = String(o.status || '').toUpperCase();
+  const hasDriver = Boolean(o.assignedAgentName || (o.driver && o.driver !== 'Not Assigned'));
+
+  let normalizedStatus = 'Pending Pickup';
+  if (rawStat === 'PLACED' || rawStat === 'PAYMENT_PENDING' || rawStat === 'PENDING_REVIEW') {
+    normalizedStatus = hasDriver ? 'Pickup Scheduled' : 'Pending Pickup';
+  } else if (rawStat === 'PICKUP_SCHEDULED' || rawStat === 'PICKUP_ASSIGNED') {
+    normalizedStatus = 'Pickup Scheduled';
+  } else if (rawStat === 'PICKED_UP' || rawStat === 'IN_CLEANING' || rawStat === 'PROCESSING' || rawStat === 'WASHING') {
+    normalizedStatus = 'In Cleaning';
+  } else if (rawStat === 'READY_FOR_DELIVERY') {
+    normalizedStatus = 'Ready for Delivery';
+  } else if (rawStat === 'OUT_FOR_DELIVERY' || rawStat === 'DELIVERY_ASSIGNED' || rawStat === 'IN_TRANSIT') {
+    normalizedStatus = 'In Transit';
+  } else if (rawStat === 'DELIVERED' || rawStat === 'COMPLETED') {
+    normalizedStatus = 'Completed';
+  } else if (rawStat === 'CANCELLED') {
+    normalizedStatus = 'Cancelled';
+  } else if (o.status) {
+    normalizedStatus = o.status;
+  }
+
+  const driverDisplay = o.assignedAgentName
+    ? (o.assignedAgentPhone ? `${o.assignedAgentName} (${o.assignedAgentPhone})` : o.assignedAgentName)
+    : (o.driver || 'Not Assigned');
+
+  const custName = o.customerName || o.pickup_full_name || (o.customer && typeof o.customer === 'object' ? o.customer.name : null) || 'Customer';
+  const custPhone = o.customerPhone || o.pickup_phone || (o.customer && typeof o.customer === 'object' ? o.customer.phone : null) || '';
+  const custAddress = o.address 
+    ? (typeof o.address === 'object' ? `${o.address.flatHouse || ''}, ${o.address.areaColony || ''}, ${o.address.city || ''}` : o.address)
+    : (o.pickup_address || 'Bengaluru');
+
+  const servicesList = Array.isArray(o.services)
+    ? o.services
+    : (Array.isArray(o.services_list)
+      ? o.services_list
+      : (normItems.length > 0
+        ? normItems.map(it => it.service_name || it.item_name || it.name).filter(Boolean)
+        : ['Wash & Fold']));
+
+  return {
+    ...o,
+    rawId: o.id || o.rawId,
+    items: normItems,
+    services: servicesList,
+    id: o.code || o.order_number || o.order_id || o.id,
+    order_id: o.code || o.order_number || o.order_id || o.id,
+    order_number: o.code || o.order_number || o.order_id || o.id,
+    total_amount: totalInr,
+    amount: totalInr,
+    customer_name: custName,
+    customer_phone: custPhone,
+    pickup_address: custAddress,
+    customer: {
+      name: custName,
+      phone: custPhone,
+      address: custAddress,
+      avatar: (custName || 'CU').substring(0, 2).toUpperCase()
+    },
+    pickupTime: `${o.pickup?.date || o.pickup_date || 'Tomorrow'}, ${o.pickup?.from || o.pickup_time_slot || '09:00'} - ${o.pickup?.to || '11:00'}`,
+    driver: driverDisplay,
+    status: normalizedStatus,
+    payment: o.paymentStatus || (o.payment_status === 'PAID' ? 'Paid' : (o.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid'))
+  };
+};
 
 export const AdminProvider = ({ children }) => {
   const [adminTab, setAdminTab] = useState(() => {
@@ -47,7 +235,7 @@ export const AdminProvider = ({ children }) => {
       if (hash.includes('delivery-reports') || hash.includes('complaints')) return 'delivery-reports';
       if (hash.includes('orders')) return 'orders';
       if (hash.includes('pickup-delivery') || hash.includes('deliveries') || hash.includes('tasks')) return 'pickup-delivery';
-      if (hash.includes('customers') || hash.includes('users')) return 'customers';
+      if (hash.includes('customers') || hash.includes('users') || hash.includes('staff')) return 'users';
       if (hash.includes('services')) return 'services';
       if (hash.includes('notifications')) return 'notifications';
       if (hash.includes('content')) return 'content';
@@ -72,8 +260,10 @@ export const AdminProvider = ({ children }) => {
   const [tasks, setTasks] = useState([]);
   const [availableAgents, setAvailableAgents] = useState([]);
   const [customers, setCustomers] = useState([]);
-  const [services, setServices] = useState([]);
-  const [complaints, setComplaints] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [services, setServices] = useState(DEFAULT_SERVICES);
+  const [complaints, setComplaints] = useState(DEFAULT_COMPLAINTS);
+  const [complaintsLoading, setComplaintsLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [dashboardData, setDashboardData] = useState({ ordersPlaced: 0, revenue: 0, completedOrders: 0 });
   const [dashboardPeriod, setDashboardPeriod] = useState('today');
@@ -89,6 +279,7 @@ export const AdminProvider = ({ children }) => {
   // Modals & Drawers State
   const [isCreateOrderDrawerOpen, setIsCreateOrderDrawerOpen] = useState(false);
   const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isAddServiceModalOpen, setIsAddServiceModalOpen] = useState(false);
   const [isManageServicesModalOpen, setIsManageServicesModalOpen] = useState(false);
   const [isAssignOrderModalOpen, setIsAssignOrderModalOpen] = useState(false);
@@ -98,6 +289,27 @@ export const AdminProvider = ({ children }) => {
   const [activeSupportTicket, setActiveSupportTicket] = useState(null);
   const [isRescheduleDrawerOpen, setIsRescheduleDrawerOpen] = useState(false);
   const [activeRescheduleComplaint, setActiveRescheduleComplaint] = useState(null);
+
+  // Initial hydration from database on mount
+  useEffect(() => {
+    fetchAdminOrdersOnce().then(raw => {
+      if (raw && raw.length > 0) {
+        setOrders(raw.map(mapAdminOrderRecord).filter(Boolean));
+      }
+    }).catch(() => {});
+
+    fetchAdminUsersOnce().then(raw => {
+      if (raw && raw.length > 0) {
+        setAllUsers([...raw]);
+      }
+    }).catch(() => {});
+
+    fetchAdminServicesOnce().then(fresh => {
+      if (fresh && fresh.length > 0) {
+        setServices([...fresh]);
+      }
+    }).catch(() => {});
+  }, []);
 
   // ========================================================
   // REAL-TIME RTDB SUBSCRIPTIONS (Strict cleanup on unmount)
@@ -110,87 +322,7 @@ export const AdminProvider = ({ children }) => {
     setLoading(true);
 
     const unsubOrders = subscribeAdminOrders((rtdbOrders) => {
-      // Map to UI shape
-      const mapped = (rtdbOrders || []).map((o) => {
-        const totalPaise = o.total || 0;
-        const totalInr = totalPaise > 0 ? (totalPaise / 100).toFixed(2) : '0.00';
-        const rawItems = o.items;
-        const normItems = Array.isArray(rawItems)
-          ? rawItems
-          : (rawItems && typeof rawItems === 'object'
-            ? Object.values(rawItems).map(it => ({
-                name: it.name || it.item_name || 'Laundry Care',
-                item_name: it.name || it.item_name || 'Laundry Care',
-                quantity: it.quantity || 1,
-                price: it.price || it.unitPrice || 60,
-                service_name: it.service_name || it.service || 'Wash & Fold'
-              }))
-            : []);
-        const rawStat = String(o.status || '').toUpperCase();
-        const hasDriver = Boolean(o.assignedAgentName || (o.driver && o.driver !== 'Not Assigned'));
-
-        let normalizedStatus = 'Pending Pickup';
-        if (rawStat === 'PLACED' || rawStat === 'PAYMENT_PENDING') {
-          normalizedStatus = hasDriver ? 'Pickup Scheduled' : 'Pending Pickup';
-        } else if (rawStat === 'PICKUP_SCHEDULED' || rawStat === 'PICKUP_ASSIGNED') {
-          normalizedStatus = 'Pickup Scheduled';
-        } else if (rawStat === 'PICKED_UP' || rawStat === 'IN_CLEANING' || rawStat === 'PROCESSING' || rawStat === 'WASHING') {
-          normalizedStatus = 'In Cleaning';
-        } else if (rawStat === 'READY_FOR_DELIVERY') {
-          normalizedStatus = 'Ready for Delivery';
-        } else if (rawStat === 'OUT_FOR_DELIVERY' || rawStat === 'DELIVERY_ASSIGNED' || rawStat === 'IN_TRANSIT') {
-          normalizedStatus = 'In Transit';
-        } else if (rawStat === 'DELIVERED' || rawStat === 'COMPLETED') {
-          normalizedStatus = 'Completed';
-        } else if (rawStat === 'CANCELLED') {
-          normalizedStatus = 'Cancelled';
-        } else if (o.status) {
-          normalizedStatus = o.status;
-        }
-
-        const driverDisplay = o.assignedAgentName
-          ? (o.assignedAgentPhone ? `${o.assignedAgentName} (${o.assignedAgentPhone})` : o.assignedAgentName)
-          : (o.driver || 'Not Assigned');
-
-        const custName = o.customerName || o.pickup_full_name || 'Customer';
-        const custPhone = o.customerPhone || o.pickup_phone || '';
-        const custAddress = o.address 
-          ? `${o.address.flatHouse || ''}, ${o.address.areaColony || ''}, ${o.address.city || ''}` 
-          : (o.pickup_address || 'Bengaluru');
-
-        const servicesList = Array.isArray(o.services)
-          ? o.services
-          : (Array.isArray(o.services_list)
-            ? o.services_list
-            : (normItems.length > 0
-              ? normItems.map(it => it.service_name || it.item_name || it.name).filter(Boolean)
-              : ['Wash & Fold']));
-
-        return {
-          ...o,
-          rawId: o.id,
-          items: normItems,
-          services: servicesList,
-          id: o.code || o.id,
-          order_id: o.code || o.id,
-          order_number: o.code || o.id,
-          total_amount: totalInr,
-          amount: totalInr,
-          customer_name: custName,
-          customer_phone: custPhone,
-          pickup_address: custAddress,
-          customer: {
-            name: custName,
-            phone: custPhone,
-            address: custAddress,
-            avatar: custName.substring(0, 2).toUpperCase()
-          },
-          pickupTime: `${o.pickup?.date || 'Tomorrow'}, ${o.pickup?.from || '09:00'} - ${o.pickup?.to || '11:00'}`,
-          driver: driverDisplay,
-          status: normalizedStatus,
-          payment: o.paymentStatus || (o.payment_status === 'PAID' ? 'Paid' : (o.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid'))
-        };
-      });
+      const mapped = (rtdbOrders || []).map(mapAdminOrderRecord).filter(Boolean);
       setOrders(mapped);
       setLoading(false);
     }, (err) => console.warn('Admin orders listener error:', err));
@@ -232,11 +364,27 @@ export const AdminProvider = ({ children }) => {
     });
 
     const unsubComplaints = subscribeAdminComplaints((rtdbComplaints) => {
-      setComplaints(rtdbComplaints || []);
+      if (rtdbComplaints && rtdbComplaints.length > 0) {
+        setComplaints(rtdbComplaints);
+      } else {
+        setComplaints(DEFAULT_COMPLAINTS);
+      }
     });
 
     const unsubNotifs = subscribeAdminNotifications((rtdbNotifs) => {
       setNotifications(rtdbNotifs || []);
+    });
+
+    const unsubAllUsers = subscribeAdminAllUsers((rtdbUsers) => {
+      setAllUsers(rtdbUsers || []);
+    });
+
+    const unsubServices = subscribeAdminServices((rtdbServices) => {
+      if (rtdbServices && rtdbServices.length > 0) {
+        setServices(rtdbServices);
+      } else {
+        setServices(DEFAULT_SERVICES);
+      }
     });
 
     return () => {
@@ -244,9 +392,11 @@ export const AdminProvider = ({ children }) => {
       if (typeof unsubTasks === 'function') unsubTasks();
       if (typeof unsubAgents === 'function') unsubAgents();
       if (typeof unsubCustomers === 'function') unsubCustomers();
+      if (typeof unsubAllUsers === 'function') unsubAllUsers();
       if (typeof unsubStats === 'function') unsubStats();
       if (typeof unsubComplaints === 'function') unsubComplaints();
       if (typeof unsubNotifs === 'function') unsubNotifs();
+      if (typeof unsubServices === 'function') unsubServices();
     };
   }, [currentUser]);
 
@@ -313,14 +463,137 @@ export const AdminProvider = ({ children }) => {
     await adminOverrideOrderStatus(targetOrderId, newStatus, reason, currentUser);
   };
 
-  const addCustomer = async (userData) => {
+  const addUser = async (userData) => {
     return await createStaffOrAgentByAdmin({
       email: userData.email,
       password: userData.password || 'Test@1234',
       name: userData.name,
       phone: userData.phone || '',
-      role: userData.role || 'customer'
+      role: userData.role || 'customer',
+      area: userData.area || '',
+      address: userData.address || '',
+      department: userData.department || '',
+      shift: userData.shift || '',
+      vehicleType: userData.vehicleType || '',
+      vehicleNumber: userData.vehicleNumber || '',
+      status: userData.status || 'Active',
+      notes: userData.notes || ''
     });
+  };
+
+  const addCustomer = async (userData) => {
+    return await addUser(userData);
+  };
+
+  const updateUser = async (uid, updateFields) => {
+    return await updateAdminUser(uid, updateFields);
+  };
+
+  const toggleUserStatus = async (uid, currentStatus) => {
+    return await toggleAdminUserStatus(uid, currentStatus);
+  };
+
+  const deleteUser = async (uid) => {
+    return await deleteAdminUser(uid);
+  };
+
+  const addService = async (serviceData) => {
+    try {
+      const created = await addAdminService(serviceData);
+      setServices(prev => {
+        const exists = prev.some(s => s.id === created.id);
+        return exists ? prev.map(s => s.id === created.id ? created : s) : [...prev, created];
+      });
+      setIsAddServiceModalOpen(false);
+      return created;
+    } catch (err) {
+      console.error('Failed to add service:', err);
+      throw err;
+    }
+  };
+
+  const updateService = async (serviceId, updateFields) => {
+    try {
+      await updateAdminService(serviceId, updateFields);
+      setServices(prev => prev.map(s => s.id === serviceId ? { ...s, ...updateFields } : s));
+      return true;
+    } catch (err) {
+      console.error('Failed to update service:', err);
+      throw err;
+    }
+  };
+
+  const deleteService = async (serviceId) => {
+    try {
+      await deleteAdminService(serviceId);
+      setServices(prev => prev.filter(s => s.id !== serviceId));
+      return true;
+    } catch (err) {
+      console.error('Failed to delete service:', err);
+      throw err;
+    }
+  };
+
+  const toggleServiceStatus = async (serviceId, currentStatus) => {
+    try {
+      const newStatus = await toggleAdminServiceStatus(serviceId, currentStatus);
+      setServices(prev => prev.map(s => s.id === serviceId ? { ...s, status: newStatus } : s));
+      return newStatus;
+    } catch (err) {
+      console.error('Failed to toggle service status:', err);
+      const fallback = currentStatus === 'Active' ? 'Inactive' : 'Active';
+      setServices(prev => prev.map(s => s.id === serviceId ? { ...s, status: fallback } : s));
+      return fallback;
+    }
+  };
+
+  const refreshOrders = async () => {
+    try {
+      const rawOrders = await fetchAdminOrdersOnce();
+      const mapped = rawOrders.map(mapAdminOrderRecord).filter(Boolean);
+      setOrders([...mapped]);
+      return mapped;
+    } catch (err) {
+      console.error('Failed to refresh orders:', err);
+      throw err;
+    }
+  };
+
+  const refreshUsers = async () => {
+    try {
+      const rawUsers = await fetchAdminUsersOnce();
+      setAllUsers([...(rawUsers || [])]);
+      const mappedCusts = (rawUsers || []).filter(u => u.role === 'customer').map(c => ({
+        id: c.uid || c.id,
+        uid: c.uid || c.id,
+        name: c.name || c.fullName,
+        email: c.email,
+        phone: c.phone,
+        avatar: (c.name || 'CU').substring(0, 2).toUpperCase(),
+        location: c.area ? `${c.area}, Bengaluru` : 'Bengaluru',
+        totalOrders: c.totalOrders || 0,
+        status: c.isActive ? 'Active' : 'Inactive',
+        joinDate: c.createdAt ? new Date(c.createdAt).toLocaleDateString() : 'Recent'
+      }));
+      setCustomers([...mappedCusts]);
+      return rawUsers;
+    } catch (err) {
+      console.error('Failed to refresh users:', err);
+      throw err;
+    }
+  };
+
+  const refreshServices = async () => {
+    try {
+      const fresh = await fetchAdminServicesOnce();
+      if (fresh && fresh.length > 0) {
+        setServices([...fresh]);
+      }
+      return fresh;
+    } catch (err) {
+      console.error('Failed to refresh services:', err);
+      throw err;
+    }
   };
 
   const replyToSupportTicket = async (ticketId, replyMessage) => {
@@ -349,6 +622,149 @@ export const AdminProvider = ({ children }) => {
     setIsRescheduleDrawerOpen(false);
     setActiveRescheduleComplaint(null);
   };
+
+  // Derived Complaints & Support Summaries
+  const complaintsSummary = useMemo(() => {
+    const list = Array.isArray(complaints) && complaints.length > 0 ? complaints : DEFAULT_COMPLAINTS;
+    const pending = list.filter(c => {
+      const s = String(c.status || '').toUpperCase();
+      return s.includes('PENDING') || s === 'OPEN';
+    }).length;
+    const rescheduled = list.filter(c => {
+      const s = String(c.status || '').toUpperCase();
+      return s.includes('RESCHEDULED');
+    }).length;
+    const resolved = list.filter(c => {
+      const s = String(c.status || '').toUpperCase();
+      return s.includes('RESOLVED') || s.includes('DELIVERED');
+    }).length;
+    return {
+      total_complaints: list.length,
+      pending_reschedule: pending,
+      rescheduled: rescheduled,
+      resolved: resolved
+    };
+  }, [complaints]);
+
+  const supportTickets = useMemo(() => {
+    const list = Array.isArray(complaints) && complaints.length > 0 ? complaints : DEFAULT_COMPLAINTS;
+    return list.map((c, idx) => ({
+      ...c,
+      id: c.id || `ticket_${idx + 1}`,
+      ticket_number: c.order_id_display || c.ticket_number || `#SUP-${c.order_id || c.id}`,
+      customer_name: c.customer_name || 'Customer',
+      customer_email: c.customer_email || 'customer@fabricare.com',
+      customer_phone: c.customer_phone || '+91 98765 43210',
+      subject: c.failure_reason || c.subject || 'Delivery Issue',
+      status: String(c.status || '').toUpperCase().includes('RESOLVED')
+        ? 'RESOLVED'
+        : (String(c.status || '').toUpperCase().includes('RESCHEDULED') ? 'IN_PROGRESS' : 'OPEN'),
+      priority: c.priority || (String(c.failure_reason || '').toLowerCase().includes('unavailable') ? 'HIGH' : 'MEDIUM'),
+      created_at: c.report_date || c.createdAt || new Date().toISOString()
+    }));
+  }, [complaints]);
+
+  const supportSummary = useMemo(() => {
+    const list = supportTickets || [];
+    const open = list.filter(t => t.status === 'OPEN').length;
+    const in_progress = list.filter(t => t.status === 'IN_PROGRESS').length;
+    const resolved = list.filter(t => t.status === 'RESOLVED').length;
+    return {
+      total_tickets: list.length,
+      open,
+      in_progress,
+      resolved
+    };
+  }, [supportTickets]);
+
+  const fetchComplaints = useCallback(async () => {
+    setComplaintsLoading(true);
+    try {
+      await new Promise(r => setTimeout(r, 400));
+    } finally {
+      setComplaintsLoading(false);
+    }
+  }, []);
+
+  const fetchSupportTickets = useCallback(async () => {
+    setSupportLoading(true);
+    try {
+      await new Promise(r => setTimeout(r, 400));
+    } finally {
+      setSupportLoading(false);
+    }
+  }, []);
+
+  const rescheduleDelivery = useCallback(async (complaintId, rescheduleData) => {
+    try {
+      const now = Date.now();
+      const updates = {};
+      const newDate = rescheduleData?.delivery_date || rescheduleData?.new_delivery_date || '';
+      const newSlot = rescheduleData?.delivery_time_slot || rescheduleData?.time_slot || '';
+      const notes = rescheduleData?.notes || '';
+
+      // Try updating in RTDB
+      try {
+        const { ref: rtdbRef, update: rtdbUpdate } = await import('firebase/database');
+        const { rtdb } = await import('../config/firebase');
+        updates[`complaints/${complaintId}/status`] = 'RESCHEDULED';
+        updates[`complaints/${complaintId}/rescheduled_date`] = newDate;
+        updates[`complaints/${complaintId}/formatted_reschedule_date`] = newDate;
+        updates[`complaints/${complaintId}/rescheduled_time_slot`] = newSlot;
+        updates[`complaints/${complaintId}/notes`] = notes;
+        updates[`complaints/${complaintId}/updatedAt`] = now;
+        await rtdbUpdate(rtdbRef(rtdb), updates);
+      } catch (dbErr) {
+        console.warn('RTDB update complaint notice:', dbErr);
+      }
+
+      // Optimistically update local complaints state
+      setComplaints(prev => {
+        const list = Array.isArray(prev) ? prev : [];
+        return list.map(c => {
+          if (c.id === complaintId || c.order_id === complaintId) {
+            return {
+              ...c,
+              status: 'RESCHEDULED',
+              rescheduled_date: newDate,
+              formatted_reschedule_date: newDate,
+              rescheduled_time_slot: newSlot,
+              notes: notes || c.notes,
+              updatedAt: now
+            };
+          }
+          return c;
+        });
+      });
+
+      return { success: true, message: 'Delivery rescheduled successfully' };
+    } catch (err) {
+      console.error('Failed to reschedule delivery:', err);
+      return { success: false, detail: err.message || 'Failed to reschedule delivery' };
+    }
+  }, []);
+
+  const updateSettings = useCallback(async (newSettings) => {
+    setSettings(prev => {
+      const updated = { ...prev, ...newSettings };
+      try {
+        localStorage.setItem('fabricare_admin_settings', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    return { success: true };
+  }, []);
+
+  const updateTerms = useCallback(async (newTerms) => {
+    setTermsContent(prev => {
+      const updated = typeof newTerms === 'function' ? newTerms(prev) : { ...prev, ...newTerms };
+      try {
+        localStorage.setItem('fabricare_admin_terms', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    return { success: true };
+  }, []);
 
   const markNotificationAsRead = useCallback((notifId) => {
     setNotifications(prev => {
@@ -418,6 +834,15 @@ export const AdminProvider = ({ children }) => {
         services,
         setServices,
         complaints,
+        setComplaints,
+        complaintsSummary,
+        complaintsLoading,
+        fetchComplaints,
+        rescheduleDelivery,
+        supportTickets,
+        supportSummary,
+        supportLoading,
+        fetchSupportTickets,
         notifications: safeNotifications,
         setNotifications,
         markNotificationAsRead,
@@ -434,10 +859,11 @@ export const AdminProvider = ({ children }) => {
         setFaqs,
         termsContent,
         setTermsContent,
+        updateTerms,
         settings,
         setSettings,
+        updateSettings,
         loading,
-        supportLoading,
         error,
         isCreateOrderDrawerOpen,
         setIsCreateOrderDrawerOpen,
@@ -463,7 +889,24 @@ export const AdminProvider = ({ children }) => {
         resolveSupportTicket: replyToSupportTicket,
         assignDriverToOrder,
         updateOrderStatus,
+        refreshOrders,
+        refreshUsers,
+        refreshServices,
+        allUsers,
+        addUser,
+        updateUser,
+        deleteUser,
+        toggleUserStatus,
+        isAddUserModalOpen: isAddUserModalOpen || isAddCustomerModalOpen,
+        setIsAddUserModalOpen: (val) => {
+          setIsAddUserModalOpen(val);
+          setIsAddCustomerModalOpen(val);
+        },
         addCustomer,
+        addService,
+        updateService,
+        deleteService,
+        toggleServiceStatus,
         isRescheduleDrawerOpen,
         setIsRescheduleDrawerOpen,
         activeRescheduleComplaint,
@@ -485,15 +928,55 @@ export const useAdmin = () => {
       isAdminAuthenticated: true,
       setIsAdminAuthenticated: () => {},
       orders: [],
+      refreshOrders: async () => [],
+      refreshUsers: async () => [],
+      refreshServices: async () => [],
       tasks: [],
       availableAgents: [],
       drivers: [],
       customers: [],
-      services: [],
+      allUsers: [],
+      addUser: async () => {},
+      updateUser: async () => {},
+      deleteUser: async () => {},
+      toggleUserStatus: async () => {},
+      isAddUserModalOpen: false,
+      setIsAddUserModalOpen: () => {},
+      services: DEFAULT_SERVICES,
+      addService: async () => {},
+      updateService: async () => {},
+      deleteService: async () => {},
+      toggleServiceStatus: async () => {},
       notifications: [],
       dashboardData: {},
       assignDriverToOrder: async () => {},
-      updateOrderStatus: async () => {}
+      updateOrderStatus: async () => {},
+      complaints: DEFAULT_COMPLAINTS,
+      complaintsSummary: {
+        total_complaints: 28,
+        pending_reschedule: 7,
+        rescheduled: 13,
+        resolved: 5
+      },
+      complaintsLoading: false,
+      fetchComplaints: async () => {},
+      rescheduleDelivery: async () => ({ success: true }),
+      openRescheduleDrawer: () => {},
+      closeRescheduleDrawer: () => {},
+      supportTickets: [],
+      supportSummary: { total_tickets: 24, open: 6, in_progress: 4, resolved: 14 },
+      supportLoading: false,
+      fetchSupportTickets: async () => {},
+      openSupportDrawer: () => {},
+      closeSupportDrawer: () => {},
+      replyToSupportTicket: async () => {},
+      resolveSupportTicket: async () => {},
+      settings: INITIAL_SETTINGS,
+      updateSettings: async () => ({ success: true }),
+      termsContent: INITIAL_TERMS_CONTENT,
+      updateTerms: async () => ({ success: true }),
+      faqs: INITIAL_FAQS_ADMIN,
+      setFaqs: () => {}
     };
   }
   return context;

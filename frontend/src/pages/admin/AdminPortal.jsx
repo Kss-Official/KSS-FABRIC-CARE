@@ -5,7 +5,7 @@ import { AdminLoginPage } from './AdminLoginPage';
 import { AdminDashboardPage } from './AdminDashboardPage';
 import { AdminOrdersPage } from './AdminOrdersPage';
 import { AdminPickupDeliveryPage } from './AdminPickupDeliveryPage';
-import { AdminCustomersPage } from './AdminCustomersPage';
+import { AdminUsersPage } from './AdminUsersPage';
 import { AdminServicesPage } from './AdminServicesPage';
 import { AdminContentPage } from './AdminContentPage';
 import { AdminSettingsPage } from './AdminSettingsPage';
@@ -14,6 +14,7 @@ import { AdminDeliveryReportsPage } from './AdminDeliveryReportsPage';
 import { AdminHelpSupportPage } from './AdminHelpSupportPage';
 
 import { CreateOrderDrawer } from '../../components/admin/CreateOrderDrawer';
+import { AddUserModal } from '../../components/admin/AddUserModal';
 import { AddCustomerModal } from '../../components/admin/AddCustomerModal';
 import { AddServiceModal } from '../../components/admin/AddServiceModal';
 import { ManageServicesModal } from '../../components/admin/ManageServicesModal';
@@ -35,8 +36,12 @@ export const AdminPortal = () => {
         return <AdminOrdersPage />;
       case 'pickup-delivery':
         return <AdminPickupDeliveryPage />;
+      case 'users':
       case 'customers':
-        return <AdminCustomersPage />;
+      case 'staff':
+      case 'delivery-users':
+      case 'delivery':
+        return <AdminUsersPage />;
       case 'services':
         return <AdminServicesPage />;
       case 'notifications':

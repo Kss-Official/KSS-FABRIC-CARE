@@ -13,13 +13,28 @@ import {
   SlidersHorizontal,
   Check
 } from 'lucide-react';
+import { filterMatchesDate, formatDisplayDate, getActiveDateRanges } from '../../utils/dateFilterUtils';
+import { formatOrderId } from '../../utils/helpers';
+
+// Dynamic real dates relative to today
+const _now = new Date();
+const _todayStr = formatDisplayDate(_now);
+const _yDate = new Date(_now);
+_yDate.setDate(_yDate.getDate() - 1);
+const _yesterdayStr = formatDisplayDate(_yDate);
+const _lwDate1 = new Date(_now);
+_lwDate1.setDate(_lwDate1.getDate() - 3);
+const _lwStr1 = formatDisplayDate(_lwDate1);
+const _lwDate2 = new Date(_now);
+_lwDate2.setDate(_lwDate2.getDate() - 5);
+const _lwStr2 = formatDisplayDate(_lwDate2);
 
 // Exact baseline orders matching Reference Image 2 Page 1 and overall dataset
 const BASELINE_PICKUP_DELIVERY_ORDERS = [
   // Page 1: Exact 8 Rows shown in Reference Image 2
   {
-    id: '#LDX10290',
-    date: '23 Sep 2026',
+    id: 'FC-10290',
+    date: _todayStr,
     timeStart: '09:00 AM',
     timeEnd: '11:00 AM',
     customer: {
@@ -40,8 +55,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10289',
-    date: '23 Sep 2026',
+    id: 'FC-10289',
+    date: _todayStr,
     timeStart: '10:00 AM',
     timeEnd: '12:00 PM',
     customer: {
@@ -62,8 +77,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10288',
-    date: '23 Sep 2026',
+    id: 'FC-10288',
+    date: _todayStr,
     timeStart: '11:00 AM',
     timeEnd: '01:00 PM',
     customer: {
@@ -84,8 +99,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10287',
-    date: '23 Sep 2026',
+    id: 'FC-10287',
+    date: _todayStr,
     timeStart: '12:00 PM',
     timeEnd: '02:00 PM',
     customer: {
@@ -106,8 +121,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10286',
-    date: '23 Sep 2026',
+    id: 'FC-10286',
+    date: _todayStr,
     timeStart: '02:00 PM',
     timeEnd: '04:00 PM',
     customer: {
@@ -128,8 +143,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10285',
-    date: '23 Sep 2026',
+    id: 'FC-10285',
+    date: _todayStr,
     timeStart: '03:00 PM',
     timeEnd: '05:00 PM',
     customer: {
@@ -150,8 +165,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10284',
-    date: '23 Sep 2026',
+    id: 'FC-10284',
+    date: _todayStr,
     timeStart: '04:00 PM',
     timeEnd: '06:00 PM',
     customer: {
@@ -172,8 +187,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10283',
-    date: '23 Sep 2026',
+    id: 'FC-10283',
+    date: _todayStr,
     timeStart: '05:00 PM',
     timeEnd: '07:00 PM',
     customer: {
@@ -196,8 +211,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
 
   // Page 2: Orders 9 through 16 (completing the 18 items dataset)
   {
-    id: '#LDX10282',
-    date: '23 Sep 2026',
+    id: 'FC-10282',
+    date: _yesterdayStr,
     timeStart: '06:00 PM',
     timeEnd: '08:00 PM',
     customer: {
@@ -218,8 +233,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10281',
-    date: '22 Sep 2026',
+    id: 'FC-10281',
+    date: _yesterdayStr,
     timeStart: '07:00 PM',
     timeEnd: '09:00 PM',
     customer: {
@@ -240,8 +255,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10280',
-    date: '23 Sep 2026',
+    id: 'FC-10280',
+    date: _yesterdayStr,
     timeStart: '08:00 AM',
     timeEnd: '10:00 AM',
     customer: {
@@ -262,8 +277,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10279',
-    date: '23 Sep 2026',
+    id: 'FC-10279',
+    date: _yesterdayStr,
     timeStart: '09:30 AM',
     timeEnd: '11:30 AM',
     customer: {
@@ -284,8 +299,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10278',
-    date: '23 Sep 2026',
+    id: 'FC-10278',
+    date: _yesterdayStr,
     timeStart: '10:30 AM',
     timeEnd: '12:30 PM',
     customer: {
@@ -306,8 +321,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10277',
-    date: '23 Sep 2026',
+    id: 'FC-10277',
+    date: _lwStr1,
     timeStart: '01:00 PM',
     timeEnd: '03:00 PM',
     customer: {
@@ -328,8 +343,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10276',
-    date: '23 Sep 2026',
+    id: 'FC-10276',
+    date: _lwStr1,
     timeStart: '02:30 PM',
     timeEnd: '04:30 PM',
     customer: {
@@ -350,8 +365,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10275',
-    date: '23 Sep 2026',
+    id: 'FC-10275',
+    date: _lwStr2,
     timeStart: '03:30 PM',
     timeEnd: '05:30 PM',
     customer: {
@@ -374,8 +389,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
 
   // Page 3: Orders 17 and 18
   {
-    id: '#LDX10274',
-    date: '23 Sep 2026',
+    id: 'FC-10274',
+    date: _lwStr2,
     timeStart: '04:30 PM',
     timeEnd: '06:30 PM',
     customer: {
@@ -396,8 +411,8 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
     }
   },
   {
-    id: '#LDX10273',
-    date: '23 Sep 2026',
+    id: 'FC-10273',
+    date: _lwStr2,
     timeStart: '05:30 PM',
     timeEnd: '07:30 PM',
     customer: {
@@ -439,7 +454,25 @@ export const AdminPickupDeliveryPage = () => {
   const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
   const [selectedDateRange, setSelectedDateRange] = useState('all');
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState('Tuesday, 23 Sep 2026');
+
+  const todayDateObj = useMemo(() => new Date(), []);
+  const yesterdayDateObj = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d;
+  }, []);
+
+  const dateFilterOptions = useMemo(() => [
+    { key: 'all', label: 'All Dates', pillLabel: 'All Dates', shortLabel: 'All Dates' },
+    { key: 'today', label: `Today (${formatDisplayDate(todayDateObj)})`, pillLabel: formatDisplayDate(todayDateObj, { weekday: true }), shortLabel: 'Today' },
+    { key: 'yesterday', label: `Yesterday (${formatDisplayDate(yesterdayDateObj)})`, pillLabel: `Yesterday, ${formatDisplayDate(yesterdayDateObj, { weekday: true })}`, shortLabel: 'Yesterday' },
+    { key: 'last-week', label: 'Last Week', pillLabel: 'Last Week', shortLabel: 'Last Week' }
+  ], [todayDateObj, yesterdayDateObj]);
+
+  const selectedPillLabel = useMemo(() => {
+    const found = dateFilterOptions.find(o => o.key === selectedDateRange);
+    return found ? found.pillLabel : formatDisplayDate(todayDateObj, { weekday: true });
+  }, [dateFilterOptions, selectedDateRange, todayDateObj]);
 
   // Exact metric counts matching Reference Image 2
   const metrics = {
@@ -538,7 +571,7 @@ export const AdminPickupDeliveryPage = () => {
       const orderId = String(o?.order_id || '');
       return !baseIdSet.has(o?.id) && !baseIdSet.has(idStr) && !baseIdSet.has(orderNum) && !baseIdSet.has(orderId);
     }).map(o => {
-      const orderIdDisplay = o.order_number || o.order_id || (typeof o.id === 'string' && o.id.startsWith('#') ? o.id : `#FC${String(o.id || '00000').padStart(5, '0')}`);
+      const orderIdDisplay = formatOrderId(o.order_number || o.order_id || o.id);
       const custName = o.customer_name || o.customer?.name || 'Customer';
       const custPhone = o.customer_phone || o.customer?.phone || '+91 98765 00000';
       const custAddress = o.pickup_address || o.customer?.address || 'Bengaluru';
@@ -624,6 +657,11 @@ export const AdminPickupDeliveryPage = () => {
         return false;
       }
 
+      // Date Range filter
+      if (!filterMatchesDate(ord, selectedDateRange, ['date', 'pickupTime', 'pickup_time', 'createdAt', 'placedAt'])) {
+        return false;
+      }
+
       // Search term
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase().trim();
@@ -639,7 +677,7 @@ export const AdminPickupDeliveryPage = () => {
 
       return true;
     });
-  }, [combinedOrders, activeTab, statusFilter, searchTerm]);
+  }, [combinedOrders, activeTab, statusFilter, selectedDateRange, searchTerm]);
 
   // Pagination calculation
   const totalPages = Math.max(1, Math.ceil(filteredList.length / pageSize));
@@ -704,18 +742,22 @@ export const AdminPickupDeliveryPage = () => {
               type="button"
             >
               <Calendar size={17} className="pill-calendar-icon" />
-              <span className="pill-date-text">{selectedDate}</span>
+              <span className="pill-date-text">{selectedPillLabel}</span>
               <ChevronDown size={16} className="pill-chevron-icon" />
             </button>
             {dateDropdownOpen && (
               <div className="header-dropdown-popover">
-                {['Tuesday, 23 Sep 2026', 'Wednesday, 24 Sep 2026', 'Thursday, 25 Sep 2026'].map(d => (
+                {dateFilterOptions.map(opt => (
                   <button 
-                    key={d} 
-                    className={`dropdown-item ${selectedDate === d ? 'active' : ''}`}
-                    onClick={() => { setSelectedDate(d); setDateDropdownOpen(false); }}
+                    key={opt.key} 
+                    className={`dropdown-item ${selectedDateRange === opt.key ? 'active' : ''}`}
+                    onClick={() => {
+                      setSelectedDateRange(opt.key);
+                      setCurrentPage(1);
+                      setDateDropdownOpen(false);
+                    }}
                   >
-                    {d}
+                    {opt.label}
                   </button>
                 ))}
               </div>
@@ -898,23 +940,28 @@ export const AdminPickupDeliveryPage = () => {
                 type="button"
               >
                 <Calendar size={15} className="toolbar-pill-icon" />
-                <span>Select Date Range</span>
+                <span>
+                  {selectedDateRange === 'all'
+                    ? 'Select Date Range'
+                    : (dateFilterOptions.find(o => o.key === selectedDateRange)?.shortLabel || 'Select Date Range')}
+                </span>
                 <ChevronDown size={14} className="toolbar-pill-chevron" />
               </button>
 
               {isDateRangeDropdownOpen && (
                 <div className="dropdown-popover-card animate-scale-in">
                   <div className="popover-header">Date Range</div>
-                  {['all', 'today', 'tomorrow', 'this-week'].map(r => (
+                  {dateFilterOptions.map(r => (
                     <button
-                      key={r}
-                      className={`popover-option ${selectedDateRange === r ? 'selected' : ''}`}
+                      key={r.key}
+                      className={`popover-option ${selectedDateRange === r.key ? 'selected' : ''}`}
                       onClick={() => {
-                        setSelectedDateRange(r);
+                        setSelectedDateRange(r.key);
+                        setCurrentPage(1);
                         setIsDateRangeDropdownOpen(false);
                       }}
                     >
-                      {r === 'all' ? 'All Dates' : r === 'today' ? 'Today (23 Sep 2026)' : r === 'tomorrow' ? 'Tomorrow (24 Sep 2026)' : 'This Week'}
+                      {r.label}
                     </button>
                   ))}
                 </div>
@@ -980,7 +1027,7 @@ export const AdminPickupDeliveryPage = () => {
                       {/* ORDER ID */}
                       <td className="td-col-orderid">
                         <div className="order-id-stack">
-                          <span className="order-id-number">{ord.id}</span>
+                          <span className="order-id-number font-mono">{formatOrderId(ord.id || ord.order_number || ord.order_id)}</span>
                           <span className="order-id-date">{ord.date}</span>
                         </div>
                       </td>
@@ -1632,9 +1679,11 @@ export const AdminPickupDeliveryPage = () => {
         }
 
         .order-id-number {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
           font-weight: 700;
           color: #0F172A;
           font-size: 0.8125rem;
+          letter-spacing: -0.01em;
         }
 
         .order-id-date {

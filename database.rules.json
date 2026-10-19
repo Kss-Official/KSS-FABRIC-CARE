@@ -3,6 +3,11 @@
     ".read": "auth != null",
     ".write": "auth != null",
 
+    "services": {
+      ".read": true,
+      ".write": "auth != null",
+      ".indexOn": ["status", "category", "price"]
+    },
     "users": {
       ".indexOn": ["role", "email"]
     },
