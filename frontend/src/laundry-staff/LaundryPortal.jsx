@@ -77,6 +77,7 @@ import {
   SERVICE_DISPLAY_NAMES,
   computeItemTasks,
   getMergedTaskNote,
+  getOrderStatusSteps,
   checkItemConflict,
   checkOrderConflict,
   buildPlanString,
@@ -468,7 +469,10 @@ export const LaundryPortal = () => {
       INSPECTION: { label: 'Inspection', stage: 'inspection' },
       WASHING: { label: 'Washing', stage: 'washing' },
       DRYING: { label: 'Drying', stage: 'drying' },
+      STEAMING: { label: 'Steaming', stage: 'steaming' },
+      DRY_CLEANING: { label: 'Dry Cleaning', stage: 'dry_cleaning' },
       IRONING: { label: 'Ironing', stage: 'ironing' },
+      PRESSING: { label: 'Pressing', stage: 'pressing' },
       FOLDING: { label: 'Folding', stage: 'folding' },
       QUALITY_CHECK: { label: 'Quality Check', stage: 'quality' },
       PACKING: { label: 'Packing', stage: 'packing' },
@@ -2210,9 +2214,9 @@ export const LaundryPortal = () => {
             if (s.includes('PACK')) return 'packing';
             if (s.includes('QUALIT') || s.includes('QC')) return 'quality';
             if (s.includes('FOLD')) return 'folding';
-            if (s.includes('IRON') || s.includes('PRESS')) return 'ironing';
-            if (s.includes('DRY') && !s.includes('CLEAN')) return 'drying';
-            if (s.includes('WASH')) return 'washing';
+            if (s.includes('IRON') || s.includes('PRESS') || s.includes('STEAM')) return 'ironing';
+            if (s.includes('DRY_CLEAN') || (s.includes('DRY') && s.includes('CLEAN')) || s.includes('WASH')) return 'washing';
+            if (s.includes('DRY')) return 'drying';
             if (s.includes('INSPECT')) return 'inspection';
             return 'received';
           };
@@ -2243,23 +2247,67 @@ export const LaundryPortal = () => {
             setOrdersCurrentPage(1);
           };
 
-          // Service badge helper matching Section B
-          const getServiceBadge = (order) => {
-            const svcRaw = order.service || (order.services && order.services[0]) || '';
-            const s = String(svcRaw).toLowerCase();
-            if (s.includes('dry clean')) {
-              return { bg: '#fce7f3', color: '#be185d', label: 'Dry Clean' };
-            }
-            if (s.includes('steam')) {
-              return { bg: '#ede9fe', color: '#6d28d9', label: 'Steam Iron' };
-            }
-            if (s.includes('iron')) {
-              if (s.includes('fold')) {
-                return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold + Iron' };
+          // Service badges helper returning array of badges for all services
+          const getServiceBadges = (order) => {
+            const rawList = [];
+            if (Array.isArray(order.services)) {
+              rawList.push(...order.services);
+            } else if (order.service) {
+              if (order.service.includes('+')) {
+                rawList.push(...order.service.split('+').map(s => s.trim()));
+              } else if (order.service.includes(',')) {
+                rawList.push(...order.service.split(',').map(s => s.trim()));
+              } else {
+                rawList.push(order.service);
               }
-              return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash + Iron' };
             }
-            return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold' };
+
+            if (Array.isArray(order.items)) {
+              order.items.forEach(it => {
+                if (it.category && it.category !== 'General') rawList.push(it.category);
+                if (Array.isArray(it.services)) {
+                  it.services.forEach(s => rawList.push(SERVICE_DISPLAY_NAMES[s] || s));
+                }
+              });
+            }
+
+            const formatBadge = (raw) => {
+              const s = String(raw || '').toLowerCase().trim();
+              if (s.includes('dry clean')) {
+                return { bg: '#fce7f3', color: '#be185d', label: 'Dry Clean' };
+              }
+              if (s.includes('steam')) {
+                return { bg: '#ede9fe', color: '#6d28d9', label: 'Steam Iron' };
+              }
+              if (s.includes('iron')) {
+                if (s.includes('fold')) {
+                  return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold + Iron' };
+                }
+                return { bg: '#fef3c7', color: '#b45309', label: 'Wash + Iron' };
+              }
+              return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold' };
+            };
+
+            const badgesMap = new Map();
+            rawList.forEach(item => {
+              if (!item) return;
+              const badge = formatBadge(item);
+              if (!badgesMap.has(badge.label)) {
+                badgesMap.set(badge.label, badge);
+              }
+            });
+
+            if (badgesMap.size === 0) {
+              const def = { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold' };
+              badgesMap.set(def.label, def);
+            }
+
+            return Array.from(badgesMap.values());
+          };
+
+          const getServiceBadge = (order) => {
+            const badges = getServiceBadges(order);
+            return badges[0] || { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold' };
           };
 
           // Status pill helper with dot matching Section B
@@ -2283,10 +2331,19 @@ export const LaundryPortal = () => {
             if (s.includes('FOLD')) {
               return { bg: '#e6f4f1', color: '#0f766e', dot: '#0f766e', label: 'Folding' };
             }
-            if (s.includes('IRON') || s.includes('PRESS')) {
+            if (s.includes('PRESS')) {
+              return { bg: '#e6f4f1', color: '#0f766e', dot: '#0f766e', label: 'Pressing' };
+            }
+            if (s.includes('STEAM')) {
+              return { bg: '#ede9fe', color: '#6d28d9', dot: '#6d28d9', label: 'Steaming' };
+            }
+            if (s.includes('DRY_CLEAN') || (s.includes('DRY') && s.includes('CLEAN'))) {
+              return { bg: '#fce7f3', color: '#be185d', dot: '#be185d', label: 'Dry Cleaning' };
+            }
+            if (s.includes('IRON')) {
               return { bg: '#e6f4f1', color: '#0f766e', dot: '#0f766e', label: 'Ironing' };
             }
-            if (s.includes('DRY') && !s.includes('CLEAN')) {
+            if (s.includes('DRY')) {
               return { bg: '#e6f4f1', color: '#0f766e', dot: '#0f766e', label: 'Drying' };
             }
             if (s.includes('WASH')) {
@@ -2301,34 +2358,37 @@ export const LaundryPortal = () => {
             return { bg: '#e0e7ff', color: '#4338ca', dot: '#4338ca', label: 'Received' };
           };
 
-          // 11 steps for Update Status dropdown
-          const STATUS_STEPS = [
-            { num: 1, key: 'RECEIVED', label: 'Received' },
-            { num: 2, key: 'INSPECTION', label: 'Inspection' },
-            { num: 3, key: 'WASHING', label: 'Washing' },
-            { num: 4, key: 'DRYING', label: 'Drying' },
-            { num: 5, key: 'IRONING', label: 'Ironing' },
-            { num: 6, key: 'FOLDING', label: 'Folding' },
-            { num: 7, key: 'QUALITY_CHECK', label: 'Quality Check' },
-            { num: 8, key: 'PACKING', label: 'Packing' },
-            { num: 9, key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
-            { num: 10, key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
-            { num: 11, key: 'DELIVERED', label: 'Delivered' }
-          ];
-
-          const getCurrentStepIndex = (status) => {
+          const getCurrentStepIndex = (status, orderSteps = []) => {
+            const steps = Array.isArray(orderSteps) && orderSteps.length > 0 ? orderSteps : [];
             const s = String(status || '').toUpperCase().replace(/[\s-]/g, '_');
-            if (s.includes('DELIVERED') || s.includes('COMPLET')) return 10;
-            if (s.includes('OUT_FOR_DELIVERY') || s.includes('DISPATCH')) return 9;
-            if (s.includes('READY')) return 8;
-            if (s.includes('PACK')) return 7;
-            if (s.includes('QUALIT') || s.includes('QC')) return 6;
-            if (s.includes('FOLD')) return 5;
-            if (s.includes('IRON') || s.includes('PRESS')) return 4;
-            if (s.includes('DRY') && !s.includes('CLEAN')) return 3;
-            if (s.includes('WASH')) return 2;
-            if (s.includes('INSPECT')) return 1;
-            return 0; // Received
+
+            // 1. Exact key match
+            const exactIdx = steps.findIndex(st => st.key === s);
+            if (exactIdx !== -1) return exactIdx;
+
+            // 2. Semantic matching in reverse/priority order
+            let matchedKey = null;
+            if (s.includes('DELIVERED') || s.includes('COMPLET')) matchedKey = 'DELIVERED';
+            else if (s.includes('OUT_FOR_DELIVERY') || s.includes('DISPATCH')) matchedKey = 'OUT_FOR_DELIVERY';
+            else if (s.includes('READY')) matchedKey = 'READY_FOR_DELIVERY';
+            else if (s.includes('PACK')) matchedKey = 'PACKING';
+            else if (s.includes('QUALIT') || s.includes('QC')) matchedKey = 'QUALITY_CHECK';
+            else if (s.includes('FOLD')) matchedKey = 'FOLDING';
+            else if (s.includes('PRESS')) matchedKey = 'PRESSING';
+            else if (s.includes('STEAM')) matchedKey = 'STEAMING';
+            else if (s.includes('DRY_CLEAN') || (s.includes('DRY') && s.includes('CLEAN'))) matchedKey = 'DRY_CLEANING';
+            else if (s.includes('IRON')) matchedKey = 'IRONING';
+            else if (s.includes('DRY')) matchedKey = 'DRYING';
+            else if (s.includes('WASH')) matchedKey = 'WASHING';
+            else if (s.includes('INSPECT')) matchedKey = 'INSPECTION';
+            else if (s.includes('RECEIVED') || s.includes('HUB') || s.includes('DROPPED') || s.includes('PLACED')) matchedKey = 'RECEIVED';
+
+            if (matchedKey) {
+              const semIdx = steps.findIndex(st => st.key === matchedKey);
+              if (semIdx !== -1) return semIdx;
+            }
+
+            return 0; // fallback to first step (Received)
           };
 
           // Filter orders
@@ -2342,9 +2402,11 @@ export const LaundryPortal = () => {
 
             // Service filter dropdown
             if (ordersServiceFilter !== 'all') {
-              const svcStr = (order.service || (order.services && order.services.join(' ')) || '').toLowerCase();
-              if (ordersServiceFilter === 'wash-fold' && !svcStr.includes('wash & fold') && !svcStr.includes('wash and fold')) return false;
-              if (ordersServiceFilter === 'wash-iron' && !svcStr.includes('wash + iron') && !svcStr.includes('wash and iron') && !svcStr.includes('wash & iron')) return false;
+              const badges = getServiceBadges(order);
+              const badgeLabels = badges.map(b => b.label.toLowerCase()).join(' ');
+              const svcStr = `${badgeLabels} ${(order.service || (order.services && order.services.join(' ')) || '').toLowerCase()}`;
+              if (ordersServiceFilter === 'wash-fold' && !svcStr.includes('wash & fold') && !svcStr.includes('wash and fold') && !svcStr.includes('wash-fold')) return false;
+              if (ordersServiceFilter === 'wash-iron' && !svcStr.includes('wash + iron') && !svcStr.includes('wash and iron') && !svcStr.includes('wash & iron') && !svcStr.includes('wash-iron')) return false;
               if (ordersServiceFilter === 'steam-iron' && !svcStr.includes('steam')) return false;
               if (ordersServiceFilter === 'dry-clean' && !svcStr.includes('dry clean')) return false;
             }
@@ -2484,15 +2546,47 @@ export const LaundryPortal = () => {
                     </div>
                   ) : (
                     paginatedOrders.map((order, idx) => {
-                      const orderIdStr = order.order_number || order.order_id || `FC-${order.id}`;
+                      const orderIdStr = (order.order_number && order.order_number !== '#-')
+                        ? order.order_number
+                        : ((order.order_id && order.order_id !== '#-')
+                          ? order.order_id
+                          : (order.id && order.id !== '-'
+                            ? (String(order.id).startsWith('FC-') ? order.id : `FC-${order.id}`)
+                            : 'FC-10499'));
                       const customerName = (typeof order.customer_name === 'string' && order.customer_name)
                         ? order.customer_name
                         : ((typeof order.customer === 'string' && order.customer)
                           ? order.customer
                           : (order.customer?.name || order.customerName || order.pickup_full_name || 'Customer'));
                       const itemsList = Array.isArray(order.items) ? order.items : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
-                      const itemsCount = order.itemsCount || itemsList.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1)), 0) || (itemsList.length > 0 ? itemsList.length : 1);
-                      const itemsFullSummary = order.items_summary || (itemsList.length > 0 ? itemsList.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ') : '1 Item');
+                      const rawItemsSummary = order.items_summary || (itemsList.length > 0 ? itemsList.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ') : '');
+                      const itemsFullSummary = rawItemsSummary && rawItemsSummary !== '1 Item'
+                        ? rawItemsSummary
+                        : (order.service ? `${order.service} Garment × 1` : 'Garment × 1');
+                      const typesCount = itemsList.length > 0
+                        ? itemsList.length
+                        : (itemsFullSummary.includes(',') ? itemsFullSummary.split(',').length : 1);
+
+                      let calculatedItemsCount = order.itemsCount || order.items_count || order.total_items;
+                      if (!calculatedItemsCount && itemsList.length > 0) {
+                        calculatedItemsCount = itemsList.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1)), 0);
+                      }
+                      if (!calculatedItemsCount) {
+                        const matches = [...itemsFullSummary.matchAll(/[×x]\s*(\d+)/gi)];
+                        if (matches.length > 0) {
+                          calculatedItemsCount = matches.reduce((acc, m) => acc + parseInt(m[1], 10), 0);
+                        } else {
+                          calculatedItemsCount = typesCount || 1;
+                        }
+                      }
+                      const itemsCount = calculatedItemsCount || 1;
+
+                      const isExpressOrder = Boolean(order.is_express || order.isExpress || order.express);
+                      const orderNote = (order.notes || order.special_instructions || order.specialInstructions || order.instructions || order.comment || '').trim();
+                      const hasDelicateGarments = itemsList.some(it => {
+                        const n = String(it.name || it.item_name || '').toLowerCase();
+                        return n.includes('gown') || n.includes('silk') || n.includes('saree') || n.includes('sari') || n.includes('suit') || n.includes('blazer') || n.includes('wool') || n.includes('delicate') || n.includes('coat') || n.includes('dress') || n.includes('frock') || n.includes('lehenga');
+                      }) || (typeof itemsFullSummary === 'string' && /gown|silk|saree|sari|suit|blazer|wool|delicate|coat|dress|frock|lehenga/i.test(itemsFullSummary));
 
                       let totalVal = order.total ?? order.total_amount ?? order.amount;
                       if (typeof totalVal === 'string') totalVal = parseFloat(totalVal) || 0;
@@ -2517,10 +2611,12 @@ export const LaundryPortal = () => {
                       const svcBadge = getServiceBadge(order);
                       const statusTarget = order.status_display || order.stage || order.currentLaundryStep || order.status || order.processing_stage;
                       const statusPill = getStatusPill(statusTarget);
-                      const currentIdx = getCurrentStepIndex(statusTarget);
-                      const isDelivered = currentIdx === 10;
-                      const isOutForDelivery = currentIdx === 9;
-                      const isReadyForDelivery = currentIdx === 8;
+                      const orderSteps = getOrderStatusSteps(order);
+                      const currentIdx = getCurrentStepIndex(statusTarget, orderSteps);
+                      const currentStepKey = orderSteps[currentIdx]?.key || 'RECEIVED';
+                      const isDelivered = currentStepKey === 'DELIVERED';
+                      const isOutForDelivery = currentStepKey === 'OUT_FOR_DELIVERY';
+                      const isReadyForDelivery = currentStepKey === 'READY_FOR_DELIVERY';
                       const isDropdownOpen = openDropdownOrderId === (order.id || order.order_number);
 
                       return (
@@ -2539,26 +2635,113 @@ export const LaundryPortal = () => {
                           <div className="col-customer">{customerName}</div>
                           <div
                             className="col-items"
-                            title={`${itemsFullSummary} • Total: ₹${formattedTotal}`}
+                            title={`${itemsFullSummary} • ${itemsCount} ${itemsCount === 1 ? 'garment' : 'garments'} (${typesCount} ${typesCount === 1 ? 'type' : 'types'})${orderNote ? `\nNote: ${orderNote}` : ''}\n(Click to view garment care plan)`}
                             onClick={() => setTrackerModalOrder(order)}
-                            style={{ cursor: 'pointer' }}
+                            style={{ cursor: 'pointer', minWidth: 0, paddingRight: '8px' }}
                           >
-                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#1E293B', fontWeight: 600 }}>
+                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#0F172A', fontWeight: 600, fontSize: '13px', lineHeight: '1.3' }}>
                               {itemsFullSummary}
                             </div>
-                            <div style={{ fontSize: '11px', color: '#0F766E', fontWeight: 600, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span>{itemsCount} {itemsCount === 1 ? 'item' : 'items'}</span>
-                              <span>•</span>
-                              <span style={{ color: '#059669', fontWeight: 700 }}>₹{formattedTotal}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', flexWrap: 'nowrap', overflow: 'hidden' }}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3.5px',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  background: '#F0FDFA',
+                                  color: '#0D7A75',
+                                  border: '1px solid #CCFBF1',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                  lineHeight: 1.2
+                                }}
+                              >
+                                <Shirt size={10.5} strokeWidth={2.4} />
+                                <span>{itemsCount} {itemsCount === 1 ? 'garment' : 'garments'}</span>
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#64748B', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                                • {typesCount} {typesCount === 1 ? 'type' : 'types'}
+                              </span>
+                              {hasDelicateGarments && (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2.5px',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: '#EFF6FF',
+                                    color: '#2563EB',
+                                    border: '1px solid #DBEAFE',
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    whiteSpace: 'nowrap',
+                                    lineHeight: 1.2
+                                  }}
+                                  title="Contains delicate or specialty fabrics"
+                                >
+                                  <Sparkles size={9.5} />
+                                  <span>Delicate</span>
+                                </span>
+                              )}
+                              {isExpressOrder && (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2.5px',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: '#FEF3C7',
+                                    color: '#B45309',
+                                    border: '1px solid #FDE68A',
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    whiteSpace: 'nowrap',
+                                    lineHeight: 1.2
+                                  }}
+                                >
+                                  <Flame size={9.5} />
+                                  <span>Express</span>
+                                </span>
+                              )}
+                              {orderNote && (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2.5px',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: '#F1F5F9',
+                                    color: '#475569',
+                                    border: '1px solid #E2E8F0',
+                                    fontSize: '10px',
+                                    fontWeight: 500,
+                                    whiteSpace: 'nowrap',
+                                    lineHeight: 1.2
+                                  }}
+                                  title={`Customer note: ${orderNote}`}
+                                >
+                                  <FileText size={9.5} />
+                                  <span>Note</span>
+                                </span>
+                              )}
                             </div>
                           </div>
-                          <div className="col-service">
-                            <span
-                              className="orders-service-badge"
-                              style={{ background: svcBadge.bg, color: svcBadge.color }}
-                            >
-                              {svcBadge.label}
-                            </span>
+                          <div className="col-service" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+                            {getServiceBadges(order).map((b, bIdx) => (
+                              <span
+                                key={bIdx}
+                                className="orders-service-badge"
+                                style={{ background: b.bg, color: b.color }}
+                              >
+                                {b.label}
+                              </span>
+                            ))}
                           </div>
                           <div className="col-status">
                             <span
@@ -2633,7 +2816,7 @@ export const LaundryPortal = () => {
                                 </div>
 
                                 <div className="dropdown-steps-list">
-                                  {STATUS_STEPS.map((step, sIdx) => {
+                                  {orderSteps.map((step, sIdx) => {
                                     const isCompleted = sIdx < currentIdx;
                                     const isCurrent = sIdx === currentIdx;
                                     const isNext = sIdx === currentIdx + 1;
@@ -2716,12 +2899,12 @@ export const LaundryPortal = () => {
                                       className="dropdown-revert-action-btn"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleOrdersQuickAdvance(order, STATUS_STEPS[currentIdx - 1].key, true);
+                                        handleOrdersQuickAdvance(order, orderSteps[currentIdx - 1].key, true);
                                       }}
                                       title="Mistakenly updated? Go back to previous status"
                                     >
                                       <RotateCcw size={12} />
-                                      <span>Back to {STATUS_STEPS[currentIdx - 1].label}</span>
+                                      <span>Back to {orderSteps[currentIdx - 1].label}</span>
                                     </button>
                                   </div>
                                 )}
@@ -3852,7 +4035,7 @@ export const LaundryPortal = () => {
                       <span>•</span>
                       <span>{items.length} {items.length === 1 ? 'Garment Item' : 'Garment Items'}</span>
                       <span>•</span>
-                      <span>Total: <strong style={{ color: '#047857' }}>₹{Number(order.total_amount || order.amount || order.total || 0).toFixed(2)}</strong></span>
+                      <span>Plan: <strong style={{ color: '#0D7A75' }}>{Array.isArray(order.services) ? order.services.join(' + ') : (order.service || 'Standard Care')}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -3947,16 +4130,13 @@ export const LaundryPortal = () => {
                                       {item.name || item.item_name}
                                       <span className="tracker-qty-badge">×{item.quantity || 1}</span>
                                     </h5>
-                                    {((item.lineTotal || item.total || item.unitPrice || item.price) > 0) && (
-                                      <div style={{ fontSize: '12px', color: '#047857', fontWeight: 600, marginTop: '2px' }}>
-                                        ₹{Number(item.lineTotal || item.total || ((item.unitPrice || item.price) * (item.quantity || 1))).toFixed(2)}
-                                        {item.quantity > 1 && (item.unitPrice || item.price) > 0 && (
-                                          <span style={{ color: '#64748B', fontWeight: 500, marginLeft: '5px' }}>
-                                            (₹{Number(item.unitPrice || item.price).toFixed(2)} each)
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
+                                    <div style={{ fontSize: '11.5px', color: '#0D7A75', fontWeight: 600, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <span>{item.quantity || 1} {(item.quantity || 1) === 1 ? 'Garment Unit' : 'Garment Units'}</span>
+                                      <span style={{ color: '#CBD5E1' }}>•</span>
+                                      <span style={{ color: '#64748B', fontWeight: 500 }}>
+                                        {(item.services || []).map(s => SERVICE_DISPLAY_NAMES[s] || s).join(', ') || 'Standard Care'}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                                 <span className={`tracker-stage-badge ${isReadyForQC || isQC || isPacking || isReadyDel || isDelivered ? '' : 'teal'}`}>
@@ -4087,7 +4267,7 @@ export const LaundryPortal = () => {
                           )}
 
                           <div style={{ fontSize: '12px', color: '#64748B', paddingTop: '4px' }}>
-                            Items in this order: {items.map(it => `${it.name || it.item_name} (×${it.quantity || 1}${it.lineTotal || it.total ? ` • ₹${Number(it.lineTotal || it.total).toFixed(2)}` : ''})`).join(', ')}
+                            Items in this order: {items.map(it => `${it.name || it.item_name} (×${it.quantity || 1})`).join(', ')}
                           </div>
                         </div>
 
@@ -5569,7 +5749,7 @@ export const LaundryPortal = () => {
         /* GRID SYSTEM MATCHING SECTION B SPECIFICATION */
         .orders-grid-row {
           display: grid;
-          grid-template-columns: 110px 145px minmax(180px, 1.3fr) 130px 140px 105px minmax(130px, 1fr);
+          grid-template-columns: 105px 130px minmax(190px, 1.35fr) minmax(130px, auto) 130px 95px minmax(130px, 1fr);
           column-gap: 12px;
           align-items: center;
         }
@@ -5635,6 +5815,11 @@ export const LaundryPortal = () => {
           color: #475569;
           min-width: 0;
           overflow: hidden;
+          transition: opacity 0.12s ease;
+        }
+
+        .col-items:hover {
+          opacity: 0.88;
         }
 
         .col-placed {
@@ -5646,11 +5831,12 @@ export const LaundryPortal = () => {
         .orders-service-badge {
           display: inline-flex;
           align-items: center;
-          padding: 4px 10px;
+          padding: 3px 8px;
           border-radius: 9999px;
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 600;
           white-space: nowrap;
+          line-height: 1.2;
         }
 
         .orders-status-pill {

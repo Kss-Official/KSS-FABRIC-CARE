@@ -121,6 +121,116 @@ export const computeItemTasks = (services = []) => {
 };
 
 /**
+ * Returns the exact sequential status steps for an order based on its services and items.
+ * Guarantees no redundant steps (e.g. no Ironing for Wash & Fold, no Washing for Steam Iron).
+ * @param {object} order
+ * @returns {Array<{num: number, key: string, label: string}>}
+ */
+export const getOrderStatusSteps = (order) => {
+  const fallbackSteps = [
+    { num: 1, key: 'RECEIVED', label: 'Received' },
+    { num: 2, key: 'INSPECTION', label: 'Inspection' },
+    { num: 3, key: 'WASHING', label: 'Washing' },
+    { num: 4, key: 'DRYING', label: 'Drying' },
+    { num: 5, key: 'FOLDING', label: 'Folding' },
+    { num: 6, key: 'QUALITY_CHECK', label: 'Quality Check' },
+    { num: 7, key: 'PACKING', label: 'Packing' },
+    { num: 8, key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
+    { num: 9, key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
+    { num: 10, key: 'DELIVERED', label: 'Delivered' }
+  ];
+
+  if (!order) return fallbackSteps;
+
+  const rawTaskSet = new Set();
+  const items = Array.isArray(order.items) 
+    ? order.items 
+    : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
+
+  items.forEach(it => {
+    if (Array.isArray(it.tasks) && it.tasks.length > 0) {
+      it.tasks.forEach(t => rawTaskSet.add(t));
+    } else if (Array.isArray(it.services) && it.services.length > 0) {
+      it.services.forEach(s => {
+        const key = String(s).toLowerCase().trim();
+        const ts = SERVICE_TASK_CONFIG[key] || [];
+        ts.forEach(t => rawTaskSet.add(t));
+      });
+    } else if (it.category && it.category !== 'General') {
+      const key = String(it.category).toLowerCase().trim();
+      const ts = SERVICE_TASK_CONFIG[key] || [];
+      ts.forEach(t => rawTaskSet.add(t));
+    }
+  });
+
+  const orderServices = Array.isArray(order.services)
+    ? order.services
+    : (order.service ? (order.service.includes('+') ? order.service.split('+') : (order.service.includes(',') ? order.service.split(',') : [order.service])) : []);
+
+  orderServices.forEach(s => {
+    if (!s) return;
+    const str = String(s).toLowerCase().trim();
+    if (str.includes('dry clean')) {
+      rawTaskSet.add('dry-clean');
+      rawTaskSet.add('press');
+    } else if (str.includes('steam')) {
+      rawTaskSet.add('steam');
+      rawTaskSet.add('iron');
+    } else if (str.includes('wash') && str.includes('iron')) {
+      rawTaskSet.add('wash');
+      rawTaskSet.add('dry');
+      rawTaskSet.add('iron');
+    } else if (str.includes('wash') || str.includes('fold')) {
+      rawTaskSet.add('wash');
+      rawTaskSet.add('dry');
+      rawTaskSet.add('fold');
+    } else {
+      const ts = SERVICE_TASK_CONFIG[str] || [];
+      ts.forEach(t => rawTaskSet.add(t));
+    }
+  });
+
+  if (rawTaskSet.size === 0) {
+    rawTaskSet.add('wash');
+    rawTaskSet.add('dry');
+    rawTaskSet.add('fold');
+  }
+
+  const TASK_STEP_MAP = {
+    'wash': { key: 'WASHING', label: 'Washing' },
+    'dry': { key: 'DRYING', label: 'Drying' },
+    'steam': { key: 'STEAMING', label: 'Steaming' },
+    'dry-clean': { key: 'DRY_CLEANING', label: 'Dry Cleaning' },
+    'iron': { key: 'IRONING', label: 'Ironing' },
+    'press': { key: 'PRESSING', label: 'Pressing' },
+    'fold': { key: 'FOLDING', label: 'Folding' }
+  };
+
+  const intermediateSteps = [];
+  ['wash', 'dry', 'steam', 'dry-clean', 'iron', 'press', 'fold'].forEach(t => {
+    if (rawTaskSet.has(t) && TASK_STEP_MAP[t]) {
+      intermediateSteps.push(TASK_STEP_MAP[t]);
+    }
+  });
+
+  const allSteps = [
+    { key: 'RECEIVED', label: 'Received' },
+    { key: 'INSPECTION', label: 'Inspection' },
+    ...intermediateSteps,
+    { key: 'QUALITY_CHECK', label: 'Quality Check' },
+    { key: 'PACKING', label: 'Packing' },
+    { key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
+    { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
+    { key: 'DELIVERED', label: 'Delivered' }
+  ];
+
+  return allSteps.map((st, idx) => ({
+    num: idx + 1,
+    ...st
+  }));
+};
+
+/**
  * Generates a note when services were merged for an item.
  * Example: "Wash included once (Wash & Fold + Wash & Iron)"
  * @param {string[]} services
@@ -242,17 +352,34 @@ export const normalizeOrderItem = (item, index = 0) => {
 
   let services = item.services;
   if (!services || !Array.isArray(services) || services.length === 0) {
-    if (item.service_key) {
-      services = [item.service_key];
-    } else if (item.service_name || item.service) {
-      const sName = item.service_name || item.service;
-      const matchKey = Object.keys(SERVICE_DISPLAY_NAMES).find(
+    const rawSvc = item.category || item.categoryName || item.service_category || item.service_key || item.service_name || item.service || '';
+    const sName = String(rawSvc).trim();
+    const itemName = String(item.name || item.item_name || item.itemName || '').toLowerCase();
+
+    let matchedKey = null;
+    if (sName) {
+      matchedKey = Object.keys(SERVICE_DISPLAY_NAMES).find(
         k => SERVICE_DISPLAY_NAMES[k].toLowerCase() === sName.toLowerCase() || k.toLowerCase() === sName.toLowerCase()
       );
-      services = [matchKey || 'wash-fold'];
-    } else {
-      services = ['wash-fold'];
+      if (!matchedKey) {
+        const sLower = sName.toLowerCase();
+        if (sLower.includes('dry clean')) matchedKey = 'dry-clean';
+        else if (sLower.includes('steam')) matchedKey = 'steam-iron';
+        else if (sLower.includes('iron') && sLower.includes('fold')) matchedKey = 'wash-iron';
+        else if (sLower.includes('iron')) matchedKey = 'wash-iron';
+        else if (sLower.includes('wash') || sLower.includes('fold')) matchedKey = 'wash-fold';
+      }
     }
+
+    if (!matchedKey && itemName) {
+      if (itemName.includes('dry clean')) matchedKey = 'dry-clean';
+      else if (itemName.includes('steam iron')) matchedKey = 'steam-iron';
+      else if (itemName.includes('wash & iron') || itemName.includes('wash + iron') || itemName.includes('wash and iron')) matchedKey = 'wash-iron';
+      else if (itemName.includes('iron')) matchedKey = 'steam-iron';
+      else if (itemName.includes('wash & fold') || itemName.includes('wash and fold')) matchedKey = 'wash-fold';
+    }
+
+    services = [matchedKey || 'wash-fold'];
   }
 
   const tasks = (item.tasks && item.tasks.length > 0)
@@ -366,8 +493,36 @@ export const normalizeOrder = (order) => {
     }
   }
 
+  // Derive all unique services for the order from order.services, order.service and items
+  const extractedServices = new Set();
+  if (Array.isArray(order.services)) {
+    order.services.forEach(s => s && extractedServices.add(SERVICE_DISPLAY_NAMES[s] || s));
+  } else if (order.service) {
+    if (order.service.includes('+')) {
+      order.service.split('+').forEach(s => s.trim() && extractedServices.add(SERVICE_DISPLAY_NAMES[s.trim()] || s.trim()));
+    } else if (order.service.includes(',')) {
+      order.service.split(',').forEach(s => s.trim() && extractedServices.add(SERVICE_DISPLAY_NAMES[s.trim()] || s.trim()));
+    } else {
+      extractedServices.add(SERVICE_DISPLAY_NAMES[order.service] || order.service);
+    }
+  }
+
+  items.forEach(it => {
+    if (Array.isArray(it.services)) {
+      it.services.forEach(s => s && extractedServices.add(SERVICE_DISPLAY_NAMES[s] || s));
+    }
+    if (it.category && it.category !== 'General') {
+      extractedServices.add(SERVICE_DISPLAY_NAMES[it.category] || it.category);
+    }
+  });
+
+  const finalServices = extractedServices.size > 0 ? Array.from(extractedServices) : ['Wash & Fold'];
+
   return {
     ...order,
+    services: finalServices,
+    services_list: finalServices,
+    service: finalServices.join(' + '),
     customer_name: custName,
     customerName: custName,
     customer_phone: custPhone,

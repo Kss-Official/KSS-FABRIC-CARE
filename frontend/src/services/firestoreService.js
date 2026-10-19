@@ -471,6 +471,19 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     totalAmount = Number(d.total_amount ?? d.amount ?? d.estimatedTotal ?? 0);
   }
 
+  const detectItemCategory = (rawCat, rawName) => {
+    const sCat = String(rawCat || '').trim();
+    if (sCat && sCat.toLowerCase() !== 'general') return sCat;
+    const sName = String(rawName || '').toLowerCase();
+    if (sName.includes('dry clean')) return 'Dry Clean';
+    if (sName.includes('steam')) return 'Steam Iron';
+    if (sName.includes('wash & iron') || sName.includes('wash + iron') || sName.includes('wash and iron')) return 'Wash + Iron';
+    if (sName.includes('iron') && sName.includes('fold')) return 'Wash & Fold + Iron';
+    if (sName.includes('iron')) return 'Steam Iron';
+    if (sName.includes('wash') || sName.includes('fold')) return 'Wash & Fold';
+    return sCat || 'Wash & Fold';
+  };
+
   let parsedItems = [];
   if (Array.isArray(d.items)) {
     parsedItems = d.items.map((it, idx) => {
@@ -479,13 +492,14 @@ export const normalizeFirestoreOrder = (docData, docId) => {
       const price = rawPrice > 500 ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
       const rawTotal = Number(it.lineTotal ?? it.total ?? q * price);
       const total = rawTotal > 500 ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+      const cat = detectItemCategory(it.category || it.categoryName || it.service_category, it.name || it.item_name || it.garment);
       return {
         id: it.id || `item_${idx + 1}`,
         item_name: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
         name: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
         garment: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
-        category: it.category || 'Wash & Fold',
-        services: it.services || [it.category || 'Wash & Fold'],
+        category: cat,
+        services: it.services || [cat],
         quantity: q,
         rate: price,
         price: price,
@@ -502,13 +516,14 @@ export const normalizeFirestoreOrder = (docData, docId) => {
         const price = rawPrice > 500 ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
         const rawTotal = Number(val.lineTotal ?? val.total ?? q * price);
         const total = rawTotal > 500 ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+        const cat = detectItemCategory(val.category || val.categoryName || val.service_category, val.name || val.item_name || val.garment || k);
         return {
           id: k,
           item_name: val.name || val.item_name || val.garment || k,
           name: val.name || val.item_name || val.garment || k,
           garment: val.name || val.item_name || val.garment || k,
-          category: val.category || 'Wash & Fold',
-          services: val.services || [val.category || 'Wash & Fold'],
+          category: cat,
+          services: val.services || [cat],
           quantity: q,
           rate: price,
           price: price,
@@ -532,23 +547,178 @@ export const normalizeFirestoreOrder = (docData, docId) => {
   // Status mapping
   let uiStatus = d.status_display || d.status || 'Pending Pickup';
   const rawStatus = String(d.status || d.orderStatus || d.raw_status || '').toUpperCase();
-  if (['PENDING', 'ACCEPTED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PLACED', 'PAYMENT_PENDING'].includes(rawStatus)) {
-    uiStatus = 'Pending Pickup';
-  } else if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF'].includes(rawStatus)) {
+  if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF'].includes(rawStatus)) {
     uiStatus = 'Dropped Off at Hub';
   } else if (['PICKED_UP', 'RECEIVED_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'WASHING', 'DRYING', 'IRONING', 'IN_CLEANING'].includes(rawStatus)) {
     uiStatus = 'In Cleaning';
+  } else if (['ARRIVED'].includes(rawStatus)) {
+    uiStatus = 'Driver Arrived';
+  } else if (['PICKUP_IN_PROGRESS', 'ON_THE_WAY', 'IN_TRANSIT'].includes(rawStatus)) {
+    uiStatus = 'Driver on the Way';
+  } else if (['PENDING', 'ACCEPTED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PLACED', 'PAYMENT_PENDING'].includes(rawStatus)) {
+    uiStatus = 'Pending Pickup';
   } else if (['QUALITY_CHECK', 'PACKED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY'].includes(rawStatus)) {
     uiStatus = 'Ready for Delivery';
   } else if (['DELIVERED', 'COMPLETED', 'CLOSED'].includes(rawStatus)) {
     uiStatus = 'Completed';
   }
 
-  const servicesList = Array.isArray(d.services) && d.services.length > 0
-    ? d.services
-    : (Array.isArray(d.services_list) && d.services_list.length > 0 ? d.services_list : ['Wash & Fold']);
+  // Extract all distinct services from items
+  const itemServices = [
+    ...new Set(
+      parsedItems.map(it => it.category || it.service_category || (it.services && it.services[0]))
+    )
+  ].filter(s => s && s !== 'General');
 
-  const dateStr = d.date || (d.createdAt?.toDate ? d.createdAt.toDate().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today');
+  let servicesList = [];
+  if (Array.isArray(d.services) && d.services.length > 0) {
+    servicesList = [...d.services];
+  } else if (Array.isArray(d.services_list) && d.services_list.length > 0) {
+    servicesList = [...d.services_list];
+  } else if (d.service) {
+    if (d.service.includes('+')) {
+      servicesList = d.service.split('+').map(s => s.trim());
+    } else if (d.service.includes(',')) {
+      servicesList = d.service.split(',').map(s => s.trim());
+    } else {
+      servicesList = [d.service.trim()];
+    }
+  }
+
+  // Merge any distinct services found in items that might not yet be in servicesList
+  itemServices.forEach(s => {
+    if (!servicesList.some(existing => existing.toLowerCase() === s.toLowerCase())) {
+      servicesList.push(s);
+    }
+  });
+
+  if (servicesList.length === 0) {
+    servicesList = ['Wash & Fold'];
+  }
+
+  const formatIsoDate = (val) => {
+    if (!val) return '';
+    try {
+      if (typeof val === 'string') {
+        const tr = val.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(tr)) return tr.slice(0, 10);
+      }
+      const dt = val?.toDate ? val.toDate() : new Date(typeof val === 'number' ? val : (typeof val === 'string' && /^\d+$/.test(val) ? Number(val) : val));
+      if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+    } catch (_) {}
+    return String(val);
+  };
+
+  const formatTime12h = (t) => {
+    if (!t) return '';
+    const s = String(t).trim();
+    if (/am|pm/i.test(s)) return s;
+    const parts = s.split(':');
+    if (parts.length >= 2) {
+      let h = parseInt(parts[0], 10);
+      const m = parts[1].slice(0, 2);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${m} ${ampm}`;
+    }
+    return s;
+  };
+
+  // 1. Resolve pickup date (priority to actual structured pickup date)
+  let rawPickupDate = '';
+  if (d.pickup && typeof d.pickup === 'object' && d.pickup.date) {
+    rawPickupDate = d.pickup.date;
+  }
+  if (!rawPickupDate && d.pickup_date && d.pickup_date !== 'Today' && d.pickup_date !== 'Scheduled') {
+    rawPickupDate = d.pickup_date;
+  }
+  if (!rawPickupDate && d.pickupDate) {
+    rawPickupDate = d.pickupDate;
+  }
+  if (!rawPickupDate && d.dateText && d.dateText !== 'Today') {
+    rawPickupDate = d.dateText;
+  }
+  if (!rawPickupDate && d.date && d.date !== 'Today') {
+    rawPickupDate = d.date;
+  }
+  if (!rawPickupDate && (d.placedAt || d.createdAt)) {
+    rawPickupDate = formatIsoDate(d.placedAt || d.createdAt);
+  }
+  if (!rawPickupDate) {
+    rawPickupDate = new Date().toISOString().split('T')[0];
+  }
+
+  // 2. Resolve pickup time slot
+  let resolvedPickupSlot = '';
+  if (d.pickup && typeof d.pickup === 'object') {
+    if (d.pickup.time_slot || d.pickup.timeSlot) {
+      resolvedPickupSlot = d.pickup.time_slot || d.pickup.timeSlot;
+    } else if (d.pickup.from && d.pickup.to) {
+      resolvedPickupSlot = `${formatTime12h(d.pickup.from)} – ${formatTime12h(d.pickup.to)}`;
+    }
+  }
+  if (!resolvedPickupSlot && d.pickup_time_slot && d.pickup_time_slot !== 'Standard Slot') {
+    resolvedPickupSlot = d.pickup_time_slot;
+  }
+  if (!resolvedPickupSlot && d.timeText) {
+    resolvedPickupSlot = d.timeText;
+  }
+  if (!resolvedPickupSlot) {
+    resolvedPickupSlot = '11:00 AM – 1:00 PM';
+  }
+
+  // 3. Resolve delivery date
+  let rawDeliveryDate = '';
+  if (d.delivery && typeof d.delivery === 'object' && d.delivery.date) {
+    rawDeliveryDate = d.delivery.date;
+  }
+  if (!rawDeliveryDate && d.delivery_date && d.delivery_date !== '14 Oct 2026') {
+    rawDeliveryDate = d.delivery_date;
+  }
+  if (!rawDeliveryDate && d.deliveryDate) {
+    rawDeliveryDate = d.deliveryDate;
+  }
+  if (!rawDeliveryDate && d.estimated_delivery) {
+    rawDeliveryDate = d.estimated_delivery;
+  }
+  if (!rawDeliveryDate && d.dueBy) {
+    rawDeliveryDate = formatIsoDate(d.dueBy);
+  }
+  if (!rawDeliveryDate) {
+    try {
+      const pDt = new Date(rawPickupDate);
+      if (!isNaN(pDt.getTime())) {
+        pDt.setDate(pDt.getDate() + (d.isExpress ? 1 : 2));
+        rawDeliveryDate = pDt.toISOString().split('T')[0];
+      }
+    } catch (_) {}
+  }
+  if (!rawDeliveryDate) {
+    const fallbackDt = new Date();
+    fallbackDt.setDate(fallbackDt.getDate() + 2);
+    rawDeliveryDate = fallbackDt.toISOString().split('T')[0];
+  }
+
+  // 4. Resolve delivery time slot
+  let resolvedDeliverySlot = '';
+  if (d.delivery && typeof d.delivery === 'object') {
+    if (d.delivery.time_slot || d.delivery.timeSlot) {
+      resolvedDeliverySlot = d.delivery.time_slot || d.delivery.timeSlot;
+    } else if (d.delivery.from && d.delivery.to) {
+      resolvedDeliverySlot = `${formatTime12h(d.delivery.from)} – ${formatTime12h(d.delivery.to)}`;
+    }
+  }
+  if (!resolvedDeliverySlot && d.delivery_time_slot) {
+    resolvedDeliverySlot = d.delivery_time_slot;
+  }
+  if (!resolvedDeliverySlot && d.deliveryTimeSlot) {
+    resolvedDeliverySlot = d.deliveryTimeSlot;
+  }
+  if (!resolvedDeliverySlot) {
+    resolvedDeliverySlot = '02:00 PM – 05:00 PM';
+  }
+
+  const dateStr = d.date || rawPickupDate;
 
   return {
     ...d,
@@ -561,10 +731,12 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     dateText: d.dateText || dateStr,
     placed: placedTime,
     placedAt: d.placedAt || d.createdAt,
-    timeText: d.timeText || d.pickup_time_slot || d.pickupTime || '09:00 AM – 11:00 AM',
-    pickupTime: d.pickupTime || `${dateStr}, ${d.pickup_time_slot || '09:00 AM – 11:00 AM'}`,
-    pickup_time_slot: d.pickup_time_slot || '09:00 AM – 11:00 AM',
-    pickup_date: d.pickup_date || dateStr,
+    timeText: resolvedPickupSlot,
+    pickupTime: `${rawPickupDate}, ${resolvedPickupSlot}`,
+    pickup_time_slot: resolvedPickupSlot,
+    pickup_date: rawPickupDate,
+    delivery_date: rawDeliveryDate,
+    delivery_time_slot: resolvedDeliverySlot,
     pickup_address: custAddress,
     delivery_address: d.delivery_address || custAddress,
     addressTitle: custAddress,
@@ -587,6 +759,7 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     estimatedTotal: totalAmount,
     services: servicesList,
     services_list: servicesList,
+    service: servicesList.join(' + '),
     items: parsedItems,
     itemsCount: totalItemsCount || 1,
     items_summary: itemsSummaryStr,
@@ -889,7 +1062,7 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
         } catch (_) {}
       }
 
-      // If order was dropped off at laundry or updated delivery stage, synchronize associated tasks
+      // If order was dropped off at laundry or updated pickup/delivery stage, synchronize associated tasks
       try {
         const tasksSnap = await get(ref(rtdb, 'tasks'));
         if (tasksSnap.exists()) {
@@ -900,7 +1073,43 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
                 if (tVal.type === 'pickup') {
                   await update(ref(rtdb, `tasks/${tId}`), {
                     status: 'completed',
+                    tracker_stage: 'AT_HUB',
                     droppedOffAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'PICKED_UP' || rawStatus === 'COLLECTED' || status === 'Picked Up') {
+                if (tVal.type === 'pickup') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'picked_up',
+                    tracker_stage: 'COLLECTED',
+                    completedAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'ARRIVED') {
+                if (tVal.type === 'pickup') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'arrived',
+                    tracker_stage: 'ARRIVED',
+                    arrivedAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'PICKUP_IN_PROGRESS' || rawStatus === 'ON_THE_WAY') {
+                if (tVal.type === 'pickup') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'on_the_way',
+                    tracker_stage: 'ON_THE_WAY',
+                    startedAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else if (rawStatus === 'PICKUP_ASSIGNED' || rawStatus === 'ASSIGNED') {
+                if (tVal.type === 'pickup') {
+                  await update(ref(rtdb, `tasks/${tId}`), {
+                    status: 'assigned',
+                    tracker_stage: 'ASSIGNED',
                     updatedAt: now
                   });
                 }
