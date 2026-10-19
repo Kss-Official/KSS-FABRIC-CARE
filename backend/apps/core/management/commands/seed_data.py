@@ -92,9 +92,9 @@ class Command(BaseCommand):
             name='Steam Ironing',
             defaults={'slug': 'steam-ironing', 'description': 'Crisp steam press and hanger packaging.', 'display_order': 3}
         )
-        cat_special, _ = ServiceCategory.objects.get_or_create(
-            name='Special Care',
-            defaults={'slug': 'special-care', 'description': 'Curtains, shoes, blankets and deep care.', 'display_order': 4}
+        cat_household, _ = ServiceCategory.objects.get_or_create(
+            name='Household',
+            defaults={'slug': 'household', 'description': 'Bedsheets, blankets, curtains, and linens.', 'display_order': 4}
         )
 
         # 3. Create Services
@@ -104,9 +104,10 @@ class Command(BaseCommand):
             {'name': 'T-Shirt (Wash & Fold)', 'category': cat_wash, 'price': 70.00, 'unit': 'per piece', 'description': 'Gentle wash and crisp fold', 'icon': 'Shirt', 'image_url': '/assets/service-wash.jpg'},
             {'name': 'Formal Suit (2-Piece)', 'category': cat_dry, 'price': 250.00, 'unit': 'per piece', 'description': 'Professional eco dry cleaning and contour pressing', 'icon': 'Sparkles', 'image_url': '/assets/service-dryclean.jpg'},
             {'name': 'Silk Saree / Lehenga', 'category': cat_dry, 'price': 220.00, 'unit': 'per piece', 'description': 'Delicate fabric care with organic solvents', 'icon': 'Sparkles', 'image_url': '/assets/service-dryclean.jpg'},
-            {'name': 'Bedsheet (Single / Double)', 'category': cat_iron, 'price': 90.00, 'unit': 'per item', 'description': 'Sanitized wash, dry and steam iron', 'icon': 'Flame', 'image_url': '/assets/service-iron.jpg'},
-            {'name': 'Blanket / Heavy Quilt', 'category': cat_special, 'price': 300.00, 'unit': 'per item', 'description': 'Deep sanitization and anti-allergen treatment', 'icon': 'BedDouble', 'image_url': '/assets/service-curtain.jpg'},
-            {'name': 'Shoe Laundry', 'category': cat_special, 'price': 250.00, 'unit': 'per pair', 'description': 'Deep sole cleaning, deodorizing and protection', 'icon': 'Footprints', 'image_url': '/assets/service-shoe.jpg'},
+            {'name': 'Bedsheet (Single / Double)', 'category': cat_household, 'price': 90.00, 'unit': 'per item', 'description': 'Sanitized wash, dry and steam iron', 'icon': 'Flame', 'image_url': '/assets/service-iron.jpg'},
+            {'name': 'Blanket / Heavy Quilt', 'category': cat_household, 'price': 300.00, 'unit': 'per item', 'description': 'Deep sanitization and anti-allergen treatment', 'icon': 'BedDouble', 'image_url': '/assets/service-curtain.jpg'},
+            {'name': 'Curtain (Per Piece)', 'category': cat_household, 'price': 180.00, 'unit': 'per item', 'description': 'Dry cleaning and freshening', 'icon': 'Layers', 'image_url': '/assets/service-curtain.jpg'},
+            {'name': 'Shoe Laundry', 'category': cat_wash, 'price': 250.00, 'unit': 'per pair', 'description': 'Deep sole cleaning, deodorizing and protection', 'icon': 'Footprints', 'image_url': '/assets/service-shoe.jpg'},
         ]
 
         for s_data in services_data:
@@ -209,7 +210,7 @@ class Command(BaseCommand):
                 payment_status=Order.PaymentStatus.PAID,
                 payment_method=Order.PaymentMethod.CASH_ON_DELIVERY
             )
-            OrderItem.objects.create(order=o4, service_name='Blanket / Heavy Quilt', category_name='Special Care', quantity=2, unit_price=300.00, total_price=600.00)
+            OrderItem.objects.create(order=o4, service_name='Blanket / Heavy Quilt', category_name='Household', quantity=2, unit_price=300.00, total_price=600.00)
             Invoice.objects.create(order=o4, subtotal=600.00, total_payable=600.00, payment_status=Order.PaymentStatus.PENDING, payment_method=Order.PaymentMethod.CASH_ON_DELIVERY)
 
             self.stdout.write(self.style.SUCCESS('Sample workflow orders initialized.'))

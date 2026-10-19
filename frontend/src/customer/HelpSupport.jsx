@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 
 export const HelpSupport = () => {
+  const { currentUser } = useAuth();
   const { navigateTo } = useBooking();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);

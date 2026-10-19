@@ -13,8 +13,11 @@ import {
   ChevronRight, 
   AlertCircle,
   RefreshCw,
-  PlusCircle
+  PlusCircle,
+  X
 } from 'lucide-react';
+import { OrderStatusDropdown } from '../components/common/OrderStatusDropdown';
+import { formatOrderId } from '../utils/helpers';
 
 export const MyOrders = () => {
   const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
@@ -194,8 +197,9 @@ export const MyOrders = () => {
   const filteredOrders = orders.filter(order => {
     const term = (searchQuery || '').trim().toLowerCase();
     const orderNo = (order.order_number || order.code || '').toLowerCase();
+    const formattedNo = formatOrderId(order.order_number || order.code || order.id).toLowerCase();
     const addr = (order.pickup_address || '').toLowerCase();
-    const matchesSearch = !term || orderNo.includes(term) || addr.includes(term);
+    const matchesSearch = !term || orderNo.includes(term) || formattedNo.includes(term) || addr.includes(term);
     
     if (statusFilter === 'ALL') return matchesSearch;
     if (statusFilter === 'PENDING') return matchesSearch && ['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PLACED', 'PAYMENT_PENDING'].includes(order.status);
@@ -264,17 +268,6 @@ export const MyOrders = () => {
         </div>
         <div className="flex items-center gap-3">
           <button 
-            onClick={() => {
-              setLoading(true);
-              fetchOrdersFromApi().finally(() => setLoading(false));
-            }} 
-            className="btn btn-outline-secondary btn-sm flex items-center gap-1"
-            disabled={loading}
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
-          </button>
-          <button 
             onClick={() => startBooking()} 
             className="btn btn-primary btn-sm flex items-center gap-2 shadow-sm"
           >
@@ -284,30 +277,45 @@ export const MyOrders = () => {
         </div>
       </div>
 
-      {/* Filters Bar */}
+      {/* Filters Bar: Search and Filters matching Reference Image 1 */}
       <div className="content-card mb-6">
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-3 top-3 text-slate-400" size={16} />
-            <input 
-              type="text" 
-              placeholder="Search by Order ID or Address..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="form-input pl-9 text-sm"
-            />
+        <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center justify-between">
+          <div>
+            <span className="text-sm font-semibold text-navy">All Orders</span>
+            <span className="text-xs text-muted ml-2 hidden sm:inline">Real-time status updates</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {['ALL', 'PENDING', 'PROCESSING', 'DELIVERY', 'COMPLETED', 'CANCELLED'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setStatusFilter(tab)}
-                className={`filter-tab ${statusFilter === tab ? 'active' : ''}`}
-              >
-                {tab === 'ALL' ? 'All Orders' : tab.charAt(0) + tab.slice(1).toLowerCase()}
-              </button>
-            ))}
+          <div className="toolbar-controls-group">
+            {/* Order Count Option next to search bar */}
+            <span className="orders-count-pill">
+              {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
+            </span>
+
+            <div className="search-input-wrapper">
+              <Search size={16} className="search-magnifier-icon" />
+              <input 
+                type="text" 
+                placeholder="Search by Order ID, customer, or s..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="search-box-field"
+              />
+              {searchQuery && (
+                <button 
+                  type="button" 
+                  onClick={() => setSearchQuery('')}
+                  className="search-clear-btn"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            <OrderStatusDropdown 
+              value={statusFilter} 
+              onChange={(newStatus) => setStatusFilter(newStatus)}
+            />
           </div>
         </div>
       </div>
@@ -342,7 +350,7 @@ export const MyOrders = () => {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-lg text-navy">{order.order_number || order.code}</span>
+                      <span className="font-mono font-bold text-lg text-navy">{formatOrderId(order.order_number || order.code || order.id)}</span>
                       {getStatusBadge(order.status)}
                     </div>
                     <span className="text-xs text-muted">
@@ -356,7 +364,7 @@ export const MyOrders = () => {
                     <button
                       onClick={() => setCancelModalOrder(order)}
                       disabled={cancellingId === order.id}
-                      className="btn btn-outline-danger btn-sm"
+                      className="btn-cancel-order-action"
                     >
                       Cancel Order
                     </button>
@@ -368,10 +376,10 @@ export const MyOrders = () => {
                       }
                       navigateTo('customer-track', (order.id || order.code).toString());
                     }}
-                    className="btn btn-primary btn-sm flex items-center gap-1.5"
+                    className="btn-view-order-action"
                   >
                     <span>Track Live</span>
-                    <ChevronRight size={15} />
+                    <ChevronRight size={13} />
                   </button>
                 </div>
               </div>
@@ -402,7 +410,6 @@ export const MyOrders = () => {
                       ? order.items.map(i => `${i.item_name || i.name || i.service_name || 'Item'} ×${i.quantity || 1}`).join(', ')
                       : 'General Laundry Service'}
                   </div>
-                  <div className="text-xs text-slate-500 truncate max-w-xs">{order.pickup_address}</div>
                 </div>
 
                 <div>
@@ -431,7 +438,7 @@ export const MyOrders = () => {
           >
             <div className="flex items-center gap-3 text-red-600 mb-3">
               <AlertCircle size={24} />
-              <h3 className="text-lg font-bold">Cancel Order {cancelModalOrder.order_number || cancelModalOrder.code}?</h3>
+              <h3 className="text-lg font-bold">Cancel Order {formatOrderId(cancelModalOrder.order_number || cancelModalOrder.code || cancelModalOrder.id)}?</h3>
             </div>
             <p className="text-sm text-slate-600 mb-4">
               Are you sure you want to cancel this booking? This action cannot be undone once confirmed.

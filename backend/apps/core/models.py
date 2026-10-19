@@ -1,4 +1,5 @@
 import uuid
+import random
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -129,8 +130,8 @@ class Order(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.order_id:
-            random_code = uuid.uuid4().hex[:5].upper()
-            self.order_id = f"#FC{random_code}"
+            random_code = f"{random.randint(10000, 99999)}"
+            self.order_id = f"FC-{random_code}"
         super().save(*args, **kwargs)
 
     def __str__(self):

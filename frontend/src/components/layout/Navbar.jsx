@@ -1,15 +1,75 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useBooking } from '../../context/BookingContext';
 import { useAuth } from '../../context/AuthContext';
-import { Sparkles, Menu, X, ArrowRight, ShieldCheck, PhoneCall, User, LogOut, LayoutDashboard, Truck, Layers, ChevronDown, Package, Clock, FileText, MapPin, Bell, HelpCircle } from 'lucide-react';
+import { 
+  Sparkles, Menu, X, ArrowRight, ShieldCheck, PhoneCall, User, LogOut, 
+  LayoutDashboard, Truck, Layers, ChevronDown, Package, Clock, FileText, 
+  MapPin, Bell, HelpCircle, CheckCircle2, CreditCard, CheckCheck 
+} from 'lucide-react';
+import { DEFAULT_NOTIFICATIONS, normalizeNotification } from '../../customer/Notifications';
+import { subscribeCustomerNotifications, markNotificationRead } from '../../services/customerDataService';
 
 export const Navbar = () => {
   const { currentPage, navigateTo, startBooking } = useBooking();
   const { currentUser, userProfile, userRole, isAuthenticated, logout, openAuthModal } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
   const profileMenuRef = useRef(null);
+  const notifMenuRef = useRef(null);
 
+  // Initialize notifications from localStorage fallback to defaults
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fabricare_customer_notifications');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return (DEFAULT_NOTIFICATIONS || []).map(n => ({ ...n }));
+  });
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  // Real-time synchronization for notifications
+  useEffect(() => {
+    const handleSync = (e) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setNotifications(e.detail);
+      }
+    };
+    window.addEventListener('fabricare-notifications-updated', handleSync);
+
+    if (!currentUser?.uid) {
+      return () => {
+        window.removeEventListener('fabricare-notifications-updated', handleSync);
+      };
+    }
+
+    const unsubscribe = subscribeCustomerNotifications(
+      currentUser.uid,
+      (list) => {
+        if (Array.isArray(list) && list.length > 0) {
+          const mapped = list.map(normalizeNotification);
+          setNotifications(mapped);
+          try {
+            localStorage.setItem('fabricare_customer_notifications', JSON.stringify(mapped));
+          } catch (e) {}
+        }
+      },
+      (err) => {
+        console.warn('Navbar notification subscription error:', err);
+      }
+    );
+
+    return () => {
+      window.removeEventListener('fabricare-notifications-updated', handleSync);
+      unsubscribe();
+    };
+  }, [currentUser?.uid]);
+
+  // Click outside handler for profile dropdown
   useEffect(() => {
     if (!profileDropdownOpen) return;
 
@@ -27,6 +87,108 @@ export const Navbar = () => {
       document.removeEventListener('touchstart', handleClickOutside);
     };
   }, [profileDropdownOpen]);
+
+  // Click outside handler for notifications dropdown
+  useEffect(() => {
+    if (!notifDropdownOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (notifMenuRef.current && !notifMenuRef.current.contains(event.target)) {
+        setNotifDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [notifDropdownOpen]);
+
+  // Handle clicking a single notification item
+  const handleNotificationClick = async (notif) => {
+    if (!notif.isRead) {
+      const updated = notifications.map(n => n.id === notif.id ? { ...n, isRead: true } : n);
+      setNotifications(updated);
+      try {
+        localStorage.setItem('fabricare_customer_notifications', JSON.stringify(updated));
+      } catch (e) {}
+      window.dispatchEvent(new CustomEvent('fabricare-notifications-updated', { detail: updated }));
+      if (currentUser?.uid) {
+        try {
+          await markNotificationRead(currentUser.uid, notif.id);
+        } catch (e) {}
+      }
+    }
+    setNotifDropdownOpen(false);
+
+    if (notif.actionType === 'track' || notif.type === 'delivery' || notif.category === 'Out for Delivery') {
+      navigateTo('customer-track');
+    } else if (notif.actionType === 'invoice' || notif.type === 'payment' || notif.category === 'Payment') {
+      navigateTo('customer-invoices');
+    } else if (notif.actionType === 'report' || notif.category === 'Rescheduled') {
+      navigateTo('customer-reports');
+    } else {
+      navigateTo('customer-notifications');
+    }
+  };
+
+  // Mark all notifications as read
+  const handleMarkAllRead = async (e) => {
+    if (e) e.stopPropagation();
+    const updated = notifications.map(n => ({ ...n, isRead: true }));
+    setNotifications(updated);
+    try {
+      localStorage.setItem('fabricare_customer_notifications', JSON.stringify(updated));
+    } catch (e) {}
+    window.dispatchEvent(new CustomEvent('fabricare-notifications-updated', { detail: updated }));
+    if (currentUser?.uid) {
+      try {
+        const unreadList = notifications.filter(n => !n.isRead);
+        await Promise.all(unreadList.map(n => markNotificationRead(currentUser.uid, n.id)));
+      } catch (e) {}
+    }
+  };
+
+  const renderNotifIcon = (notif) => {
+    const type = notif.type || '';
+    const category = notif.category || '';
+    if (type === 'delivery' || category === 'Out for Delivery') {
+      return (
+        <div className="notif-item-icon-box" style={{ background: '#EFF6FF', color: '#2563EB' }}>
+          <Truck size={14} />
+        </div>
+      );
+    }
+    if (type === 'completed' || category === 'Delivered') {
+      return (
+        <div className="notif-item-icon-box" style={{ background: '#ECFDF5', color: '#059669' }}>
+          <CheckCircle2 size={14} />
+        </div>
+      );
+    }
+    if (type === 'rescheduled' || category === 'Rescheduled') {
+      return (
+        <div className="notif-item-icon-box" style={{ background: '#FFFBEB', color: '#D97706' }}>
+          <Clock size={14} />
+        </div>
+      );
+    }
+    if (type === 'payment' || category === 'Payment') {
+      return (
+        <div className="notif-item-icon-box" style={{ background: '#F0FDF4', color: '#16A34A' }}>
+          <CreditCard size={14} />
+        </div>
+      );
+    }
+    return (
+      <div className="notif-item-icon-box" style={{ background: '#F0FDFB', color: '#0D7A75' }}>
+        <Bell size={14} />
+      </div>
+    );
+  };
 
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   const isDeliveryAgent = userRole === 'delivery_agent' || userRole === 'delivery' || userRole === 'agent';
@@ -113,85 +275,182 @@ export const Navbar = () => {
         {/* Header Action Button */}
         <div className="nav-actions">
           {isAuthenticated ? (
-            <div className="user-profile-menu-wrap" ref={profileMenuRef}>
-              <button 
-                className="user-profile-btn"
-                onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                title="Account Settings"
-              >
-                <div className="nav-user-avatar">
-                  {userProfile?.displayName ? userProfile.displayName.substring(0, 2).toUpperCase() : 'CU'}
-                </div>
-                <span className="nav-user-name">{userProfile?.displayName?.split(' ')[0] || 'Customer'}</span>
-              </button>
-
-              {profileDropdownOpen && (
-                <div className="nav-dropdown-card animate-fade-in">
-                  <div className="dropdown-user-info">
-                    <p className="dropdown-name">{userProfile?.displayName || 'Customer'}</p>
-                    <p className="dropdown-email">{currentUser?.email}</p>
-                    <span style={{ display: 'inline-block', marginTop: 4, padding: '2px 8px', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', background: isAdmin ? '#FEF3C7' : isDeliveryAgent ? '#DBEAFE' : isLaundryStaff ? '#EDE9FE' : '#ECFDF5', color: isAdmin ? '#B45309' : isDeliveryAgent ? '#1D4ED8' : isLaundryStaff ? '#6D28D9' : '#059669' }}>
-                      {isAdmin ? '👑 Administrator' : isDeliveryAgent ? '🚚 Delivery Agent' : isLaundryStaff ? '✨ Laundry Staff' : '👤 Customer'}
+            <div className="nav-user-cluster">
+              {/* Notification Bell Menu */}
+              <div className="user-notif-menu-wrap" ref={notifMenuRef}>
+                <button 
+                  id="nav-notification-bell-btn"
+                  className={`nav-bell-btn ${notifDropdownOpen ? 'active' : ''}`}
+                  onClick={() => {
+                    setNotifDropdownOpen(prev => !prev);
+                    setProfileDropdownOpen(false);
+                  }}
+                  title="Notifications"
+                  aria-label="View notifications"
+                  aria-expanded={notifDropdownOpen}
+                >
+                  <Bell size={19} />
+                  {unreadCount > 0 && (
+                    <span className="nav-bell-badge">
+                      {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
+                  )}
+                </button>
+
+                {notifDropdownOpen && (
+                  <div className="nav-notif-dropdown animate-fade-in" onClick={(e) => e.stopPropagation()}>
+                    <div className="notif-dropdown-header">
+                      <div className="notif-dropdown-title-group">
+                        <span className="notif-dropdown-title">Notifications</span>
+                        {unreadCount > 0 ? (
+                          <span className="notif-unread-pill">{unreadCount} new</span>
+                        ) : (
+                          <span className="notif-caught-up-pill">All caught up</span>
+                        )}
+                      </div>
+                      {unreadCount > 0 && (
+                        <button 
+                          type="button"
+                          className="notif-mark-all-btn"
+                          onClick={handleMarkAllRead}
+                          title="Mark all as read"
+                        >
+                          <CheckCheck size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="notif-dropdown-list">
+                      {notifications.length === 0 ? (
+                        <div className="notif-dropdown-empty">
+                          <div className="notif-dropdown-empty-icon">
+                            <Bell size={22} />
+                          </div>
+                          <p style={{ margin: '0 0 4px', fontWeight: 600, color: '#334155', fontSize: '0.875rem' }}>No notifications yet</p>
+                          <p style={{ margin: 0, fontSize: '0.75rem', color: '#94A3B8' }}>You're all caught up with your orders and alerts.</p>
+                        </div>
+                      ) : (
+                        notifications.slice(0, 6).map((notif) => (
+                          <div
+                            key={notif.id}
+                            className={`notif-dropdown-item ${!notif.isRead ? 'unread' : ''}`}
+                            onClick={() => handleNotificationClick(notif)}
+                          >
+                            {renderNotifIcon(notif)}
+                            <div className="notif-item-content">
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                                <h4 className="notif-item-title">{notif.title}</h4>
+                                {!notif.isRead && <span className="notif-unread-dot" />}
+                              </div>
+                              <p className="notif-item-desc">{notif.message}</p>
+                              <div className="notif-item-meta">
+                                <span className="notif-item-time">{notif.formattedDate || 'Recent'}</span>
+                                {notif.orderId && (
+                                  <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#0D7A75', background: '#F0FDFB', padding: '1px 6px', borderRadius: 4 }}>
+                                    {notif.orderId}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="notif-dropdown-footer">
+                      <button
+                        type="button"
+                        className="notif-dropdown-footer-btn"
+                        onClick={() => {
+                          setNotifDropdownOpen(false);
+                          navigateTo('customer-notifications');
+                        }}
+                      >
+                        <span>View All Notifications</span>
+                        <ArrowRight size={13} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="dropdown-divider" />
-                  {isAdmin && (
-                    <button className="dropdown-action-item" style={{ color: '#0D7A75', fontWeight: 600 }} onClick={() => { setProfileDropdownOpen(false); navigateTo('admin'); }}>
-                      <LayoutDashboard size={15} />
-                      <span>Admin Portal</span>
+                )}
+              </div>
+
+              {/* Profile Menu */}
+              <div className="user-profile-menu-wrap" ref={profileMenuRef}>
+                <button 
+                  className="user-profile-btn"
+                  onClick={() => {
+                    setProfileDropdownOpen(prev => !prev);
+                    setNotifDropdownOpen(false);
+                  }}
+                  title="Account Settings"
+                >
+                  <div className="nav-user-avatar">
+                    {userProfile?.displayName ? userProfile.displayName.substring(0, 2).toUpperCase() : 'CU'}
+                  </div>
+                  <span className="nav-user-name">{userProfile?.displayName?.split(' ')[0] || 'Customer'}</span>
+                </button>
+
+                {profileDropdownOpen && (
+                  <div className="nav-dropdown-card animate-fade-in">
+                    <div className="dropdown-user-info">
+                      <p className="dropdown-name">{userProfile?.displayName || 'Customer'}</p>
+                      <p className="dropdown-email">{currentUser?.email}</p>
+                      <span style={{ display: 'inline-block', marginTop: 4, padding: '2px 8px', borderRadius: 999, fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', background: isAdmin ? '#FEF3C7' : isDeliveryAgent ? '#DBEAFE' : isLaundryStaff ? '#EDE9FE' : '#ECFDF5', color: isAdmin ? '#B45309' : isDeliveryAgent ? '#1D4ED8' : isLaundryStaff ? '#6D28D9' : '#059669' }}>
+                        {isAdmin ? '👑 Administrator' : isDeliveryAgent ? '🚚 Delivery Agent' : isLaundryStaff ? '✨ Laundry Staff' : '👤 Customer'}
+                      </span>
+                    </div>
+                    <div className="dropdown-divider" />
+                    {isAdmin && (
+                      <button className="dropdown-action-item" style={{ color: '#0D7A75', fontWeight: 600 }} onClick={() => { setProfileDropdownOpen(false); navigateTo('admin'); }}>
+                        <LayoutDashboard size={15} />
+                        <span>Admin Portal</span>
+                      </button>
+                    )}
+                    {isCustomer && (
+                      <>
+                        <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-dashboard'); }}>
+                          <Package size={15} />
+                          <span>My Orders</span>
+                        </button>
+                        <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-track'); }}>
+                          <Clock size={15} />
+                          <span>Track Order</span>
+                        </button>
+                        <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-reports'); }}>
+                          <FileText size={15} />
+                          <span>Reports</span>
+                        </button>
+                        <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-support'); }}>
+                          <HelpCircle size={15} />
+                          <span>Help & Support</span>
+                        </button>
+                        <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-profile'); }}>
+                          <User size={15} />
+                          <span>My Profile</span>
+                        </button>
+                      </>
+                    )}
+                    {isDeliveryAgent && (
+                      <button className="dropdown-action-item" style={{ color: '#1D4ED8' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('delivery-portal'); }}>
+                        <Truck size={15} />
+                        <span>Delivery Portal</span>
+                      </button>
+                    )}
+                    {isLaundryStaff && (
+                      <button className="dropdown-action-item" style={{ color: '#6D28D9' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('laundry-portal'); }}>
+                        <Layers size={15} />
+                        <span>Laundry Hub Portal</span>
+                      </button>
+                    )}
+                    <div className="dropdown-divider" />
+                    <button className="dropdown-action-item" onClick={handleLogout}>
+                      <LogOut size={15} />
+                      <span>Sign Out</span>
                     </button>
-                  )}
-                  {isCustomer && (
-                    <>
-                      <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-orders'); }}>
-                        <Package size={15} />
-                        <span>My Orders</span>
-                      </button>
-                      <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-track'); }}>
-                        <Clock size={15} />
-                        <span>Track Order</span>
-                      </button>
-                      <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-reports'); }}>
-                        <FileText size={15} />
-                        <span>Reports</span>
-                      </button>
-                      <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-invoices'); }}>
-                        <FileText size={15} />
-                        <span>Invoices & Bills</span>
-                      </button>
-                      <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-notifications'); }}>
-                        <Bell size={15} />
-                        <span>Notifications</span>
-                      </button>
-                      <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-support'); }}>
-                        <HelpCircle size={15} />
-                        <span>Help & Support</span>
-                      </button>
-                      <button className="dropdown-action-item" style={{ color: '#0D7A75' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('customer-profile'); }}>
-                        <User size={15} />
-                        <span>My Profile</span>
-                      </button>
-                    </>
-                  )}
-                  {isDeliveryAgent && (
-                    <button className="dropdown-action-item" style={{ color: '#1D4ED8' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('delivery-portal'); }}>
-                      <Truck size={15} />
-                      <span>Delivery Portal</span>
-                    </button>
-                  )}
-                  {isLaundryStaff && (
-                    <button className="dropdown-action-item" style={{ color: '#6D28D9' }} onClick={() => { setProfileDropdownOpen(false); navigateTo('laundry-portal'); }}>
-                      <Layers size={15} />
-                      <span>Laundry Hub Portal</span>
-                    </button>
-                  )}
-                  <div className="dropdown-divider" />
-                  <button className="dropdown-action-item" onClick={handleLogout}>
-                    <LogOut size={15} />
-                    <span>Sign Out</span>
-                  </button>
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="nav-auth-buttons">
@@ -443,6 +702,289 @@ export const Navbar = () => {
           align-items: center;
           justify-content: center;
           gap: 6px;
+        }
+
+        .nav-user-cluster {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .user-notif-menu-wrap {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+        }
+
+        .nav-bell-btn {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          padding: 0;
+        }
+
+        .nav-bell-btn:hover,
+        .nav-bell-btn.active {
+          background: #F0FDFB;
+          border-color: #0D7A75;
+          color: #0D7A75;
+          box-shadow: 0 2px 8px rgba(13, 122, 117, 0.15);
+        }
+
+        .nav-bell-badge {
+          position: absolute;
+          top: -3px;
+          right: -3px;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 4px;
+          border-radius: 999px;
+          background: #FF6B50;
+          color: #FFFFFF;
+          font-size: 0.65rem;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 2px solid #FFFFFF;
+          line-height: 1;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+        }
+
+        .nav-notif-dropdown {
+          position: absolute;
+          top: calc(100% + 10px);
+          right: -40px;
+          width: 360px;
+          max-width: calc(100vw - 24px);
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 16px;
+          box-shadow: 0 16px 36px -6px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.06);
+          z-index: 1002;
+          overflow: hidden;
+        }
+
+        .notif-dropdown-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          border-bottom: 1px solid #F1F5F9;
+          background: #FFFFFF;
+        }
+
+        .notif-dropdown-title-group {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .notif-dropdown-title {
+          font-size: 0.9375rem;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 0;
+        }
+
+        .notif-unread-pill {
+          font-size: 0.6875rem;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 999px;
+          background: #FEF2F2;
+          color: #EF4444;
+        }
+
+        .notif-caught-up-pill {
+          font-size: 0.6875rem;
+          font-weight: 600;
+          padding: 2px 8px;
+          border-radius: 999px;
+          background: #F0FDF4;
+          color: #16A34A;
+        }
+
+        .notif-mark-all-btn {
+          background: none;
+          border: none;
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: #0D7A75;
+          cursor: pointer;
+          padding: 4px 8px;
+          border-radius: 6px;
+          transition: all 0.15s ease;
+          display: inline-flex;
+          align-items: center;
+        }
+
+        .notif-mark-all-btn:hover {
+          background: #F0FDFB;
+          color: #08615D;
+        }
+
+        .notif-dropdown-list {
+          max-height: 330px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+        }
+
+        .notif-dropdown-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 12px 16px;
+          border-bottom: 1px solid #F8FAFC;
+          background: #FFFFFF;
+          cursor: pointer;
+          transition: background 0.15s ease;
+          text-align: left;
+          width: 100%;
+          border-left: 3px solid transparent;
+          box-sizing: border-box;
+        }
+
+        .notif-dropdown-item:hover {
+          background: #F8FAFC;
+        }
+
+        .notif-dropdown-item.unread {
+          background: #F0FDFB;
+          border-left-color: #0D7A75;
+        }
+
+        .notif-dropdown-item.unread:hover {
+          background: #E6F7F5;
+        }
+
+        .notif-item-icon-box {
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        .notif-item-content {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .notif-item-title {
+          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #1E293B;
+          margin: 0 0 2px 0;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .notif-dropdown-item.unread .notif-item-title {
+          color: #0F172A;
+          font-weight: 700;
+        }
+
+        .notif-item-desc {
+          font-size: 0.75rem;
+          color: #64748B;
+          margin: 0 0 4px 0;
+          line-height: 1.35;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        .notif-item-meta {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 0.6875rem;
+          color: #94A3B8;
+        }
+
+        .notif-item-time {
+          font-size: 0.6875rem;
+          color: #94A3B8;
+        }
+
+        .notif-unread-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #FF6B50;
+          flex-shrink: 0;
+        }
+
+        .notif-dropdown-footer {
+          padding: 10px 16px;
+          border-top: 1px solid #F1F5F9;
+          background: #FAFBFB;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .notif-dropdown-footer-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          width: 100%;
+          padding: 8px 14px;
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+          border-radius: 10px;
+          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #0D7A75;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .notif-dropdown-footer-btn:hover {
+          background: #0D7A75;
+          color: #FFFFFF;
+          border-color: #0D7A75;
+        }
+
+        .notif-dropdown-empty {
+          padding: 32px 16px;
+          text-align: center;
+          color: #64748B;
+        }
+
+        .notif-dropdown-empty-icon {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: #F1F5F9;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 10px;
+          color: #94A3B8;
+        }
+
+        @media (max-width: 480px) {
+          .nav-notif-dropdown {
+            right: -60px;
+            width: 320px;
+          }
         }
 
         .user-profile-menu-wrap {

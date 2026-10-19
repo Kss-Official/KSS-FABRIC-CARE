@@ -14,15 +14,16 @@ import {
   Search
 } from 'lucide-react';
 import { SupportTicketDrawer } from '../../components/admin/SupportTicketDrawer';
+import { filterMatchesDate } from '../../utils/dateFilterUtils';
 
 export const AdminHelpSupportPage = () => {
   const { 
-    supportTickets, 
-    supportSummary, 
-    supportLoading, 
-    fetchSupportTickets,
-    openSupportDrawer 
-  } = useAdmin();
+    supportTickets = [], 
+    supportSummary = { total_tickets: 24, open: 6, in_progress: 4, resolved: 14 }, 
+    supportLoading = false, 
+    fetchSupportTickets = () => {},
+    openSupportDrawer = () => {} 
+  } = useAdmin() || {};
 
   // Filters and search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,7 +64,7 @@ export const AdminHelpSupportPage = () => {
 
   // Filtered tickets
   const filteredTickets = useMemo(() => {
-    return supportTickets.filter((item) => {
+    return (supportTickets || []).filter((item) => {
       // Search query filter (matches ticket_number, customer, subject, message)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -89,10 +90,8 @@ export const AdminHelpSupportPage = () => {
       }
 
       // Date Range Filter
-      if (dateRangeFilter === 'TODAY') {
-        const today = new Date().toISOString().split('T')[0];
-        const itemDate = (item.created_at || '').split('T')[0];
-        if (itemDate && itemDate !== today) return false;
+      if (!filterMatchesDate(item, dateRangeFilter, ['created_at', 'createdAt', 'updated_at'])) {
+        return false;
       }
 
       return true;
@@ -131,7 +130,7 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Total Tickets</span>
-              <span className="stat-number">{supportSummary?.total_tickets ?? supportTickets?.length ?? 0}</span>
+              <span className="stat-number">{supportSummary?.total_tickets ?? (supportTickets || []).length ?? 0}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>12%</span>
@@ -149,7 +148,7 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Open</span>
-              <span className="stat-number">{supportSummary?.open ?? (supportTickets?.filter(t => t.status === 'OPEN').length || 0)}</span>
+              <span className="stat-number">{supportSummary?.open ?? ((supportTickets || []).filter(t => t.status === 'OPEN').length || 0)}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>5%</span>
@@ -167,7 +166,7 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">In Progress</span>
-              <span className="stat-number">{supportSummary?.in_progress ?? (supportTickets?.filter(t => t.status === 'IN_PROGRESS').length || 0)}</span>
+              <span className="stat-number">{supportSummary?.in_progress ?? ((supportTickets || []).filter(t => t.status === 'IN_PROGRESS').length || 0)}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>8%</span>
@@ -185,7 +184,7 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Resolved</span>
-              <span className="stat-number">{supportSummary?.resolved ?? (supportTickets?.filter(t => t.status === 'RESOLVED').length || 0)}</span>
+              <span className="stat-number">{supportSummary?.resolved ?? ((supportTickets || []).filter(t => t.status === 'RESOLVED').length || 0)}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>15%</span>
@@ -266,7 +265,8 @@ export const AdminHelpSupportPage = () => {
               >
                 <option value="ALL">Select Date Range</option>
                 <option value="TODAY">Today</option>
-                <option value="7DAYS">Last 7 Days</option>
+                <option value="YESTERDAY">Yesterday</option>
+                <option value="LAST_WEEK">Last Week</option>
               </select>
               <ChevronDown size={14} className="hs-select-chevron" />
             </div>

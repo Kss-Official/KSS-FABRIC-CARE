@@ -149,29 +149,57 @@ export const updateUserProfile = async (uid, updates) => {
 /**
  * Admin creates staff or agent user using secondary Firebase app instance
  */
-export const createStaffOrAgentByAdmin = async ({ email, password, name, phone, role }) => {
+export const createStaffOrAgentByAdmin = async ({ 
+  email, 
+  password, 
+  name, 
+  phone, 
+  role, 
+  area, 
+  address, 
+  department, 
+  shift, 
+  vehicleType, 
+  vehicleNumber, 
+  status = 'Active',
+  notes,
+  ...extraFields 
+}) => {
   const { secondaryAuth, secondaryApp } = getSecondaryAuth();
   try {
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email.trim(), password);
     const newUid = cred.user.uid;
 
+    const effectiveRole = role || 'customer';
+    const isActive = status === 'Active' || status === true;
+
     const profileData = {
       name: name.trim(),
       email: email.trim(),
-      phone: phone.trim(),
-      role,
-      isActive: true,
-      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name.trim())}&background=1E3A8A&color=fff`,
-      createdAt: Date.now()
+      phone: phone ? phone.trim() : '',
+      role: effectiveRole,
+      isActive,
+      status: isActive ? 'Active' : 'Inactive',
+      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name.trim())}&background=0D7A75&color=fff`,
+      createdAt: Date.now(),
+      ...(area ? { area: area.trim(), location: `${area.trim()}, Bengaluru` } : {}),
+      ...(address ? { address } : {}),
+      ...(department ? { department: department.trim() } : {}),
+      ...(shift ? { shift: shift.trim() } : {}),
+      ...(vehicleType ? { vehicleType: vehicleType.trim() } : {}),
+      ...(vehicleNumber ? { vehicleNumber: vehicleNumber.trim() } : {}),
+      ...(notes ? { notes } : {}),
+      ...extraFields
     };
 
     await set(ref(rtdb, `users/${newUid}`), profileData);
 
-    if (role === 'agent') {
+    if (effectiveRole === 'agent' || effectiveRole === 'delivery') {
       await set(ref(rtdb, `agents/${newUid}`), {
-        isOnline: true,
-        vehicleType: 'Two-Wheeler',
-        vehicleNumber: '',
+        isOnline: isActive,
+        vehicleType: vehicleType ? vehicleType.trim() : 'Two-Wheeler',
+        vehicleNumber: vehicleNumber ? vehicleNumber.trim() : '',
+        assignedArea: area ? area.trim() : 'Bengaluru',
         lastLat: 26.2183,
         lastLng: 78.1828,
         lastActiveAt: Date.now()
@@ -180,7 +208,7 @@ export const createStaffOrAgentByAdmin = async ({ email, password, name, phone, 
 
     // Sign out from secondary auth instance so admin state is pristine
     await signOut(secondaryAuth);
-    return { ...profileData, uid: newUid };
+    return { ...profileData, uid: newUid, id: newUid };
   } catch (err) {
     await signOut(secondaryAuth).catch(() => {});
     throw new Error(mapAuthError(err));

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useBooking } from '../context/BookingContext';
 import confetti from 'canvas-confetti';
 import { Calendar, MapPin, ArrowRight, Home, RefreshCw, Package, CheckCircle2 } from 'lucide-react';
+import { formatOrderId } from '../utils/helpers';
 
 export const BookingConfirmation = () => {
   const { lastOrder, navigateTo, startBooking } = useBooking();
@@ -19,7 +20,7 @@ export const BookingConfirmation = () => {
     }
   }, []);
 
-  const orderNum = lastOrder?.order_number || lastOrder?.orderId || 'ORD-PROCESSING';
+  const orderNum = formatOrderId(lastOrder?.order_number || lastOrder?.orderId || lastOrder?.code || 'FC-75668');
   const orderDate = lastOrder?.pickup_date || lastOrder?.dateText || 'Tomorrow';
   const orderSlot = lastOrder?.pickup_time_slot || lastOrder?.timeText || '09:00 AM - 11:00 AM';
   const orderAddress = lastOrder?.pickup_address || lastOrder?.addressTitle || 'Banaswadi, Bengaluru';
@@ -27,14 +28,18 @@ export const BookingConfirmation = () => {
   return (
     <div className="portal-container py-12">
       <div className="max-w-2xl mx-auto bg-white rounded-3xl p-8 md:p-12 border border-slate-200 shadow-xl shadow-blue-500/5 text-center animate-fade-in">
-        {/* Success Icon Badge */}
-        <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-          <CheckCircle2 size={44} />
+        {/* Pickup Confirmed Illustration */}
+        <div className="w-full max-w-[360px] mx-auto mb-4 animate-fade-in">
+          <img
+            src="/assets/pickup-confirmed.png"
+            alt="Pickup Confirmed"
+            className="w-full h-auto max-h-[240px] object-contain mx-auto drop-shadow-md"
+          />
         </div>
 
         <h1 className="text-3xl font-black text-navy tracking-tight">Pickup Confirmed!</h1>
         <p className="text-slate-500 mt-2 mb-8 text-sm md:text-base">
-          Your laundry request has been saved to the FabriCare database and queued for pickup.
+          Your laundry pickup has been scheduled.
         </p>
 
         {/* Highlighted Order Pill Box */}
@@ -75,7 +80,7 @@ export const BookingConfirmation = () => {
               if (lastOrder?.id) {
                 navigateTo('customer-track', lastOrder.id.toString());
               } else {
-                navigateTo('customer-orders');
+                navigateTo('customer-dashboard');
               }
             }}
             className="btn btn-primary w-full sm:w-auto px-6 py-3 flex items-center justify-center gap-2"

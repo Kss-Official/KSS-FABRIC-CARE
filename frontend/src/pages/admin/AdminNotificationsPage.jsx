@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
+import { formatOrderId } from '../../utils/helpers';
 import { 
   Bell, 
   CheckCheck, 
@@ -14,11 +15,9 @@ import {
   AlertCircle, 
   ArrowUpRight, 
   Filter, 
-  Send, 
   X, 
   Clock, 
   ShieldAlert, 
-  Megaphone,
   Check,
   ChevronRight,
   Eye,
@@ -41,7 +40,6 @@ export const AdminNotificationsPage = () => {
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
-  const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -71,15 +69,6 @@ export const AdminNotificationsPage = () => {
     return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds} ${ampm}`;
   };
 
-  // Broadcast modal form state
-  const [broadcastForm, setBroadcastForm] = useState({
-    title: '',
-    desc: '',
-    type: 'system',
-    priority: 'normal',
-    target: 'all'
-  });
-
   const showToast = (msg) => {
     setFeedbackMessage(msg);
     setTimeout(() => {
@@ -108,7 +97,7 @@ export const AdminNotificationsPage = () => {
         const query = searchQuery.toLowerCase();
         const matchesTitle = String(notif.title || '').toLowerCase().includes(query);
         const matchesDesc = String(notif.desc || '').toLowerCase().includes(query);
-        const matchesId = String(notif.meta?.orderId || notif.orderId || '').toLowerCase().includes(query);
+        const matchesId = (formatOrderId(notif.meta?.orderId || notif.orderId || '')).toLowerCase().includes(query) || String(notif.meta?.orderId || notif.orderId || '').toLowerCase().includes(query);
         const matchesCustomer = String(notif.meta?.customer || '').toLowerCase().includes(query);
         if (!matchesTitle && !matchesDesc && !matchesId && !matchesCustomer) return false;
       }
@@ -142,32 +131,6 @@ export const AdminNotificationsPage = () => {
     selectedIds.forEach(id => deleteNotification(id));
     setSelectedIds([]);
     showToast(`Deleted ${selectedIds.length} notifications`);
-  };
-
-  const handleBroadcastSubmit = (e) => {
-    e.preventDefault();
-    if (!broadcastForm.title.trim() || !broadcastForm.desc.trim()) return;
-
-    addAdminNotification({
-      title: broadcastForm.title,
-      desc: broadcastForm.desc,
-      type: broadcastForm.type,
-      actionTab: broadcastForm.type === 'order' ? 'orders' : 'settings',
-      meta: {
-        priority: broadcastForm.priority,
-        target: broadcastForm.target
-      }
-    });
-
-    setIsBroadcastModalOpen(false);
-    setBroadcastForm({
-      title: '',
-      desc: '',
-      type: 'system',
-      priority: 'normal',
-      target: 'all'
-    });
-    showToast('Broadcast notification sent successfully!');
   };
 
   const getTypeIcon = (type) => {
@@ -240,15 +203,6 @@ export const AdminNotificationsPage = () => {
           >
             <CheckCheck size={16} />
             <span>Mark All Read</span>
-          </button>
-
-          <button 
-            type="button" 
-            className="notif-btn notif-btn-primary"
-            onClick={() => setIsBroadcastModalOpen(true)}
-          >
-            <Megaphone size={16} />
-            <span>Send Announcement</span>
           </button>
 
           {totalCount > 0 && (
@@ -497,7 +451,7 @@ export const AdminNotificationsPage = () => {
                     {notif.meta && (
                       <div className="notif-meta-chips">
                         {notif.meta.orderId && (
-                          <span className="meta-chip">Order: {notif.meta.orderId}</span>
+                          <span className="meta-chip">Order: <span className="font-mono font-bold">{formatOrderId(notif.meta.orderId)}</span></span>
                         )}
                         {notif.meta.driver && (
                           <span className="meta-chip">Driver: {notif.meta.driver}</span>
@@ -566,104 +520,6 @@ export const AdminNotificationsPage = () => {
           </div>
         )}
       </div>
-
-      {/* Broadcast Announcement Modal */}
-      {isBroadcastModalOpen && typeof document !== 'undefined' && createPortal(
-        <div className="notif-modal-backdrop" onClick={() => setIsBroadcastModalOpen(false)}>
-          <div className="notif-modal-card animate-scale-up" onClick={e => e.stopPropagation()}>
-            <div className="notif-modal-header">
-              <div className="modal-title-wrap">
-                <div className="modal-title-icon">
-                  <Megaphone size={20} />
-                </div>
-                <div>
-                  <h3 className="modal-title">Broadcast Announcement</h3>
-                  <p className="modal-subtitle">Send a notification alert to admin portal and staff members</p>
-                </div>
-              </div>
-              <button 
-                type="button" 
-                className="modal-close-btn"
-                onClick={() => setIsBroadcastModalOpen(false)}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleBroadcastSubmit} className="notif-modal-form">
-              <div className="form-group">
-                <label className="form-label">Notification Title *</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Festival Delivery Hours Update" 
-                  value={broadcastForm.title}
-                  onChange={(e) => setBroadcastForm({ ...broadcastForm, title: e.target.value })}
-                  className="form-input"
-                  required
-                />
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Category</label>
-                  <select 
-                    value={broadcastForm.type}
-                    onChange={(e) => setBroadcastForm({ ...broadcastForm, type: e.target.value })}
-                    className="form-select"
-                  >
-                    <option value="system">System Notice</option>
-                    <option value="order">Order Alert</option>
-                    <option value="delivery">Pickup & Delivery Alert</option>
-                    <option value="customer">Customer Alert</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Priority</label>
-                  <select 
-                    value={broadcastForm.priority}
-                    onChange={(e) => setBroadcastForm({ ...broadcastForm, priority: e.target.value })}
-                    className="form-select"
-                  >
-                    <option value="normal">Normal</option>
-                    <option value="urgent">High / Urgent</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Announcement Details *</label>
-                <textarea 
-                  rows={4}
-                  placeholder="Enter detailed message regarding this announcement..."
-                  value={broadcastForm.desc}
-                  onChange={(e) => setBroadcastForm({ ...broadcastForm, desc: e.target.value })}
-                  className="form-textarea"
-                  required
-                />
-              </div>
-
-              <div className="modal-footer-btns">
-                <button 
-                  type="button" 
-                  className="modal-cancel-btn"
-                  onClick={() => setIsBroadcastModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit" 
-                  className="modal-submit-btn"
-                >
-                  <Send size={16} />
-                  <span>Send Notification</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
 
       {/* Clear All Confirmation Modal */}
       {showClearConfirm && typeof document !== 'undefined' && createPortal(

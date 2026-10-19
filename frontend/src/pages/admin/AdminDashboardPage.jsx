@@ -19,6 +19,8 @@ import {
   Check,
   X
 } from 'lucide-react';
+import { formatDisplayDate } from '../../utils/dateFilterUtils';
+import { formatOrderId } from '../../utils/helpers';
 
 // Washing Machine front-load icon matching reference image
 const WasherIcon = ({ size = 23, color = "#D97706" }) => (
@@ -279,7 +281,7 @@ export const AdminDashboardPage = () => {
                idStr !== '#LDX10281';
       })
       .map(o => {
-        const idDisplay = o.order_number || o.order_id || (typeof o.id === 'string' && o.id.startsWith('#') ? o.id : `#FC${String(o.id || '00000').padStart(5, '0')}`);
+        const idDisplay = formatOrderId(o.order_number || o.order_id || o.id);
         const rawCust = o.pickup_full_name || o.customer_name || (typeof o.customer === 'string' ? o.customer : o.customer?.name) || 'Customer';
         const custName = typeof rawCust === 'string' ? rawCust : 'Customer';
         const custAvatar = (o.customer && typeof o.customer === 'object' && typeof o.customer.avatar === 'string' && o.customer.avatar)
@@ -315,7 +317,7 @@ export const AdminDashboardPage = () => {
 
     const fallbackBaseOrders = [
       {
-        id: '#LDX10284',
+        id: 'FC-10284',
         customer: { name: 'Rohan Mehta', avatar: 'RM', phone: '+91 98765 43210', email: 'rohan.mehta@gmail.com', address: 'Banaswadi, Bengaluru - 560043' },
         services: ['Wash & Fold'],
         pickupTime: '23 Sep, 9:00 AM',
@@ -325,7 +327,7 @@ export const AdminDashboardPage = () => {
         driver: 'Ravi Kumar (+91 98765 43210)'
       },
       {
-        id: '#LDX10285',
+        id: 'FC-10285',
         customer: { name: 'Priya Sharma', avatar: 'PS', phone: '+91 99876 54321', email: 'priya.sharma@gmail.com', address: 'House #45, 3rd Cross, HRBR Layout, Bengaluru - 560043' },
         services: ['Dry Cleaning'],
         pickupTime: '23 Sep, 10:00 AM',
@@ -335,7 +337,7 @@ export const AdminDashboardPage = () => {
         driver: 'Not Assigned'
       },
       {
-        id: '#LDX10286',
+        id: 'FC-10286',
         customer: { name: 'Arjun Nair', avatar: 'AN', phone: '+91 91234 56789', email: 'arjun.nair@gmail.com', address: 'Indiranagar, Bengaluru - 560038' },
         services: ['Wash & Iron'],
         pickupTime: '23 Sep, 11:00 AM',
@@ -345,7 +347,7 @@ export const AdminDashboardPage = () => {
         driver: 'Ravi Kumar (+91 98765 43210)'
       },
       {
-        id: '#LDX10287',
+        id: 'FC-10287',
         customer: { name: 'Sneha Reddy', avatar: 'SR', phone: '+91 99887 66554', email: 'sneha.reddy@gmail.com', address: 'Whitefield, Bengaluru - 560066' },
         services: ['Home Care'],
         pickupTime: '23 Sep, 2:00 PM',
@@ -355,7 +357,7 @@ export const AdminDashboardPage = () => {
         driver: 'Arjun Singh (+91 87654 32109)'
       },
       {
-        id: '#LDX10288',
+        id: 'FC-10288',
         customer: { name: 'Karan Verma', avatar: 'KV', phone: '+91 98712 34567', email: 'karan.verma@gmail.com', address: 'Marathahalli, Bengaluru - 560037' },
         services: ['Shoe Laundry'],
         pickupTime: '23 Sep, 3:00 PM',
@@ -365,7 +367,7 @@ export const AdminDashboardPage = () => {
         driver: 'Ravi Kumar (+91 98765 43210)'
       },
       {
-        id: '#LDX10289',
+        id: 'FC-10289',
         customer: { name: 'Neha Kapoor', avatar: 'NK', phone: '+91 87654 32109', email: 'neha.kapoor@gmail.com', address: 'HSR Layout, Bengaluru - 560102' },
         services: ['Steam Iron'],
         pickupTime: '23 Sep, 4:00 PM',
@@ -397,10 +399,10 @@ export const AdminDashboardPage = () => {
   }, [orders]);
 
   const pickupDeliveries = [
-    { timeStart: '09:00', timeEnd: '11:00 AM', id: '#LDX10284', name: 'Rohan Mehta', area: 'Banaswadi, Bengaluru', type: 'Pickup', status: 'Assigned' },
-    { timeStart: '11:00', timeEnd: '01:00 PM', id: '#LDX10286', name: 'Arjun Nair', area: 'Indiranagar, Bengaluru', type: 'Delivery', status: 'Assigned' },
-    { timeStart: '02:00', timeEnd: '04:00 PM', id: '#LDX10287', name: 'Sneha Reddy', area: 'Whitefield, Bengaluru', type: 'Pickup', status: 'Pending' },
-    { timeStart: '03:00', timeEnd: '05:00 PM', id: '#LDX10288', name: 'Karan Verma', area: 'Marathahalli, Bengaluru', type: 'Delivery', status: 'Assigned' }
+    { timeStart: '09:00', timeEnd: '11:00 AM', id: 'FC-10284', name: 'Rohan Mehta', area: 'Banaswadi, Bengaluru', type: 'Pickup', status: 'Assigned' },
+    { timeStart: '11:00', timeEnd: '01:00 PM', id: 'FC-10286', name: 'Arjun Nair', area: 'Indiranagar, Bengaluru', type: 'Delivery', status: 'Assigned' },
+    { timeStart: '02:00', timeEnd: '04:00 PM', id: 'FC-10287', name: 'Sneha Reddy', area: 'Whitefield, Bengaluru', type: 'Pickup', status: 'Pending' },
+    { timeStart: '03:00', timeEnd: '05:00 PM', id: 'FC-10288', name: 'Karan Verma', area: 'Marathahalli, Bengaluru', type: 'Delivery', status: 'Assigned' }
   ];
 
   const filteredPickups = pickupDeliveries.filter(p => {
@@ -423,7 +425,7 @@ export const AdminDashboardPage = () => {
 
         <div className="date-picker-dropdown">
           <Calendar size={16} className="text-teal" />
-          <span>Tuesday, 23 Sep 2026</span>
+          <span>{formatDisplayDate(new Date(), { weekday: true })}</span>
         </div>
       </div>
 
@@ -634,7 +636,7 @@ export const AdminDashboardPage = () => {
             <tbody>
               {recentOrders.map(ord => (
                 <tr key={ord.id}>
-                  <td><strong className="order-id-txt">{ord.id}</strong></td>
+                  <td><strong className="order-id-txt font-mono">{formatOrderId(ord.id || ord.order_number || ord.order_id)}</strong></td>
                   <td>
                     <div className="cust-cell">
                       <span 
@@ -777,7 +779,7 @@ export const AdminDashboardPage = () => {
                   </div>
 
                   <div className="pickup-info-col">
-                    <strong className="pickup-item-id">{item.id}</strong>
+                    <strong className="pickup-item-id font-mono">{formatOrderId(item.id)}</strong>
                     <span className="pickup-item-name">{item.name}</span>
                     <span className="pickup-item-area">{item.area}</span>
                   </div>
@@ -864,7 +866,7 @@ export const AdminDashboardPage = () => {
             <div className="modal-header">
               <div className="modal-header-left">
                 <h3 className="modal-title">Order Details</h3>
-                <span className="modal-order-id">{selectedOrderDetails.id}</span>
+                <span className="modal-order-id font-mono">{formatOrderId(selectedOrderDetails.id || selectedOrderDetails.order_number || selectedOrderDetails.order_id)}</span>
                 <span className={`status-pill ${getStatusClass(selectedOrderDetails.status)}`}>
                   {selectedOrderDetails.status}
                 </span>

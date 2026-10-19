@@ -20,6 +20,7 @@ import {
   X,
   Loader2
 } from 'lucide-react';
+import { formatOrderId } from '../utils/helpers';
 
 export const PaymentsInvoices = () => {
   const { currentUser } = useAuth();
@@ -70,7 +71,8 @@ export const PaymentsInvoices = () => {
   const filteredOrders = orders.filter((ord) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
-    const ordNum = (ord.order_number || ord.order_id || ord.code || `#FC${ord.id}` || '').toLowerCase();
+    const ordNum = (ord.order_number || ord.order_id || ord.code || '').toLowerCase();
+    const formattedNum = formatOrderId(ord.order_number || ord.order_id || ord.code || ord.id).toLowerCase();
     const ordDate = formatOrderDate(ord.date || ord.created_at || ord.pickup_date).toLowerCase();
     const cleanSlot = getCleanPickupSlot(ord).toLowerCase();
     const status = (ord.status || 'paid').toLowerCase();
@@ -84,6 +86,7 @@ export const PaymentsInvoices = () => {
 
     return (
       ordNum.includes(q) ||
+      formattedNum.includes(q) ||
       ordDate.includes(q) ||
       cleanSlot.includes(q) ||
       status.includes(q) ||
@@ -97,7 +100,7 @@ export const PaymentsInvoices = () => {
 
   const normalizeInvoiceOrder = (ord) => {
     const totalInr = ord.total ? (ord.total / 100).toFixed(2) : (ord.total_amount || ord.amount || '0.00');
-    const orderNum = ord.code || ord.order_number || ord.order_id || `#FC${ord.id}`;
+    const orderNum = formatOrderId(ord.code || ord.order_number || ord.order_id || ord.id || 'FC-75668');
     
     // Parse items
     let parsedItems = [];
@@ -264,7 +267,7 @@ export const PaymentsInvoices = () => {
   };
 
   const getActiveOrderNumber = (ord = selectedOrder) => {
-    return ord?.order_number || ord?.order_id || '#FC8F71E';
+    return formatOrderId(ord?.order_number || ord?.order_id || ord?.id || 'FC-75668');
   };
 
   // Helper to dynamically extract complete individual order invoice details
@@ -714,55 +717,41 @@ export const PaymentsInvoices = () => {
 
   return (
     <div className="invoice-page-portal animate-fade-in">
-      {/* 1. Breadcrumb and Header - Download and Print buttons removed from main listing */}
+      {/* 1. Page Header matching Customer Portal layout */}
       <div className="invoice-header-row mb-6 no-print">
         <div className="header-breadcrumbs-col">
-          <div className="breadcrumbs-nav">
-            <span 
-              onClick={() => navigateTo('home')} 
-              className="breadcrumb-link"
-            >
-              Home
-            </span>
-            <span className="breadcrumb-slash">&gt;</span>
-            <span className="breadcrumb-active">Invoices &amp; Bills</span>
-          </div>
-
           <h1 className="invoice-page-title">Invoices &amp; Bills</h1>
           <p className="invoice-page-subtitle">
-            View, download, and print official tax invoices for your laundry orders
+            View, download, and print official tax invoices for your laundry orders.
           </p>
         </div>
       </div>
 
       {/* 2. Customer Orders Table Card */}
       <div className="content-card customer-orders-invoices-card mb-3 no-print">
-        <div className="orders-card-header flex flex-col gap-3 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-3">
+        <div className="orders-card-header">
+          <div className="orders-title-wrap">
             <div className="orders-icon-circle">
-              <Receipt size={18} className="text-teal" />
+              <Receipt size={20} className="text-teal" />
             </div>
-            <div>
-              <h3 className="orders-title font-bold text-navy text-lg leading-tight">Customer Orders &amp; Invoices</h3>
-              <p className="orders-subtitle text-xs text-slate-500">
-                Click “View Invoice” on any order to view its individual tax invoice
-              </p>
-            </div>
+            <h2 className="orders-card-heading">
+              Customer Orders &amp; Invoices
+            </h2>
           </div>
 
-          <div className="orders-actions-bar flex flex-wrap items-center justify-between gap-3 pt-1">
-            <div className="flex items-center gap-2">
-              <span className="orders-count-pill font-bold text-xs px-3 py-1 rounded-full">
+          <div className="orders-actions-bar">
+            <div className="orders-toolbar-left">
+              <span className="orders-count-pill">
                 {searchQuery.trim() ? `${filteredOrders.length} of ${orders.length} Orders` : `${orders.length} ${orders.length === 1 ? 'Order' : 'Orders'}`}
               </span>
               <button 
                 type="button"
                 onClick={() => fetchOrdersAndInvoices()} 
-                className={`refresh-orders-btn flex items-center gap-1.5 text-xs ${isRefreshing ? 'loading' : ''}`}
+                className={`refresh-orders-btn ${isRefreshing ? 'loading' : ''} ${refreshSuccess ? 'success' : ''}`}
                 disabled={isRefreshing}
                 title="Refresh orders list"
               >
-                <RefreshCw size={13} className={isRefreshing ? 'animate-spin text-teal' : ''} />
+                <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
                 <span>{isRefreshing ? 'Refreshing...' : refreshSuccess ? 'Refreshed!' : 'Refresh'}</span>
               </button>
             </div>
@@ -837,7 +826,7 @@ export const PaymentsInvoices = () => {
                       className={`order-row border-b border-slate-50 transition-colors ${isCurrent ? 'bg-teal-50/50' : 'hover:bg-slate-50/80'}`}
                     >
                       <td className="py-3 px-3">
-                        <span className="font-mono font-bold text-navy text-sm">{ordNum}</span>
+                        <span className="font-mono font-bold text-navy text-sm">{formatOrderId(ord.order_number || ord.order_id || ord.id || 'FC-75668')}</span>
                       </td>
                       <td className="py-3 px-3 text-sm text-slate-600 font-medium">
                         {ordDate}
@@ -985,30 +974,50 @@ export const PaymentsInvoices = () => {
         }
 
         .invoice-page-title {
-          font-size: 1.75rem;
+          font-size: 1.85rem;
           font-weight: 800;
-          color: #0F172A;
-          letter-spacing: -0.02em;
+          color: #1E1B4B;
           margin: 0;
+          letter-spacing: -0.025em;
+          line-height: 1.2;
         }
 
         .invoice-page-subtitle {
           font-size: 0.875rem;
           color: #64748B;
           margin-top: 4px;
+          margin-bottom: 0;
         }
 
-        /* 2. Customer Orders Table Card */
+        /* 2. Customer Orders Table Card matching Report Card */
         .customer-orders-invoices-card {
           background: #ffffff;
           border: 1.5px solid #E2E8F0;
           border-radius: 18px;
-          padding: 20px 24px;
+          padding: 22px 26px;
+          box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+          width: 100%;
+          min-height: 520px;
+          box-sizing: border-box;
+        }
+
+        .orders-card-header {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding-bottom: 20px;
+          border-bottom: 1.5px solid #F1F5F9;
+        }
+
+        .orders-title-wrap {
+          display: flex;
+          align-items: center;
+          gap: 12px;
         }
 
         .orders-icon-circle {
-          width: 36px;
-          height: 36px;
+          width: 38px;
+          height: 38px;
           border-radius: 10px;
           background: #E8FAF6;
           display: flex;
@@ -1018,36 +1027,83 @@ export const PaymentsInvoices = () => {
           flex-shrink: 0;
         }
 
+        .orders-card-heading {
+          font-size: 1.15rem;
+          font-weight: 700;
+          color: #0F172A;
+          letter-spacing: -0.01em;
+          margin: 0;
+        }
+
+        .orders-actions-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 16px;
+          width: 100%;
+        }
+
+        .orders-toolbar-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
         .orders-count-pill {
           background: #E8FAF6;
           color: #0D7A75;
           border: 1px solid #BCEAE6;
+          border-radius: 999px;
+          padding: 5px 14px;
+          font-size: 0.78rem;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          white-space: nowrap;
+          height: 34px;
+          box-sizing: border-box;
         }
 
         .refresh-orders-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
           padding: 6px 14px;
+          height: 34px;
           border-radius: 999px;
           border: 1.5px solid #CBD5E1;
           background: #ffffff;
           color: #334155;
+          font-size: 0.78rem;
           font-weight: 600;
           cursor: pointer;
+          white-space: nowrap;
           transition: all 0.2s ease;
+          box-sizing: border-box;
         }
 
-        .refresh-orders-btn:hover {
+        .refresh-orders-btn:hover:not(:disabled) {
           background: #F8FAFC;
           color: #0D7A75;
           border-color: #0D7A75;
         }
 
+        .refresh-orders-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.75;
+        }
+
         .refresh-orders-btn.loading {
           border-color: #0D7A75;
           background: #F4FBFA;
+          color: #0D7A75;
         }
 
-        .orders-actions-bar {
-          width: 100%;
+        .refresh-orders-btn.success {
+          border-color: #16A34A;
+          background: #F0FDF4;
+          color: #16A34A;
         }
 
         .orders-search-wrapper {

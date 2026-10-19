@@ -74,7 +74,7 @@ const CustomerAccountLayout = ({ children }) => {
   const { navigateTo, currentPage, startBooking } = useBooking();
   const { userProfile, currentUser } = useAuth();
   const accountTabs = [
-    { id: 'customer-orders', label: 'My Orders', icon: '📦' },
+    { id: 'customer-dashboard', label: 'My Orders', icon: '📦' },
     { id: 'customer-track', label: 'Track Order', icon: '🚚' },
     { id: 'customer-reports', label: 'Reports', icon: '📋' },
     { id: 'customer-invoices', label: 'Invoices & Bills', icon: '🧾' },
@@ -130,7 +130,7 @@ const CustomerAccountLayout = ({ children }) => {
           {/* Account Sub-Navigation Tabs */}
           <div style={{ display: 'flex', gap: 8, marginTop: 28, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }}>
             {accountTabs.map(tab => {
-              const isActive = currentPage === tab.id || (tab.id === 'customer-orders' && currentPage === 'customer-dashboard');
+              const isActive = currentPage === tab.id || (tab.id === 'customer-dashboard' && (currentPage === 'customer-orders' || currentPage === 'customer-dashboard'));
               return (
                 <button
                   key={tab.id}
@@ -264,8 +264,7 @@ const AppContent = () => {
         <Navbar />
         <main className="main-content">
           <CustomerAccountLayout>
-            {normalizedRoute === 'customer-dashboard' && <CustomerDashboard />}
-            {normalizedRoute === 'customer-orders' && <MyOrders />}
+            {(normalizedRoute === 'customer-dashboard' || normalizedRoute === 'customer-orders') && <CustomerDashboard />}
             {normalizedRoute === 'customer-track' && <TrackOrder />}
             {normalizedRoute === 'customer-reports' && <CustomerReports />}
             {normalizedRoute === 'customer-invoices' && <PaymentsInvoices />}

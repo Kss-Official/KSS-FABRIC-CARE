@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
+import { formatDisplayDate } from '../../utils/dateFilterUtils';
 import { 
   X, 
   Search, 
@@ -46,7 +47,19 @@ export const CreateOrderDrawer = () => {
     { id: 'hc', name: 'Home Care', rate: 300, count: 0, selected: false, icon: 'BedDouble' },
   ]);
 
-  const [pickupDate, setPickupDate] = useState('23 Sep 2026');
+  const todayDateStr = useMemo(() => formatDisplayDate(new Date()), []);
+  const tomorrowDateStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return formatDisplayDate(d);
+  }, []);
+  const dayAfterDateStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return formatDisplayDate(d);
+  }, []);
+
+  const [pickupDate, setPickupDate] = useState(todayDateStr);
   const [pickupTime, setPickupTime] = useState('09:00 AM – 11:00 AM');
 
   if (!isCreateOrderDrawerOpen) return null;
@@ -279,9 +292,9 @@ export const CreateOrderDrawer = () => {
                     value={pickupDate}
                     onChange={(e) => setPickupDate(e.target.value)}
                   >
-                    <option value="23 Sep 2026">23 Sep 2026</option>
-                    <option value="24 Sep 2026">24 Sep 2026</option>
-                    <option value="25 Sep 2026">25 Sep 2026</option>
+                    <option value={todayDateStr}>{todayDateStr} (Today)</option>
+                    <option value={tomorrowDateStr}>{tomorrowDateStr} (Tomorrow)</option>
+                    <option value={dayAfterDateStr}>{dayAfterDateStr}</option>
                   </select>
                 </div>
 

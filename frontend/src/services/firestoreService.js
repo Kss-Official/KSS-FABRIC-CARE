@@ -15,62 +15,165 @@ import {
 import { ref, onValue, off, get, set, update, push } from 'firebase/database';
 import { db, rtdb, isFirebaseConfigured } from '../config/firebase.js';
 
+// Standard uniform order ID formatter
+export const formatOrderId = (rawId) => {
+  if (rawId === null || rawId === undefined) return '';
+  const str = String(rawId).trim();
+  if (!str) return '';
+  if (/^FC-\d{5}$/i.test(str)) return str.toUpperCase();
+  const hashFcHyphen = str.match(/^#?FC-(\d+)$/i);
+  if (hashFcHyphen) return `FC-${hashFcHyphen[1].padStart(5, '0').slice(-5)}`;
+  const ldxMatch = str.match(/^#?LDX(\d+)/i);
+  if (ldxMatch) return `FC-${ldxMatch[1].padStart(5, '0').slice(-5)}`;
+  const fcMatch = str.match(/^#?FC(\d+)/i);
+  if (fcMatch) return `FC-${fcMatch[1].padStart(5, '0').slice(-5)}`;
+  if (/^\d+$/.test(str)) return `FC-${str.padStart(5, '0').slice(-5)}`;
+  const embeddedNum = str.match(/\d{4,5}/);
+  if (embeddedNum) return `FC-${embeddedNum[0].padStart(5, '0').slice(-5)}`;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return `FC-${10000 + (Math.abs(hash) % 90000)}`;
+};
+
 // ===============================================================
 // INITIAL SEED DATA FOR FIRST LAUNCH IN USER'S FIREBASE PROJECT
 // ===============================================================
 
 export const INITIAL_SERVICES_ADMIN = [
   {
-    id: 'wash-fold',
-    name: 'Wash & Fold',
+    id: 1,
+    name: 'Shirt',
+    description: 'Regular shirt cleaning and pressing',
     category: 'Wash & Fold',
-    price: 120,
-    pricePerKg: 60,
-    turnaround: '24-48 hrs',
+    price: 80,
+    turnaround: '1–2 days',
     status: 'Active',
     icon: 'Shirt',
-    description: 'Everyday laundry washed with eco-friendly detergent, gently dried and neatly folded.'
+    type: 'Standard'
   },
   {
-    id: 'wash-iron',
-    name: 'Wash & Iron',
-    category: 'Wash & Iron',
-    price: 180,
-    pricePerKg: 90,
-    turnaround: '24-48 hrs',
+    id: 2,
+    name: 'Jeans',
+    description: 'Denim washing and care',
+    category: 'Wash & Fold',
+    price: 120,
+    turnaround: '1–2 days',
     status: 'Active',
-    icon: 'Layers',
-    description: 'Complete washing plus professional steam pressing. Ready to wear.'
+    icon: 'Jeans',
+    type: 'Standard'
   },
   {
-    id: 'dry-cleaning',
-    name: 'Dry Cleaning',
-    category: 'Dry Clean',
+    id: 3,
+    name: 'T-Shirt',
+    description: 'Regular wash and fold',
+    category: 'Wash & Fold',
+    price: 70,
+    turnaround: '1–2 days',
+    status: 'Active',
+    icon: 'TShirt',
+    type: 'Standard'
+  },
+  {
+    id: 4,
+    name: 'Formal Suit',
+    description: 'Professional dry cleaning',
+    category: 'Dry Cleaning',
+    price: 250,
+    turnaround: '2–3 days',
+    status: 'Active',
+    icon: 'Suit',
+    type: 'Premium'
+  },
+  {
+    id: 5,
+    name: 'Saree',
+    description: 'Special fabric care with dry cleaning',
+    category: 'Dry Cleaning',
     price: 220,
-    turnaround: '48-72 hrs',
+    turnaround: '2–3 days',
     status: 'Active',
-    icon: 'Sparkles',
-    description: 'Specialized chemical wash for delicate silk, wool, blazers, suits and party wear.'
+    icon: 'Saree',
+    type: 'Premium'
   },
   {
-    id: 'steam-iron',
-    name: 'Steam Iron',
-    category: 'Steam Iron',
-    price: 60,
-    turnaround: '12-24 hrs',
+    id: 6,
+    name: 'Bedsheet (Single)',
+    description: 'Wash, dry and fold',
+    category: 'Household',
+    price: 90,
+    turnaround: '1–2 days',
     status: 'Active',
-    icon: 'Flame',
-    description: 'Wrinkle-free steam pressing on premium hangers.'
+    icon: 'Bedsheet',
+    type: 'Standard'
   },
   {
-    id: 'express-laundry',
-    name: 'Express Laundry',
-    category: 'Express',
-    price: 200,
-    turnaround: 'Same Day (12 hrs)',
+    id: 7,
+    name: 'Blanket',
+    description: 'Deep cleaning and sanitization',
+    category: 'Household',
+    price: 300,
+    turnaround: '2–3 days',
+    status: 'Inactive',
+    icon: 'Blanket',
+    type: 'Premium'
+  },
+  {
+    id: 8,
+    name: 'Curtain (Per Piece)',
+    description: 'Dry cleaning and freshening',
+    category: 'Household',
+    price: 180,
+    turnaround: '2–3 days',
     status: 'Active',
-    icon: 'Zap',
-    description: 'Priority rush turnaround returned spotless within 12-24 hours.'
+    icon: 'Curtain',
+    type: 'Standard'
+  },
+  {
+    id: 9,
+    name: 'Silk Saree',
+    description: 'Delicate fabric dry cleaning',
+    category: 'Dry Cleaning',
+    price: 450,
+    turnaround: '2–3 days',
+    status: 'Active',
+    icon: 'Saree',
+    type: 'Premium'
+  },
+  {
+    id: 10,
+    name: 'Winter Jacket',
+    description: 'Heavy wool dry cleaning & sanitization',
+    category: 'Dry Cleaning',
+    price: 550,
+    turnaround: '3–4 days',
+    status: 'Active',
+    icon: 'Suit',
+    type: 'Premium'
+  },
+  {
+    id: 11,
+    name: 'Carpet Cleaning',
+    description: 'Deep steam sanitization & stain removal',
+    category: 'Household',
+    price: 850,
+    turnaround: '3–4 days',
+    status: 'Inactive',
+    icon: 'Blanket',
+    type: 'Premium'
+  },
+  {
+    id: 12,
+    name: 'Cushion Covers',
+    description: 'Gentle wash and steam press',
+    category: 'Wash & Fold',
+    price: 680,
+    turnaround: '1–2 days',
+    status: 'Active',
+    icon: 'Bedsheet',
+    type: 'Standard'
   }
 ];
 
@@ -182,9 +285,9 @@ export const INITIAL_CUSTOMERS = [
 
 export const INITIAL_ORDERS = [
   {
-    id: '#LDX10285',
-    order_number: '#LDX10285',
-    order_id: '#LDX10285',
+    id: 'FC-10285',
+    order_number: 'FC-10285',
+    order_id: 'FC-10285',
     customerId: 'usr-cust-02',
     date: '17 Oct 2026',
     customer: {
@@ -222,9 +325,9 @@ export const INITIAL_ORDERS = [
     ]
   },
   {
-    id: '#LDX10286',
-    order_number: '#LDX10286',
-    order_id: '#LDX10286',
+    id: 'FC-10286',
+    order_number: 'FC-10286',
+    order_id: 'FC-10286',
     customerId: 'usr-cust-01',
     date: '17 Oct 2026',
     customer: {
@@ -261,9 +364,9 @@ export const INITIAL_ORDERS = [
     ]
   },
   {
-    id: '#LDX10287',
-    order_number: '#LDX10287',
-    order_id: '#LDX10287',
+    id: 'FC-10287',
+    order_number: 'FC-10287',
+    order_id: 'FC-10287',
     customerId: 'usr-cust-03',
     date: '16 Oct 2026',
     customer: {
@@ -812,8 +915,8 @@ export const createFirestoreOrder = async (orderData) => {
   try {
     const rawId = orderData.id || orderData.order_number || orderData.order_id;
     const orderId = rawId
-      ? (String(rawId).startsWith('#') ? String(rawId) : `#${rawId}`)
-      : `#LDX${Math.floor(10000 + Math.random() * 90000)}`;
+      ? formatOrderId(rawId)
+      : `FC-${Math.floor(10000 + Math.random() * 90000)}`;
 
     const orderDocRef = doc(db, 'orders', orderId);
 
@@ -1256,46 +1359,79 @@ export const updateFirestoreCustomerStatus = async (customerId, isActive) => {
 // ===============================================================
 
 export const subscribeServices = (callback, errorCallback) => {
-  if (!isFirebaseConfigured || !db) return () => {};
+  if (!isFirebaseConfigured) return () => {};
   try {
-    const servicesCol = collection(db, 'services');
-    return onSnapshot(
-      servicesCol,
-      (snapshot) => {
-        const servList = snapshot.docs.map(d => ({
-          docId: d.id,
-          ...d.data()
-        }));
-        callback(servList);
-      },
-      (err) => {
-        console.warn('Services snapshot subscription note:', err.message);
+    if (rtdb) {
+      const sRef = ref(rtdb, 'services');
+      const unsub = onValue(sRef, (snap) => {
+        if (!snap.exists()) {
+          callback(INITIAL_SERVICES_ADMIN);
+          return;
+        }
+        const val = snap.val();
+        const list = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
+        callback(list.length > 0 ? list : INITIAL_SERVICES_ADMIN);
+      }, (err) => {
+        console.warn('RTDB Services subscription note:', err.message);
+        callback(INITIAL_SERVICES_ADMIN);
         if (errorCallback) errorCallback(err);
-      }
-    );
+      });
+      return () => off(sRef, 'value', unsub);
+    }
+
+    if (db && typeof collection === 'function') {
+      const servicesCol = collection(db, 'services');
+      return onSnapshot(
+        servicesCol,
+        (snapshot) => {
+          const servList = snapshot.docs.map(d => ({
+            docId: d.id,
+            ...d.data()
+          }));
+          callback(servList);
+        },
+        (err) => {
+          console.warn('Services snapshot subscription note:', err.message);
+          if (errorCallback) errorCallback(err);
+        }
+      );
+    }
+    callback(INITIAL_SERVICES_ADMIN);
+    return () => {};
   } catch (err) {
     console.warn('Services subscribe exception:', err);
+    callback(INITIAL_SERVICES_ADMIN);
     return () => {};
   }
 };
 
 export const getFirestoreServices = async () => {
-  if (!isFirebaseConfigured || !db) return [];
+  if (!isFirebaseConfigured) return INITIAL_SERVICES_ADMIN;
   try {
-    const snapshot = await getDocs(collection(db, 'services'));
-    return snapshot.docs.map(d => ({ docId: d.id, ...d.data() }));
+    if (rtdb) {
+      const snap = await get(ref(rtdb, 'services'));
+      if (snap.exists()) {
+        const val = snap.val();
+        const list = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
+        return list.length > 0 ? list : INITIAL_SERVICES_ADMIN;
+      }
+      return INITIAL_SERVICES_ADMIN;
+    }
+    if (db && typeof getDocs === 'function') {
+      const snapshot = await getDocs(collection(db, 'services'));
+      return snapshot.docs.map(d => ({ docId: d.id, ...d.data() }));
+    }
+    return INITIAL_SERVICES_ADMIN;
   } catch (error) {
     console.error('Error fetching services:', error);
-    return [];
+    return INITIAL_SERVICES_ADMIN;
   }
 };
 
 export const addFirestoreService = async (serviceData) => {
-  if (!isFirebaseConfigured || !db) return null;
+  if (!isFirebaseConfigured) return null;
   try {
     const serviceId = String(serviceData.id || `srv_${Date.now()}`);
-    const serviceDocRef = doc(db, 'services', serviceId);
-
     const newService = {
       id: serviceId,
       name: serviceData.name || 'New Service',
@@ -1303,32 +1439,35 @@ export const addFirestoreService = async (serviceData) => {
       category: serviceData.category || 'Wash & Fold',
       price: Number(serviceData.price) || 150,
       turnaround: serviceData.turnaround || '1–2 days',
-      status: serviceData.status ? 'Active' : 'Inactive',
+      status: (serviceData.status === true || serviceData.status === 'Active') ? 'Active' : 'Inactive',
       icon: serviceData.icon || 'Shirt',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     };
 
-    await setDoc(serviceDocRef, newService);
+    if (rtdb) {
+      await set(ref(rtdb, `services/${serviceId}`), newService);
+    }
     return newService;
   } catch (error) {
-    console.error('Error adding service to Firestore:', error);
+    console.error('Error adding service:', error);
     throw error;
   }
 };
 
 export const toggleFirestoreServiceStatus = async (serviceId, currentStatus) => {
-  if (!isFirebaseConfigured || !db) return currentStatus === 'Active' ? 'Inactive' : 'Active';
+  const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+  if (!isFirebaseConfigured) return newStatus;
   try {
-    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
-    const serviceDocRef = doc(db, 'services', String(serviceId));
-    await updateDoc(serviceDocRef, {
-      status: newStatus,
-      updatedAt: serverTimestamp()
-    });
+    if (rtdb) {
+      await update(ref(rtdb, `services/${String(serviceId)}`), {
+        status: newStatus,
+        updatedAt: Date.now()
+      });
+    }
     return newStatus;
   } catch (error) {
-    console.error('Error toggling service status in Firestore:', error);
+    console.error('Error toggling service status:', error);
     throw error;
   }
 };
