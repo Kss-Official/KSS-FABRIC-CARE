@@ -375,6 +375,84 @@ export const subscribeAdminCustomers = (onCustomersUpdated, onError) => {
   return () => off(usersQuery, 'value', unsub);
 };
 
+/**
+ * Subscribe to all users in RTDB (Customers, Staff, Delivery Agents, Admins)
+ */
+export const subscribeAdminAllUsers = (onUsersUpdated, onError) => {
+  const usersRef = ref(rtdb, 'users');
+  const unsub = onValue(usersRef, (snap) => {
+    if (!snap.exists()) {
+      onUsersUpdated([]);
+      return;
+    }
+    const data = snap.val() || {};
+    const list = Object.keys(data).map(k => {
+      const u = data[k] || {};
+      const isActive = u.isActive !== false && u.status !== 'Inactive';
+      return {
+        ...u,
+        id: k,
+        uid: k,
+        isActive,
+        status: isActive ? 'Active' : 'Inactive'
+      };
+    });
+    onUsersUpdated(list);
+  }, (err) => {
+    console.warn('Admin all users listener warning:', err);
+    if (onError) onError(err);
+  });
+
+  return () => off(usersRef, 'value', unsub);
+};
+
+/**
+ * Admin updates a user profile
+ */
+export const updateAdminUser = async (uid, updateFields) => {
+  const cleanUid = String(uid).trim();
+  const updates = {
+    ...updateFields,
+    updatedAt: Date.now()
+  };
+  await update(ref(rtdb, `users/${cleanUid}`), updates);
+  if (updateFields.role === 'agent' || updateFields.role === 'delivery' || updateFields.vehicleType || updateFields.vehicleNumber) {
+    await update(ref(rtdb, `agents/${cleanUid}`), {
+      ...(updateFields.vehicleType ? { vehicleType: updateFields.vehicleType } : {}),
+      ...(updateFields.vehicleNumber ? { vehicleNumber: updateFields.vehicleNumber } : {}),
+      ...(updateFields.area ? { assignedArea: updateFields.area } : {}),
+      updatedAt: Date.now()
+    }).catch(() => {});
+  }
+  return true;
+};
+
+/**
+ * Admin toggles user status (Active / Inactive)
+ */
+export const toggleAdminUserStatus = async (uid, currentStatus) => {
+  const cleanUid = String(uid).trim();
+  const isCurrentlyActive = currentStatus === 'Active' || currentStatus === true;
+  const newIsActive = !isCurrentlyActive;
+  const newStatus = newIsActive ? 'Active' : 'Inactive';
+  await update(ref(rtdb, `users/${cleanUid}`), {
+    isActive: newIsActive,
+    status: newStatus,
+    updatedAt: Date.now()
+  });
+  return newStatus;
+};
+
+/**
+ * Admin deletes a user
+ */
+export const deleteAdminUser = async (uid) => {
+  const cleanUid = String(uid).trim();
+  await set(ref(rtdb, `users/${cleanUid}`), null);
+  await set(ref(rtdb, `agents/${cleanUid}`), null).catch(() => {});
+  return true;
+};
+
 export const subscribeAdminDashboardStats = (onStatsUpdated, onError) => {
   const todayKey = getTodayKey();
   const statsRef = ref(rtdb, `stats/daily/${todayKey}`);
@@ -415,3 +493,607 @@ export const subscribeAdminNotifications = (onNotifsUpdated, onError) => {
 
   return () => off(notifsQuery, 'value', unsub);
 };
+
+// ===============================================================
+// SERVICES CATALOG MANAGEMENT & SUBSCRIPTION
+// ===============================================================
+
+export const DEFAULT_SERVICES = [
+  {
+    id: 1,
+    name: 'Shirt',
+    description: 'Regular shirt cleaning and pressing',
+    category: 'Wash & Fold',
+    price: 80,
+    turnaround: '1–2 days',
+    status: 'Active',
+    icon: 'Shirt',
+    type: 'Standard'
+  },
+  {
+    id: 2,
+    name: 'Jeans',
+    description: 'Denim washing and care',
+    category: 'Wash & Fold',
+    price: 120,
+    turnaround: '1–2 days',
+    status: 'Active',
+    icon: 'Jeans',
+    type: 'Standard'
+  },
+  {
+    id: 3,
+    name: 'T-Shirt',
+    description: 'Regular wash and fold',
+    category: 'Wash & Fold',
+    price: 70,
+    turnaround: '1–2 days',
+    status: 'Active',
+    icon: 'TShirt',
+    type: 'Standard'
+  },
+  {
+    id: 4,
+    name: 'Formal Suit',
+    description: 'Professional dry cleaning',
+    category: 'Dry Cleaning',
+    price: 250,
+    turnaround: '2–3 days',
+    status: 'Active',
+    icon: 'Suit',
+    type: 'Premium'
+  },
+  {
+    id: 5,
+    name: 'Saree',
+    description: 'Special fabric care with dry cleaning',
+    category: 'Dry Cleaning',
+    price: 220,
+    turnaround: '2–3 days',
+    status: 'Active',
+    icon: 'Saree',
+    type: 'Premium'
+  },
+  {
+    id: 6,
+    name: 'Bedsheet (Single)',
+    description: 'Wash, dry and fold',
+    category: 'Household',
+    price: 90,
+    turnaround: '1–2 days',
+    status: 'Active',
+    icon: 'Bedsheet',
+    type: 'Standard'
+  },
+  {
+    id: 7,
+    name: 'Blanket',
+    description: 'Deep cleaning and sanitization',
+    category: 'Household',
+    price: 300,
+    turnaround: '2–3 days',
+    status: 'Inactive',
+    icon: 'Blanket',
+    type: 'Premium'
+  },
+  {
+    id: 8,
+    name: 'Curtain (Per Piece)',
+    description: 'Dry cleaning and freshening',
+    category: 'Household',
+    price: 180,
+    turnaround: '2–3 days',
+    status: 'Active',
+    icon: 'Curtain',
+    type: 'Standard'
+  },
+  {
+    id: 9,
+    name: 'Silk Saree',
+    description: 'Delicate fabric dry cleaning',
+    category: 'Dry Cleaning',
+    price: 450,
+    turnaround: '2–3 days',
+    status: 'Active',
+    icon: 'Saree',
+    type: 'Premium'
+  },
+  {
+    id: 10,
+    name: 'Winter Jacket',
+    description: 'Heavy wool dry cleaning & sanitization',
+    category: 'Dry Cleaning',
+    price: 550,
+    turnaround: '3–4 days',
+    status: 'Active',
+    icon: 'Suit',
+    type: 'Premium'
+  },
+  {
+    id: 11,
+    name: 'Carpet Cleaning',
+    description: 'Deep steam sanitization & stain removal',
+    category: 'Household',
+    price: 850,
+    turnaround: '3–4 days',
+    status: 'Inactive',
+    icon: 'Blanket',
+    type: 'Premium'
+  },
+  {
+    id: 12,
+    name: 'Cushion Covers',
+    description: 'Gentle wash and steam press',
+    category: 'Wash & Fold',
+    price: 680,
+    turnaround: '1–2 days',
+    status: 'Active',
+    icon: 'Bedsheet',
+    type: 'Standard'
+  }
+];
+
+/**
+ * Realtime subscription to services in Realtime Database
+ */
+export const subscribeAdminServices = (onServicesUpdated, onError) => {
+  const servicesRef = ref(rtdb, 'services');
+  const unsub = onValue(servicesRef, (snap) => {
+    if (!snap.exists()) {
+      onServicesUpdated(DEFAULT_SERVICES);
+      seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
+      return;
+    }
+    const data = snap.val();
+    const rawList = data ? Object.keys(data).map(k => ({ ...data[k], id: data[k].id || k })) : [];
+
+    // Detect if RTDB has incomplete dummy data or old "Special Care" / non-Household categories
+    const isOldIncomplete = rawList.length < 12 || rawList.some(s => 
+      !s.category || s.price === undefined || s.price === null || Number(s.price) === 0 ||
+      s.category === 'Special Care' || s.category === 'Special' ||
+      ((String(s.name || '').toLowerCase().includes('bedsheet') || String(s.name || '').toLowerCase().includes('blanket') || String(s.name || '').toLowerCase().includes('curtain')) && s.category !== 'Household')
+    );
+
+    if (isOldIncomplete) {
+      // Overwrite RTDB with the full 12 services with clean Household categories
+      seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
+      onServicesUpdated(DEFAULT_SERVICES);
+      return;
+    }
+
+    const list = rawList.map(item => {
+      let cat = item.category || item.category_name || 'Wash & Fold';
+      const nameLower = String(item.name || '').toLowerCase();
+      if (nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
+        cat = 'Household';
+      } else if (cat === 'Special Care' || cat === 'Special') {
+        cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
+      }
+      return {
+        ...item,
+        price: Number(item.price) || 0,
+        status: item.status || (item.isActive === false ? 'Inactive' : 'Active'),
+        category: cat,
+        turnaround: item.turnaround || item.turnaround_time || '1–2 days',
+        type: item.type || (Number(item.price) > 200 ? 'Premium' : (String(item.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard'))
+      };
+    });
+
+    onServicesUpdated(list);
+  }, async (err) => {
+    console.warn('Admin services listener note, falling back to Django /api/services/:', err);
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/services/');
+      if (res.ok) {
+        const djangoServices = await res.json();
+        if (Array.isArray(djangoServices) && djangoServices.length > 0) {
+          const mapped = djangoServices.map(s => {
+            let cat = s.category_name || 'Wash & Fold';
+            const nameLower = String(s.name || '').toLowerCase();
+            if (nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
+              cat = 'Household';
+            } else if (cat === 'Special Care' || cat === 'Special') {
+              cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
+            }
+            return {
+              id: s.id,
+              name: s.name,
+              category: cat,
+              price: Number(s.price) || 0,
+              turnaround: s.turnaround_time || '1–2 days',
+              status: s.is_active ? 'Active' : 'Inactive',
+              icon: s.icon || 'Shirt',
+              description: s.description || '',
+              type: Number(s.price) > 200 ? 'Premium' : 'Standard'
+            };
+          });
+          onServicesUpdated(mapped);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Django fetch fallback error:', e);
+    }
+    onServicesUpdated(DEFAULT_SERVICES);
+    if (onError) onError(err);
+  });
+
+  return () => off(servicesRef, 'value', unsub);
+};
+
+/**
+ * Seed full 12 services into RTDB if not present or incomplete
+ */
+export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICES, forceOverwrite = false) => {
+  try {
+    const servicesRef = ref(rtdb, 'services');
+    const snap = await get(servicesRef);
+    const existing = snap.val();
+    const isOldIncomplete = !snap.exists() || !existing || Object.keys(existing).length < 12 || Object.values(existing).some(s => 
+      !s.category || !s.price || s.category === 'Special Care' || s.category === 'Special' ||
+      ((String(s.name || '').toLowerCase().includes('bedsheet') || String(s.name || '').toLowerCase().includes('blanket') || String(s.name || '').toLowerCase().includes('curtain')) && s.category !== 'Household')
+    );
+
+    if (forceOverwrite || isOldIncomplete) {
+      const seedObj = {};
+      initialServices.forEach(s => {
+        seedObj[s.id] = {
+          ...s,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+      });
+      await set(servicesRef, seedObj);
+      return initialServices;
+    }
+    return null;
+  } catch (err) {
+    console.warn('Could not seed services in RTDB:', err);
+    return null;
+  }
+};
+
+/**
+ * Add a new service
+ */
+export const addAdminService = async (serviceData) => {
+  const serviceId = String(serviceData.id || `srv_${Date.now()}`);
+  const newService = {
+    id: serviceId,
+    name: serviceData.name || 'New Service',
+    description: serviceData.description || '',
+    category: serviceData.category || 'Wash & Fold',
+    price: Number(serviceData.price) || 100,
+    turnaround: serviceData.turnaround || '1–2 days',
+    status: (serviceData.status === true || serviceData.status === 'Active') ? 'Active' : 'Inactive',
+    icon: serviceData.icon || 'Shirt',
+    type: serviceData.type || (Number(serviceData.price) > 200 ? 'Premium' : (String(serviceData.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard')),
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  try {
+    await set(ref(rtdb, `services/${serviceId}`), newService);
+  } catch (e) {
+    console.warn('RTDB add service notice:', e);
+  }
+
+  // Also sync to Django API if available
+  try {
+    await fetch('http://127.0.0.1:8000/api/services/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newService.name,
+        category: 1,
+        description: newService.description,
+        price: newService.price,
+        turnaround_time: newService.turnaround,
+        is_active: newService.status === 'Active'
+      })
+    });
+  } catch (e) {}
+
+  return newService;
+};
+
+/**
+ * Update an existing service
+ */
+export const updateAdminService = async (serviceId, updateFields) => {
+  const cleanId = String(serviceId).trim();
+  const updates = {
+    ...updateFields,
+    updatedAt: Date.now()
+  };
+  try {
+    await update(ref(rtdb, `services/${cleanId}`), updates);
+  } catch (e) {
+    console.warn('RTDB update service notice:', e);
+  }
+
+  if (/^\d+$/.test(cleanId)) {
+    try {
+      await fetch(`http://127.0.0.1:8000/api/services/${cleanId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: updateFields.name,
+          price: updateFields.price,
+          turnaround_time: updateFields.turnaround,
+          description: updateFields.description,
+          is_active: updateFields.status === 'Active'
+        })
+      });
+    } catch (e) {}
+  }
+  return true;
+};
+
+/**
+ * Delete a service
+ */
+export const deleteAdminService = async (serviceId) => {
+  const cleanId = String(serviceId).trim();
+  try {
+    await set(ref(rtdb, `services/${cleanId}`), null);
+  } catch (e) {
+    console.warn('RTDB delete service notice:', e);
+  }
+
+  if (/^\d+$/.test(cleanId)) {
+    try {
+      await fetch(`http://127.0.0.1:8000/api/services/${cleanId}/`, {
+        method: 'DELETE'
+      });
+    } catch (e) {}
+  }
+  return true;
+};
+
+/**
+ * Toggle active/inactive status
+ */
+export const toggleAdminServiceStatus = async (serviceId, currentStatus) => {
+  const cleanId = String(serviceId).trim();
+  const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+  try {
+    await update(ref(rtdb, `services/${cleanId}`), {
+      status: newStatus,
+      updatedAt: Date.now()
+    });
+  } catch (e) {
+    console.warn('RTDB toggle service status notice:', e);
+  }
+
+  if (/^\d+$/.test(cleanId)) {
+    try {
+      await fetch(`http://127.0.0.1:8000/api/services/${cleanId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_active: newStatus === 'Active'
+        })
+      });
+    } catch (e) {}
+  }
+  return newStatus;
+};
+
+/**
+ * Fetch latest admin orders from RTDB with Django database sync
+ */
+export const fetchAdminOrdersOnce = async () => {
+  let list = [];
+  try {
+    const snap = await get(ref(rtdb, 'orders'));
+    if (snap.exists()) {
+      const data = snap.val() || {};
+      list = Object.keys(data).map(k => ({ ...data[k], id: data[k].id || k, rawId: k }));
+    }
+  } catch (err) {
+    console.warn('RTDB fetchAdminOrdersOnce notice:', err);
+  }
+
+  try {
+    let res = await fetch('http://127.0.0.1:8000/api/admin/orders/');
+    if (!res.ok) {
+      res = await fetch('http://127.0.0.1:8000/api/orders/');
+    }
+    if (res.ok) {
+      const djangoOrders = await res.json();
+      if (Array.isArray(djangoOrders) && djangoOrders.length > 0) {
+        const orderMap = new Map();
+        list.forEach(o => {
+          const key = String(o.order_number || o.order_id || o.code || o.id);
+          orderMap.set(key, o);
+        });
+
+        djangoOrders.forEach(djO => {
+          const djCode = djO.order_number || djO.order_id || String(djO.id);
+          const existing = orderMap.get(djCode);
+          const djFormatted = {
+            id: djCode,
+            code: djCode,
+            order_number: djCode,
+            order_id: djCode,
+            customerName: djO.pickup_full_name || djO.customer_name || existing?.customerName || 'Customer',
+            customerPhone: djO.pickup_phone || djO.customer_phone || existing?.customerPhone || '',
+            pickup_address: djO.pickup_address || existing?.pickup_address || '',
+            total_amount: Number(djO.total_amount) || existing?.total_amount || 0,
+            amount: Number(djO.total_amount) || existing?.total_amount || 0,
+            status: djO.status || existing?.status || 'PENDING_REVIEW',
+            paymentStatus: djO.payment_status === 'PAID' ? 'Paid' : 'Pending',
+            createdAt: djO.created_at ? new Date(djO.created_at).getTime() : (existing?.createdAt || Date.now()),
+            updatedAt: djO.updated_at ? new Date(djO.updated_at).getTime() : (existing?.updatedAt || Date.now()),
+            items: djO.items || existing?.items || [],
+            driver: djO.assigned_pickup_driver_detail?.full_name || djO.assigned_delivery_driver_detail?.full_name || existing?.driver || 'Not Assigned'
+          };
+          orderMap.set(djCode, { ...existing, ...djFormatted });
+        });
+
+        list = Array.from(orderMap.values());
+      }
+    }
+  } catch (e) {
+    console.warn('Django orders fetch notice:', e);
+  }
+
+  list.sort((a, b) => {
+    const timeA = a.updatedAt || a.placedAt || a.createdAt || 0;
+    const timeB = b.updatedAt || b.placedAt || b.createdAt || 0;
+    return timeB - timeA;
+  });
+
+  return list;
+};
+
+/**
+ * Fetch latest admin users from RTDB with Django database sync
+ */
+export const fetchAdminUsersOnce = async () => {
+  let list = [];
+  try {
+    const snap = await get(ref(rtdb, 'users'));
+    if (snap.exists()) {
+      const data = snap.val() || {};
+      list = Object.keys(data).map(k => {
+        const u = data[k] || {};
+        const isActive = u.isActive !== false && u.status !== 'Inactive';
+        return {
+          ...u,
+          id: k,
+          uid: k,
+          isActive,
+          status: isActive ? 'Active' : 'Inactive'
+        };
+      });
+    }
+  } catch (err) {
+    console.warn('RTDB fetchAdminUsersOnce notice:', err);
+  }
+
+  try {
+    let res = await fetch('http://127.0.0.1:8000/api/admin/users/');
+    if (!res.ok) {
+      res = await fetch('http://127.0.0.1:8000/api/users/');
+    }
+    if (res.ok) {
+      const djangoUsers = await res.json();
+      if (Array.isArray(djangoUsers) && djangoUsers.length > 0) {
+        const userMap = new Map();
+        list.forEach(u => {
+          const key = (u.email || '').toLowerCase().trim() || String(u.uid || u.id);
+          userMap.set(key, u);
+        });
+
+        djangoUsers.forEach(djU => {
+          const emailKey = (djU.email || '').toLowerCase().trim();
+          const uidKey = String(djU.id);
+          const key = emailKey || uidKey;
+          const existing = userMap.get(key) || userMap.get(emailKey) || userMap.get(uidKey);
+
+          const roleStr = String(djU.role || '').toLowerCase();
+          const isStaff = roleStr.includes('staff') || roleStr.includes('laundry');
+          const isDelivery = roleStr.includes('delivery') || roleStr.includes('agent');
+          const effectiveRole = isStaff ? 'staff' : (isDelivery ? 'delivery' : 'customer');
+
+          const isActive = djU.is_active_staff !== false && djU.is_active !== false;
+
+          userMap.set(key, {
+            ...existing,
+            id: String(djU.id),
+            uid: String(djU.id),
+            name: djU.full_name || djU.first_name || djU.username || existing?.name || 'User',
+            fullName: djU.full_name || djU.first_name || djU.username || existing?.name || 'User',
+            email: djU.email || existing?.email || '',
+            phone: djU.phone || existing?.phone || '',
+            role: effectiveRole,
+            status: isActive ? 'Active' : 'Inactive',
+            isActive: isActive,
+            createdAt: djU.created_at ? new Date(djU.created_at).getTime() : (existing?.createdAt || Date.now())
+          });
+        });
+
+        list = Array.from(userMap.values());
+      }
+    }
+  } catch (e) {
+    console.warn('Django users fetch notice:', e);
+  }
+
+  return list;
+};
+
+/**
+ * Fetch latest admin services from RTDB with Django database sync
+ */
+export const fetchAdminServicesOnce = async () => {
+  let list = [];
+  try {
+    const snap = await get(ref(rtdb, 'services'));
+    if (snap.exists()) {
+      const data = snap.val() || {};
+      list = Object.keys(data).map(k => ({ ...data[k], id: data[k].id || k }));
+    }
+  } catch (err) {
+    console.warn('RTDB fetchAdminServicesOnce notice:', err);
+  }
+
+  try {
+    let res = await fetch('http://127.0.0.1:8000/api/admin/services/');
+    if (!res.ok) {
+      res = await fetch('http://127.0.0.1:8000/api/services/');
+    }
+    if (res.ok) {
+      const djangoServices = await res.json();
+      if (Array.isArray(djangoServices) && djangoServices.length > 0) {
+        const serviceMap = new Map();
+        list.forEach(s => serviceMap.set(String(s.id), s));
+
+        djangoServices.forEach(s => {
+          const key = String(s.id);
+          const existing = serviceMap.get(key);
+          serviceMap.set(key, {
+            ...existing,
+            id: s.id,
+            name: s.name,
+            category: s.category_name || existing?.category || 'Wash & Fold',
+            price: Number(s.price) || 0,
+            turnaround: s.turnaround_time || existing?.turnaround || '1–2 days',
+            status: s.is_active ? 'Active' : 'Inactive',
+            icon: s.icon || existing?.icon || 'Shirt',
+            description: s.description || existing?.description || '',
+            type: Number(s.price) > 200 ? 'Premium' : 'Standard'
+          });
+        });
+
+        list = Array.from(serviceMap.values());
+      }
+    }
+  } catch (e) {
+    console.warn('Django services fetch notice:', e);
+  }
+
+  if (list.length === 0) {
+    list = DEFAULT_SERVICES;
+  }
+
+  return list.map(item => {
+    let cat = item.category || item.category_name || 'Wash & Fold';
+    const nameLower = String(item.name || '').toLowerCase();
+    if (nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
+      cat = 'Household';
+    } else if (cat === 'Special Care' || cat === 'Special') {
+      cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
+    }
+    return {
+      ...item,
+      price: Number(item.price) || 0,
+      status: item.status || (item.isActive === false ? 'Inactive' : 'Active'),
+      category: cat,
+      turnaround: item.turnaround || item.turnaround_time || '1–2 days',
+      type: item.type || (Number(item.price) > 200 ? 'Premium' : (String(item.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard'))
+    };
+  });
+};
+

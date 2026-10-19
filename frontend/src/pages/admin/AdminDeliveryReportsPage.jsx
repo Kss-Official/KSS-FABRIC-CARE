@@ -22,15 +22,17 @@ import {
   Search
 } from 'lucide-react';
 import { RescheduleDeliveryDrawer } from '../../components/admin/RescheduleDeliveryDrawer';
+import { filterMatchesDate } from '../../utils/dateFilterUtils';
+import { formatOrderId } from '../../utils/helpers';
 
 export const AdminDeliveryReportsPage = () => {
   const { 
-    complaints, 
-    complaintsSummary, 
-    complaintsLoading, 
-    fetchComplaints,
-    openRescheduleDrawer 
-  } = useAdmin();
+    complaints = [], 
+    complaintsSummary = { total_complaints: 28, pending_reschedule: 7, rescheduled: 13, resolved: 5 }, 
+    complaintsLoading = false, 
+    fetchComplaints = () => {},
+    openRescheduleDrawer = () => {} 
+  } = useAdmin() || {};
 
   // Filters state with search support
   const [searchQuery, setSearchQuery] = useState('');
@@ -103,15 +105,8 @@ export const AdminDeliveryReportsPage = () => {
       }
 
       // Date Range Filter
-      if (dateRangeFilter === 'TODAY') {
-        const today = new Date().toISOString().split('T')[0];
-        const itemDate = (item.report_date || item.created_at || '').split('T')[0];
-        if (itemDate && itemDate !== today) return false;
-      } else if (dateRangeFilter === '7DAYS') {
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const itemDate = new Date(item.report_date || item.created_at || Date.now());
-        if (itemDate < sevenDaysAgo) return false;
+      if (!filterMatchesDate(item, dateRangeFilter, ['report_date', 'created_at', 'createdAt', 'updatedAt', 'date'])) {
+        return false;
       }
 
       return true;
@@ -159,7 +154,7 @@ export const AdminDeliveryReportsPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Total Complaints</span>
-              <span className="stat-number">{complaintsSummary.total_complaints || 28}</span>
+              <span className="stat-number">{complaintsSummary?.total_complaints ?? 28}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>12%</span>
@@ -177,7 +172,7 @@ export const AdminDeliveryReportsPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Pending Reschedule</span>
-              <span className="stat-number">{complaintsSummary.pending_reschedule ?? 7}</span>
+              <span className="stat-number">{complaintsSummary?.pending_reschedule ?? 7}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>33%</span>
@@ -195,7 +190,7 @@ export const AdminDeliveryReportsPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Rescheduled</span>
-              <span className="stat-number">{complaintsSummary.rescheduled ?? 13}</span>
+              <span className="stat-number">{complaintsSummary?.rescheduled ?? 13}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>25%</span>
@@ -213,7 +208,7 @@ export const AdminDeliveryReportsPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Resolved</span>
-              <span className="stat-number">{complaintsSummary.resolved ?? 5}</span>
+              <span className="stat-number">{complaintsSummary?.resolved ?? 5}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>20%</span>
@@ -289,7 +284,8 @@ export const AdminDeliveryReportsPage = () => {
               >
                 <option value="ALL">Select Date Range</option>
                 <option value="TODAY">Today</option>
-                <option value="7DAYS">Last 7 Days</option>
+                <option value="YESTERDAY">Yesterday</option>
+                <option value="LAST_WEEK">Last Week</option>
               </select>
               <ChevronDown size={14} className="cr-select-chevron" />
             </div>
@@ -348,8 +344,8 @@ export const AdminDeliveryReportsPage = () => {
                     <tr key={item.id} className="cr-table-row">
                       {/* Order ID */}
                       <td className="cr-cell-order-id">
-                        <span className="order-id-bold font-semibold text-slate-900">
-                          {item.order_id_display || item.order_id || `#FC${item.id}`}
+                        <span className="order-id-bold font-mono font-bold text-slate-900">
+                          {formatOrderId(item.order_id_display || item.order_id || item.id)}
                         </span>
                       </td>
 
@@ -481,7 +477,7 @@ export const AdminDeliveryReportsPage = () => {
                 <div>
                   <h3 className="modal-heading">Complaint Details</h3>
                   <p className="modal-sub">
-                    {selectedComplaint.order_id_display || selectedComplaint.order_id || `#FC${selectedComplaint.id}`} &bull; Review failure reason and reschedule delivery.
+                    {formatOrderId(selectedComplaint.order_id_display || selectedComplaint.order_id || selectedComplaint.id)} &bull; Review failure reason and reschedule delivery.
                   </p>
                 </div>
               </div>
@@ -500,7 +496,7 @@ export const AdminDeliveryReportsPage = () => {
                 <div className="detail-item">
                   <span className="detail-label">Order ID</span>
                   <span className="detail-value font-mono font-bold text-slate-900">
-                    {selectedComplaint.order_id_display || selectedComplaint.order_id || `#FC${selectedComplaint.id}`}
+                    {formatOrderId(selectedComplaint.order_id_display || selectedComplaint.order_id || selectedComplaint.id)}
                   </span>
                 </div>
                 <div className="detail-item">

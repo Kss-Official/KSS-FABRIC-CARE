@@ -3,6 +3,7 @@ import { createCustomerOrder, confirmCustomerPayment } from '../services/custome
 import { useAuth } from './AuthContext';
 import { addressApi, servicesApi } from '../api/apiClient';
 import { INITIAL_SERVICES } from '../constants/servicesConstants';
+import { subscribeAdminServices } from '../services/adminDataService';
 import { PRICING_CATEGORIES, PRICING_SUBCATEGORIES, PRICING_ITEMS } from '../data/pricingData';
 
 const BookingContext = createContext();
@@ -131,6 +132,30 @@ export const BookingProvider = ({ children }) => {
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState('dry-cleaning');
   const [servicesList, setServicesList] = useState(INITIAL_SERVICES);
+
+  useEffect(() => {
+    const unsub = subscribeAdminServices((liveServices) => {
+      if (liveServices && liveServices.length > 0) {
+        setServicesList(prev => {
+          return liveServices.map(ls => {
+            const existing = prev.find(p => p.id === ls.id) || {};
+            return {
+              ...existing,
+              ...ls,
+              price: Number(ls.price) || existing.price || 120,
+              name: ls.name || existing.name,
+              status: ls.status || 'Active',
+              popular: existing.popular ?? true
+            };
+          });
+        });
+      }
+    });
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, []);
+
   const [serviceCategories, setServiceCategories] = useState([]);
   const [activeTrackingOrderId, setActiveTrackingOrderId] = useState(null);
 
@@ -309,11 +334,13 @@ export const BookingProvider = ({ children }) => {
 
   // Step 3 Time Slot
   const [pickupSchedule, setPickupSchedule] = useState(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const target = new Date();
+    // Default to 2 days in advance (earliest valid date for standard/normal services)
+    target.setDate(target.getDate() + 2);
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const iso = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
-    const label = `Tomorrow, ${tomorrow.getDate()} ${months[tomorrow.getMonth()]} ${tomorrow.getFullYear()}`;
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const iso = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+    const label = `${days[target.getDay()]}, ${target.getDate()} ${months[target.getMonth()]} ${target.getFullYear()}`;
     return {
       dateLabel: label,
       dateValue: iso,
@@ -324,6 +351,11 @@ export const BookingProvider = ({ children }) => {
   // Step 4 Instructions & Estimation
   const [specialInstructions, setSpecialInstructions] = useState('Please handle garments with extra care.');
   const [isExpressDelivery, setIsExpressDelivery] = useState(false);
+
+  // Check if current booking has Express Laundry selected
+  const isExpressBooking = Boolean(isExpressDelivery) || 
+    selectedServices.some(s => s === 'express-laundry' || String(s).toLowerCase().includes('express')) ||
+    selectedItemsList.some(it => it.categoryId === 'express-laundry' || String(it.categoryName || '').toLowerCase().includes('express'));
   
   // Confirmed Order Info
   const [lastOrder, setLastOrder] = useState(null);
@@ -536,6 +568,27 @@ export const BookingProvider = ({ children }) => {
         formattedPickupDate = new Date().toISOString().split('T')[0];
       }
 
+      const isExpress = Boolean(isExpressDelivery) || 
+        selectedServices.some(s => s === 'express-laundry' || String(s).toLowerCase().includes('express')) ||
+        selectedItemsList.some(it => it.categoryId === 'express-laundry' || String(it.categoryName || '').toLowerCase().includes('express'));
+
+      // Validate booking rules: Normal services must be at least 2 days in advance
+      if (!isExpress && formattedPickupDate) {
+        const parts = formattedPickupDate.split('-');
+        if (parts.length === 3) {
+          const targetDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          targetDate.setHours(0, 0, 0, 0);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const diffDays = Math.round((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays < 2) {
+            setOrderError('Normal laundry services require booking at least 2 days in advance. Please select a valid date or choose Express Laundry for next-day pickup.');
+            setIsSubmittingOrder(false);
+            return;
+          }
+        }
+      }
+
       const bookingPayload = {
         customerName: pickupDetails.name || currentUser?.name || currentUser?.displayName || 'Valued Customer',
         customerPhone: pickupDetails.mobile || currentUser?.phone || '',
@@ -551,7 +604,7 @@ export const BookingProvider = ({ children }) => {
           from: pickupSchedule.timeSlot?.split('–')[0]?.trim() || '09:00',
           to: pickupSchedule.timeSlot?.split('–')[1]?.trim() || '11:00'
         },
-        isExpress: Boolean(isExpressDelivery),
+        isExpress: Boolean(isExpress),
         notes: specialInstructions || '',
         items: orderItemsMap,
         subtotal: total,
@@ -650,6 +703,7 @@ export const BookingProvider = ({ children }) => {
         calculateTotal,
         allServices: servicesList,
         serviceCategories,
+        isExpressBooking,
         isSubmittingOrder,
         orderError
       }}
@@ -669,7 +723,8 @@ export const useBooking = () => {
       },
       bookingState: {},
       allServices: [],
-      serviceCategories: []
+      serviceCategories: [],
+      isExpressBooking: false
     };
   }
   return context;

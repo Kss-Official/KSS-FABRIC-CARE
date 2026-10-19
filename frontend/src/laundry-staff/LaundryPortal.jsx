@@ -85,6 +85,7 @@ import {
   MOCK_LAUNDRY_ORDERS,
   computeDashboardTaskCounts
 } from './taskConfig';
+import { filterMatchesDate } from '../utils/dateFilterUtils';
 
 // Universal Service Matcher for Laundry Staff Portal Filters
 export const matchesServiceFilter = (serviceList, filterValue) => {
@@ -606,7 +607,7 @@ export const LaundryPortal = () => {
   const [dispatchedOrderIds, setDispatchedOrderIds] = useState(() => new Set());
 
   // 12. Order History Page State (Matching Image 2)
-  const [historyFilterDate, setHistoryFilterDate] = useState('26 Apr – 26 May 2025');
+  const [historyFilterDate, setHistoryFilterDate] = useState('All Time');
 
   // 13. Top Navbar User Profile Dropdown (Matching Reference Design)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -2862,6 +2863,9 @@ export const LaundryPortal = () => {
             if (historyFilterTab === 'delivered' && ord.status !== 'delivered') return false;
             if (historyFilterTab === 'cancelled' && ord.status !== 'cancelled') return false;
 
+            // Date filter
+            if (!filterMatchesDate(ord, historyFilterDate, ['timestamp', 'deliveredAt', 'dateStr'])) return false;
+
             // Search query filter (Order ID, Customer Name, Phone, Items, Services)
             if (historySearchQuery.trim()) {
               const q = historySearchQuery.toLowerCase().trim();
@@ -2990,10 +2994,11 @@ export const LaundryPortal = () => {
                       className="hist-date-select-hidden"
                       aria-label="Filter order history by date range"
                     >
-                      <option value="26 Apr – 26 May 2025">26 Apr – 26 May 2025</option>
-                      <option value="Last 30 Days">Last 30 Days</option>
-                      <option value="This Month">This Month</option>
                       <option value="All Time">All Time</option>
+                      <option value="Today">Today</option>
+                      <option value="Yesterday">Yesterday</option>
+                      <option value="Last Week">Last Week</option>
+                      <option value="Last 30 Days">Last 30 Days</option>
                     </select>
                   </div>
                 </div>

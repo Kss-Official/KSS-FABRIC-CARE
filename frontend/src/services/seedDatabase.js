@@ -103,11 +103,20 @@ export const seedDatabase = async () => {
   };
   await set(ref(rtdb, 'garments'), garments).catch(() => {});
 
-  // 3. Services
+  // 3. Services (Full 12 Services catalog)
   const services = {
-    svc_wash_fold: { name: 'Wash & Fold', description: 'Everyday laundry', turnaroundHours: 48, isActive: true },
-    svc_wash_iron: { name: 'Wash & Iron', description: 'Steam pressed wash', turnaroundHours: 48, isActive: true },
-    svc_dry_clean: { name: 'Dry Clean', description: 'Specialized chemical care', turnaroundHours: 72, isActive: true }
+    1: { id: 1, name: 'Shirt', description: 'Regular shirt cleaning and pressing', category: 'Wash & Fold', price: 80, turnaround: '1–2 days', status: 'Active', icon: 'Shirt', type: 'Standard' },
+    2: { id: 2, name: 'Jeans', description: 'Denim washing and care', category: 'Wash & Fold', price: 120, turnaround: '1–2 days', status: 'Active', icon: 'Jeans', type: 'Standard' },
+    3: { id: 3, name: 'T-Shirt', description: 'Regular wash and fold', category: 'Wash & Fold', price: 70, turnaround: '1–2 days', status: 'Active', icon: 'TShirt', type: 'Standard' },
+    4: { id: 4, name: 'Formal Suit', description: 'Professional dry cleaning', category: 'Dry Cleaning', price: 250, turnaround: '2–3 days', status: 'Active', icon: 'Suit', type: 'Premium' },
+    5: { id: 5, name: 'Saree', description: 'Special fabric care with dry cleaning', category: 'Dry Cleaning', price: 220, turnaround: '2–3 days', status: 'Active', icon: 'Saree', type: 'Premium' },
+    6: { id: 6, name: 'Bedsheet (Single)', description: 'Wash, dry and fold', category: 'Household', price: 90, turnaround: '1–2 days', status: 'Active', icon: 'Bedsheet', type: 'Standard' },
+    7: { id: 7, name: 'Blanket', description: 'Deep cleaning and sanitization', category: 'Household', price: 300, turnaround: '2–3 days', status: 'Inactive', icon: 'Blanket', type: 'Premium' },
+    8: { id: 8, name: 'Curtain (Per Piece)', description: 'Dry cleaning and freshening', category: 'Household', price: 180, turnaround: '2–3 days', status: 'Active', icon: 'Curtain', type: 'Standard' },
+    9: { id: 9, name: 'Silk Saree', description: 'Delicate fabric dry cleaning', category: 'Dry Cleaning', price: 450, turnaround: '2–3 days', status: 'Active', icon: 'Saree', type: 'Premium' },
+    10: { id: 10, name: 'Winter Jacket', description: 'Heavy wool dry cleaning & sanitization', category: 'Dry Cleaning', price: 550, turnaround: '3–4 days', status: 'Active', icon: 'Suit', type: 'Premium' },
+    11: { id: 11, name: 'Carpet Cleaning', description: 'Deep steam sanitization & stain removal', category: 'Household', price: 850, turnaround: '3–4 days', status: 'Inactive', icon: 'Blanket', type: 'Premium' },
+    12: { id: 12, name: 'Cushion Covers', description: 'Gentle wash and steam press', category: 'Wash & Fold', price: 680, turnaround: '1–2 days', status: 'Active', icon: 'Bedsheet', type: 'Standard' }
   };
   await set(ref(rtdb, 'services'), services).catch(() => {});
 

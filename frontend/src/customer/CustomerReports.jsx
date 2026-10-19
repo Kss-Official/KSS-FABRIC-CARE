@@ -24,13 +24,14 @@ import {
   MapPin,
   Phone
 } from 'lucide-react';
+import { formatOrderId } from '../utils/helpers';
 
 // Exact default reports fallback matching Image 1 UI reference
 const DEFAULT_REPORTS = [
   {
     id: 101,
-    order_id_display: '#FC1024',
-    order_id: '#FC1024',
+    order_id_display: 'FC-75668',
+    order_id: 'FC-75668',
     report_date_only: '16 Oct 2026',
     formatted_report_date: '16 Oct 2026, 11:30 AM',
     failure_reason: 'Customer Unavailable',
@@ -44,8 +45,8 @@ const DEFAULT_REPORTS = [
   },
   {
     id: 102,
-    order_id_display: '#FCA81CC',
-    order_id: '#FCA81CC',
+    order_id_display: 'FC-10462',
+    order_id: 'FC-10462',
     report_date_only: '15 Oct 2026',
     formatted_report_date: '15 Oct 2026, 02:15 PM',
     failure_reason: 'Customer Not Responding',
@@ -59,8 +60,8 @@ const DEFAULT_REPORTS = [
   },
   {
     id: 103,
-    order_id_display: '#FCEB0F4',
-    order_id: '#FCEB0F4',
+    order_id_display: 'FC-10458',
+    order_id: 'FC-10458',
     report_date_only: '13 Oct 2026',
     formatted_report_date: '13 Oct 2026, 09:45 AM',
     failure_reason: 'Address Issue',
@@ -74,8 +75,8 @@ const DEFAULT_REPORTS = [
   },
   {
     id: 104,
-    order_id_display: '#FC88B84',
-    order_id: '#FC88B84',
+    order_id_display: 'FC-10452',
+    order_id: 'FC-10452',
     report_date_only: '13 Oct 2026',
     formatted_report_date: '13 Oct 2026, 04:20 PM',
     failure_reason: 'Customer Unavailable',
@@ -89,8 +90,8 @@ const DEFAULT_REPORTS = [
   },
   {
     id: 105,
-    order_id_display: '#FC9F22B',
-    order_id: '#FC9F22B',
+    order_id_display: 'FC-10449',
+    order_id: 'FC-10449',
     report_date_only: '12 Oct 2026',
     formatted_report_date: '12 Oct 2026, 10:00 AM',
     failure_reason: 'Customer Not Responding',
@@ -133,7 +134,7 @@ export const CustomerReports = () => {
 
   // Helper to normalize and ensure all expected fields exist
   const normalizeReport = (item) => {
-    const orderId = item.order_id || item.order_id_display || `#FC${item.id}`;
+    const orderId = formatOrderId(item.order_id || item.order_id_display || item.id || 'FC-75668');
     const reportDate =
       item.report_date_only ||
       (item.report_date ? String(item.report_date).split('T')[0] : '16 Oct 2026');
@@ -145,7 +146,7 @@ export const CustomerReports = () => {
       ...item,
       id: item.id || orderId,
       order_id: orderId,
-      order_id_display: item.order_id_display || orderId,
+      order_id_display: orderId,
       report_date_only: reportDate,
       formatted_report_date: item.formatted_report_date || reportDate,
       failure_reason: item.failure_reason || 'Customer Unavailable',
@@ -610,7 +611,7 @@ export const CustomerReports = () => {
                     <tr key={report.id || orderCode} className="reports-table-row">
                       {/* 1. Order ID */}
                       <td className="td-order-id">
-                        <span className="report-order-code">{orderCode}</span>
+                        <span className="report-order-code font-mono font-bold">{formatOrderId(orderCode)}</span>
                       </td>
 
                       {/* 2. Report Date */}
@@ -675,7 +676,7 @@ export const CustomerReports = () => {
               <div className="modal-header-title-wrap">
                 <FileText size={18} className="text-teal" />
                 <span className="modal-header-title">
-                  Official Delivery Report &bull; {selectedReport.order_id_display || selectedReport.order_id || `#FC${selectedReport.id}`}
+                  Official Delivery Report &bull; {formatOrderId(selectedReport.order_id_display || selectedReport.order_id || selectedReport.id)}
                 </span>
               </div>
               <div className="invoice-modal-actions">
@@ -734,8 +735,8 @@ export const CustomerReports = () => {
 
                   <div className="invoice-tax-meta text-right">
                     <h3 className="tax-invoice-heading">DELIVERY REPORT</h3>
-                    <div className="tax-order-number">
-                      {selectedReport.order_id_display || selectedReport.order_id || `#FC${selectedReport.id}`}
+                    <div className="tax-order-number font-mono font-bold">
+                      {formatOrderId(selectedReport.order_id_display || selectedReport.order_id || selectedReport.id)}
                     </div>
                     <div className="invoice-paid-badge-wrap">
                       {renderModalStatusBadge(selectedReport.status)}
@@ -799,7 +800,7 @@ export const CustomerReports = () => {
                           <span>Order ID</span>
                         </div>
                         <div className="meta-val-text font-mono font-bold">
-                          {selectedReport.order_id_display || selectedReport.order_id || `#FC${selectedReport.id}`}
+                          {formatOrderId(selectedReport.order_id_display || selectedReport.order_id || selectedReport.id)}
                         </div>
                       </div>
 
@@ -962,6 +963,9 @@ export const CustomerReports = () => {
           border-radius: 18px;
           padding: 22px 26px;
           box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+          width: 100%;
+          min-height: 520px;
+          box-sizing: border-box;
         }
 
         .reports-card-header {

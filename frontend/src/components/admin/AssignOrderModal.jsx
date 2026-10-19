@@ -9,6 +9,7 @@ import {
   Search, 
   FileText
 } from 'lucide-react';
+import { formatOrderId } from '../../utils/helpers';
 
 // Shirt SVG Icon matching Row 4 of Order Details in Reference Image
 const ShirtIcon = ({ size = 16, color = '#0891B2' }) => (
@@ -51,9 +52,9 @@ export const AssignOrderModal = () => {
 
   if (!isAssignOrderModalOpen) return null;
 
-  // Use assigningOrder if passed, otherwise default to Reference Image order #LDX10289
+  // Use assigningOrder if passed, otherwise default to Reference Image order FC-10289
   const currentOrder = {
-    id: assigningOrder?.id || '#LDX10289',
+    id: formatOrderId(assigningOrder?.id || assigningOrder?.order_number || assigningOrder?.order_id || 'FC-10289'),
     pickupTime: assigningOrder?.pickupTime || (assigningOrder?.date ? `${assigningOrder.date}, ${assigningOrder.timeStart || '10:00 AM'} – ${assigningOrder.timeEnd || '12:00 PM'}` : '23 Sep 2026, 10:00 AM – 12:00 PM'),
     type: assigningOrder?.type || 'Pickup',
     customer: {
@@ -165,7 +166,7 @@ export const AssignOrderModal = () => {
                   <FileText size={16} color="#0891B2" strokeWidth={1.8} />
                 </div>
                 <div className="details-text-column">
-                  <div className="details-main-val">{currentOrder.id}</div>
+                  <div className="details-main-val font-mono font-bold">{formatOrderId(currentOrder.id)}</div>
                   <div className="details-sub-val">{currentOrder.pickupTime}</div>
                 </div>
               </div>

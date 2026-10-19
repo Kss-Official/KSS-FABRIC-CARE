@@ -9,12 +9,14 @@ import {
   MapPin, 
   Building2, 
   Building,
-  ChevronDown,
-  FileText,
-  UserPlus
+  ChevronDown, 
+  FileText, 
+  UserPlus,
+  Briefcase,
+  Truck
 } from 'lucide-react';
 
-// Green WhatsApp icon matching Reference Image 2
+// Green WhatsApp icon matching Reference Image 1
 const WhatsAppIcon = ({ size = 17, className = '' }) => (
   <svg 
     width={size} 
@@ -34,6 +36,7 @@ const WhatsAppIcon = ({ size = 17, className = '' }) => (
 );
 
 const INITIAL_FORM_STATE = {
+  role: 'customer', // 'customer' | 'staff' | 'agent'
   name: '',
   phone: '',
   email: '',
@@ -49,17 +52,27 @@ const INITIAL_FORM_STATE = {
 };
 
 export const AddCustomerModal = () => {
-  const { isAddCustomerModalOpen, setIsAddCustomerModalOpen, addCustomer } = useAdmin();
+  const { 
+    isAddCustomerModalOpen, 
+    isAddUserModalOpen,
+    setIsAddCustomerModalOpen, 
+    setIsAddUserModalOpen,
+    addCustomer,
+    addUser 
+  } = useAdmin();
+
+  const isOpen = Boolean(isAddCustomerModalOpen || isAddUserModalOpen);
 
   const [form, setForm] = useState(INITIAL_FORM_STATE);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (!isAddCustomerModalOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
   const handleClose = () => {
     setErrors({});
-    setIsAddCustomerModalOpen(false);
+    if (setIsAddCustomerModalOpen) setIsAddCustomerModalOpen(false);
+    if (setIsAddUserModalOpen) setIsAddUserModalOpen(false);
   };
 
   const validate = () => {
@@ -94,12 +107,6 @@ export const AddCustomerModal = () => {
       errs.pincode = 'Pincode must be 6 digits';
     }
 
-    // Area fallback to HSR Layout if left empty by default
-    const effectiveArea = form.area.trim() || 'HSR Layout';
-    if (!effectiveArea) {
-      errs.area = 'Area / Locality is required';
-    }
-
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -111,11 +118,13 @@ export const AddCustomerModal = () => {
     setIsSubmitting(true);
     try {
       const effectiveArea = form.area.trim() || 'HSR Layout';
-      await addCustomer({
+      const userData = {
+        role: form.role,
         name: form.name.trim(),
         phone: form.phone.trim(),
-        email: form.email.trim(),
+        email: form.email.trim() || `${form.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user'}_${Date.now()}@fabricare.com`,
         whatsapp: form.whatsapp.trim() || form.phone.trim(),
+        address: `${form.address1.trim()}, ${form.address2 ? form.address2.trim() + ', ' : ''}${effectiveArea}, ${form.city} ${form.pincode}`,
         address1: form.address1.trim(),
         address2: form.address2.trim(),
         city: form.city,
@@ -123,13 +132,22 @@ export const AddCustomerModal = () => {
         area: effectiveArea,
         locationType: form.locationType,
         notes: form.notes.trim(),
-        status: form.status
-      });
+        status: form.status ? 'Active' : 'Inactive',
+        isActive: form.status
+      };
+
+      if (addUser) {
+        await addUser(userData);
+      } else if (addCustomer) {
+        await addCustomer(userData);
+      }
 
       setForm(INITIAL_FORM_STATE);
       setErrors({});
+      handleClose();
     } catch (err) {
-      console.error('Error adding customer:', err);
+      console.error('Error adding user:', err);
+      setErrors({ form: err.message || 'Failed to add user' });
     } finally {
       setIsSubmitting(false);
     }
@@ -161,6 +179,45 @@ export const AddCustomerModal = () => {
 
         {/* Modal Form */}
         <form onSubmit={handleSubmit} className="ac-form-body" noValidate>
+          {errors.form && (
+            <div className="ac-error-banner">
+              {errors.form}
+            </div>
+          )}
+
+          {/* User Type / Role Selector (From Reference Image 2) */}
+          <div className="ac-section">
+            <label className="ac-label">
+              User Type / Role <span className="ac-required">*</span>
+            </label>
+            <div className="ac-role-toggle-group">
+              <button
+                type="button"
+                className={`ac-role-btn ${form.role === 'customer' ? 'active' : ''}`}
+                onClick={() => setForm(f => ({ ...f, role: 'customer' }))}
+              >
+                <User size={16} />
+                <span>Customer</span>
+              </button>
+              <button
+                type="button"
+                className={`ac-role-btn ${form.role === 'staff' ? 'active' : ''}`}
+                onClick={() => setForm(f => ({ ...f, role: 'staff' }))}
+              >
+                <Briefcase size={16} />
+                <span>Staff Member</span>
+              </button>
+              <button
+                type="button"
+                className={`ac-role-btn ${form.role === 'agent' ? 'active' : ''}`}
+                onClick={() => setForm(f => ({ ...f, role: 'agent' }))}
+              >
+                <Truck size={16} />
+                <span>Delivery Personnel</span>
+              </button>
+            </div>
+          </div>
+
           {/* Section 1: Personal Information */}
           <div className="ac-section">
             <h3 className="ac-section-heading">Personal Information</h3>
@@ -456,19 +513,14 @@ export const AddCustomerModal = () => {
         .ac-modal-backdrop {
           position: fixed;
           inset: 0;
-          width: 100vw;
-          height: 100vh;
-          height: 100dvh;
           background: rgba(15, 23, 42, 0.45);
           backdrop-filter: blur(4px);
           -webkit-backdrop-filter: blur(4px);
-          z-index: 99999;
+          z-index: 1100;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px 16px;
-          overflow: hidden;
-          overscroll-behavior: none;
+          padding: 20px;
           animation: acFadeIn 0.2s ease-out;
         }
 
@@ -482,20 +534,17 @@ export const AddCustomerModal = () => {
           border-radius: 20px;
           width: 672px;
           max-width: 100%;
-          max-height: calc(100vh - 40px);
-          max-height: calc(100dvh - 40px);
+          max-height: 92vh;
           display: flex;
           flex-direction: column;
           box-shadow: 0 20px 48px -10px rgba(15, 23, 42, 0.18), 0 0 1px 1px rgba(0, 0, 0, 0.04);
-          animation: acScaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          animation: acScaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
           overflow: hidden;
-          overscroll-behavior: contain;
-          position: relative;
         }
 
         @keyframes acScaleUp {
           from { transform: scale(0.97); opacity: 0; }
-          to { transform: none; opacity: 1; }
+          to { transform: scale(1); opacity: 1; }
         }
 
         /* Header */
@@ -557,13 +606,11 @@ export const AddCustomerModal = () => {
           align-items: center;
           justify-content: center;
           border-radius: 6px;
-          transition: color 0.15s ease, background 0.15s ease;
-          margin-top: -2px;
-          margin-right: -4px;
+          transition: all 0.15s ease;
         }
 
         .ac-close-btn:hover {
-          color: #475569;
+          color: #0F172A;
           background: #F1F5F9;
         }
 
@@ -571,10 +618,9 @@ export const AddCustomerModal = () => {
         .ac-form-body {
           padding: 22px 28px 26px 28px;
           overflow-y: auto;
-          overscroll-behavior: contain;
           display: flex;
           flex-direction: column;
-          gap: 22px;
+          gap: 20px;
           scrollbar-width: thin;
           scrollbar-color: #E2E8F0 transparent;
         }
@@ -585,6 +631,54 @@ export const AddCustomerModal = () => {
         .ac-form-body::-webkit-scrollbar-thumb {
           background-color: #CBD5E1;
           border-radius: 3px;
+        }
+
+        .ac-error-banner {
+          background: #FEF2F2;
+          border: 1px solid #FCA5A5;
+          color: #B91C1C;
+          padding: 10px 14px;
+          border-radius: 8px;
+          font-size: 13px;
+          line-height: 1.4;
+        }
+
+        /* User Type Toggle Group (from Reference Image 2) */
+        .ac-role-toggle-group {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+          margin-top: 2px;
+        }
+
+        .ac-role-btn {
+          height: 42px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 8px;
+          color: #475569;
+          font-size: 13.5px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          font-family: inherit;
+        }
+
+        .ac-role-btn:hover:not(.active) {
+          border-color: #CBD5E1;
+          background: #F8FAFC;
+          color: #1E293B;
+        }
+
+        .ac-role-btn.active {
+          border: 1.5px solid #007E8A;
+          background: #E6F7F5;
+          color: #007E8A;
+          font-weight: 600;
         }
 
         /* Section */
@@ -912,6 +1006,9 @@ export const AddCustomerModal = () => {
           .ac-grid-2 {
             grid-template-columns: 1fr;
           }
+          .ac-role-toggle-group {
+            grid-template-columns: 1fr;
+          }
           .ac-modal-container {
             width: 100%;
             margin: 10px;
@@ -922,3 +1019,5 @@ export const AddCustomerModal = () => {
     document.body
   );
 };
+
+export default AddCustomerModal;

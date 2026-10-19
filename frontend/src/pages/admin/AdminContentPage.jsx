@@ -22,6 +22,20 @@ import {
   Trash2
 } from 'lucide-react';
 
+export const DEFAULT_TERMS_BODY = `1. Introduction
+Welcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.
+
+2. Services
+Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.
+
+3. Orders & Pickup
+  Orders can be placed through our website, mobile app or by phone.
+  Pickup and delivery timings are subject to availability.
+  Please ensure clothes are securely packed and handed over in clean condition.
+
+4. Pricing & Payment
+  Prices are based on the type of garment, fabric and service selected.`;
+
 export const AdminContentPage = () => {
   const { 
     faqs: contextFaqs, 
@@ -55,14 +69,12 @@ export const AdminContentPage = () => {
   };
 
   const [editingTitle, setEditingTitle] = useState(contextTerms?.title || 'Terms & Conditions');
-  const [editingBody, setEditingBody] = useState(
-    contextTerms?.body || 
-`1. Introduction
-Welcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.
-
-2. Services
-Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.`
-  );
+  const [editingBody, setEditingBody] = useState(() => {
+    if (contextTerms?.body && contextTerms.body.includes('Orders & Pickup')) {
+      return contextTerms.body;
+    }
+    return DEFAULT_TERMS_BODY;
+  });
   
   const [saveToast, setSaveToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -108,6 +120,15 @@ Laundrix provides professional laundry and dry cleaning services, including pick
       if (wrapper) wrapper.classList.remove('admin-scroll-locked');
     };
   }, [isFaqModalOpen]);
+
+  // Auto-resize textarea to fit content seamlessly without scrollbars
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.max(scrollHeight, 440)}px`;
+    }
+  }, [editingBody, activeTab]);
 
   const handleBodyChange = (e) => {
     const newVal = e.target.value;
@@ -227,16 +248,9 @@ Laundrix provides professional laundry and dry cleaning services, including pick
 
   const handleReset = () => {
     const defaultTitle = 'Terms & Conditions';
-    const defaultBody = 
-`1. Introduction
-Welcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.
-
-2. Services
-Laundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.`;
-
     setEditingTitle(defaultTitle);
-    setEditingBody(defaultBody);
-    const updatedHistory = [...history, defaultBody];
+    setEditingBody(DEFAULT_TERMS_BODY);
+    const updatedHistory = [...history, DEFAULT_TERMS_BODY];
     setHistory(updatedHistory);
     setHistoryIndex(updatedHistory.length - 1);
     setToastMessage('Reset to default terms and conditions.');
@@ -712,7 +726,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
                   <span className="preview-banner-tag">TERMS & CONDITIONS</span>
                   <h3 className="preview-banner-title">
                     {editingTitle.trim().toLowerCase() === 'terms & conditions' ? (
-                      <>Our Terms &amp;<br />Conditions</>
+                      'Our Terms & Conditions'
                     ) : editingTitle.toLowerCase().includes('our') ? (
                       editingTitle
                     ) : (
@@ -1247,42 +1261,46 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 24px;
-          align-items: start;
+          align-items: stretch;
+          margin-top: 8px;
         }
 
         .terms-card {
           background: #FFFFFF;
           border: 1px solid #E2E8F0;
           border-radius: 16px;
-          padding: 28px;
+          padding: 24px 28px;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
           display: flex;
           flex-direction: column;
+          min-width: 0;
+          box-sizing: border-box;
         }
 
         .terms-editor-card {
-          max-height: calc(100vh - 190px);
-          max-height: calc(100dvh - 190px);
-          overflow-y: auto;
-          overscroll-behavior: contain;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+
+        .terms-editor-card .form-field-group:last-of-type {
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+          margin-bottom: 0;
         }
 
         .terms-preview-card {
-          position: sticky;
-          top: 16px;
-          max-height: calc(100vh - 190px);
-          max-height: calc(100dvh - 190px);
           display: flex;
           flex-direction: column;
-          overflow: hidden;
         }
 
         .card-header-block {
-          margin-bottom: 24px;
+          margin-bottom: 20px;
         }
 
         .card-title {
-          font-size: 1.25rem;
+          font-size: 1.1875rem;
           font-weight: 700;
           color: #0F172A;
           margin: 0 0 4px 0;
@@ -1290,35 +1308,36 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         }
 
         .card-subtitle {
-          font-size: 0.875rem;
+          font-size: 0.84375rem;
           color: #64748B;
           margin: 0;
           line-height: 1.4;
         }
 
         .form-field-group {
-          margin-bottom: 20px;
+          margin-bottom: 18px;
         }
 
         .field-label {
           display: block;
-          font-size: 0.875rem;
+          font-size: 0.8125rem;
           font-weight: 600;
           color: #0F172A;
-          margin-bottom: 8px;
+          margin-bottom: 6px;
         }
 
         .req-asterisk {
           color: #EF4444;
           font-weight: 700;
+          margin-left: 2px;
         }
 
         .field-input {
           width: 100%;
           border: 1px solid #E2E8F0;
           border-radius: 8px;
-          padding: 10px 14px;
-          font-size: 0.875rem;
+          padding: 9px 14px;
+          font-size: 0.84375rem;
           color: #0F172A;
           background: #FFFFFF;
           outline: none;
@@ -1328,37 +1347,47 @@ Laundrix provides professional laundry and dry cleaning services, including pick
 
         .field-input:focus {
           border-color: #0D7A75;
-          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.1);
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.08);
         }
 
         /* RICH TEXT EDITOR BOX */
         .rich-editor-box {
           border: 1px solid #E2E8F0;
-          border-radius: 8px;
+          border-radius: 10px;
           overflow: hidden;
           background: #FFFFFF;
-          transition: border-color 0.15s;
+          transition: border-color 0.15s, box-shadow 0.15s;
+          display: flex;
+          flex-direction: column;
+          flex: 1;
         }
 
         .rich-editor-box:focus-within {
           border-color: #0D7A75;
-          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.1);
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.08);
         }
 
         .editor-toolbar {
           display: flex;
           align-items: center;
           gap: 6px;
-          padding: 8px 12px;
+          padding: 7px 12px;
           background: #FFFFFF;
           border-bottom: 1px solid #E2E8F0;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          scrollbar-width: none;
+        }
+
+        .editor-toolbar::-webkit-scrollbar {
+          display: none;
         }
 
         .toolbar-select-wrap {
           position: relative;
           display: inline-flex;
           align-items: center;
+          flex-shrink: 0;
         }
 
         .toolbar-select {
@@ -1366,7 +1395,7 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           background: #FFFFFF;
           border: 1px solid #E2E8F0;
           border-radius: 6px;
-          padding: 5px 28px 5px 10px;
+          padding: 4px 26px 4px 10px;
           font-size: 0.8125rem;
           font-weight: 500;
           color: #0F172A;
@@ -1383,9 +1412,10 @@ Laundrix provides professional laundry and dry cleaning services, including pick
 
         .toolbar-sep {
           width: 1px;
-          height: 18px;
+          height: 16px;
           background: #E2E8F0;
-          margin: 0 4px;
+          margin: 0 3px;
+          flex-shrink: 0;
         }
 
         .toolbar-icon-btn {
@@ -1394,12 +1424,15 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           justify-content: center;
           background: none;
           border: none;
-          padding: 5px 8px;
+          padding: 4px;
+          width: 26px;
+          height: 26px;
           border-radius: 4px;
           color: #475569;
           cursor: pointer;
-          font-size: 0.875rem;
+          font-size: 0.84375rem;
           transition: background-color 0.15s, color 0.15s;
+          flex-shrink: 0;
         }
 
         .toolbar-icon-btn:hover:not(:disabled) {
@@ -1431,17 +1464,26 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         .editor-textarea {
           width: 100%;
           min-height: 440px;
+          flex: 1;
           border: none;
-          padding: 16px;
-          font-size: 0.875rem;
+          padding: 18px 20px;
+          font-size: 0.84375rem;
           line-height: 1.6;
           color: #0F172A;
           background: #FFFFFF;
           outline: none;
-          resize: vertical;
+          resize: none;
           font-family: inherit;
           box-sizing: border-box;
-          overscroll-behavior: contain;
+          overflow-y: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+
+        .editor-textarea::-webkit-scrollbar {
+          display: none;
+          width: 0;
+          height: 0;
         }
 
         /* EDITOR FOOTER */
@@ -1449,9 +1491,9 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-top: 12px;
-          padding-top: 16px;
-          border-top: 1px solid #F1F5F9;
+          margin-top: 24px;
+          padding-top: 0;
+          border-top: none;
           gap: 12px;
         }
 
@@ -1462,9 +1504,9 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           background: #FFFFFF;
           border: 1px solid #E2E8F0;
           border-radius: 8px;
-          padding: 10px 18px;
-          font-size: 0.875rem;
-          font-weight: 600;
+          padding: 9px 18px;
+          font-size: 0.84375rem;
+          font-weight: 500;
           color: #0F172A;
           cursor: pointer;
           transition: all 0.15s;
@@ -1478,16 +1520,16 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         .editor-right-buttons {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 10px;
         }
 
         .btn-draft {
           background: #FFFFFF;
           border: 1px solid #E2E8F0;
           border-radius: 8px;
-          padding: 10px 20px;
-          font-size: 0.875rem;
-          font-weight: 600;
+          padding: 9px 18px;
+          font-size: 0.84375rem;
+          font-weight: 500;
           color: #0F172A;
           cursor: pointer;
           transition: all 0.15s;
@@ -1503,8 +1545,8 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           color: #FFFFFF;
           border: none;
           border-radius: 8px;
-          padding: 10px 22px;
-          font-size: 0.875rem;
+          padding: 9px 20px;
+          font-size: 0.84375rem;
           font-weight: 600;
           cursor: pointer;
           transition: background-color 0.15s, transform 0.1s;
@@ -1522,20 +1564,23 @@ Laundrix provides professional laundry and dry cleaning services, including pick
         .live-preview-box {
           display: flex;
           flex-direction: column;
-          gap: 16px;
-          overflow: hidden;
           flex: 1;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          overflow: hidden;
+          background: #FFFFFF;
         }
 
         .preview-banner {
-          background: #E6F4F8;
-          border-radius: 16px;
-          padding: 24px 26px;
+          background: #D8EBF7;
+          border-radius: 0;
+          padding: 22px 24px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 16px;
           overflow: hidden;
+          margin-bottom: 0;
           flex-shrink: 0;
         }
 
@@ -1543,31 +1588,34 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           display: flex;
           flex-direction: column;
           gap: 4px;
-          max-width: 58%;
+          flex: 1;
         }
 
         .preview-banner-tag {
-          font-size: 0.72rem;
+          font-size: 0.7rem;
           font-weight: 800;
           color: #0D7A75;
           letter-spacing: 0.06em;
           text-transform: uppercase;
+          margin-bottom: 4px;
+          display: inline-block;
         }
 
         .preview-banner-title {
-          font-size: 1.625rem;
+          font-size: 1.35rem;
           font-weight: 800;
           color: #0F172A;
-          margin: 4px 0 6px 0;
-          line-height: 1.22;
+          margin: 0 0 6px 0;
+          line-height: 1.25;
+          white-space: nowrap;
         }
 
         .preview-banner-desc {
-          font-size: 0.84375rem;
-          color: #64748B;
+          font-size: 0.8125rem;
+          color: #475569;
           margin: 0;
           line-height: 1.45;
-          max-width: 250px;
+          max-width: 270px;
         }
 
         .preview-banner-media {
@@ -1575,11 +1623,10 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
-          max-width: 40%;
         }
 
         .preview-clothes-img {
-          width: 160px;
+          width: 140px;
           height: auto;
           object-fit: contain;
           display: block;
@@ -1589,28 +1636,28 @@ Laundrix provides professional laundry and dry cleaning services, including pick
           display: flex;
           flex-direction: column;
           gap: 18px;
-          overflow-y: auto;
-          overscroll-behavior: contain;
+          overflow: visible;
+          padding: 24px;
+          background: #FFFFFF;
           flex: 1;
-          padding-right: 4px;
         }
 
         .preview-block {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 3px;
         }
 
         .preview-heading {
-          font-size: 0.9375rem;
+          font-size: 0.875rem;
           font-weight: 700;
           color: #0F172A;
-          margin: 4px 0 2px 0;
+          margin: 2px 0 2px 0;
           line-height: 1.4;
         }
 
         .preview-body-text {
-          font-size: 0.84375rem;
+          font-size: 0.8125rem;
           color: #475569;
           line-height: 1.55;
           margin: 2px 0;

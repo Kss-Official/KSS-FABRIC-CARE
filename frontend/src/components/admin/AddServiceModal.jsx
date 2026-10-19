@@ -24,13 +24,37 @@ export const AddServiceModal = () => {
   });
 
   const [imagePreview, setImagePreview] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    addService({
-      ...form,
-      image: imagePreview || form.image
-    });
+    if (isSubmitting) return;
+    try {
+      setIsSubmitting(true);
+      if (addService) {
+        await addService({
+          ...form,
+          price: Number(form.price) || 120,
+          status: form.status ? 'Active' : 'Inactive',
+          image: imagePreview || form.image
+        });
+      }
+      setIsAddServiceModalOpen(false);
+      setForm({
+        name: '',
+        description: '',
+        category: 'Wash & Fold',
+        price: '',
+        turnaround: '1 - 2 Days',
+        status: true,
+        image: null
+      });
+      setImagePreview(null);
+    } catch (err) {
+      console.error('Error adding service:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleImageChange = (e) => {
@@ -112,13 +136,16 @@ export const AddServiceModal = () => {
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
               >
-                <option value="Clothing">Clothing</option>
                 <option value="Wash & Fold">Wash & Fold</option>
-                <option value="Wash & Iron">Wash & Iron</option>
                 <option value="Dry Cleaning">Dry Cleaning</option>
-                <option value="Steam Iron">Steam Iron</option>
+                <option value="Steam Ironing">Steam Ironing</option>
+                <option value="Household">Household</option>
+                <option value="Wash & Iron">Wash & Iron</option>
+                <option value="Express">Express</option>
+                <option value="Express Laundry">Express Laundry</option>
                 <option value="Shoe Laundry">Shoe Laundry</option>
                 <option value="Home Care">Home Care</option>
+                <option value="Clothing">Clothing</option>
               </select>
               <ChevronDown size={16} className="add-service-select-chevron" />
             </div>

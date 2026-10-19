@@ -20,15 +20,17 @@ import {
   CalendarCheck
 } from 'lucide-react';
 import { RescheduleDeliveryDrawer } from '../../components/admin/RescheduleDeliveryDrawer';
+import { filterMatchesDate } from '../../utils/dateFilterUtils';
+import { formatOrderId } from '../../utils/helpers';
 
 export const AdminComplaintReportsPage = () => {
   const { 
-    complaints, 
-    complaintsSummary, 
-    complaintsLoading, 
-    fetchComplaints,
-    openRescheduleDrawer 
-  } = useAdmin();
+    complaints = [], 
+    complaintsSummary = { total_complaints: 24, pending_reschedule: 8, rescheduled: 10, resolved: 6 }, 
+    complaintsLoading = false, 
+    fetchComplaints = () => {},
+    openRescheduleDrawer = () => {} 
+  } = useAdmin() || {};
 
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,12 +87,8 @@ export const AdminComplaintReportsPage = () => {
       }
 
       // Date Range Filter
-      if (dateRangeFilter === 'TODAY') {
-        const today = new Date().toISOString().split('T')[0];
-        const itemDate = (item.report_date || '').split('T')[0];
-        if (itemDate && itemDate !== today) return false;
-      } else if (dateRangeFilter === '7DAYS') {
-        // Last 7 days
+      if (!filterMatchesDate(item, dateRangeFilter, ['report_date', 'created_at', 'createdAt', 'updatedAt', 'date'])) {
+        return false;
       }
 
       return true;
@@ -144,7 +142,7 @@ export const AdminComplaintReportsPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Total Complaints</span>
-              <span className="stat-number">{complaintsSummary.total_complaints || 24}</span>
+              <span className="stat-number">{complaintsSummary?.total_complaints ?? 24}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>12%</span>
@@ -162,7 +160,7 @@ export const AdminComplaintReportsPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Pending Reschedule</span>
-              <span className="stat-number">{complaintsSummary.pending_reschedule ?? 8}</span>
+              <span className="stat-number">{complaintsSummary?.pending_reschedule ?? 8}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>33%</span>
@@ -180,7 +178,7 @@ export const AdminComplaintReportsPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Rescheduled</span>
-              <span className="stat-number">{complaintsSummary.rescheduled ?? 10}</span>
+              <span className="stat-number">{complaintsSummary?.rescheduled ?? 10}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>25%</span>
@@ -198,7 +196,7 @@ export const AdminComplaintReportsPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Resolved</span>
-              <span className="stat-number">{complaintsSummary.resolved ?? 6}</span>
+              <span className="stat-number">{complaintsSummary?.resolved ?? 6}</span>
               <div className="stat-trend trend-up">
                 <span className="trend-arrow">&uarr;</span>
                 <span>20%</span>
@@ -261,9 +259,9 @@ export const AdminComplaintReportsPage = () => {
               >
                 <option value="ALL">Select Date Range</option>
                 <option value="TODAY">Today</option>
-                <option value="7DAYS">Last 7 Days</option>
-                <option value="30DAYS">Last 30 Days</option>
-                <option value="OCT2025">October 2025</option>
+                <option value="YESTERDAY">Yesterday</option>
+                <option value="LAST_WEEK">Last Week</option>
+                <option value="LAST_30">Last 30 Days</option>
               </select>
               <ChevronDown size={14} className="cr-select-chevron" />
             </div>
@@ -347,7 +345,7 @@ export const AdminComplaintReportsPage = () => {
                     <tr key={item.id} className="cr-table-row">
                       {/* Order ID */}
                       <td className="cr-order-id-cell">
-                        <span className="cr-order-id">{item.order_id || `#FC${item.id}`}</span>
+                        <span className="cr-order-id font-mono font-bold">{formatOrderId(item.order_id || item.id)}</span>
                       </td>
 
                       {/* Customer Name */}
@@ -490,7 +488,7 @@ export const AdminComplaintReportsPage = () => {
               <div className="modal-summary-box">
                 <div className="modal-row">
                   <span className="modal-label">Order Reference:</span>
-                  <span className="modal-val font-mono font-bold text-[#0F172A]">{selectedComplaint.order_id}</span>
+                  <span className="modal-val font-mono font-bold text-[#0F172A]">{formatOrderId(selectedComplaint.order_id || selectedComplaint.id)}</span>
                 </div>
                 <div className="modal-row">
                   <span className="modal-label">Customer Name:</span>

@@ -17,18 +17,23 @@ import {
   MapPin,
   ChevronRight,
   TrendingUp,
-  RefreshCw
+  RefreshCw,
+  Search,
+  X
 } from 'lucide-react';
+import { OrderStatusDropdown } from '../components/common/OrderStatusDropdown';
+import { formatOrderId } from '../utils/helpers';
 
 export const CustomerDashboard = () => {
   const { currentUser } = useAuth();
   const { navigateTo, startBooking } = useBooking();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
+  const fetchOrders = useCallback(async (isManual = false) => {
+    if (!isManual) setLoading(true);
     try {
       const res = await ordersApi.getOrders();
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
@@ -44,6 +49,23 @@ export const CustomerDashboard = () => {
       setLoading(false);
     }
   }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshSuccess(false);
+    const start = Date.now();
+    try {
+      await fetchOrders(true);
+      const elapsed = Date.now() - start;
+      if (elapsed < 450) {
+        await new Promise(r => setTimeout(r, 450 - elapsed));
+      }
+      setRefreshSuccess(true);
+      setTimeout(() => setRefreshSuccess(false), 2000);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     let isSubscribed = true;
@@ -63,10 +85,22 @@ export const CustomerDashboard = () => {
     };
   }, [fetchOrders]);
 
-  const pendingCount = orders.filter(o => ['PENDING', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PLACED', 'PAYMENT_PENDING'].includes(o.status)).length;
-  const inProcessCount = orders.filter(o => ['PICKED_UP', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKED', 'PACKING'].includes(o.status)).length;
-  const readyCount = orders.filter(o => ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(o.status)).length;
-  const deliveredCount = orders.filter(o => o.status === 'DELIVERED').length;
+  const filteredOrders = orders.filter(order => {
+    const term = (searchQuery || '').trim().toLowerCase();
+    const orderNo = (order.order_number || order.code || '').toLowerCase();
+    const formattedNo = formatOrderId(order.order_number || order.code || order.id).toLowerCase();
+    const addr = (order.pickup_address || '').toLowerCase();
+    const matchesSearch = !term || orderNo.includes(term) || formattedNo.includes(term) || addr.includes(term);
+
+    if (!matchesSearch) return false;
+    if (activeTab === 'ALL' || activeTab === 'all') return true;
+    if (activeTab === 'PENDING') return ['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PLACED', 'PAYMENT_PENDING'].includes(order.status);
+    if (activeTab === 'PROCESSING') return ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKING', 'PACKED', 'IN_CLEANING'].includes(order.status);
+    if (activeTab === 'DELIVERY') return ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.status);
+    if (activeTab === 'COMPLETED') return ['DELIVERED', 'COMPLETED'].includes(order.status);
+    if (activeTab === 'CANCELLED') return order.status === 'CANCELLED';
+    return true;
+  });
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -121,111 +155,47 @@ export const CustomerDashboard = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="stats-grid mt-6">
-        <div className="stat-card">
-          <div className="stat-icon bg-blue-50 text-blue-600">
-            <Clock size={24} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-label">Pending Pickups</span>
-            <span className="stat-value">{pendingCount}</span>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon bg-indigo-50 text-indigo-600">
-            <Sparkles size={24} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-label">In Cleaning</span>
-            <span className="stat-value">{inProcessCount}</span>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon bg-amber-50 text-amber-600">
-            <Truck size={24} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-label">Ready / On Route</span>
-            <span className="stat-value">{readyCount}</span>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon bg-emerald-50 text-emerald-600">
-            <CheckCircle size={24} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-label">Completed Orders</span>
-            <span className="stat-value">{deliveredCount}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Access Navigation */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-        <button 
-          onClick={() => navigateTo('customer-orders')}
-          className="quick-nav-card"
-        >
-          <Package className="text-primary mb-2" size={24} />
-          <span className="font-semibold text-navy text-sm">My Orders</span>
-          <span className="text-xs text-muted">View all laundry bookings</span>
-        </button>
-
-        <button 
-          onClick={() => navigateTo('customer-invoices')}
-          className="quick-nav-card"
-        >
-          <FileText className="text-primary mb-2" size={24} />
-          <span className="font-semibold text-navy text-sm">Invoices & Bills</span>
-          <span className="text-xs text-muted">Download tax invoices</span>
-        </button>
-
-        <button 
-          onClick={() => navigateTo('customer-addresses')}
-          className="quick-nav-card"
-        >
-          <MapPin className="text-primary mb-2" size={24} />
-          <span className="font-semibold text-navy text-sm">Saved Addresses</span>
-          <span className="text-xs text-muted">Manage pickup spots</span>
-        </button>
-
-        <button 
-          onClick={() => navigateTo('customer-support')}
-          className="quick-nav-card"
-        >
-          <AlertCircle className="text-primary mb-2" size={24} />
-          <span className="font-semibold text-navy text-sm">Help & Support</span>
-          <span className="text-xs text-muted">Contact laundry desk</span>
-        </button>
-      </div>
-
       {/* Active Orders Section */}
-      <div className="content-card mt-8">
-        <div className="flex items-center justify-between border-b pb-4 mb-4">
+      <div className="content-card mt-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-4 mb-4 gap-4">
           <div>
             <h2 className="text-lg font-bold text-navy">Recent Orders</h2>
             <p className="text-xs text-muted">Real-time status updates directly from our laundry hub</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={fetchOrders} 
-              className="btn btn-outline-secondary btn-sm flex items-center gap-1"
-              disabled={loading}
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              <span>Refresh</span>
-            </button>
-            <button 
-              onClick={() => navigateTo('customer-orders')}
-              className="btn btn-outline-primary btn-sm flex items-center gap-1"
-            >
-              <span>View All</span>
-              <ArrowRight size={14} />
-            </button>
+          
+          {/* Right Controls: Order count pill next to search bar & filters */}
+          <div className="toolbar-controls-group">
+            {/* Order Count Option */}
+            <span className="orders-count-pill">
+              {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
+            </span>
+            {/* Search Input Box */}
+            <div className="search-input-wrapper">
+              <Search size={16} className="search-magnifier-icon" />
+              <input 
+                type="text" 
+                placeholder="Search by Order ID, customer, or s..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="search-box-field"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="search-clear-btn"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Filters Dropdown */}
+            <OrderStatusDropdown 
+              value={activeTab} 
+              onChange={(newTab) => setActiveTab(newTab)}
+            />
           </div>
         </div>
 
@@ -234,12 +204,14 @@ export const CustomerDashboard = () => {
             <RefreshCw size={32} className="animate-spin text-primary mx-auto mb-3" />
             <p className="text-sm text-muted">Loading live orders...</p>
           </div>
-        ) : orders.length === 0 ? (
+        ) : filteredOrders.length === 0 ? (
           <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">
             <Package size={48} className="text-slate-300 mx-auto mb-3" />
-            <h3 className="font-semibold text-navy">No orders yet</h3>
+            <h3 className="font-semibold text-navy">No orders found</h3>
             <p className="text-sm text-muted max-w-sm mx-auto mt-1 mb-4">
-              You haven't scheduled any pickups yet. Schedule your first laundry pickup in under 60 seconds!
+              {activeTab !== 'ALL'
+                ? `No ${activeTab.toLowerCase()} orders found.`
+                : "You haven't scheduled any pickups yet. Schedule your first laundry pickup in under 60 seconds!"}
             </p>
             <button onClick={() => startBooking()} className="btn btn-primary btn-sm">
               Book a Pickup Now
@@ -259,10 +231,10 @@ export const CustomerDashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {orders.slice(0, 5).map(order => (
+                {filteredOrders.map(order => (
                   <tr key={order.id}>
                     <td>
-                      <span className="font-mono font-bold text-primary">{order.order_number}</span>
+                      <span className="font-mono font-bold text-primary">{formatOrderId(order.order_number || order.code || order.id)}</span>
                       <span className="text-xs text-muted block">{order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}</span>
                     </td>
                     <td>
@@ -275,7 +247,6 @@ export const CustomerDashboard = () => {
                           ? order.items.map(i => `${i.item_name || i.name || 'Item'} (${i.quantity || 1})`).join(', ')
                           : 'General Laundry'}
                       </div>
-                      <div className="text-xs text-muted">{order.pickup_address}</div>
                     </td>
                     <td>
                       <span className="font-bold text-navy">₹{order.total_amount || order.estimated_amount || '0.00'}</span>
@@ -289,10 +260,11 @@ export const CustomerDashboard = () => {
                     <td>
                       <button
                         onClick={() => navigateTo('customer-track', order.id.toString())}
-                        className="btn btn-sm btn-outline-primary flex items-center gap-1"
+                        className="btn-view-order-action"
+                        title={`Track order ${formatOrderId(order.order_number || order.code || order.id)}`}
                       >
                         <span>Track</span>
-                        <ChevronRight size={14} />
+                        <ChevronRight size={13} />
                       </button>
                     </td>
                   </tr>

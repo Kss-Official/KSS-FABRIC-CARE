@@ -20,9 +20,9 @@ import {
 } from 'lucide-react';
 
 // Exact SVG icons matching Reference Image 2
-const ShirtIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z" />
+const HangerIcon = ({ color = '#2563EB' }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 5a2 2 0 0 1 2 2c0 1.2-1 1.8-1.7 2.3L4 15.5A1 1 0 0 0 4.6 17h14.8a1 1 0 0 0 .6-1.5L13.7 9.3" />
   </svg>
 );
 
@@ -40,21 +40,11 @@ const DiamondLayersIcon = () => (
   </svg>
 );
 
-const SuitHangerIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="4" r="2" />
-    <path d="M12 6v2l-8 5.5a1 1 0 0 0 .5 1.5h15a1 1 0 0 0 .5-1.5L12 8" />
-    <path d="M7 15v5" />
-    <path d="M17 15v5" />
-  </svg>
-);
-
 const SareeFabricIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="4" />
-    <path d="M7 17L17 7" />
-    <path d="M7 11L11 7" />
-    <path d="M13 17L17 13" />
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D9488" strokeWidth="2.5" strokeLinecap="round">
+    <line x1="5" y1="13" x2="13" y2="5" />
+    <line x1="5" y1="19" x2="19" y2="5" />
+    <line x1="11" y1="19" x2="19" y2="11" />
   </svg>
 );
 
@@ -76,12 +66,20 @@ const BlanketBedIcon = () => (
 
 const CurtainWindowIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <path d="M3 9h18" />
-    <path d="M9 21V9" />
-    <path d="M15 21V9" />
+    <rect x="3" y="3" width="18" height="18" rx="3" />
+    <path d="M3 3l9 9-9 9" />
+    <path d="M21 3l-9 9 9 9" />
   </svg>
 );
+
+// Turnaround helper to guarantee clean "1–2 days" format
+const formatTurnaround = (val) => {
+  if (!val) return '1–2 days';
+  return String(val)
+    .replace(/\?{1,2}|--|—/g, '–')
+    .replace(/days?/i, 'days')
+    .trim();
+};
 
 export const AdminServicesPage = () => {
   const { 
@@ -89,8 +87,30 @@ export const AdminServicesPage = () => {
     setServices,
     setIsAddServiceModalOpen, 
     toggleServiceStatus,
-    deleteService
+    deleteService,
+    updateService,
+    refreshServices = async () => {}
   } = useAdmin();
+
+  // Refresh State
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState(null);
+
+  const handleRefreshServices = async () => {
+    if (isRefreshing) return;
+    try {
+      setIsRefreshing(true);
+      setRefreshError(null);
+      if (refreshServices) {
+        await refreshServices();
+      }
+    } catch (err) {
+      console.error('Failed to refresh services:', err);
+      setRefreshError('Failed to refresh service data');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
@@ -138,15 +158,36 @@ export const AdminServicesPage = () => {
     ? Math.round(services.reduce((acc, s) => acc + (Number(s.price) || 0), 0) / totalServices) 
     : 0;
 
+  // Dynamic Category options
+  const availableCategories = useMemo(() => {
+    const baseCats = ['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing', 'Household'];
+    const dynamicCats = services.map(s => s.category).filter(Boolean);
+    return Array.from(new Set([...baseCats, ...dynamicCats]))
+      .filter(cat => cat !== 'Special Care' && cat !== 'Special');
+  }, [services]);
+
+  // Sorted Services to maintain catalog order (1: Shirt, 2: Jeans, ..., 8: Curtain)
+  const sortedServices = useMemo(() => {
+    return [...services].sort((a, b) => {
+      const idA = Number(a.id) || 999;
+      const idB = Number(b.id) || 999;
+      return idA - idB;
+    });
+  }, [services]);
+
   // Filtered Services
   const filteredServices = useMemo(() => {
-    return services.filter(s => {
+    return sortedServices.filter(s => {
       if (statusFilter !== 'all' && (s.status || '').toLowerCase() !== statusFilter.toLowerCase()) return false;
       if (typeFilter !== 'all') {
-        const itemType = (s.type || (Number(s.price) > 200 ? 'Premium' : 'Standard')).toLowerCase();
+        const itemType = (s.type || (Number(s.price) > 200 ? 'Premium' : (String(s.name || '').toLowerCase().includes('express') || String(s.category || '').toLowerCase().includes('express') ? 'Express' : 'Standard'))).toLowerCase();
         if (itemType !== typeFilter.toLowerCase()) return false;
       }
-      if (categoryFilter !== 'all' && (s.category || '').toLowerCase() !== categoryFilter.toLowerCase()) return false;
+      if (categoryFilter !== 'all') {
+        const catNorm = (s.category || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const targetNorm = categoryFilter.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!catNorm.includes(targetNorm) && !targetNorm.includes(catNorm)) return false;
+      }
       if (searchTerm && searchTerm.trim()) {
         const query = searchTerm.toLowerCase().trim();
         const matchesName = s.name?.toLowerCase().includes(query);
@@ -157,7 +198,7 @@ export const AdminServicesPage = () => {
       }
       return true;
     });
-  }, [services, statusFilter, typeFilter, categoryFilter, searchTerm]);
+  }, [sortedServices, statusFilter, typeFilter, categoryFilter, searchTerm]);
 
   // Paginated Services
   const totalPages = Math.max(1, Math.ceil(filteredServices.length / itemsPerPage));
@@ -209,93 +250,104 @@ export const AdminServicesPage = () => {
     setOpenActionMenuId(null);
   };
 
-  const handleSaveEdit = (e) => {
+  const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!editingService) return;
-    setServices(prev => prev.map(s => {
-      if (s.id === editingService.id) {
-        return {
-          ...s,
-          name: editForm.name,
-          category: editForm.category,
-          price: Number(editForm.price) || s.price,
-          turnaround: editForm.turnaround,
-          status: editForm.status,
-          description: editForm.description
-        };
+    const updated = {
+      name: editForm.name,
+      category: editForm.category,
+      price: Number(editForm.price) || editingService.price,
+      turnaround: editForm.turnaround,
+      status: editForm.status,
+      description: editForm.description
+    };
+    try {
+      if (updateService) {
+        await updateService(editingService.id, updated);
+      } else {
+        setServices(prev => prev.map(s => s.id === editingService.id ? { ...s, ...updated } : s));
       }
-      return s;
-    }));
+    } catch (err) {
+      console.error('Error saving edited service:', err);
+    }
     setEditingService(null);
   };
 
-  // Service Icon renderer
+  // Service Icon renderer matching Reference Image 2 exactly
   const renderServiceIcon = (service) => {
+    const nameLower = String(service.name || '').toLowerCase();
     const iconKey = service.icon || service.name;
-    switch (iconKey) {
-      case 'Shirt':
-        return (
-          <div className="svc-icon-tile" style={{ background: '#EFF6FF' }}>
-            <ShirtIcon />
-          </div>
-        );
-      case 'Jeans':
-        return (
-          <div className="svc-icon-tile" style={{ background: '#EEF2FF' }}>
-            <IndigoGarmentIcon />
-          </div>
-        );
-      case 'TShirt':
-      case 'T-Shirt':
-        return (
-          <div className="svc-icon-tile" style={{ background: '#ECFEFF' }}>
-            <DiamondLayersIcon />
-          </div>
-        );
-      case 'Suit':
-      case 'Formal Suit':
-      case 'Winter Jacket':
-        return (
-          <div className="svc-icon-tile" style={{ background: '#ECFDF5' }}>
-            <SuitHangerIcon />
-          </div>
-        );
-      case 'Saree':
-      case 'Silk Saree':
-        return (
-          <div className="svc-icon-tile" style={{ background: '#F0FDFA' }}>
-            <SareeFabricIcon />
-          </div>
-        );
-      case 'Bedsheet':
-      case 'Bedsheet (Single)':
-      case 'Cushion Covers':
-        return (
-          <div className="svc-icon-tile" style={{ background: '#FFFBEB' }}>
-            <IroningIcon />
-          </div>
-        );
-      case 'Blanket':
-      case 'Carpet Cleaning':
-        return (
-          <div className="svc-icon-tile" style={{ background: '#FDF2F8' }}>
-            <BlanketBedIcon />
-          </div>
-        );
-      case 'Curtain':
-      case 'Curtain (Per Piece)':
-        return (
-          <div className="svc-icon-tile" style={{ background: '#FAF5FF' }}>
-            <CurtainWindowIcon />
-          </div>
-        );
-      default:
-        return (
-          <div className="svc-icon-tile" style={{ background: '#EFF6FF' }}>
-            <ShirtIcon />
-          </div>
-        );
+
+    // Row 2: Jeans
+    if (nameLower.includes('jeans')) {
+      return (
+        <div className="svc-icon-tile" style={{ background: '#EEF2FF' }}>
+          <IndigoGarmentIcon />
+        </div>
+      );
     }
+    // Row 3: T-Shirt
+    if (nameLower.includes('t-shirt') || nameLower === 'tshirt' || iconKey === 'TShirt') {
+      return (
+        <div className="svc-icon-tile" style={{ background: '#ECFEFF' }}>
+          <DiamondLayersIcon />
+        </div>
+      );
+    }
+    // Row 4: Formal Suit
+    if (nameLower.includes('formal') || nameLower.includes('suit') || nameLower.includes('jacket') || (nameLower.includes('dry clean') && !nameLower.includes('saree'))) {
+      return (
+        <div className="svc-icon-tile" style={{ background: '#ECFDF5' }}>
+          <HangerIcon color="#059669" />
+        </div>
+      );
+    }
+    // Row 5: Saree / Silk Saree
+    if (nameLower.includes('saree')) {
+      return (
+        <div className="svc-icon-tile" style={{ background: '#F0FDFA' }}>
+          <SareeFabricIcon />
+        </div>
+      );
+    }
+    // Row 6: Bedsheet (Single) / Steam Ironing
+    if (nameLower.includes('bedsheet') || nameLower.includes('steam') || nameLower.includes('iron')) {
+      return (
+        <div className="svc-icon-tile" style={{ background: '#FFFBEB' }}>
+          <IroningIcon />
+        </div>
+      );
+    }
+    // Row 7: Blanket / Carpet Cleaning
+    if (nameLower.includes('blanket') || nameLower.includes('carpet')) {
+      return (
+        <div className="svc-icon-tile" style={{ background: '#FDF2F8' }}>
+          <BlanketBedIcon />
+        </div>
+      );
+    }
+    // Row 8: Curtain (Per Piece)
+    if (nameLower.includes('curtain')) {
+      return (
+        <div className="svc-icon-tile" style={{ background: '#FAF5FF' }}>
+          <CurtainWindowIcon />
+        </div>
+      );
+    }
+    // Cushion Covers
+    if (nameLower.includes('cushion')) {
+      return (
+        <div className="svc-icon-tile" style={{ background: '#EEF2FF' }}>
+          <IndigoGarmentIcon />
+        </div>
+      );
+    }
+    // Row 1: Shirt (and default) -> Blue Hanger on #EFF6FF
+    return (
+      <div className="svc-icon-tile" style={{ background: '#EFF6FF' }}>
+        <HangerIcon color="#2563EB" />
+      </div>
+    );
   };
 
   // Category pill color class
@@ -303,11 +355,18 @@ export const AdminServicesPage = () => {
     switch (category) {
       case 'Wash & Fold':
         return { background: '#E0F2FE', color: '#0284C7' };
+      case 'Wash & Iron':
+        return { background: '#EEF2FF', color: '#4F46E5' };
       case 'Dry Cleaning':
+      case 'Dry Clean':
         return { background: '#CCFBF1', color: '#0D9488' };
       case 'Steam Ironing':
       case 'Steam Iron':
         return { background: '#FEF3C7', color: '#D97706' };
+      case 'Express':
+      case 'Express Laundry':
+        return { background: '#ECFEFF', color: '#0891B2' };
+      case 'Household':
       case 'Special Care':
       case 'Home Care':
         return { background: '#F3E8FF', color: '#9333EA' };
@@ -329,6 +388,7 @@ export const AdminServicesPage = () => {
           id="add-service-btn"
           className="btn-add-service"
           onClick={() => setIsAddServiceModalOpen(true)}
+          type="button"
         >
           <Plus size={18} strokeWidth={2.5} />
           <span>Add Service</span>
@@ -450,23 +510,24 @@ export const AdminServicesPage = () => {
               aria-label="Filter by Category"
             >
               <option value="all">All Categories</option>
-              <option value="Wash & Fold">Wash & Fold</option>
-              <option value="Dry Cleaning">Dry Cleaning</option>
-              <option value="Steam Ironing">Steam Ironing</option>
-              <option value="Special Care">Special Care</option>
+              {availableCategories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
             </select>
             <ChevronDown size={14} strokeWidth={2} className="select-picker-arrow" />
           </div>
 
-          {/* Reset Button */}
+          {/* Single Refresh Button (replacing Reset button in the same position) */}
           <button 
             type="button" 
-            className="btn-filter-reset"
-            onClick={handleReset}
-            title="Reset filters and search"
+            id="services-filter-refresh-btn"
+            className="btn-filter-refresh"
+            onClick={handleRefreshServices}
+            disabled={isRefreshing}
+            title="Refresh services from database"
           >
-            <RotateCcw size={15} strokeWidth={2} />
-            <span>Reset</span>
+            <RotateCcw size={15} strokeWidth={2} className={isRefreshing ? 'spin-animation' : ''} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
         </div>
       </div>
@@ -553,7 +614,7 @@ export const AdminServicesPage = () => {
 
                       {/* Turnaround Time */}
                       <td>
-                        <span className="service-turnaround-val">{service.turnaround}</span>
+                        <span className="service-turnaround-val">{formatTurnaround(service.turnaround)}</span>
                       </td>
 
                       {/* Status */}
@@ -675,7 +736,7 @@ export const AdminServicesPage = () => {
               <ChevronLeft size={16} />
             </button>
 
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+            {Array.from({ length: Math.max(totalPages, 3) }, (_, i) => i + 1).map((pageNum) => (
               <button 
                 key={pageNum}
                 type="button"
@@ -689,8 +750,8 @@ export const AdminServicesPage = () => {
             <button 
               type="button" 
               className="page-nav-arrow"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage >= Math.max(totalPages, 3)}
+              onClick={() => setCurrentPage(prev => Math.min(Math.max(totalPages, 3), prev + 1))}
               aria-label="Next Page"
             >
               <ChevronRight size={16} />
@@ -742,10 +803,9 @@ export const AdminServicesPage = () => {
                     value={editForm.category}
                     onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                   >
-                    <option value="Wash & Fold">Wash & Fold</option>
-                    <option value="Dry Cleaning">Dry Cleaning</option>
-                    <option value="Steam Ironing">Steam Ironing</option>
-                    <option value="Special Care">Special Care</option>
+                    {availableCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -853,6 +913,40 @@ export const AdminServicesPage = () => {
           color: #64748B;
           margin: 4px 0 0 0;
           font-weight: 400;
+        }
+
+        .services-header-actions-group {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .btn-services-refresh {
+          height: 42px;
+          background: #FFFFFF;
+          color: #0F172A;
+          border: 1px solid #E2E8F0;
+          border-radius: 10px;
+          padding: 0 16px;
+          font-size: 14px;
+          font-weight: 600;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+          white-space: nowrap;
+        }
+
+        .btn-services-refresh:hover:not(:disabled) {
+          background: #F8FAFC;
+          border-color: #CBD5E1;
+        }
+
+        .btn-services-refresh:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
         }
 
         .btn-add-service {
@@ -1036,7 +1130,7 @@ export const AdminServicesPage = () => {
           pointer-events: none;
         }
 
-        .btn-filter-reset {
+        .btn-filter-refresh {
           height: 42px;
           padding: 0 14px;
           background: #FFFFFF;
@@ -1045,7 +1139,7 @@ export const AdminServicesPage = () => {
           font-size: 14px;
           font-weight: 500;
           font-family: inherit;
-          color: #1E293B;
+          color: #0D7A75;
           display: inline-flex;
           align-items: center;
           gap: 7px;
@@ -1056,13 +1150,27 @@ export const AdminServicesPage = () => {
           transition: all 0.15s ease;
         }
 
-        .btn-filter-reset:hover {
+        .btn-filter-refresh:hover:not(:disabled) {
           background: #F8FAFC;
           border-color: #CBD5E1;
         }
 
-        .btn-filter-reset:active {
+        .btn-filter-refresh:active {
           transform: translateY(1px);
+        }
+
+        .btn-filter-refresh:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .spin-animation {
+          animation: spin 0.8s linear infinite;
         }
 
         /* Services Table Card */
@@ -1345,10 +1453,10 @@ export const AdminServicesPage = () => {
         .page-number-btn {
           width: 36px;
           height: 36px;
-          border-radius: 8px;
-          border: none;
-          background: transparent;
-          color: #475569;
+          border-radius: 6px;
+          border: 1px solid #E2E8F0;
+          background: #FFFFFF;
+          color: #334155;
           font-weight: 500;
           font-size: 14px;
           display: flex;
@@ -1359,12 +1467,14 @@ export const AdminServicesPage = () => {
         }
 
         .page-number-btn:hover:not(.active) {
-          background: #F1F5F9;
+          border-color: #CBD5E1;
+          background: #F8FAFC;
           color: #0F172A;
         }
 
         .page-number-btn.active {
           background: #0D7A75;
+          border-color: #0D7A75;
           color: #FFFFFF;
           font-weight: 600;
         }

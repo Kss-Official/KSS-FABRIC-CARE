@@ -71,3 +71,62 @@ export const getInitials = (name) => {
   }
   return clean.substring(0, 2).toUpperCase() || 'CU';
 };
+
+/**
+ * Format Order ID to match standard 'FC-XXXXX' pattern (e.g. 'FC-75668')
+ * Preserves raw underlying ID data while ensuring uniform display format across
+ * Admin Portal and Customer Portal.
+ */
+export const formatOrderId = (rawId) => {
+  if (rawId === null || rawId === undefined) return '';
+  const str = String(rawId).trim();
+  if (!str) return '';
+
+  // Already in exact FC-XXXXX format (e.g. FC-75668, FC-10463)
+  if (/^FC-\d{5}$/i.test(str)) {
+    return str.toUpperCase();
+  }
+
+  // Handle #FC-XXXXX or FC-XXXX
+  const hashFcHyphen = str.match(/^#?FC-(\d+)$/i);
+  if (hashFcHyphen) {
+    const digits = hashFcHyphen[1].padStart(5, '0').slice(-5);
+    return `FC-${digits}`;
+  }
+
+  // Handle #LDX10285 or LDX10285 -> FC-10285
+  const ldxMatch = str.match(/^#?LDX(\d+)/i);
+  if (ldxMatch) {
+    const digits = ldxMatch[1].padStart(5, '0').slice(-5);
+    return `FC-${digits}`;
+  }
+
+  // Handle #FC10285 or FC10285 -> FC-10285
+  const fcMatch = str.match(/^#?FC(\d+)/i);
+  if (fcMatch) {
+    const digits = fcMatch[1].padStart(5, '0').slice(-5);
+    return `FC-${digits}`;
+  }
+
+  // Handle pure numeric strings/numbers (e.g. 75668, 1, 10285)
+  if (/^\d+$/.test(str)) {
+    return `FC-${str.padStart(5, '0').slice(-5)}`;
+  }
+
+  // Handle embedded 4 or 5 digit numbers in string (e.g. #ORD10285 -> FC-10285)
+  const embeddedNum = str.match(/\d{4,5}/);
+  if (embeddedNum) {
+    return `FC-${embeddedNum[0].padStart(5, '0').slice(-5)}`;
+  }
+
+  // For arbitrary hex/alphanumeric IDs (e.g. Firebase push key '-Oabc123' or '#FC8F71E'):
+  // Deterministic 5-digit number hash so the same ID always formats to the exact same FC-XXXXX
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  const fiveDigitCode = 10000 + (Math.abs(hash) % 90000);
+  return `FC-${fiveDigitCode}`;
+};
+
