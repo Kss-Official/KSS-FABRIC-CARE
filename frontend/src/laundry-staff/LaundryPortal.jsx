@@ -2552,9 +2552,39 @@ export const LaundryPortal = () => {
                           ? order.customer
                           : (order.customer?.name || order.customerName || order.pickup_full_name || 'Customer'));
                       const itemsList = Array.isArray(order.items) ? order.items : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
-                      const itemsCount = order.itemsCount || itemsList.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1)), 0) || (itemsList.length > 0 ? itemsList.length : 1);
                       const itemsFullSummary = order.items_summary || (itemsList.length > 0 ? itemsList.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ') : '1 Item');
-                      const orderNote = order.notes || order.special_instructions || order.instruction || '';
+                      const typesCount = itemsList.length > 0
+                        ? itemsList.length
+                        : (itemsFullSummary.includes(',') ? itemsFullSummary.split(',').length : 1);
+
+                      let calculatedItemsCount = order.itemsCount || order.items_count || order.total_items;
+                      if (!calculatedItemsCount && itemsList.length > 0) {
+                        calculatedItemsCount = itemsList.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1)), 0);
+                      }
+                      if (!calculatedItemsCount) {
+                        const matches = [...itemsFullSummary.matchAll(/[×x]\s*(\d+)/gi)];
+                        if (matches.length > 0) {
+                          calculatedItemsCount = matches.reduce((acc, m) => acc + parseInt(m[1], 10), 0);
+                        } else {
+                          calculatedItemsCount = typesCount || 1;
+                        }
+                      }
+                      const itemsCount = calculatedItemsCount || 1;
+
+                      const isExpressOrder = Boolean(order.is_express || order.isExpress || order.express);
+                      const orderNote = (order.notes || order.special_instructions || order.specialInstructions || order.instructions || order.comment || '').trim();
+                      const hasDelicateGarments = itemsList.some(it => {
+                        const n = String(it.name || it.item_name || '').toLowerCase();
+                        return n.includes('gown') || n.includes('silk') || n.includes('saree') || n.includes('sari') || n.includes('suit') || n.includes('blazer') || n.includes('wool') || n.includes('delicate') || n.includes('coat') || n.includes('dress') || n.includes('frock') || n.includes('lehenga');
+                      }) || (typeof itemsFullSummary === 'string' && /gown|silk|saree|sari|suit|blazer|wool|delicate|coat|dress|frock|lehenga/i.test(itemsFullSummary));
+
+                      let totalVal = order.total ?? order.total_amount ?? order.amount;
+                      if (typeof totalVal === 'string') totalVal = parseFloat(totalVal) || 0;
+                      if (typeof totalVal === 'number' && totalVal > 500) totalVal = totalVal / 100;
+                      if (!totalVal && itemsList.length > 0) {
+                        totalVal = itemsList.reduce((sum, it) => sum + (Number(it.total || it.lineTotal || (it.price * (it.quantity || 1))) || 0), 0);
+                      }
+                      const formattedTotal = Number(totalVal || 0).toFixed(2);
 
                       let placedStr = order.placed;
                       if (!placedStr && (order.placedAt || order.createdAt)) {
@@ -2595,39 +2625,100 @@ export const LaundryPortal = () => {
                           <div className="col-customer">{customerName}</div>
                           <div
                             className="col-items"
-                            title={`${itemsFullSummary} (${itemsCount} ${itemsCount === 1 ? 'item' : 'items'}${orderNote ? ` • Note: ${orderNote}` : ''})`}
+                            title={`${itemsFullSummary} • ${itemsCount} ${itemsCount === 1 ? 'garment' : 'garments'} (${typesCount} ${typesCount === 1 ? 'type' : 'types'})${orderNote ? `\nNote: ${orderNote}` : ''}\n(Click to view garment care plan)`}
                             onClick={() => setTrackerModalOrder(order)}
-                            style={{ cursor: 'pointer' }}
+                            style={{ cursor: 'pointer', minWidth: 0, paddingRight: '8px' }}
                           >
-                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#1E293B', fontWeight: 600, fontSize: '13px' }}>
+                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#0F172A', fontWeight: 600, fontSize: '13px', lineHeight: '1.3' }}>
                               {itemsFullSummary}
                             </div>
-                            <div style={{ fontSize: '11px', color: '#64748B', fontWeight: 500, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ color: '#0F766E', fontWeight: 600 }}>{itemsCount} {itemsCount === 1 ? 'item' : 'items'}</span>
-                              {itemsList.length > 1 && (
-                                <>
-                                  <span style={{ color: '#CBD5E1' }}>•</span>
-                                  <span style={{ color: '#64748B' }}>{itemsList.length} types</span>
-                                </>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', flexWrap: 'nowrap', overflow: 'hidden' }}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3.5px',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  background: '#F0FDFA',
+                                  color: '#0D7A75',
+                                  border: '1px solid #CCFBF1',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                  lineHeight: 1.2
+                                }}
+                              >
+                                <Shirt size={10.5} strokeWidth={2.4} />
+                                <span>{itemsCount} {itemsCount === 1 ? 'garment' : 'garments'}</span>
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#64748B', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                                • {typesCount} {typesCount === 1 ? 'type' : 'types'}
+                              </span>
+                              {hasDelicateGarments && (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2.5px',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: '#EFF6FF',
+                                    color: '#2563EB',
+                                    border: '1px solid #DBEAFE',
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    whiteSpace: 'nowrap',
+                                    lineHeight: 1.2
+                                  }}
+                                  title="Contains delicate or specialty fabrics"
+                                >
+                                  <Sparkles size={9.5} />
+                                  <span>Delicate</span>
+                                </span>
                               )}
-                              {(order.is_express || order.isExpress || order.delivery_speed === 'express') && (
-                                <>
-                                  <span style={{ color: '#CBD5E1' }}>•</span>
-                                  <span style={{ color: '#D97706', fontWeight: 600, background: '#FEF3C7', padding: '1px 5px', borderRadius: '4px', fontSize: '10px' }}>
-                                    Express
-                                  </span>
-                                </>
+                              {isExpressOrder && (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2.5px',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: '#FEF3C7',
+                                    color: '#B45309',
+                                    border: '1px solid #FDE68A',
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    whiteSpace: 'nowrap',
+                                    lineHeight: 1.2
+                                  }}
+                                >
+                                  <Flame size={9.5} />
+                                  <span>Express</span>
+                                </span>
                               )}
                               {orderNote && (
-                                <>
-                                  <span style={{ color: '#CBD5E1' }}>•</span>
-                                  <span
-                                    style={{ color: '#475569', background: '#F1F5F9', padding: '1px 5px', borderRadius: '4px', fontSize: '10px', fontWeight: 500 }}
-                                    title={orderNote}
-                                  >
-                                    Note
-                                  </span>
-                                </>
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2.5px',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: '#F1F5F9',
+                                    color: '#475569',
+                                    border: '1px solid #E2E8F0',
+                                    fontSize: '10px',
+                                    fontWeight: 500,
+                                    whiteSpace: 'nowrap',
+                                    lineHeight: 1.2
+                                  }}
+                                  title={`Customer note: ${orderNote}`}
+                                >
+                                  <FileText size={9.5} />
+                                  <span>Note</span>
+                                </span>
                               )}
                             </div>
                           </div>
@@ -4165,7 +4256,7 @@ export const LaundryPortal = () => {
                           )}
 
                           <div style={{ fontSize: '12px', color: '#64748B', paddingTop: '4px' }}>
-                            Items in this order: {items.map(it => `${it.name || it.item_name} (×${it.quantity || 1})`).join(', ')}
+                            Items in this order: {items.map(it => `${it.name || it.item_name} (×${it.quantity || 1}${it.lineTotal || it.total ? ` • ₹${Number(it.lineTotal || it.total).toFixed(2)}` : ''})`).join(', ')}
                           </div>
                         </div>
 
@@ -5647,7 +5738,7 @@ export const LaundryPortal = () => {
         /* GRID SYSTEM MATCHING SECTION B SPECIFICATION */
         .orders-grid-row {
           display: grid;
-          grid-template-columns: 105px 135px minmax(170px, 1.2fr) minmax(130px, auto) 135px 100px minmax(130px, 1fr);
+          grid-template-columns: 105px 130px minmax(190px, 1.35fr) minmax(130px, auto) 130px 95px minmax(130px, 1fr);
           column-gap: 12px;
           align-items: center;
         }
@@ -5713,6 +5804,11 @@ export const LaundryPortal = () => {
           color: #475569;
           min-width: 0;
           overflow: hidden;
+          transition: opacity 0.12s ease;
+        }
+
+        .col-items:hover {
+          opacity: 0.88;
         }
 
         .col-placed {
