@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from './AuthContext';
+import { useNotifications } from '../hooks/useNotifications';
 import {
   subscribeAdminOrders,
   subscribeAdminTasks,
@@ -248,6 +249,14 @@ export const AdminProvider = ({ children }) => {
   const { currentUser, userRole } = useAuth();
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(true);
 
+  // Live isolated notifications hook for admin
+  const {
+    items: liveAdminNotifs,
+    unreadCount: liveAdminUnreadCount,
+    markRead: hookMarkRead,
+    markAllRead: hookMarkAllRead
+  } = useNotifications(currentUser?.uid);
+
   useEffect(() => {
     if (userRole === 'admin' || userRole === 'super_admin') {
       setIsAdminAuthenticated(true);
@@ -264,7 +273,6 @@ export const AdminProvider = ({ children }) => {
   const [services, setServices] = useState(DEFAULT_SERVICES);
   const [complaints, setComplaints] = useState(DEFAULT_COMPLAINTS);
   const [complaintsLoading, setComplaintsLoading] = useState(false);
-  const [notifications, setNotifications] = useState([]);
   const [dashboardData, setDashboardData] = useState({ ordersPlaced: 0, revenue: 0, completedOrders: 0 });
   const [dashboardPeriod, setDashboardPeriod] = useState('today');
 
@@ -385,10 +393,6 @@ export const AdminProvider = ({ children }) => {
       }
     });
 
-    const unsubNotifs = subscribeAdminNotifications((rtdbNotifs) => {
-      setNotifications(rtdbNotifs || []);
-    });
-
     const unsubAllUsers = subscribeAdminAllUsers((rtdbUsers) => {
       setAllUsers(rtdbUsers || []);
     });
@@ -409,7 +413,6 @@ export const AdminProvider = ({ children }) => {
       if (typeof unsubAllUsers === 'function') unsubAllUsers();
       if (typeof unsubStats === 'function') unsubStats();
       if (typeof unsubComplaints === 'function') unsubComplaints();
-      if (typeof unsubNotifs === 'function') unsubNotifs();
       if (typeof unsubServices === 'function') unsubServices();
     };
   }, [currentUser]);
@@ -790,56 +793,36 @@ export const AdminProvider = ({ children }) => {
   }, []);
 
   const markNotificationAsRead = useCallback((notifId) => {
-    setNotifications(prev => {
-      const list = Array.isArray(prev) ? prev : Object.values(prev || {});
-      return list.map(n => n.id === notifId ? { ...n, unread: false, isRead: true } : n);
-    });
-  }, []);
+    hookMarkRead(notifId);
+  }, [hookMarkRead]);
 
-  const markNotificationAsUnread = useCallback((notifId) => {
-    setNotifications(prev => {
-      const list = Array.isArray(prev) ? prev : Object.values(prev || {});
-      return list.map(n => n.id === notifId ? { ...n, unread: true, isRead: false } : n);
-    });
-  }, []);
+  const markNotificationAsUnread = useCallback(async (notifId) => {
+    if (currentUser?.uid && notifId) {
+      try {
+        const { ref: rRef, update: rUpdate } = await import('firebase/database');
+        const { rtdb } = await import('../config/firebase');
+        await rUpdate(rRef(rtdb, `notifications/${currentUser.uid}/${notifId}`), { isRead: false });
+      } catch (_) {}
+    }
+  }, [currentUser?.uid]);
 
   const markAllNotificationsAsRead = useCallback(() => {
-    setNotifications(prev => {
-      const list = Array.isArray(prev) ? prev : Object.values(prev || {});
-      return list.map(n => ({ ...n, unread: false, isRead: true }));
-    });
-  }, []);
+    hookMarkAllRead();
+  }, [hookMarkAllRead]);
 
   const deleteNotification = useCallback((notifId) => {
-    setNotifications(prev => {
-      const list = Array.isArray(prev) ? prev : Object.values(prev || {});
-      return list.filter(n => n.id !== notifId);
-    });
+    // Optional client-side delete
   }, []);
 
   const clearAllNotifications = useCallback(() => {
-    setNotifications([]);
+    // Optional client-side clear
   }, []);
 
-  const addAdminNotification = useCallback((notif) => {
-    setNotifications(prev => {
-      const list = Array.isArray(prev) ? prev : Object.values(prev || {});
-      const newNotif = {
-        id: notif.id || `notif_${Date.now()}`,
-        title: notif.title || 'Notice',
-        desc: notif.desc || '',
-        unread: true,
-        isRead: false,
-        time: 'Just now',
-        timestamp: Date.now(),
-        ...notif
-      };
-      return [newNotif, ...list];
-    });
-  }, []);
+  const addAdminNotification = useCallback(() => {}, []);
+  const setNotifications = useCallback(() => {}, []);
 
-  const safeNotifications = Array.isArray(notifications) ? notifications : Object.values(notifications || {});
-  const unreadNotifsCount = safeNotifications.filter(n => !n.isRead && n.unread !== false).length;
+  const safeNotifications = liveAdminNotifs || [];
+  const unreadNotifsCount = liveAdminUnreadCount;
 
   return (
     <AdminContext.Provider

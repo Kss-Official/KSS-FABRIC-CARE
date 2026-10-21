@@ -135,9 +135,7 @@ export const getOrderStatusSteps = (order) => {
     { num: 5, key: 'FOLDING', label: 'Folding' },
     { num: 6, key: 'QUALITY_CHECK', label: 'Quality Check' },
     { num: 7, key: 'PACKING', label: 'Packing' },
-    { num: 8, key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
-    { num: 9, key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
-    { num: 10, key: 'DELIVERED', label: 'Delivered' }
+    { num: 8, key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' }
   ];
 
   if (!order) return fallbackSteps;
@@ -219,9 +217,7 @@ export const getOrderStatusSteps = (order) => {
     ...intermediateSteps,
     { key: 'QUALITY_CHECK', label: 'Quality Check' },
     { key: 'PACKING', label: 'Packing' },
-    { key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' },
-    { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
-    { key: 'DELIVERED', label: 'Delivered' }
+    { key: 'READY_FOR_DELIVERY', label: 'Ready for Delivery' }
   ];
 
   return allSteps.map((st, idx) => ({
@@ -493,6 +489,25 @@ export const normalizeOrder = (order) => {
     }
   }
 
+  // Formatted dropped at time (hub intake / delivery drop-off time)
+  let droppedAtTime = null;
+  const rawDropTime = order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.dropped_off_at || order.droppedAt || order.receivedAt || order.intakeAt;
+  if (rawDropTime) {
+    if (typeof rawDropTime === 'string' && (rawDropTime.includes('AM') || rawDropTime.includes('PM'))) {
+      droppedAtTime = rawDropTime;
+    } else {
+      try {
+        const dt = new Date(rawDropTime);
+        if (!isNaN(dt.getTime())) {
+          droppedAtTime = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        }
+      } catch (_) {}
+    }
+  }
+  if (!droppedAtTime && order.placed && typeof order.placed === 'string' && (order.placed.includes('AM') || order.placed.includes('PM'))) {
+    droppedAtTime = order.placed;
+  }
+
   // Derive all unique services for the order from order.services, order.service and items
   const extractedServices = new Set();
   if (Array.isArray(order.services)) {
@@ -534,6 +549,8 @@ export const normalizeOrder = (order) => {
     amount: totalRupees.toFixed(2),
     total: totalRupees,
     placed: placedTime || order.placed || '10:42 AM',
+    droppedAt: droppedAtTime || placedTime || '10:42 AM',
+    droppedAtHub: order.droppedAtHub || rawDropTime || droppedAtTime,
     is_express: Boolean(order.is_express || order.express || order.priority === 'EXPRESS'),
     has_conflict: conflict.hasConflict,
     conflict_reason: conflict.reason,

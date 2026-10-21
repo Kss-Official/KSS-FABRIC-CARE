@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
-import { subscribeCustomerNotifications, markNotificationRead } from '../services/customerDataService';
+import { useNotifications } from '../hooks/useNotifications';
 import { 
   Bell, 
   Check, 
@@ -110,9 +110,15 @@ export const normalizeNotification = (notif) => {
   } else if (text.includes('out for delivery')) {
     category = 'Out for Delivery';
     type = 'delivery';
+  } else if (text.includes('pickup') || notif.type === 'pickup_scheduled' || notif.type === 'new_pickup' || notif.type === 'picked_up' || notif.type === 'otp_ready') {
+    category = 'Pickup';
+    type = 'pickup';
   } else if (text.includes('deliver') || text.includes('completed')) {
     category = 'Delivered';
     type = 'completed';
+  } else if (text.includes('order placed') || notif.type === 'order_placed' || notif.type === 'new_order') {
+    category = 'Order Placed';
+    type = 'order';
   } else if (text.includes('payment') || text.includes('paid')) {
     category = 'Payment';
     type = 'payment';
@@ -150,97 +156,26 @@ export const normalizeNotification = (notif) => {
 export const Notifications = () => {
   const { currentUser } = useAuth();
   const { navigateTo } = useBooking();
+  const { items: liveItems, unreadCount, markRead, markAllRead, loading } = useNotifications(currentUser?.uid);
 
-  // Load initial notifications with local storage fallback
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      const saved = localStorage.getItem('fabricare_customer_notifications');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return DEFAULT_NOTIFICATIONS.map(n => ({ ...n }));
-  });
+  const notifications = useMemo(() => {
+    return (liveItems || []).map(normalizeNotification);
+  }, [liveItems]);
 
-  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'UNREAD' | 'ORDERS' | 'DELIVERY'
 
-  // Sync notifications with real-time RTDB and Navbar events
-  useEffect(() => {
-    const handleSync = (e) => {
-      if (e.detail && Array.isArray(e.detail)) {
-        setNotifications(e.detail);
-      }
-    };
-    window.addEventListener('fabricare-notifications-updated', handleSync);
-
-    if (!currentUser?.uid) {
-      return () => {
-        window.removeEventListener('fabricare-notifications-updated', handleSync);
-      };
-    }
-
-    const unsubscribe = subscribeCustomerNotifications(
-      currentUser.uid,
-      (list) => {
-        if (Array.isArray(list) && list.length > 0) {
-          const mapped = list.map(normalizeNotification);
-          setNotifications(mapped);
-          try {
-            localStorage.setItem('fabricare_customer_notifications', JSON.stringify(mapped));
-          } catch (e) {}
-          window.dispatchEvent(new CustomEvent('fabricare-notifications-updated', { detail: mapped }));
-        }
-      },
-      (err) => {
-        console.warn('Customer notifications notice:', err);
-      }
-    );
-
-    return () => {
-      window.removeEventListener('fabricare-notifications-updated', handleSync);
-      unsubscribe();
-    };
-  }, [currentUser?.uid]);
-
   // Mark single notification as read
   const handleMarkRead = async (id, e) => {
     if (e) e.stopPropagation();
-    const updated = notifications.map(n => n.id === id ? { ...n, isRead: true } : n);
-    setNotifications(updated);
-    try {
-      localStorage.setItem('fabricare_customer_notifications', JSON.stringify(updated));
-    } catch (err) {}
-    window.dispatchEvent(new CustomEvent('fabricare-notifications-updated', { detail: updated }));
-
-    if (currentUser?.uid) {
-      try {
-        await markNotificationRead(currentUser.uid, id);
-      } catch (err) {
-        console.warn('Failed to mark read in RTDB:', err);
-      }
-    }
+    markRead(id);
   };
 
   // Mark all notifications as read
   const handleMarkAllRead = async () => {
-    const updated = notifications.map(n => ({ ...n, isRead: true }));
-    setNotifications(updated);
-    try {
-      localStorage.setItem('fabricare_customer_notifications', JSON.stringify(updated));
-    } catch (err) {}
-    window.dispatchEvent(new CustomEvent('fabricare-notifications-updated', { detail: updated }));
-
-    if (currentUser?.uid) {
-      try {
-        const unreadList = notifications.filter(n => !n.isRead);
-        await Promise.all(unreadList.map(n => markNotificationRead(currentUser.uid, n.id)));
-      } catch (err) {}
-    }
+    await markAllRead();
   };
 
   // Refresh notifications
@@ -249,13 +184,6 @@ export const Notifications = () => {
     setRefreshSuccess(false);
     const start = Date.now();
     try {
-      const saved = localStorage.getItem('fabricare_customer_notifications');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setNotifications(parsed.map(normalizeNotification));
-        }
-      }
       const elapsed = Date.now() - start;
       if (elapsed < 450) {
         await new Promise(r => setTimeout(r, 450 - elapsed));
@@ -288,9 +216,6 @@ export const Notifications = () => {
     });
   }, [notifications, activeTab, searchQuery]);
 
-  const unreadCount = useMemo(() => {
-    return notifications.filter(n => !n.isRead).length;
-  }, [notifications]);
 
   // Navigate to appropriate section based on notification type
   const handleActionClick = (notif) => {
@@ -320,10 +245,24 @@ export const Notifications = () => {
             <span>{category}</span>
           </span>
         );
+      case 'pickup':
+        return (
+          <span className="notif-pill notif-pill-delivery">
+            <Truck size={11} strokeWidth={2.5} />
+            <span>{category}</span>
+          </span>
+        );
       case 'completed':
         return (
           <span className="notif-pill notif-pill-completed">
             <CheckCircle2 size={11} strokeWidth={2.5} />
+            <span>{category}</span>
+          </span>
+        );
+      case 'order':
+        return (
+          <span className="notif-pill notif-pill-completed">
+            <Package size={11} strokeWidth={2.5} />
             <span>{category}</span>
           </span>
         );
@@ -366,10 +305,22 @@ export const Notifications = () => {
             <Truck size={18} strokeWidth={2.2} />
           </div>
         );
+      case 'pickup':
+        return (
+          <div className="notif-icon-box notif-icon-delivery">
+            <Truck size={18} strokeWidth={2.2} />
+          </div>
+        );
       case 'completed':
         return (
           <div className="notif-icon-box notif-icon-completed">
             <CheckCircle2 size={18} strokeWidth={2.2} />
+          </div>
+        );
+      case 'order':
+        return (
+          <div className="notif-icon-box notif-icon-completed">
+            <Package size={18} strokeWidth={2.2} />
           </div>
         );
       case 'payment':

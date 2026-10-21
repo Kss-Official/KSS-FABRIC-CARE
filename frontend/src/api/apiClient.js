@@ -328,12 +328,15 @@ export const staffApi = {
       const snap = await get(ref(rtdb, 'orders'));
       if (snap.exists()) {
         const all = snap.val() || {};
-        const items = Object.keys(all).map(id => normalizeOrder({
-          ...all[id],
-          id,
-          key: id,
-          order_number: all[id].code || all[id].order_number || id
-        }));
+        const items = Object.keys(all)
+          .filter(id => !id.includes('P4CbA4_8YTw7XnFWZiV'))
+          .map(id => normalizeOrder({
+            ...all[id],
+            id,
+            key: id,
+            order_number: all[id].code || all[id].order_number || id
+          }))
+          .filter(o => o.code || (o.items && Object.keys(o.items).length > 0) || (o.customerName && o.customerName !== 'Customer'));
         items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         return { data: { items } };
       }

@@ -102,6 +102,42 @@ export const CustomerDashboard = () => {
     return true;
   });
 
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'PENDING':
+      case 'PAYMENT_PENDING':
+        return <span className="badge badge-warning">Pending Approval</span>;
+      case 'PLACED':
+        return <span className="badge badge-info">Booking Confirmed</span>;
+      case 'ACCEPTED':
+      case 'PICKUP_ASSIGNED':
+      case 'PICKUP_SCHEDULED':
+      case 'PICKUP_IN_PROGRESS':
+        return <span className="badge badge-info">Pickup Scheduled</span>;
+      case 'PICKED_UP':
+      case 'RECEIVED_AT_LAUNDRY':
+        return <span className="badge badge-info">Received at Hub</span>;
+      case 'IN_PROCESS':
+      case 'WASHING':
+      case 'DRYING':
+      case 'IRONING':
+        return <span className="badge badge-primary">Processing ({status})</span>;
+      case 'QUALITY_CHECK':
+        return <span className="badge badge-primary">Quality Check</span>;
+      case 'PACKED':
+      case 'READY_FOR_DELIVERY':
+        return <span className="badge badge-success">Ready for Delivery</span>;
+      case 'OUT_FOR_DELIVERY':
+        return <span className="badge badge-warning">Out for Delivery</span>;
+      case 'DELIVERED':
+        return <span className="badge badge-success">Delivered</span>;
+      case 'CANCELLED':
+        return <span className="badge badge-danger">Cancelled</span>;
+      default:
+        return <span className="badge badge-secondary">{status}</span>;
+    }
+  };
+
   const getOrderServices = (order) => {
     if (!order) return 'Wash & Fold';
 

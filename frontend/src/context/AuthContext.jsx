@@ -81,6 +81,9 @@ export const AuthProvider = ({ children }) => {
             rtdbProfile.role = role;
             update(ref(rtdb, `users/${fbUser.uid}`), { role }).catch(() => {});
           }
+          if (role) {
+            set(ref(rtdb, `roleUsers/${String(role).toLowerCase()}/${fbUser.uid}`), true).catch(() => {});
+          }
           const cleanProfile = {
             uid: fbUser.uid,
             id: fbUser.uid,

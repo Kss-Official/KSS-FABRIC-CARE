@@ -795,7 +795,10 @@ export const subscribeOrders = (callback, errorCallback) => {
         return;
       }
       const data = snap.val();
-      const orderList = Object.keys(data).map(k => normalizeFirestoreOrder(data[k], k));
+      const orderList = Object.keys(data)
+        .filter(k => !k.includes('P4CbA4_8YTw7XnFWZiV'))
+        .map(k => normalizeFirestoreOrder(data[k], k))
+        .filter(o => o.code || (o.items && Object.keys(o.items).length > 0) || (o.customerName && o.customerName !== 'Customer'));
       orderList.sort((a, b) => {
         const timeA = a.updatedAt || a.placedAt || a.createdAt || 0;
         const timeB = b.updatedAt || b.placedAt || b.createdAt || 0;

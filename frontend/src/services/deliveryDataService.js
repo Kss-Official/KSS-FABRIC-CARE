@@ -10,6 +10,7 @@ import {
   limitToLast
 } from 'firebase/database';
 import { rtdb } from '../config/firebase.js';
+import { addNotificationToUpdates, addRoleNotificationsToUpdates } from './notificationService.js';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 
@@ -41,15 +42,13 @@ export const startPickupTask = async (taskId, orderId, agentUser) => {
   };
 
   // Customer notification with instruction to share OTP
-  updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
-    id: custNotifPush.key,
-    type: 'driver_on_the_way',
+  addNotificationToUpdates(updates, order.customerId, {
+    type: 'otp_ready',
     title: 'Driver Arriving for Pickup',
     body: `${agentUser.name || 'Your driver'} is en route to collect your laundry. Please share your pickup OTP when they arrive.`,
-    orderId,
-    isRead: false,
+    orderId: order.code || orderId,
     createdAt: now
-  };
+  });
 
   await update(ref(rtdb), updates);
 };
@@ -114,27 +113,23 @@ export const verifyAndCompletePickup = async (taskId, orderId, enteredOtp, agent
     at: now
   };
 
-  // Staff notification: clothes picked up, heading to hub
-  updates[`notificationsByRole/staff/${staffNotifPush.key}`] = {
-    id: staffNotifPush.key,
+  // Staff notification: clothes picked up, heading to hub (isolated per staff user)
+  await addRoleNotificationsToUpdates(updates, 'staff', {
     type: 'incoming_pickup',
     title: 'New Inbound Laundry',
     body: `Driver ${agentUser.name || 'Agent'} picked up order ${order.code}. En route to laundry facility.`,
     orderId,
-    isRead: false,
     createdAt: now
-  };
+  });
 
   // Customer notification
-  updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
-    id: custNotifPush.key,
-    type: 'order_picked_up',
+  addNotificationToUpdates(updates, order.customerId, {
+    type: 'picked_up',
     title: 'Laundry Picked Up!',
     body: `Your clothes for order ${order.code} were successfully picked up and are headed to our cleaning hub.`,
-    orderId,
-    isRead: false,
+    orderId: order.code || orderId,
     createdAt: now
-  };
+  });
 
   await update(ref(rtdb), updates);
 };
@@ -172,8 +167,13 @@ export const recordHubDropoff = async (orderId, facilityName, agentUser, notes =
     }
   }
 
+  if (!orderSnap.exists()) {
+    console.warn(`Cannot record hub dropoff: Order "${orderKey}" not found in database.`);
+    return { success: false, error: 'Order not found' };
+  }
+
   const now = Date.now();
-  const order = orderSnap.exists() ? orderSnap.val() : {};
+  const order = orderSnap.val() || {};
   const dropPush = push(ref(targetDb, 'hubDropoffs'));
   const dropId = dropPush.key;
   const histPush = push(ref(targetDb, `orderHistory/${orderKey}`));
@@ -219,18 +219,14 @@ export const recordHubDropoff = async (orderId, facilityName, agentUser, notes =
     at: now
   };
 
-  // Staff notification for incoming laundry intake
-  const staffNotifPush = push(ref(targetDb, 'staffNotifications'));
-  updates[`staffNotifications/${staffNotifPush.key}`] = {
-    id: staffNotifPush.key,
-    type: 'incoming_dropoff',
+  // Staff notification for incoming laundry intake (isolated per staff user)
+  await addRoleNotificationsToUpdates(updates, 'staff', {
+    type: 'received_at_hub',
     title: 'New Laundry Dropped Off at Hub',
     body: `Driver ${agentUser.name || 'Agent'} dropped off order ${order.code || order.displayId || orderId} at ${facilityName || 'Central Hub'}. Ready for inspection.`,
     orderId: orderKey,
-    orderCode: order.code || order.displayId || orderId,
-    isRead: false,
     createdAt: now
-  };
+  });
 
   await update(ref(targetDb), updates);
 
@@ -282,15 +278,13 @@ export const startDeliveryTask = async (taskId, orderId, agentUser) => {
     at: now
   };
 
-  updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
-    id: custNotifPush.key,
+  addNotificationToUpdates(updates, order.customerId, {
     type: 'out_for_delivery',
     title: 'Out for Delivery!',
     body: `${agentUser.name || 'Driver'} is on the way with your freshly cleaned clothes. Please check your delivery OTP.`,
-    orderId,
-    isRead: false,
+    orderId: order.code || orderId,
     createdAt: now
-  };
+  });
 
   await update(ref(rtdb), updates);
 };
@@ -328,8 +322,6 @@ export const verifyAndCompleteDelivery = async (taskId, orderId, enteredOtp, age
   const now = Date.now();
   const todayKey = getTodayKey();
   const histPush = push(ref(rtdb, `orderHistory/${orderId}`));
-  const custNotifPush = push(ref(rtdb, `notifications/${order.customerId}`));
-  const admNotifPush = push(ref(rtdb, 'notificationsByRole/admin'));
 
   const updates = {};
   // Task completed
@@ -361,26 +353,22 @@ export const verifyAndCompleteDelivery = async (taskId, orderId, enteredOtp, age
   };
 
   // Customer notification
-  updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
-    id: custNotifPush.key,
-    type: 'order_delivered',
+  addNotificationToUpdates(updates, order.customerId, {
+    type: 'delivered',
     title: 'Order Delivered!',
     body: `Your clothes for order ${order.code} have been delivered. Thank you for choosing FabriCare!`,
-    orderId,
-    isRead: false,
+    orderId: order.code || orderId,
     createdAt: now
-  };
+  });
 
-  // Admin notification
-  updates[`notificationsByRole/admin/${admNotifPush.key}`] = {
-    id: admNotifPush.key,
+  // Admin notification (every admin receives separate copy)
+  await addRoleNotificationsToUpdates(updates, 'admin', {
     type: 'order_completed',
     title: 'Order Delivered',
     body: `Order ${order.code} has been successfully delivered by ${agentUser.name || 'Driver'}.`,
     orderId,
-    isRead: false,
     createdAt: now
-  };
+  });
 
   await update(ref(rtdb), updates);
 };

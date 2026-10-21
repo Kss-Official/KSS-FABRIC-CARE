@@ -67,6 +67,7 @@ export const registerUser = async ({ email, password, fullName, phone = '' }) =>
     };
 
     await set(userRef, profileData);
+    await set(ref(rtdb, `roleUsers/customer/${user.uid}`), true);
     return { ...profileData, uid: user.uid };
   } catch (error) {
     console.error('Registration failed:', error);
@@ -100,6 +101,10 @@ export const loginUser = async ({ email, password, requiredRole = null }) => {
         createdAt: Date.now()
       };
       await set(ref(rtdb, `users/${user.uid}`), profile);
+    }
+
+    if (profile.role) {
+      set(ref(rtdb, `roleUsers/${String(profile.role).toLowerCase()}/${user.uid}`), true).catch(() => {});
     }
 
     // Role Guard Check
@@ -193,6 +198,7 @@ export const createStaffOrAgentByAdmin = async ({
     };
 
     await set(ref(rtdb, `users/${newUid}`), profileData);
+    await set(ref(rtdb, `roleUsers/${effectiveRole}/${newUid}`), true);
 
     if (effectiveRole === 'agent' || effectiveRole === 'delivery') {
       await set(ref(rtdb, `agents/${newUid}`), {
