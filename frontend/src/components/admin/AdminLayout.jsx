@@ -14,6 +14,7 @@ import {
   LogOut, 
   Bell, 
   ChevronDown,
+  ChevronRight,
   CheckCircle2,
   ShoppingBag,
   CreditCard,
@@ -208,126 +209,264 @@ export const AdminLayout = ({ children }) => {
     navigateTo('login');
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-    { id: 'orders', label: 'Orders', icon: <Package size={20} />, hasBadge: true },
-    { id: 'pickup-delivery', label: 'Pickup & Delivery', icon: <Truck size={20} /> },
-    { id: 'users', label: 'Users', icon: <Users size={20} /> },
-    { id: 'services', label: 'Services & Pricing', icon: <Tag size={20} /> },
-    { id: 'notifications', label: 'Notifications', icon: <Bell size={20} /> },
-    { id: 'content', label: 'Content', icon: <FileText size={20} /> },
-  ];
+  const getTabMeta = (tab) => {
+    switch (tab) {
+      case 'dashboard':
+        return {
+          kicker: 'CENTRAL ADMIN OPERATIONS HUB',
+          title: 'Dashboard',
+          subtitle: 'Track your operations, manage deliveries and keep your day on schedule.'
+        };
+      case 'orders':
+        return {
+          kicker: 'CENTRAL ADMIN OPERATIONS HUB',
+          title: 'Orders',
+          subtitle: 'Track, manage, and process all customer laundry orders.'
+        };
+      case 'users':
+      case 'customers':
+        return {
+          kicker: 'CENTRAL ADMIN OPERATIONS HUB',
+          title: 'Users',
+          subtitle: 'Manage customer accounts, delivery agents, and staff members.'
+        };
+      case 'pickup-delivery':
+      case 'deliveries':
+        return {
+          kicker: 'DELIVERY FIELD OPERATIONS',
+          title: 'Pickup & Delivery',
+          subtitle: 'Field operations, scheduled pickups, and delivery assignments.'
+        };
+      case 'services':
+        return {
+          kicker: 'CENTRAL ADMIN OPERATIONS HUB',
+          title: 'Services & Pricing',
+          subtitle: 'Configure laundry services, garment categories, and pricing rules.'
+        };
+      case 'notifications':
+        return {
+          kicker: 'CENTRAL ADMIN OPERATIONS HUB',
+          title: 'Notifications',
+          subtitle: 'System broadcasts, customer activity alerts, and order updates.'
+        };
+      case 'content':
+        return {
+          kicker: 'CENTRAL ADMIN OPERATIONS HUB',
+          title: 'Content',
+          subtitle: 'Manage terms, privacy policies, FAQs, and portal information.'
+        };
+      case 'delivery-reports':
+      case 'complaints':
+      case 'complaint-reports':
+      case 'reports':
+        return {
+          kicker: 'CENTRAL ADMIN OPERATIONS HUB',
+          title: 'Delivery Reports',
+          subtitle: 'Review reported delivery issues, operational delays, and resolution logs.'
+        };
+      case 'help-support':
+        return {
+          kicker: 'CENTRAL ADMIN OPERATIONS HUB',
+          title: 'Help & Support',
+          subtitle: 'Customer assistance tickets, live inquiries, and communication logs.'
+        };
+      case 'settings':
+      case 'my-profile':
+      case 'profile':
+        return {
+          kicker: 'CENTRAL ADMIN OPERATIONS HUB',
+          title: 'My Profile',
+          subtitle: 'Manage portal preferences, business information, and account details.'
+        };
+      default:
+        return {
+          kicker: 'CENTRAL ADMIN OPERATIONS HUB',
+          title: 'Dashboard',
+          subtitle: 'Track your operations, manage deliveries and keep your day on schedule.'
+        };
+    }
+  };
+
+  const currentTabMeta = getTabMeta(adminTab);
 
   return (
     <div className="admin-root-layout">
+      {/* Mobile Backdrop */}
+      {mobileSidebarOpen && (
+        <div 
+          className="admin-sidebar-backdrop"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`admin-sidebar ${mobileSidebarOpen ? 'open' : ''}`}>
-        <div className="sidebar-header">
-          <div className="admin-brand-logo" onClick={() => setAdminTab('dashboard')}>
-            <span className="logo-text">Fabri<span className="logo-accent">Care</span></span>
+      <aside className={`admin-sidebar delivery-sidebar ${mobileSidebarOpen ? 'open' : ''}`}>
+        {/* Sidebar Brand Header */}
+        <div className="sidebar-brand-header">
+          <div className="brand-badge-row">
+            <div 
+              className="brand-logo-container" 
+              style={{ userSelect: 'none', cursor: 'pointer' }} 
+              title="FabriCare Admin Portal"
+              onClick={() => {
+                setAdminTab('dashboard');
+                setMobileSidebarOpen(false);
+              }}
+            >
+              <div className="brand-logo-wrapper">
+                <img 
+                  src="/images/fabricare-logo.png" 
+                  alt="FabriCare" 
+                  className="brand-logo-img"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const fallback = e.currentTarget.nextElementSibling;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+                <div className="brand-hanger-icon" style={{ display: 'none' }}>
+                  <svg width="34" height="34" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18 7C18 5.2 19.4 3.8 21.2 3.8C22.8 3.8 24 5 24 6.6C24 8 22.8 9.2 21.4 9.6L18 10.8V12.8" stroke="#0E5E52" strokeWidth="2.4" strokeLinecap="round"/>
+                    <path d="M12.5 12.8L6.8 16L9.6 22L12.8 20.2V32H23.2V20.2L26.4 22L29.2 16L23.5 12.8C22 15 19.5 15.4 18 15.4C16.5 15.4 14 15 12.5 12.8Z" fill="#0E5E52"/>
+                  </svg>
+                </div>
+              </div>
+              <div className="brand-logo-text-col">
+                <span className="brand-logo-text logo-text">
+                  Fabri<span className="logo-accent">Care</span>
+                </span>
+                <span className="portal-sub-badge">ADMIN PORTAL</span>
+              </div>
+            </div>
           </div>
           <button 
-            className="mobile-sidebar-close"
+            className="mobile-close-btn"
             onClick={() => setMobileSidebarOpen(false)}
+            aria-label="Close sidebar"
           >
             <X size={20} />
           </button>
         </div>
 
-        <nav className="admin-nav-menu">
+        <nav className="admin-nav-menu sidebar-nav-menu">
           {/* Dashboard */}
           <button
-            className={`admin-nav-item ${adminTab === 'dashboard' ? 'active' : ''}`}
+            className={`admin-nav-item sidebar-nav-item ${adminTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => {
               setAdminTab('dashboard');
               setMobileSidebarOpen(false);
             }}
           >
-            <span className="nav-item-icon"><Home size={19} /></span>
-            <span className="nav-item-label">Dashboard</span>
+            <span className="nav-icon nav-item-icon"><Home size={18} /></span>
+            <span className="nav-label nav-item-label">Dashboard</span>
+            {adminTab === 'dashboard' && (
+              <ChevronRight size={16} className="sidebar-active-arrow" />
+            )}
           </button>
 
           {/* Orders */}
           <button
-            className={`admin-nav-item ${adminTab === 'orders' ? 'active' : ''}`}
+            className={`admin-nav-item sidebar-nav-item ${adminTab === 'orders' ? 'active' : ''}`}
             onClick={() => {
               setAdminTab('orders');
               setMobileSidebarOpen(false);
             }}
           >
-            <span className="nav-item-icon"><Package size={19} /></span>
-            <span className="nav-item-label">Orders</span>
+            <span className="nav-icon nav-item-icon"><Package size={18} /></span>
+            <span className="nav-label nav-item-label">Orders</span>
+            {adminTab === 'orders' && (
+              <ChevronRight size={16} className="sidebar-active-arrow" />
+            )}
           </button>
 
           {/* Users */}
           <button
-            className={`admin-nav-item ${adminTab === 'users' || adminTab === 'customers' ? 'active' : ''}`}
+            className={`admin-nav-item sidebar-nav-item ${adminTab === 'users' || adminTab === 'customers' ? 'active' : ''}`}
             onClick={() => {
               setAdminTab('users');
               setMobileSidebarOpen(false);
             }}
           >
-            <span className="nav-item-icon"><Users size={19} /></span>
-            <span className="nav-item-label">Users</span>
+            <span className="nav-icon nav-item-icon"><Users size={18} /></span>
+            <span className="nav-label nav-item-label">Users</span>
+            {(adminTab === 'users' || adminTab === 'customers') && (
+              <ChevronRight size={16} className="sidebar-active-arrow" />
+            )}
           </button>
 
           {/* Pickup & Delivery */}
           <button
-            className={`admin-nav-item ${adminTab === 'pickup-delivery' || adminTab === 'deliveries' ? 'active' : ''}`}
+            className={`admin-nav-item sidebar-nav-item ${adminTab === 'pickup-delivery' || adminTab === 'deliveries' ? 'active' : ''}`}
             onClick={() => {
               setAdminTab('pickup-delivery');
               setMobileSidebarOpen(false);
             }}
           >
-            <span className="nav-item-icon"><Truck size={19} /></span>
-            <span className="nav-item-label">Pickup &amp; Delivery</span>
+            <span className="nav-icon nav-item-icon"><Truck size={18} /></span>
+            <span className="nav-label nav-item-label">Pickup &amp; Delivery</span>
+            {(adminTab === 'pickup-delivery' || adminTab === 'deliveries') && (
+              <ChevronRight size={16} className="sidebar-active-arrow" />
+            )}
           </button>
 
           {/* Services & Pricing */}
           <button
-            className={`admin-nav-item ${adminTab === 'services' ? 'active' : ''}`}
+            className={`admin-nav-item sidebar-nav-item ${adminTab === 'services' ? 'active' : ''}`}
             onClick={() => {
               setAdminTab('services');
               setMobileSidebarOpen(false);
             }}
           >
-            <span className="nav-item-icon"><Tag size={19} /></span>
-            <span className="nav-item-label">Services &amp; Pricing</span>
+            <span className="nav-icon nav-item-icon"><Tag size={18} /></span>
+            <span className="nav-label nav-item-label">Services &amp; Pricing</span>
+            {adminTab === 'services' && (
+              <ChevronRight size={16} className="sidebar-active-arrow" />
+            )}
           </button>
 
           {/* Notifications */}
           <button
-            className={`admin-nav-item ${adminTab === 'notifications' ? 'active' : ''}`}
+            className={`admin-nav-item sidebar-nav-item ${adminTab === 'notifications' ? 'active' : ''}`}
             onClick={() => {
               setAdminTab('notifications');
               setMobileSidebarOpen(false);
             }}
           >
-            <span className="nav-item-icon"><Bell size={19} /></span>
-            <span className="nav-item-label">Notifications</span>
+            <span className="nav-icon nav-item-icon"><Bell size={18} /></span>
+            <span className="nav-label nav-item-label">Notifications</span>
+            {unreadNotifsCount > 0 ? (
+              <span className="nav-count-badge bg-teal-50 text-teal-700 font-bold border border-teal-200">
+                {unreadNotifsCount}
+              </span>
+            ) : adminTab === 'notifications' ? (
+              <ChevronRight size={16} className="sidebar-active-arrow" />
+            ) : null}
           </button>
 
           {/* Content */}
           <button
-            className={`admin-nav-item ${adminTab === 'content' ? 'active' : ''}`}
+            className={`admin-nav-item sidebar-nav-item ${adminTab === 'content' ? 'active' : ''}`}
             onClick={() => {
               setAdminTab('content');
               setMobileSidebarOpen(false);
             }}
           >
-            <span className="nav-item-icon"><FileText size={19} /></span>
-            <span className="nav-item-label">Content</span>
+            <span className="nav-icon nav-item-icon"><FileText size={18} /></span>
+            <span className="nav-label nav-item-label">Content</span>
+            {adminTab === 'content' && (
+              <ChevronRight size={16} className="sidebar-active-arrow" />
+            )}
           </button>
 
           {/* Complaints Accordion */}
           <div className="admin-nav-group">
             <button
               type="button"
-              className={`admin-nav-item has-submenu ${['complaints', 'delivery-reports', 'help-support', 'reports', 'complaint-reports'].includes(adminTab) ? 'active-parent' : ''}`}
+              className={`admin-nav-item sidebar-nav-item has-submenu ${['complaints', 'delivery-reports', 'help-support', 'reports', 'complaint-reports'].includes(adminTab) ? 'active' : ''}`}
               onClick={() => setReportsMenuOpen(prev => !prev)}
             >
-              <span className="nav-item-icon"><FileText size={19} /></span>
-              <span className="nav-item-label">Complaints</span>
+              <span className="nav-icon nav-item-icon"><FileText size={18} /></span>
+              <span className="nav-label nav-item-label">Complaints</span>
               <span className="nav-item-chevron">
                 <ChevronDown size={14} className={`chevron-arrow ${reportsMenuOpen ? 'open' : ''}`} />
               </span>
@@ -337,13 +476,13 @@ export const AdminLayout = ({ children }) => {
               <div className="admin-sub-menu">
                 <button
                   type="button"
-                  className={`admin-sub-item ${adminTab === 'delivery-reports' || adminTab === 'complaints' || adminTab === 'complaint-reports' || adminTab === 'reports' ? 'active' : ''}`}
+                  className={`admin-sub-item ${['delivery-reports', 'complaints', 'complaint-reports', 'reports'].includes(adminTab) ? 'active' : ''}`}
                   onClick={() => {
                     setAdminTab('delivery-reports');
                     setMobileSidebarOpen(false);
                   }}
                 >
-                  {(adminTab === 'delivery-reports' || adminTab === 'complaints' || adminTab === 'complaint-reports' || adminTab === 'reports') && (
+                  {['delivery-reports', 'complaints', 'complaint-reports', 'reports'].includes(adminTab) && (
                     <span className="sub-item-active-bar" />
                   )}
                   <span className="sub-item-text">Delivery Reports</span>
@@ -366,28 +505,30 @@ export const AdminLayout = ({ children }) => {
             )}
           </div>
 
-
           {/* My Profile */}
           <button
-            className={`admin-nav-item ${adminTab === 'settings' || adminTab === 'my-profile' || adminTab === 'profile' ? 'active' : ''}`}
+            className={`admin-nav-item sidebar-nav-item ${adminTab === 'settings' || adminTab === 'my-profile' || adminTab === 'profile' ? 'active' : ''}`}
             onClick={() => {
               setAdminTab('settings');
               setMobileSidebarOpen(false);
             }}
           >
-            <span className="nav-item-icon"><User size={19} /></span>
-            <span className="nav-item-label">My Profile</span>
+            <span className="nav-icon nav-item-icon"><User size={18} /></span>
+            <span className="nav-label nav-item-label">My Profile</span>
+            {(adminTab === 'settings' || adminTab === 'my-profile' || adminTab === 'profile') && (
+              <ChevronRight size={16} className="sidebar-active-arrow" />
+            )}
           </button>
         </nav>
 
-        {/* Sidebar Footer */}
+        {/* Sidebar Footer Menu */}
         <div className="sidebar-footer-menu">
           <button
-            className="admin-nav-item logout-btn"
             onClick={handleAdminLogout}
+            className="sidebar-logout-card-btn"
           >
-            <span className="nav-item-icon"><LogOut size={19} /></span>
-            <span className="nav-item-label">Logout</span>
+            <LogOut size={18} className="text-slate-500" />
+            <span className="font-semibold text-slate-700 text-sm">Logout</span>
           </button>
         </div>
       </aside>
@@ -395,18 +536,27 @@ export const AdminLayout = ({ children }) => {
       {/* Main Container */}
       <div className={`admin-main-wrapper ${isAnyModalActive ? 'admin-scroll-locked' : ''}`}>
         {/* Top Header */}
-        <header className="admin-topbar">
+        <header className="admin-topbar delivery-topbar">
           <div className="topbar-left">
             <button 
-              className="mobile-sidebar-toggle"
+              className="mobile-hamburger-btn mobile-sidebar-toggle"
               onClick={() => setMobileSidebarOpen(true)}
+              aria-label="Open sidebar"
             >
               <Menu size={22} />
             </button>
+            <div className="topbar-title-block">
+              <div className="topbar-kicker">{currentTabMeta.kicker}</div>
+              <h1 className="topbar-heading">
+                {currentTabMeta.title}
+              </h1>
+              <p className="topbar-subtitle">
+                {currentTabMeta.subtitle}
+              </p>
+            </div>
           </div>
 
-
-          <div className="topbar-right">
+          <div className="topbar-right topbar-actions">
             {/* Notification Bell with Customer Portal UI Dropdown */}
             <NotificationBellDropdown
               unreadCount={unreadNotifsCount}
@@ -549,97 +699,174 @@ export const AdminLayout = ({ children }) => {
           overflow-x: hidden;
         }
 
-        .sidebar-header {
-          padding: 24px 28px;
+        /* SIDEBAR BRAND HEADER */
+        .sidebar-brand-header {
+          padding: 20px 18px 16px;
           display: flex;
           align-items: center;
           justify-content: space-between;
+          border-bottom: 1px solid #F1F5F9;
         }
 
-        .admin-brand-logo {
-          cursor: pointer;
-        }
-
-        .admin-brand-logo .logo-text {
-          font-family: 'Poppins', sans-serif;
-          font-size: 1.625rem;
-          font-weight: 800;
-          color: #000000;
-          letter-spacing: -0.02em;
-        }
-
-        .admin-brand-logo .logo-accent {
-          color: #087F8C;
-        }
-
-        .mobile-sidebar-close {
-          display: none;
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: #64748B;
-        }
-
-        .admin-nav-menu {
+        .brand-badge-row {
           display: flex;
           flex-direction: column;
-          gap: 4px;
-          padding: 12px 16px;
-          flex: 1;
         }
 
-        .admin-nav-item {
+        .brand-logo-container {
           display: flex;
           align-items: center;
-          gap: 14px;
-          padding: 12px 16px;
-          border-radius: 12px;
-          border: none;
-          background: transparent;
-          color: #64748B;
-          font-size: 0.9375rem;
-          font-weight: 600;
+          gap: 10px;
+          user-select: none;
           cursor: pointer;
-          transition: all 0.2s ease;
-          position: relative;
-          text-align: left;
-          width: 100%;
         }
 
-        .admin-nav-item:hover {
-          background: #F1F5F9;
-          color: #1E293B;
-        }
-
-        .admin-nav-item.active {
-          background: #EBF8F7;
-          color: #0D7A75;
-          font-weight: 700;
-        }
-
-        .nav-item-icon {
+        .brand-logo-wrapper {
           display: flex;
           align-items: center;
           justify-content: center;
         }
 
-        .nav-dot-badge {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #FF6B50;
+        .brand-logo-img {
+          width: 34px;
+          height: 34px;
+          object-fit: contain;
+          border-radius: 6px;
+        }
+
+        .brand-hanger-icon {
+          width: 36px;
+          height: 36px;
+          background: transparent;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .brand-logo-text-col {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .brand-logo-text,
+        .brand-logo-text-col .logo-text {
+          font-family: 'Poppins', sans-serif;
+          font-size: 1.625rem;
+          font-weight: 800;
+          color: #000000;
+          letter-spacing: -0.02em;
+          line-height: 1;
+        }
+
+        .brand-logo-text .logo-accent,
+        .brand-logo-text-col .logo-accent {
+          color: #087F8C;
+        }
+
+        .portal-sub-badge {
+          font-family: 'Poppins', sans-serif;
+          font-size: 0.625rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #0D7A75;
+          margin-top: 3px;
+          line-height: 1;
+        }
+
+        .mobile-close-btn {
+          display: none;
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #64748B;
+          padding: 4px;
+          border-radius: 6px;
+        }
+
+        .mobile-close-btn:hover {
+          background: #F1F5F9;
+          color: #0F172A;
+        }
+
+        /* SIDEBAR NAV MENU */
+        .sidebar-nav-menu,
+        .admin-nav-menu {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          padding: 12px 14px;
+          flex: 1;
+        }
+
+        .sidebar-nav-item,
+        .admin-nav-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 14px;
+          border-radius: 12px;
+          border: none;
+          background: transparent;
+          color: #475569;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          text-align: left;
+          width: 100%;
+          position: relative;
+        }
+
+        .sidebar-nav-item:hover,
+        .admin-nav-item:hover {
+          background: #F1F5F9;
+          color: #0F172A;
+        }
+
+        .sidebar-nav-item.active,
+        .admin-nav-item.active {
+          background: #E6F7F5;
+          color: #0D7A75;
+          font-weight: 700;
+        }
+
+        .sidebar-nav-item.active .nav-icon,
+        .admin-nav-item.active .nav-item-icon {
+          color: #0D7A75;
+        }
+
+        .sidebar-active-arrow {
+          color: #0D7A75;
           margin-left: auto;
+          flex-shrink: 0;
+        }
+
+        .nav-icon,
+        .nav-item-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #64748B;
+          flex-shrink: 0;
+        }
+
+        .nav-label,
+        .nav-item-label {
+          flex: 1;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .nav-count-badge {
-          font-size: 11px;
-          font-weight: 700;
-          background: #007E8A;
-          color: #FFFFFF;
-          padding: 1px 7px;
+          font-size: 0.6875rem;
+          padding: 2px 7px;
           border-radius: 9999px;
+          line-height: 1.2;
+          flex-shrink: 0;
           margin-left: auto;
-          line-height: 1.4;
         }
 
         /* Submenu Accordion & Subitems */
@@ -648,6 +875,7 @@ export const AdminLayout = ({ children }) => {
           flex-direction: column;
         }
 
+        .sidebar-nav-item.has-submenu,
         .admin-nav-item.has-submenu {
           display: flex;
           align-items: center;
@@ -677,7 +905,7 @@ export const AdminLayout = ({ children }) => {
           display: flex;
           flex-direction: column;
           gap: 2px;
-          padding-left: 20px;
+          padding-left: 28px;
           margin-top: 2px;
         }
 
@@ -685,11 +913,11 @@ export const AdminLayout = ({ children }) => {
           position: relative;
           display: flex;
           align-items: center;
-          padding: 9px 14px 9px 24px;
-          border-radius: 8px;
+          padding: 8px 12px 8px 16px;
+          border-radius: 10px;
           border: none;
           background: transparent;
-          font-size: 0.88rem;
+          font-size: 0.8125rem;
           font-weight: 500;
           color: #64748B;
           cursor: pointer;
@@ -699,48 +927,65 @@ export const AdminLayout = ({ children }) => {
         }
 
         .admin-sub-item:hover {
-          background: #F8FAFC;
-          color: #1E293B;
+          background: #F1F5F9;
+          color: #0F172A;
         }
 
         .admin-sub-item.active {
-          background: #E0F7FA !important;
-          color: #087F8C !important;
-          font-weight: 600;
+          background: #E6F7F5 !important;
+          color: #0D7A75 !important;
+          font-weight: 700;
         }
 
         .sub-item-active-bar {
           position: absolute;
-          left: 10px;
-          top: 7px;
-          bottom: 7px;
-          width: 3.5px;
-          background: #087F8C;
+          left: 6px;
+          top: 6px;
+          bottom: 6px;
+          width: 3px;
+          background: #0D7A75;
           border-radius: 2px;
         }
 
-        .profile-drop-badge {
-          font-size: 10px;
-          font-weight: 700;
-          background: #007E8A;
-          color: #FFFFFF;
-          padding: 1px 6px;
-          border-radius: 9999px;
-          margin-left: auto;
-          line-height: 1.3;
-        }
-
+        /* SIDEBAR FOOTER */
         .sidebar-footer-menu {
-          padding: 16px;
+          padding: 14px;
           border-top: 1px solid #F1F5F9;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
+          background: #FAFAFA;
           margin-top: auto;
         }
 
-        .logout-btn:hover {
-          color: #EF4444;
+        .sidebar-logout-card-btn {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 14px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .sidebar-logout-card-btn:hover {
+          background: #FEE2E2;
+          border-color: #FCA5A5;
+        }
+
+        .sidebar-logout-card-btn:hover span {
+          color: #DC2626;
+        }
+        .sidebar-logout-card-btn:hover svg {
+          color: #DC2626 !important;
+        }
+
+        .admin-sidebar-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.45);
+          backdrop-filter: blur(2px);
+          z-index: 95;
         }
 
         /* MAIN WRAPPER - Always preserve vertical scrollbar gutter and prevent horizontal overflow */
@@ -921,39 +1166,84 @@ export const AdminLayout = ({ children }) => {
           flex-shrink: 0 !important;
         }
 
-        .admin-topbar {
-          height: 72px;
+        /* TOPBAR (FIXED WITH CLEAN LIGHT BACKGROUND) */
+        .admin-topbar,
+        .delivery-topbar {
+          min-height: 76px;
+          height: auto;
           background: #FFFFFF;
           border-bottom: 1px solid #E2E8F0;
+          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 0 32px;
+          padding: 16px 32px;
           position: sticky;
           top: 0;
           z-index: 90;
           margin: 0;
           flex-shrink: 0;
+          gap: 16px;
         }
 
         .topbar-left {
           display: flex;
           align-items: center;
+          gap: 16px;
         }
 
+        .mobile-hamburger-btn,
         .mobile-sidebar-toggle {
           display: none;
-          background: none;
-          border: none;
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+          border-radius: 10px;
+          padding: 7px;
           cursor: pointer;
-          color: #475569;
-          padding: 4px;
+          color: #334155;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.15s ease;
         }
 
-        .topbar-right {
+        .mobile-hamburger-btn:hover,
+        .mobile-sidebar-toggle:hover {
+          background: #F1F5F9;
+        }
+
+        .topbar-title-block {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .topbar-kicker {
+          font-size: 0.6875rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #006B70;
+        }
+
+        .topbar-heading {
+          font-size: 1.625rem;
+          font-weight: 800;
+          color: #0F172A;
+          letter-spacing: -0.02em;
+          line-height: 1.15;
+          margin: 1px 0 0;
+        }
+
+        .topbar-subtitle {
+          font-size: 0.8125rem;
+          color: #64748B;
+          margin: 3px 0 0;
+        }
+
+        .topbar-right,
+        .topbar-actions {
           display: flex;
           align-items: center;
-          gap: 16px;
+          gap: 14px;
         }
 
         /* NOTIFICATION BELL & DROPDOWN */
@@ -1407,25 +1697,45 @@ export const AdminLayout = ({ children }) => {
         }
 
         @media (max-width: 1024px) {
-          .admin-sidebar {
+          .admin-sidebar,
+          .delivery-sidebar {
             position: fixed;
-            left: -260px;
-            transition: left 0.3s ease;
+            left: -280px;
+            width: 270px;
+            min-width: 270px;
+            max-width: 270px;
+            transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: none;
           }
-          .admin-sidebar.open {
+          .admin-sidebar.open,
+          .delivery-sidebar.open {
             left: 0;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
           }
+          .mobile-hamburger-btn,
           .mobile-sidebar-toggle {
             display: flex;
           }
+          .mobile-close-btn,
           .mobile-sidebar-close {
             display: block;
           }
           .admin-page-body {
             padding: 20px 16px;
           }
-          .admin-topbar {
-            padding: 0 16px;
+          .admin-topbar,
+          .delivery-topbar {
+            padding: 12px 16px;
+          }
+          .topbar-heading {
+            font-size: 1.25rem;
+          }
+          .topbar-subtitle {
+            font-size: 0.75rem;
+          }
+          .admin-main-wrapper {
+            width: 100%;
+            max-width: 100%;
           }
         }
       `}</style>
