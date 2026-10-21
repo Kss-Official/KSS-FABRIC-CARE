@@ -44,9 +44,32 @@ export const AdminContentPage = () => {
     updateTerms 
   } = useAdmin();
 
-  const [localFaqs, setLocalFaqs] = useState(() => (Array.isArray(INITIAL_FAQS_ADMIN) ? INITIAL_FAQS_ADMIN : []));
-  const faqs = Array.isArray(contextFaqs) ? contextFaqs : localFaqs;
-  const setFaqs = contextSetFaqs || setLocalFaqs;
+  const [localFaqs, setLocalFaqs] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('fabricare_admin_faqs');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length >= 8 && !parsed[0]?.question?.includes('How do I schedule a pickup')) {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {}
+    return Array.isArray(INITIAL_FAQS_ADMIN) ? INITIAL_FAQS_ADMIN : [];
+  });
+
+  const faqs = (Array.isArray(contextFaqs) && contextFaqs.length >= 8 && !contextFaqs[0]?.question?.includes('How do I schedule a pickup'))
+    ? contextFaqs 
+    : (Array.isArray(INITIAL_FAQS_ADMIN) ? INITIAL_FAQS_ADMIN : localFaqs);
+
+  const setFaqs = (newVal) => {
+    if (contextSetFaqs) contextSetFaqs(newVal);
+    setLocalFaqs(newVal);
+    try {
+      localStorage.setItem('fabricare_admin_faqs', JSON.stringify(typeof newVal === 'function' ? newVal(faqs) : newVal));
+    } catch (e) {}
+  };
 
   const [activeTab, setActiveTab] = useState(() => {
     try {

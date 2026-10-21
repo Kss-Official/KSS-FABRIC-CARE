@@ -14,7 +14,6 @@ import {
   LogOut, 
   Bell, 
   ChevronDown,
-  ChevronRight,
   CheckCircle2,
   ShoppingBag,
   CreditCard,
@@ -59,6 +58,13 @@ export const AdminLayout = ({ children }) => {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [reportsMenuOpen, setReportsMenuOpen] = useState(true);
+
+  // Dynamic profile information from settings / userProfile / currentUser
+  const adminDisplayName = settings?.name || userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name || 'Admin';
+  const avatarPhoto = settings?.photoUrl || userProfile?.avatarUrl || currentUser?.avatarUrl || userProfile?.photoUrl || '';
+  const adminInitials = adminDisplayName
+    ? adminDisplayName.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase()
+    : 'AD';
 
   const isAnyModalActive = Boolean(
     isCreateOrderDrawerOpen ||
@@ -326,8 +332,11 @@ export const AdminLayout = ({ children }) => {
                 />
                 <div className="brand-hanger-icon" style={{ display: 'none' }}>
                   <svg width="34" height="34" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M18 7C18 5.2 19.4 3.8 21.2 3.8C22.8 3.8 24 5 24 6.6C24 8 22.8 9.2 21.4 9.6L18 10.8V12.8" stroke="#0E5E52" strokeWidth="2.4" strokeLinecap="round"/>
-                    <path d="M12.5 12.8L6.8 16L9.6 22L12.8 20.2V32H23.2V20.2L26.4 22L29.2 16L23.5 12.8C22 15 19.5 15.4 18 15.4C16.5 15.4 14 15 12.5 12.8Z" fill="#0E5E52"/>
+                    <rect width="36" height="36" rx="8" fill="#14B8A6" />
+                    <path d="M18 9C18 7.3 19.3 6 21 6C22.7 6 24 7.3 24 9C24 10.3 23.2 11.4 22 11.8L18 13.5V15.5" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M18 15.5L9 20.5C8 21 8.5 22.5 9.5 22.5H26.5C27.5 22.5 28 21 27 20.5L18 15.5Z" stroke="#FFFFFF" strokeWidth="1.8" strokeLinejoin="round" fill="none"/>
+                    <path d="M10 24C13 22 17 21 21 22.5C23.5 23.5 25.5 23 27 22C25.5 24 23 25.5 19 25.5C15 25.5 12 24.5 10 24Z" fill="#FFFFFF"/>
+                    <path d="M11 26C14 24.5 17 24 20 25C22.5 26 24.5 25.5 26 24.5C24.5 26.5 22 28 18 28C14.5 28 12.5 27 11 26Z" fill="#A5F3FC"/>
                   </svg>
                 </div>
               </div>
@@ -359,9 +368,6 @@ export const AdminLayout = ({ children }) => {
           >
             <span className="nav-icon nav-item-icon"><Home size={18} /></span>
             <span className="nav-label nav-item-label">Dashboard</span>
-            {adminTab === 'dashboard' && (
-              <ChevronRight size={16} className="sidebar-active-arrow" />
-            )}
           </button>
 
           {/* Orders */}
@@ -374,9 +380,6 @@ export const AdminLayout = ({ children }) => {
           >
             <span className="nav-icon nav-item-icon"><Package size={18} /></span>
             <span className="nav-label nav-item-label">Orders</span>
-            {adminTab === 'orders' && (
-              <ChevronRight size={16} className="sidebar-active-arrow" />
-            )}
           </button>
 
           {/* Users */}
@@ -389,9 +392,6 @@ export const AdminLayout = ({ children }) => {
           >
             <span className="nav-icon nav-item-icon"><Users size={18} /></span>
             <span className="nav-label nav-item-label">Users</span>
-            {(adminTab === 'users' || adminTab === 'customers') && (
-              <ChevronRight size={16} className="sidebar-active-arrow" />
-            )}
           </button>
 
           {/* Pickup & Delivery */}
@@ -404,9 +404,6 @@ export const AdminLayout = ({ children }) => {
           >
             <span className="nav-icon nav-item-icon"><Truck size={18} /></span>
             <span className="nav-label nav-item-label">Pickup &amp; Delivery</span>
-            {(adminTab === 'pickup-delivery' || adminTab === 'deliveries') && (
-              <ChevronRight size={16} className="sidebar-active-arrow" />
-            )}
           </button>
 
           {/* Services & Pricing */}
@@ -419,9 +416,6 @@ export const AdminLayout = ({ children }) => {
           >
             <span className="nav-icon nav-item-icon"><Tag size={18} /></span>
             <span className="nav-label nav-item-label">Services &amp; Pricing</span>
-            {adminTab === 'services' && (
-              <ChevronRight size={16} className="sidebar-active-arrow" />
-            )}
           </button>
 
           {/* Notifications */}
@@ -434,9 +428,6 @@ export const AdminLayout = ({ children }) => {
           >
             <span className="nav-icon nav-item-icon"><Bell size={18} /></span>
             <span className="nav-label nav-item-label">Notifications</span>
-            {adminTab === 'notifications' && (
-              <ChevronRight size={16} className="sidebar-active-arrow" />
-            )}
           </button>
 
           {/* Content */}
@@ -449,9 +440,6 @@ export const AdminLayout = ({ children }) => {
           >
             <span className="nav-icon nav-item-icon"><FileText size={18} /></span>
             <span className="nav-label nav-item-label">Content</span>
-            {adminTab === 'content' && (
-              <ChevronRight size={16} className="sidebar-active-arrow" />
-            )}
           </button>
 
           {/* Complaints Accordion */}
@@ -511,9 +499,6 @@ export const AdminLayout = ({ children }) => {
           >
             <span className="nav-icon nav-item-icon"><User size={18} /></span>
             <span className="nav-label nav-item-label">My Profile</span>
-            {(adminTab === 'settings' || adminTab === 'my-profile' || adminTab === 'profile') && (
-              <ChevronRight size={16} className="sidebar-active-arrow" />
-            )}
           </button>
         </nav>
 
@@ -532,7 +517,7 @@ export const AdminLayout = ({ children }) => {
       {/* Main Container */}
       <div className={`admin-main-wrapper ${isAnyModalActive ? 'admin-scroll-locked' : ''}`}>
         {/* Top Header */}
-        <header className="admin-topbar delivery-topbar">
+        <header className={`admin-topbar delivery-topbar ${adminTab !== 'dashboard' ? 'topbar-no-border' : ''}`}>
           <div className="topbar-left">
             <button 
               className="mobile-hamburger-btn mobile-sidebar-toggle"
@@ -541,15 +526,16 @@ export const AdminLayout = ({ children }) => {
             >
               <Menu size={22} />
             </button>
-            <div className="topbar-title-block">
-              <div className="topbar-kicker">{currentTabMeta.kicker}</div>
-              <h1 className="topbar-heading">
-                {currentTabMeta.title}
-              </h1>
-              <p className="topbar-subtitle">
-                {currentTabMeta.subtitle}
-              </p>
-            </div>
+            {adminTab === 'dashboard' && (
+              <div className="topbar-title-block">
+                <h1 className="topbar-heading">
+                  {currentTabMeta.title}
+                </h1>
+                <p className="topbar-subtitle">
+                  {currentTabMeta.subtitle}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="topbar-right topbar-actions">
@@ -579,10 +565,14 @@ export const AdminLayout = ({ children }) => {
                 aria-haspopup="true"
               >
                 <div className="admin-avatar">
-                  AD
+                  {avatarPhoto ? (
+                    <img src={avatarPhoto} alt={adminDisplayName} className="admin-avatar-img" />
+                  ) : (
+                    adminInitials
+                  )}
                 </div>
                 <div className="admin-user-info">
-                  <span className="admin-name">Admin</span>
+                  <span className="admin-name">{adminDisplayName}</span>
                 </div>
                 <ChevronDown size={14} className={`profile-chevron ${profileDropdownOpen ? 'rotated' : ''}`} />
               </button>
@@ -1182,6 +1172,12 @@ export const AdminLayout = ({ children }) => {
           gap: 16px;
         }
 
+        .admin-topbar.topbar-no-border,
+        .delivery-topbar.topbar-no-border {
+          border-bottom: none !important;
+          box-shadow: none !important;
+        }
+
         .topbar-left {
           display: flex;
           align-items: center;
@@ -1578,6 +1574,16 @@ export const AdminLayout = ({ children }) => {
           justify-content: center;
           font-weight: 700;
           font-size: 0.9375rem;
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+
+        .admin-avatar-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 50%;
+          display: block;
         }
 
         .admin-user-info {

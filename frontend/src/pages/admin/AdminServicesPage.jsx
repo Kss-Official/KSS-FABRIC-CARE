@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
@@ -16,7 +16,9 @@ import {
   ChevronRight,
   X,
   Trash2,
-  Check
+  Check,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 
 // Exact SVG icons matching Reference Image 2
@@ -128,14 +130,34 @@ export const AdminServicesPage = () => {
 
   // Edit Service Modal state
   const [editingService, setEditingService] = useState(null);
+  const [editImagePreview, setEditImagePreview] = useState(null);
+  const editFileInputRef = useRef(null);
   const [editForm, setEditForm] = useState({
     name: '',
     category: 'Wash & Fold',
     price: '',
     turnaround: '1–2 days',
     status: 'Active',
-    description: ''
+    description: '',
+    image: null
   });
+
+  const handleEditImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Image must be less than 2MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Data = reader.result;
+        setEditImagePreview(base64Data);
+        setEditForm(prev => ({ ...prev, image: base64Data }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Lock background scroll when Edit Service modal is open
   useEffect(() => {
@@ -160,9 +182,10 @@ export const AdminServicesPage = () => {
 
   // Dynamic Category options
   const availableCategories = useMemo(() => {
-    const baseCats = ['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing', 'Household'];
+    const baseCats = ['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing', 'Household', 'Men', 'Women', 'Kids'];
     const dynamicCats = services.map(s => s.category).filter(Boolean);
-    return Array.from(new Set([...baseCats, ...dynamicCats]))
+    const dynamicSubs = services.map(s => s.subcatName || (s.subcategory ? s.subcategory.charAt(0).toUpperCase() + s.subcategory.slice(1) : null)).filter(Boolean);
+    return Array.from(new Set([...baseCats, ...dynamicCats, ...dynamicSubs]))
       .filter(cat => cat !== 'Special Care' && cat !== 'Special');
   }, [services]);
 
@@ -185,16 +208,20 @@ export const AdminServicesPage = () => {
       }
       if (categoryFilter !== 'all') {
         const catNorm = (s.category || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const subNorm = (s.subcatName || s.subcategory || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         const targetNorm = categoryFilter.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (!catNorm.includes(targetNorm) && !targetNorm.includes(catNorm)) return false;
+        const matchesCat = catNorm.includes(targetNorm) || targetNorm.includes(catNorm);
+        const matchesSub = subNorm.includes(targetNorm) || targetNorm.includes(subNorm);
+        if (!matchesCat && !matchesSub) return false;
       }
       if (searchTerm && searchTerm.trim()) {
         const query = searchTerm.toLowerCase().trim();
         const matchesName = s.name?.toLowerCase().includes(query);
         const matchesDesc = s.description && s.description.toLowerCase().includes(query);
         const matchesCat = s.category?.toLowerCase().includes(query);
+        const matchesSub = (s.subcatName || s.subcategory || '')?.toLowerCase().includes(query);
         const matchesPrice = String(s.price).includes(query);
-        if (!matchesName && !matchesDesc && !matchesCat && !matchesPrice) return false;
+        if (!matchesName && !matchesDesc && !matchesCat && !matchesSub && !matchesPrice) return false;
       }
       return true;
     });
@@ -239,13 +266,15 @@ export const AdminServicesPage = () => {
   // Open Edit Modal
   const handleOpenEdit = (service) => {
     setEditingService(service);
+    setEditImagePreview(service.image || null);
     setEditForm({
       name: service.name,
       category: service.category,
       price: service.price,
       turnaround: service.turnaround,
       status: service.status,
-      description: service.description || ''
+      description: service.description || '',
+      image: service.image || null
     });
     setOpenActionMenuId(null);
   };
@@ -259,7 +288,8 @@ export const AdminServicesPage = () => {
       price: Number(editForm.price) || editingService.price,
       turnaround: editForm.turnaround,
       status: editForm.status,
-      description: editForm.description
+      description: editForm.description,
+      image: editForm.image !== undefined ? editForm.image : (editingService.image || null)
     };
     try {
       if (updateService) {
@@ -271,62 +301,75 @@ export const AdminServicesPage = () => {
       console.error('Error saving edited service:', err);
     }
     setEditingService(null);
+    setEditImagePreview(null);
   };
 
   // Service Icon renderer matching Reference Image 2 exactly
   const renderServiceIcon = (service) => {
+    if (service?.image) {
+      return (
+        <div className="svc-icon-tile" style={{ background: '#F8FAFC', overflow: 'hidden' }}>
+          <img 
+            src={service.image} 
+            alt={service.name || 'Service'} 
+            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} 
+          />
+        </div>
+      );
+    }
+
     const nameLower = String(service.name || '').toLowerCase();
     const iconKey = service.icon || service.name;
 
-    // Row 2: Jeans
-    if (nameLower.includes('jeans')) {
+    // Pants, Jeans, Trousers, Shorts, Pajamas, Leggings
+    if (nameLower.includes('jeans') || nameLower.includes('trouser') || nameLower.includes('pant') || nameLower.includes('short') || nameLower.includes('pajama') || nameLower.includes('legging')) {
       return (
         <div className="svc-icon-tile" style={{ background: '#EEF2FF' }}>
           <IndigoGarmentIcon />
         </div>
       );
     }
-    // Row 3: T-Shirt
-    if (nameLower.includes('t-shirt') || nameLower === 'tshirt' || iconKey === 'TShirt') {
+    // T-Shirt, Polo, Top, Romper, Baby clothes
+    if (nameLower.includes('t-shirt') || nameLower === 'tshirt' || iconKey === 'TShirt' || nameLower.includes('polo') || nameLower.includes('top') || nameLower.includes('romper') || nameLower.includes('baby')) {
       return (
         <div className="svc-icon-tile" style={{ background: '#ECFEFF' }}>
           <DiamondLayersIcon />
         </div>
       );
     }
-    // Row 4: Formal Suit
-    if (nameLower.includes('formal') || nameLower.includes('suit') || nameLower.includes('jacket') || (nameLower.includes('dry clean') && !nameLower.includes('saree'))) {
+    // Formal Suit, Blazer, Jacket, Waistcoat, Winter wear
+    if (nameLower.includes('formal') || nameLower.includes('suit') || nameLower.includes('blazer') || nameLower.includes('jacket') || nameLower.includes('waistcoat') || nameLower.includes('sweater') || nameLower.includes('hoodie') || nameLower.includes('sweatshirt') || (nameLower.includes('dry clean') && !nameLower.includes('saree'))) {
       return (
         <div className="svc-icon-tile" style={{ background: '#ECFDF5' }}>
           <HangerIcon color="#059669" />
         </div>
       );
     }
-    // Row 5: Saree / Silk Saree
-    if (nameLower.includes('saree')) {
+    // Saree, Silk Saree, Kurti, Dress, Gown, Frock, Blouse, Lehenga, Anarkali, Shawl, Scarf, Dupatta, Ethnic
+    if (nameLower.includes('saree') || nameLower.includes('kurti') || nameLower.includes('dress') || nameLower.includes('gown') || nameLower.includes('frock') || nameLower.includes('blouse') || nameLower.includes('lehenga') || nameLower.includes('anarkali') || nameLower.includes('shawl') || nameLower.includes('scarf') || nameLower.includes('dupatta') || nameLower.includes('ethnic') || nameLower.includes('kurta')) {
       return (
         <div className="svc-icon-tile" style={{ background: '#F0FDFA' }}>
           <SareeFabricIcon />
         </div>
       );
     }
-    // Row 6: Bedsheet (Single) / Steam Ironing
-    if (nameLower.includes('bedsheet') || nameLower.includes('steam') || nameLower.includes('iron')) {
+    // Bedsheet, Pillow, Tablecloth, Runner, Steam Ironing
+    if (nameLower.includes('bedsheet') || nameLower.includes('pillow') || nameLower.includes('table') || nameLower.includes('steam') || nameLower.includes('iron')) {
       return (
         <div className="svc-icon-tile" style={{ background: '#FFFBEB' }}>
           <IroningIcon />
         </div>
       );
     }
-    // Row 7: Blanket / Carpet Cleaning
-    if (nameLower.includes('blanket') || nameLower.includes('carpet')) {
+    // Blanket, Quilt, Comforter, Duvet, Mattress, Towel, Mat, Carpet
+    if (nameLower.includes('blanket') || nameLower.includes('carpet') || nameLower.includes('quilt') || nameLower.includes('comforter') || nameLower.includes('duvet') || nameLower.includes('mattress') || nameLower.includes('towel') || nameLower.includes('mat')) {
       return (
         <div className="svc-icon-tile" style={{ background: '#FDF2F8' }}>
           <BlanketBedIcon />
         </div>
       );
     }
-    // Row 8: Curtain (Per Piece)
+    // Curtain
     if (nameLower.includes('curtain')) {
       return (
         <div className="svc-icon-tile" style={{ background: '#FAF5FF' }}>
@@ -334,15 +377,15 @@ export const AdminServicesPage = () => {
         </div>
       );
     }
-    // Cushion Covers
-    if (nameLower.includes('cushion')) {
+    // Cushion Covers, Sofa Covers
+    if (nameLower.includes('cushion') || nameLower.includes('sofa') || nameLower.includes('cover')) {
       return (
         <div className="svc-icon-tile" style={{ background: '#EEF2FF' }}>
           <IndigoGarmentIcon />
         </div>
       );
     }
-    // Row 1: Shirt (and default) -> Blue Hanger on #EFF6FF
+    // Shirt, Uniform, Tie, and default -> Blue Hanger on #EFF6FF
     return (
       <div className="svc-icon-tile" style={{ background: '#EFF6FF' }}>
         <HangerIcon color="#2563EB" />
@@ -370,6 +413,12 @@ export const AdminServicesPage = () => {
       case 'Special Care':
       case 'Home Care':
         return { background: '#F3E8FF', color: '#9333EA' };
+      case 'Men':
+        return { background: '#EFF6FF', color: '#2563EB' };
+      case 'Women':
+        return { background: '#FDF2F8', color: '#DB2777' };
+      case 'Kids':
+        return { background: '#FEF3C7', color: '#D97706' };
       default:
         return { background: '#E0F2FE', color: '#0284C7' };
     }
@@ -391,7 +440,7 @@ export const AdminServicesPage = () => {
           type="button"
         >
           <Plus size={18} strokeWidth={2.5} />
-          <span>Add Item</span>
+          <span>Add Service</span>
         </button>
       </div>
 
@@ -592,7 +641,12 @@ export const AdminServicesPage = () => {
                           {renderServiceIcon(service)}
                           <div className="service-text-meta">
                             <span className="service-name-text">{service.name}</span>
-                            <span className="service-desc-text">{service.description}</span>
+                            <span className="service-desc-text">
+                              {service.subcatName && !service.description?.startsWith(service.subcatName)
+                                ? `${service.subcatName} · `
+                                : ''}
+                              {service.description}
+                            </span>
                           </div>
                         </div>
                       </td>
@@ -762,7 +816,7 @@ export const AdminServicesPage = () => {
 
       {/* Edit Service Modal */}
       {editingService && typeof document !== 'undefined' && createPortal(
-        <div className="modal-backdrop-overlay animate-fade-in" onClick={() => setEditingService(null)}>
+        <div className="modal-backdrop-overlay animate-fade-in" onClick={() => { setEditingService(null); setEditImagePreview(null); }}>
           <div className="modal-box-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-box-header">
               <div className="modal-title-wrap">
@@ -777,7 +831,7 @@ export const AdminServicesPage = () => {
               <button 
                 type="button" 
                 className="modal-close-icon"
-                onClick={() => setEditingService(null)}
+                onClick={() => { setEditingService(null); setEditImagePreview(null); }}
               >
                 <X size={20} />
               </button>
@@ -857,11 +911,62 @@ export const AdminServicesPage = () => {
                 />
               </div>
 
+              {/* Change Image Option */}
+              <div className="form-input-group">
+                <label className="form-input-label">Item Image</label>
+                <div className="edit-service-image-row">
+                  <div className="edit-service-thumb-placeholder">
+                    {editImagePreview ? (
+                      <img src={editImagePreview} alt="Item preview" className="edit-thumb-preview-img" />
+                    ) : (
+                      <ImageIcon size={22} color="#0D7A75" />
+                    )}
+                  </div>
+
+                  <div 
+                    className="edit-service-upload-card" 
+                    onClick={() => editFileInputRef.current?.click()}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <input 
+                      type="file" 
+                      ref={editFileInputRef} 
+                      accept="image/png, image/jpeg, image/jpg" 
+                      style={{ display: 'none' }}
+                      onChange={handleEditImageChange}
+                    />
+                    <div className="edit-upload-icon-circle">
+                      <Upload size={16} color="#0D7A75" strokeWidth={2.2} />
+                    </div>
+                    <div className="edit-upload-card-text">
+                      <span className="edit-upload-main-text">Change Image</span>
+                      <span className="edit-upload-sub-text">JPG, PNG (Max 2MB)</span>
+                    </div>
+                  </div>
+
+                  {editImagePreview && (
+                    <button
+                      type="button"
+                      className="edit-remove-img-btn"
+                      onClick={() => {
+                        setEditImagePreview(null);
+                        setEditForm(prev => ({ ...prev, image: null }));
+                        if (editFileInputRef.current) editFileInputRef.current.value = '';
+                      }}
+                      title="Remove image"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="modal-actions-bar">
                 <button 
                   type="button" 
                   className="btn-modal-cancel"
-                  onClick={() => setEditingService(null)}
+                  onClick={() => { setEditingService(null); setEditImagePreview(null); }}
                 >
                   Cancel
                 </button>
@@ -1657,6 +1762,102 @@ export const AdminServicesPage = () => {
 
         .btn-modal-submit:hover {
           background: #0A6662;
+        }
+
+        /* Edit Service Image Upload Row */
+        .edit-service-image-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .edit-service-thumb-placeholder {
+          width: 54px;
+          height: 54px;
+          border-radius: 12px;
+          background: #E6F7F7;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          overflow: hidden;
+          border: 1px solid #CFFAFE;
+        }
+
+        .edit-thumb-preview-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .edit-service-upload-card {
+          flex: 1;
+          height: 54px;
+          border: 1.5px dashed #CBD5E1;
+          border-radius: 12px;
+          background: #FFFFFF;
+          display: flex;
+          align-items: center;
+          padding: 0 16px;
+          gap: 12px;
+          cursor: pointer;
+          box-sizing: border-box;
+          transition: border-color 0.15s ease, background-color 0.15s ease;
+        }
+
+        .edit-service-upload-card:hover {
+          border-color: #0D7A75;
+          background: #F8FAFC;
+        }
+
+        .edit-upload-icon-circle {
+          width: 34px;
+          height: 34px;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 8px;
+          background: #FFFFFF;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .edit-upload-card-text {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .edit-upload-main-text {
+          font-size: 13px;
+          font-weight: 700;
+          color: #0D7A75;
+          line-height: 1.2;
+        }
+
+        .edit-upload-sub-text {
+          font-size: 11px;
+          color: #94A3B8;
+          margin-top: 2px;
+        }
+
+        .edit-remove-img-btn {
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          border: 1px solid #FECACA;
+          background: #FEF2F2;
+          color: #EF4444;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          flex-shrink: 0;
+        }
+
+        .edit-remove-img-btn:hover {
+          background: #FEE2E2;
+          border-color: #F87171;
         }
 
         /* Responsive */

@@ -231,7 +231,10 @@ const AppContent = () => {
 
   // Route 2: Admin Portal (Strictly Protected: role === 'admin')
   if (normalizedRoute === 'admin') {
-    if (!isAuthenticated || userRole !== 'admin') {
+    if (!isAuthenticated) {
+      return <LoginPage />;
+    }
+    if (userRole !== 'admin') {
       return null;
     }
     return <AdminPortal />;
@@ -239,7 +242,10 @@ const AppContent = () => {
 
   // Route 3: Delivery Portal (Strictly Protected: role === 'agent' or 'delivery_agent' or 'admin')
   if (normalizedRoute === 'delivery-portal') {
-    if (!isAuthenticated || (userRole !== 'agent' && userRole !== 'delivery_agent' && userRole !== 'admin')) {
+    if (!isAuthenticated) {
+      return <LoginPage />;
+    }
+    if (userRole !== 'agent' && userRole !== 'delivery_agent' && userRole !== 'admin') {
       return null;
     }
     return <DeliveryPortal />;
@@ -247,7 +253,10 @@ const AppContent = () => {
 
   // Route 4: Laundry Hub Portal (Strictly Protected: role === 'staff' or 'laundry_staff' or 'admin')
   if (isLaundryRoute) {
-    if (!isAuthenticated || (userRole !== 'staff' && userRole !== 'laundry_staff' && userRole !== 'admin')) {
+    if (!isAuthenticated) {
+      return <LoginPage />;
+    }
+    if (userRole !== 'staff' && userRole !== 'laundry_staff' && userRole !== 'admin') {
       return null;
     }
     return <LaundryPortal />;
@@ -256,7 +265,7 @@ const AppContent = () => {
   // Route 5: Customer Account Pages (Protected: requires customer/user authentication)
   if (CUSTOMER_PORTAL_PAGES.includes(normalizedRoute)) {
     if (!isAuthenticated) {
-      return null;
+      return <LoginPage />;
     }
 
     return (

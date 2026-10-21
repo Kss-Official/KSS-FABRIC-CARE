@@ -92,24 +92,15 @@ export const AdminDashboardPage = () => {
   const [activeActionMenuId, setActiveActionMenuId] = useState(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
   const [chartTimeframe, setChartTimeframe] = useState('7d');
-  const [hoveredDonutSegment, setHoveredDonutSegment] = useState(null);
-  const [donutTooltip, setDonutTooltip] = useState({ x: 0, y: 0, visible: false });
+  const [serviceChartPeriod, setServiceChartPeriod] = useState('This Week');
+  const [hoveredDonutKey, setHoveredDonutKey] = useState(null);
 
-  const handleDonutSegmentHover = (e, segment) => {
-    const rect = e.currentTarget.closest('.donut-visual-wrap')?.getBoundingClientRect();
-    if (rect) {
-      setDonutTooltip({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-        visible: true
-      });
+  const handleServiceSliceClick = (serviceName) => {
+    if (typeof navigateToOrdersWithFilter === 'function') {
+      navigateToOrdersWithFilter('all', 'all', serviceName);
+    } else {
+      setAdminTab('orders');
     }
-    setHoveredDonutSegment(segment);
-  };
-
-  const handleDonutSegmentLeave = () => {
-    setHoveredDonutSegment(null);
-    setDonutTooltip(prev => ({ ...prev, visible: false }));
   };
 
   // Close action dropdown menu on outside click or Escape key
@@ -168,41 +159,12 @@ export const AdminDashboardPage = () => {
     return false;
   };
 
-  // Synchronize dashboard data with the Orders section (baseline + live orders = 62 orders)
+  // Synchronize dashboard data with live real-time orders from backend
   const combinedOrders = useMemo(() => {
-    const contextMap = new Map();
-    (orders || []).forEach(o => {
-      if (!o) return;
-      const key = String(o.id || o.order_number || o.order_id || '');
-      contextMap.set(key, o);
-    });
-
-    const mergedBaseline = BASELINE_ADMIN_ORDERS.map((baseOrd, idx) => {
-      const live = contextMap.get(baseOrd.id);
-      if (live) {
-        return {
-          ...baseOrd,
-          ...live,
-          orderIndex: idx,
-          customer: { ...baseOrd.customer, ...(live.customer || {}) },
-          services: live.services || baseOrd.services,
-          status: live.status || baseOrd.status,
-          payment: live.payment || baseOrd.payment,
-          amount: live.amount || baseOrd.amount
-        };
-      }
-      return { ...baseOrd, orderIndex: idx };
-    });
-
-    const baselineIds = new Set(BASELINE_ADMIN_ORDERS.map(b => b.id));
-    const extraOrders = (orders || []).filter(o => {
-      if (!o || !o.id) return false;
-      if (baselineIds.has(o.id)) return false;
-      if (o.id === 'FC-10452' || o.id === 'ord_sample_01' || o.rawId === 'ord_sample_01') return false;
-      return true;
-    });
-
-    return [...extraOrders, ...mergedBaseline];
+    if (orders && orders.length > 0) {
+      return orders;
+    }
+    return BASELINE_ADMIN_ORDERS;
   }, [orders]);
 
   // Sparkline heights for top stat cards
@@ -277,38 +239,69 @@ export const AdminDashboardPage = () => {
     ];
   }, [combinedOrders]);
 
-  // Dynamic Service Breakdown & Donut Slices based on unified orders (62 orders)
+  // Dynamic Service Breakdown & Donut Slices based on unified orders (matching Laundry Staff Portal logic)
   const { serviceBreakdown, donutSlices, totalOrdersCount } = useMemo(() => {
     const list = combinedOrders || [];
-    const totalCount = list.length;
 
+    // Filter by timeframe if selected
+    let targetOrders = list;
+    if (serviceChartPeriod === 'This Week') {
+      const now = Date.now();
+      const weekMs = 7 * 24 * 60 * 60 * 1000;
+      const weekOrders = list.filter(o => {
+        const ts = o.createdAt || o.placedAt || o.date;
+        const d = ts ? new Date(ts).getTime() : 0;
+        return d > 0 && (now - d) <= weekMs;
+      });
+      if (weekOrders.length > 0) targetOrders = weekOrders;
+    } else if (serviceChartPeriod === 'This Month') {
+      const now = new Date();
+      const monthOrders = list.filter(o => {
+        const ts = o.createdAt || o.placedAt || o.date;
+        const d = ts ? new Date(ts) : null;
+        return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      });
+      if (monthOrders.length > 0) targetOrders = monthOrders;
+    }
+
+    const totalCount = targetOrders.length;
+
+    // Exact services and colors matching the reference image
     const SERVICE_CONFIG = [
-      { name: 'Wash & Fold', color: '#0D7A75' },
-      { name: 'Dry Cleaning', color: '#10B981' },
-      { name: 'Wash & Iron', color: '#38BDF8' },
-      { name: 'Steam Iron', color: '#818CF8' },
-      { name: 'Shoe Laundry', color: '#F59E0B' },
-      { name: 'Home Care', color: '#EF4444' }
+      { name: 'Wash & Fold', color: '#25B4C2' },
+      { name: 'Dry Cleaning', color: '#68D391' },
+      { name: 'Wash & Iron', color: '#63B3ED' },
+      { name: 'Steam Iron', color: '#81E6D9' },
+      { name: 'Shoe Laundry', color: '#F6AD55' },
+      { name: 'Home Care', color: '#FC8181' }
     ];
 
     const counts = {};
     SERVICE_CONFIG.forEach(s => { counts[s.name] = 0; });
 
-    list.forEach(o => {
+    const categorizeService = (sName, order) => {
+      const s = String(sName || '').toLowerCase();
+      if (s.includes('shoe') || s.includes('express') || order?.isExpress) return 'Shoe Laundry';
+      if (s.includes('dry')) return 'Dry Cleaning';
+      if (s.includes('wash') && s.includes('iron')) return 'Wash & Iron';
+      if (s.includes('steam') || s.includes('iron')) return 'Steam Iron';
+      if (s.includes('home')) return 'Home Care';
+      if (s.includes('wash') || s.includes('fold')) return 'Wash & Fold';
+      return 'Wash & Fold';
+    };
+
+    targetOrders.forEach(o => {
       const oServices = Array.isArray(o.services) && o.services.length > 0
         ? o.services
-        : (Array.isArray(o.items) && o.items.length > 0
-          ? o.items.map(it => it.category_name || it.service_name || it.category || 'Wash & Fold')
-          : ['Wash & Fold']);
+        : (Array.isArray(o.services_list) && o.services_list.length > 0
+          ? o.services_list
+          : (Array.isArray(o.items) && o.items.length > 0
+            ? o.items.map(it => it.service_name || it.category_name || it.category || 'Wash & Fold')
+            : [o.service || 'Wash & Fold']));
 
       oServices.forEach(sName => {
-        const s = String(sName).toLowerCase();
-        if (s.includes('dry')) counts['Dry Cleaning'] = (counts['Dry Cleaning'] || 0) + 1;
-        else if (s.includes('steam')) counts['Steam Iron'] = (counts['Steam Iron'] || 0) + 1;
-        else if (s.includes('shoe')) counts['Shoe Laundry'] = (counts['Shoe Laundry'] || 0) + 1;
-        else if (s.includes('home')) counts['Home Care'] = (counts['Home Care'] || 0) + 1;
-        else if (s.includes('iron')) counts['Wash & Iron'] = (counts['Wash & Iron'] || 0) + 1;
-        else counts['Wash & Fold'] = (counts['Wash & Fold'] || 0) + 1;
+        const cat = categorizeService(sName, o);
+        counts[cat] = (counts[cat] || 0) + 1;
       });
     });
 
@@ -316,7 +309,7 @@ export const AdminDashboardPage = () => {
 
     let breakdown = SERVICE_CONFIG.map(s => {
       const c = counts[s.name] || 0;
-      const pct = totalCount > 0 ? Math.round((c / totalTallied) * 100) : 0;
+      const pct = totalTallied > 0 ? Math.round((c / totalTallied) * 100) : 0;
       return { ...s, count: c, pct };
     });
 
@@ -328,15 +321,24 @@ export const AdminDashboardPage = () => {
       }
     }
 
-    let cumulativeOffset = 0;
-    const slices = breakdown.map(s => {
-      const pct = s.pct || 0;
-      const offset = cumulativeOffset;
-      cumulativeOffset += pct;
+    // Geometry matching reference image seamlessly without gaps
+    const radius = 80;
+    const strokeWidth = 28;
+    const circumference = 2 * Math.PI * radius; // ~502.6548
+
+    let accumulatedCircumference = 0;
+    const slices = breakdown.map(st => {
+      const sliceRatio = totalTallied > 0 ? st.count / totalTallied : 0;
+      const sliceLength = sliceRatio > 0 ? sliceRatio * circumference : 0;
+      const dashArray = `${sliceLength} ${circumference - sliceLength}`;
+      const dashOffset = -accumulatedCircumference;
+      if (sliceRatio > 0) {
+        accumulatedCircumference += sliceRatio * circumference;
+      }
       return {
-        ...s,
-        dashArray: `${pct} ${Math.max(0, 100 - pct)}`,
-        dashOffset: -offset
+        ...st,
+        dashArray,
+        dashOffset
       };
     });
 
@@ -345,7 +347,7 @@ export const AdminDashboardPage = () => {
       donutSlices: slices,
       totalOrdersCount: totalCount
     };
-  }, [combinedOrders]);
+  }, [combinedOrders, serviceChartPeriod]);
 
   // Dynamically compute chart data from unified orders
   const { chartDays, scaleMax, yAxisTicks } = useMemo(() => {
@@ -614,76 +616,61 @@ export const AdminDashboardPage = () => {
 
   // Today's Pickup & Delivery dynamically bound to live order records with exact reference styling
   const pickupDeliveries = useMemo(() => {
-    const contextMap = new Map();
-    (combinedOrders || []).forEach(o => {
-      if (!o) return;
-      const keys = [
-        String(o.id || ''),
-        String(o.order_number || ''),
-        String(o.order_id || ''),
-        formatPickupOrderId(o.id || o.order_number || o.order_id)
-      ].filter(Boolean);
-      keys.forEach(k => contextMap.set(k.toUpperCase(), o));
-    });
-
-    return BASELINE_PICKUPS.map(baseItem => {
-      const matchKey = baseItem.id.toUpperCase();
-      const live = contextMap.get(matchKey) || 
-                   contextMap.get(formatPickupOrderId(baseItem.id).toUpperCase()) || 
-                   contextMap.get(baseItem.id.replace('#LDX', 'FC-').toUpperCase()) ||
-                   contextMap.get(baseItem.id.replace('#LDX', '#FC').toUpperCase());
-
-      if (live) {
-        const isDeliv = isOrderReady(live.status) || isOrderCompleted(live.status) || String(live.status).toLowerCase().includes('transit');
-        const hasDriver = Boolean(
-          (live.driver && live.driver !== 'Not Assigned' && live.driver !== '—' && live.driver !== '') ||
-          live.assigned_pickup_driver_detail ||
-          live.assigned_pickup_driver ||
-          live.assigned_delivery_driver ||
-          live.assignedAgentName
-        );
-        const { start, end } = parsePickupSlot(live.pickup_time_slot || live.pickupTime, baseItem.timeStart, baseItem.timeEnd);
-        const conciseArea = formatConciseAddress(live.pickup_address || live.customer?.address || live.address, live);
-
-        return {
-          ...baseItem,
-          name: live.pickup_full_name || live.customer_name || live.customer?.name || baseItem.name,
-          area: conciseArea || baseItem.area,
-          timeStart: start,
-          timeEnd: end,
-          type: isDeliv ? 'Delivery' : baseItem.type,
-          status: hasDriver ? 'Assigned' : (live.status === 'Pending Pickup' ? 'Pending' : baseItem.status),
-          rawOrder: live
-        };
-      }
-
-      return {
+    const list = combinedOrders || [];
+    if (!orders || orders.length === 0) {
+      return BASELINE_PICKUPS.map(baseItem => ({
         ...baseItem,
         area: formatConciseAddress(baseItem.area)
+      }));
+    }
+
+    // Map live orders into today's pickup & delivery cards
+    return list.slice(0, 10).map((live, idx) => {
+      const isDeliv = isOrderReady(live.status) || isOrderCompleted(live.status) || String(live.status).toLowerCase().includes('transit') || String(live.status).toLowerCase().includes('delivery');
+      const hasDriver = Boolean(
+        (live.driver && live.driver !== 'Not Assigned' && live.driver !== '—' && live.driver !== '') ||
+        live.assigned_pickup_driver_detail ||
+        live.assigned_pickup_driver ||
+        live.assigned_delivery_driver ||
+        live.assignedAgentName
+      );
+      const { start, end } = parsePickupSlot(live.pickup_time_slot || live.pickupTime, '09:00', '11:00 AM');
+      const conciseArea = formatConciseAddress(live.pickup_address || live.customer?.address || live.address, live);
+
+      return {
+        id: live.order_number || live.id || `#LDX1028${idx}`,
+        name: live.pickup_full_name || live.customer_name || live.customer?.name || 'Customer',
+        area: conciseArea || 'Bengaluru',
+        timeStart: start,
+        timeEnd: end,
+        type: isDeliv ? 'Delivery' : 'Pickup',
+        status: hasDriver ? 'Assigned' : (String(live.status).toLowerCase().includes('pending') ? 'Pending' : (live.status || 'Pending')),
+        rawOrder: live
       };
     });
-  }, [combinedOrders]);
+  }, [combinedOrders, orders]);
 
   const pickupCounts = useMemo(() => {
     const list = combinedOrders || [];
     const allDeliveries = list.filter(o => isOrderReady(o.status) || isOrderCompleted(o.status) || String(o.status).toLowerCase().includes('transit') || String(o.status).toLowerCase().includes('delivery'));
     const allPickups = list.filter(o => !allDeliveries.includes(o));
 
-    // Exact baseline counts matching reference image: All (18), Pickups (10), Deliveries (8), dynamically growing with new orders
+    if (orders && orders.length > 0) {
+      return {
+        all: list.length,
+        pickups: allPickups.length,
+        deliveries: allDeliveries.length
+      };
+    }
+
     const basePickups = 10;
     const baseDeliveries = 8;
-    const extraPickups = Math.max(0, allPickups.length - 10);
-    const extraDeliveries = Math.max(0, allDeliveries.length - 8);
-
-    const pickups = basePickups + extraPickups;
-    const deliveries = baseDeliveries + extraDeliveries;
-
     return {
-      all: pickups + deliveries,
-      pickups,
-      deliveries
+      all: basePickups + baseDeliveries,
+      pickups: basePickups,
+      deliveries: baseDeliveries
     };
-  }, [combinedOrders]);
+  }, [combinedOrders, orders]);
 
   const filteredPickups = useMemo(() => {
     return pickupDeliveries.filter(p => {
@@ -871,9 +858,15 @@ export const AdminDashboardPage = () => {
           <div className="dash-card-header">
             <h3 className="dash-card-title">Orders by Service</h3>
             <div className="chart-dropdown-wrap">
-              <select className="card-dropdown-select">
-                <option>This Week</option>
-                <option>This Month</option>
+              <select 
+                className="card-dropdown-select"
+                value={serviceChartPeriod}
+                onChange={(e) => setServiceChartPeriod(e.target.value)}
+                aria-label="Filter service by time"
+              >
+                <option value="All">All Time</option>
+                <option value="This Week">This Week</option>
+                <option value="This Month">This Month</option>
               </select>
               <ChevronDown size={14} className="dropdown-chevron-icon" />
             </div>
@@ -881,31 +874,32 @@ export const AdminDashboardPage = () => {
 
           <div className="donut-chart-layout">
             <div className="donut-visual-wrap">
-              <svg viewBox="0 0 100 100" className="donut-svg">
-                {donutSlices.map((s, idx) => {
-                  const isHovered = hoveredDonutSegment?.name === s.name;
+              <svg viewBox="0 0 230 230" className="donut-svg">
+                {donutSlices.map((s) => {
+                  if (s.count <= 0) return null;
+                  const isHovered = hoveredDonutKey === s.name;
                   return (
                     <circle
-                      key={idx}
-                      cx="50"
-                      cy="50"
-                      r="38"
-                      fill="transparent"
+                      key={s.name}
+                      cx="115"
+                      cy="115"
+                      r="80"
+                      fill="none"
                       stroke={s.color}
-                      strokeWidth={isHovered ? "14.5" : "12"}
-                      pathLength="100"
+                      strokeWidth={isHovered ? 32 : 28}
                       strokeDasharray={s.dashArray}
                       strokeDashoffset={s.dashOffset}
-                      strokeLinecap="butt"
+                      transform="rotate(-90 115 115)"
+                      className="donut-slice-circle"
                       style={{
                         cursor: 'pointer',
-                        transition: 'stroke-width 0.2s ease, opacity 0.2s ease, filter 0.2s ease',
-                        opacity: hoveredDonutSegment ? (isHovered ? 1 : 0.6) : 1,
-                        filter: isHovered ? 'drop-shadow(0 2px 6px rgba(0,0,0,0.25))' : 'none'
+                        transition: 'stroke-width 0.15s ease, opacity 0.15s ease, filter 0.15s ease',
+                        opacity: hoveredDonutKey ? (isHovered ? 1 : 0.65) : 1,
+                        filter: isHovered ? 'drop-shadow(0 2px 6px rgba(0,0,0,0.2))' : 'none'
                       }}
-                      onMouseEnter={(e) => handleDonutSegmentHover(e, s)}
-                      onMouseMove={(e) => handleDonutSegmentHover(e, s)}
-                      onMouseLeave={handleDonutSegmentLeave}
+                      onMouseEnter={() => setHoveredDonutKey(s.name)}
+                      onMouseLeave={() => setHoveredDonutKey(null)}
+                      onClick={() => handleServiceSliceClick(s.name)}
                     >
                       <title>{`${s.name}: ${s.count} orders (${s.pct}%)`}</title>
                     </circle>
@@ -915,98 +909,70 @@ export const AdminDashboardPage = () => {
 
               {/* Dynamic Center Display */}
               <div className="donut-center-text">
-                {hoveredDonutSegment ? (
+                {hoveredDonutKey ? (() => {
+                  const activeSlice = serviceBreakdown.find(s => s.name === hoveredDonutKey);
+                  return (
+                    <>
+                      <span 
+                        className="donut-total-num animate-scale-in" 
+                        style={{ color: activeSlice?.color, fontSize: '1.9rem', transition: 'color 0.15s ease' }}
+                      >
+                        {activeSlice?.count}
+                      </span>
+                      <span className="donut-total-lbl" style={{ color: '#0F172A', fontWeight: 700 }}>
+                        {activeSlice?.name}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600, marginTop: '2px' }}>
+                        {activeSlice?.pct}% of orders
+                      </span>
+                    </>
+                  );
+                })() : (
                   <>
-                    <span 
-                      className="donut-total-num animate-scale-in" 
-                      style={{ color: hoveredDonutSegment.color, transition: 'color 0.2s ease' }}
-                    >
-                      {hoveredDonutSegment.pct}%
-                    </span>
-                    <span className="donut-total-lbl" style={{ color: '#0F172A', fontWeight: 700 }}>
-                      {hoveredDonutSegment.count} {hoveredDonutSegment.count === 1 ? 'Order' : 'Orders'}
-                    </span>
-                    <span 
-                      className="donut-total-service-name" 
-                      style={{ 
-                        fontSize: '0.68rem', 
-                        color: '#64748B', 
-                        fontWeight: 600, 
-                        marginTop: '2px', 
-                        maxWidth: '96px', 
-                        textAlign: 'center', 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis', 
-                        whiteSpace: 'nowrap' 
-                      }}
-                    >
-                      {hoveredDonutSegment.name}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="donut-total-num">{totalOrdersCount}</span>
+                    <span className="donut-total-num" style={{ fontSize: '1.9rem' }}>{totalOrdersCount}</span>
                     <span className="donut-total-lbl">Total Orders</span>
                   </>
                 )}
               </div>
-
-              {/* Floating Tooltip at Cursor Position */}
-              {donutTooltip.visible && hoveredDonutSegment && (
-                <div 
-                  className="donut-hover-popover animate-fade-in"
-                  style={{
-                    position: 'absolute',
-                    left: `${donutTooltip.x}px`,
-                    top: `${donutTooltip.y - 12}px`,
-                    transform: 'translate(-50%, -100%)',
-                    backgroundColor: '#0F172A',
-                    color: '#FFFFFF',
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    fontSize: '0.75rem',
-                    fontWeight: '600',
-                    pointerEvents: 'none',
-                    whiteSpace: 'nowrap',
-                    zIndex: 20,
-                    boxShadow: '0 4px 14px rgba(15, 23, 42, 0.25)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '7px'
-                  }}
-                >
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: hoveredDonutSegment.color, display: 'inline-block' }} />
-                  <span>{hoveredDonutSegment.name}:</span>
-                  <span style={{ color: '#F8FAFC', fontWeight: 800 }}>{hoveredDonutSegment.count} orders ({hoveredDonutSegment.pct}%)</span>
-                </div>
-              )}
             </div>
 
-            {/* Interactive Legend with Synchronized Hover */}
+            {/* Interactive Legend with Synchronized Hover & Navigation */}
             <div className="donut-legend-list">
-              {serviceBreakdown.map((s, idx) => {
-                const isHovered = hoveredDonutSegment?.name === s.name;
+              {serviceBreakdown.map((s) => {
+                const isHovered = hoveredDonutKey === s.name;
                 return (
                   <div 
-                    key={idx} 
+                    key={s.name} 
                     className={`donut-legend-row ${isHovered ? 'active' : ''}`}
-                    onMouseEnter={() => setHoveredDonutSegment(s)}
-                    onMouseLeave={() => setHoveredDonutSegment(null)}
+                    onMouseEnter={() => setHoveredDonutKey(s.name)}
+                    onMouseLeave={() => setHoveredDonutKey(null)}
+                    onClick={() => handleServiceSliceClick(s.name)}
+                    title={`Click to view ${s.name} orders`}
                     style={{
                       cursor: 'pointer',
-                      padding: '4px 8px',
+                      padding: '5px 8px',
                       borderRadius: '8px',
-                      backgroundColor: isHovered ? '#F1F5F9' : 'transparent',
+                      backgroundColor: isHovered ? '#F8FAFC' : 'transparent',
                       transition: 'background-color 0.15s ease'
                     }}
                   >
                     <div className="legend-name-col">
-                      <span className="legend-color-dot" style={{ backgroundColor: s.color }} />
-                      <span className="legend-service-name" style={{ fontWeight: isHovered ? 700 : 500, color: isHovered ? '#0F172A' : '#334155' }}>
+                      <span 
+                        className="legend-color-dot" 
+                        style={{ 
+                          backgroundColor: s.color,
+                          width: '10px',
+                          height: '10px',
+                          borderRadius: '50%',
+                          transform: isHovered ? 'scale(1.25)' : 'scale(1)',
+                          transition: 'transform 0.15s ease'
+                        }} 
+                      />
+                      <span className="legend-service-name" style={{ fontWeight: isHovered ? 700 : 500, color: isHovered ? '#0F172A' : '#475569' }}>
                         {s.name}
                       </span>
                     </div>
-                    <strong className="legend-pct-val" style={{ color: isHovered ? s.color : '#0F172A' }}>
+                    <strong className="legend-pct-val" style={{ color: isHovered ? s.color : '#0F172A', fontWeight: 700, minWidth: '34px', textAlign: 'right' }}>
                       {s.pct}%
                     </strong>
                   </div>
@@ -1846,15 +1812,23 @@ export const AdminDashboardPage = () => {
 
         .donut-visual-wrap {
           position: relative;
-          width: 176px;
-          height: 176px;
+          width: 180px;
+          height: 180px;
           flex-shrink: 0;
         }
 
         .donut-svg {
-          transform: rotate(-90deg);
           width: 100%;
           height: 100%;
+        }
+
+        .donut-slice-circle {
+          cursor: pointer;
+          transition: stroke-width 0.15s ease, opacity 0.15s ease, filter 0.15s ease;
+        }
+
+        .donut-slice-circle:hover {
+          opacity: 0.9;
         }
 
         .donut-center-text {
@@ -1865,10 +1839,11 @@ export const AdminDashboardPage = () => {
           align-items: center;
           justify-content: center;
           pointer-events: none;
+          text-align: center;
         }
 
         .donut-total-num {
-          font-size: 1.625rem;
+          font-size: 1.875rem;
           font-weight: 800;
           color: #0F172A;
           line-height: 1.1;
@@ -1877,8 +1852,8 @@ export const AdminDashboardPage = () => {
 
         .donut-total-lbl {
           font-size: 0.75rem;
-          font-weight: 500;
-          color: #94A3B8;
+          font-weight: 600;
+          color: #64748B;
           margin-top: 3px;
         }
 

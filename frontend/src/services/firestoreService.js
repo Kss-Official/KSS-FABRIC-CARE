@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { ref, onValue, off, get, set, update, push } from 'firebase/database';
 import { db, rtdb, isFirebaseConfigured } from '../config/firebase.js';
+import { DEFAULT_SERVICES } from './adminDataService.js';
 
 // Standard uniform order ID formatter
 export const formatOrderId = (rawId) => {
@@ -42,140 +43,7 @@ export const formatOrderId = (rawId) => {
 // INITIAL SEED DATA FOR FIRST LAUNCH IN USER'S FIREBASE PROJECT
 // ===============================================================
 
-export const INITIAL_SERVICES_ADMIN = [
-  {
-    id: 1,
-    name: 'Shirt',
-    description: 'Regular shirt cleaning and pressing',
-    category: 'Wash & Fold',
-    price: 80,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Shirt',
-    type: 'Standard'
-  },
-  {
-    id: 2,
-    name: 'Jeans',
-    description: 'Denim washing and care',
-    category: 'Wash & Fold',
-    price: 120,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Jeans',
-    type: 'Standard'
-  },
-  {
-    id: 3,
-    name: 'T-Shirt',
-    description: 'Regular wash and fold',
-    category: 'Wash & Fold',
-    price: 70,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'TShirt',
-    type: 'Standard'
-  },
-  {
-    id: 4,
-    name: 'Formal Suit',
-    description: 'Professional dry cleaning',
-    category: 'Dry Cleaning',
-    price: 250,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Suit',
-    type: 'Premium'
-  },
-  {
-    id: 5,
-    name: 'Saree',
-    description: 'Special fabric care with dry cleaning',
-    category: 'Dry Cleaning',
-    price: 220,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Saree',
-    type: 'Premium'
-  },
-  {
-    id: 6,
-    name: 'Bedsheet (Single)',
-    description: 'Wash, dry and fold',
-    category: 'Household',
-    price: 90,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Bedsheet',
-    type: 'Standard'
-  },
-  {
-    id: 7,
-    name: 'Blanket',
-    description: 'Deep cleaning and sanitization',
-    category: 'Household',
-    price: 300,
-    turnaround: '2–3 days',
-    status: 'Inactive',
-    icon: 'Blanket',
-    type: 'Premium'
-  },
-  {
-    id: 8,
-    name: 'Curtain (Per Piece)',
-    description: 'Dry cleaning and freshening',
-    category: 'Household',
-    price: 180,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Curtain',
-    type: 'Standard'
-  },
-  {
-    id: 9,
-    name: 'Silk Saree',
-    description: 'Delicate fabric dry cleaning',
-    category: 'Dry Cleaning',
-    price: 450,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Saree',
-    type: 'Premium'
-  },
-  {
-    id: 10,
-    name: 'Winter Jacket',
-    description: 'Heavy wool dry cleaning & sanitization',
-    category: 'Dry Cleaning',
-    price: 550,
-    turnaround: '3–4 days',
-    status: 'Active',
-    icon: 'Suit',
-    type: 'Premium'
-  },
-  {
-    id: 11,
-    name: 'Carpet Cleaning',
-    description: 'Deep steam sanitization & stain removal',
-    category: 'Household',
-    price: 850,
-    turnaround: '3–4 days',
-    status: 'Inactive',
-    icon: 'Blanket',
-    type: 'Premium'
-  },
-  {
-    id: 12,
-    name: 'Cushion Covers',
-    description: 'Gentle wash and steam press',
-    category: 'Wash & Fold',
-    price: 680,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Bedsheet',
-    type: 'Standard'
-  }
-];
+export const INITIAL_SERVICES_ADMIN = DEFAULT_SERVICES;
 
 export const INITIAL_FAQS_ADMIN = [
   {
@@ -231,7 +99,7 @@ export const INITIAL_FAQS_ADMIN = [
     id: 'faq-8',
     question: 'What if I am not satisfied with the service?',
     answer: 'Your satisfaction is our priority. If you are not happy with the service, we offer a 100% free re-wash guarantee.',
-    status: 'Active',
+    status: 'Inactive',
     displayOrder: 8
   }
 ];
@@ -1370,7 +1238,7 @@ export const subscribeServices = (callback, errorCallback) => {
         }
         const val = snap.val();
         const list = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
-        callback(list.length > 0 ? list : INITIAL_SERVICES_ADMIN);
+        callback(list.length >= 69 ? list : INITIAL_SERVICES_ADMIN);
       }, (err) => {
         console.warn('RTDB Services subscription note:', err.message);
         callback(INITIAL_SERVICES_ADMIN);
@@ -1388,7 +1256,7 @@ export const subscribeServices = (callback, errorCallback) => {
             docId: d.id,
             ...d.data()
           }));
-          callback(servList);
+          callback(servList.length >= 69 ? servList : INITIAL_SERVICES_ADMIN);
         },
         (err) => {
           console.warn('Services snapshot subscription note:', err.message);
@@ -1413,7 +1281,7 @@ export const getFirestoreServices = async () => {
       if (snap.exists()) {
         const val = snap.val();
         const list = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
-        return list.length > 0 ? list : INITIAL_SERVICES_ADMIN;
+        return list.length >= 69 ? list : INITIAL_SERVICES_ADMIN;
       }
       return INITIAL_SERVICES_ADMIN;
     }

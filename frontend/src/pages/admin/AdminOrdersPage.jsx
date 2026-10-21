@@ -399,48 +399,17 @@ export const AdminOrdersPage = () => {
     if (ordersFilterTarget) {
       if (ordersFilterTarget.tab) setActiveTab(ordersFilterTarget.tab);
       if (ordersFilterTarget.status) setStatusFilter(ordersFilterTarget.status);
+      if (ordersFilterTarget.service !== undefined) setServiceFilter(ordersFilterTarget.service);
       setCurrentPage(1);
     }
   }, [ordersFilterTarget]);
 
-  // Synchronize orders with dynamic updates while guaranteeing exact reference image data
+  // Synchronize orders with dynamic updates from real-time database
   const combinedOrders = useMemo(() => {
-    const contextMap = new Map();
-    (orders || []).forEach(o => {
-      if (!o) return;
-      const key = String(o.id || o.order_number || o.order_id || '');
-      contextMap.set(key, o);
-    });
-
-    // Merge dynamic updates from context into the baseline orders
-    const mergedBaseline = BASELINE_ADMIN_ORDERS.map((baseOrd, idx) => {
-      const live = contextMap.get(baseOrd.id);
-      if (live) {
-        return {
-          ...baseOrd,
-          ...live,
-          orderIndex: idx,
-          customer: { ...baseOrd.customer, ...(live.customer || {}) },
-          services: live.services || baseOrd.services,
-          status: live.status || baseOrd.status,
-          payment: live.payment || baseOrd.payment,
-          amount: live.amount || baseOrd.amount
-        };
-      }
-      return { ...baseOrd, orderIndex: idx };
-    });
-
-    // Any new orders created by admin dynamically that are not in baseline
-    const baselineIds = new Set(BASELINE_ADMIN_ORDERS.map(b => b.id));
-    const extraOrders = (orders || []).filter(o => {
-      if (!o || !o.id) return false;
-      if (baselineIds.has(o.id)) return false;
-      // Filter out generic mock seed order 'FC-10452' / 'ord_sample_01'
-      if (o.id === 'FC-10452' || o.id === 'ord_sample_01' || o.rawId === 'ord_sample_01') return false;
-      return true;
-    });
-
-    return [...extraOrders, ...mergedBaseline];
+    if (orders && orders.length > 0) {
+      return orders;
+    }
+    return BASELINE_ADMIN_ORDERS;
   }, [orders]);
 
   // Exact order metrics dynamically updated and guaranteed 1:1 with filtered lists
@@ -530,6 +499,8 @@ export const AdminOrdersPage = () => {
       const hasMatch = Array.from(allOrderServices).some(s => {
         const norm = String(s).toLowerCase();
         if (norm === target) return true;
+        if (target === 'shoe laundry' && (norm.includes('shoe') || norm.includes('express') || o.isExpress || o.is_express)) return true;
+        if (target === 'home care' && norm.includes('home')) return true;
         if (target === 'express laundry' && (norm.includes('express') || o.isExpress || o.is_express)) return true;
         if (target === 'wash & fold' && norm.includes('fold')) return true;
         if (target === 'wash & iron' && norm.includes('iron') && !norm.includes('steam')) return true;
@@ -1245,13 +1216,12 @@ export const AdminOrdersPage = () => {
           align-items: center;
           gap: 14px;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-          transition: border-color 0.15s ease;
-          user-select: none;
-          cursor: default;
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
 
         .orders-metric-pill-card:hover {
-          border-color: #E2E8F0;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          transform: translateY(-1px);
         }
 
         .metric-badge-box {

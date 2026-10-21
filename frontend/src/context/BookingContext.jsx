@@ -671,10 +671,18 @@ export const BookingProvider = ({ children }) => {
     const cleanPage = String(page || 'home').replace(/^#\/?/, '').trim();
     setCurrentPage(cleanPage);
     if (typeof window !== 'undefined') {
-      if (actualOptions?.replace) {
-        window.location.replace(`#${cleanPage}`);
+      if (window.location.pathname && window.location.pathname !== '/') {
+        try {
+          window.history.replaceState(null, '', `/#${cleanPage}`);
+        } catch (_) {
+          window.location.hash = cleanPage;
+        }
       } else {
-        window.location.hash = cleanPage;
+        if (actualOptions?.replace) {
+          window.location.replace(`#${cleanPage}`);
+        } else {
+          window.location.hash = cleanPage;
+        }
       }
     }
     if (cleanPage === 'customer-track' && actualId) {

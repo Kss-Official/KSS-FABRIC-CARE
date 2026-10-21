@@ -51,8 +51,15 @@ export const Footer = () => {
               role="button"
               tabIndex={0}
             >
-              <span className="logo-teal">Fabri</span>
-              <span className="logo-coral">Care</span>
+              <img 
+                src="/images/fabricare-logo.png" 
+                alt="FabriCare" 
+                className="footer-brand-logo-img" 
+              />
+              <div>
+                <span className="logo-teal">Fabri</span>
+                <span className="logo-coral">Care</span>
+              </div>
             </div>
 
             <p className="footer-slogan">Fresh clothes, brighter days.</p>
@@ -425,7 +432,6 @@ export const Footer = () => {
           border-right: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        /* Column 1: Brand & Socials */
         .footer-logo-title {
           font-family: 'Poppins', sans-serif;
           font-size: 32px;
@@ -434,7 +440,17 @@ export const Footer = () => {
           line-height: 1;
           margin-bottom: 18px;
           cursor: pointer;
-          display: inline-block;
+          display: inline-flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .footer-brand-logo-img {
+          width: 38px;
+          height: 38px;
+          border-radius: 9px;
+          object-fit: contain;
+          flex-shrink: 0;
         }
 
         .logo-teal {

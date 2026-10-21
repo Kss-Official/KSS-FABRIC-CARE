@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
+import { EditUserProfileModal } from '../../components/admin/EditUserProfileModal';
 import { 
   Users, 
   UserCheck, 
@@ -469,6 +470,24 @@ export const AdminUsersPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
+  // Track locally deleted user IDs so they disappear instantly even for baseline users
+  const [deletedUserIds, setDeletedUserIds] = useState([]);
+
+  // Ref for detecting clicks outside the action popover
+  const popoverRef = useRef(null);
+
+  // Close the action popover when clicking outside it
+  useEffect(() => {
+    if (!activeMenuId) return;
+    const handleOutsideClick = (e) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
+        setActiveMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [activeMenuId]);
+
   // View Details Modal State
   const [viewingUser, setViewingUser] = useState(null);
 
@@ -552,8 +571,10 @@ export const AdminUsersPage = () => {
       });
     }
 
-    return Array.from(userMap.values());
-  }, [contextAllUsers]);
+    // 3. Filter out locally deleted users so they disappear immediately
+    const allUsers = Array.from(userMap.values());
+    return allUsers.filter(u => !deletedUserIds.includes(u.uid) && !deletedUserIds.includes(u.id));
+  }, [contextAllUsers, deletedUserIds]);
 
   // Dynamic Metrics depending on active tab
   const metrics = useMemo(() => {
@@ -706,24 +727,24 @@ export const AdminUsersPage = () => {
   };
 
   // Save Edit User
-  const handleSaveEdit = async (e) => {
-    e.preventDefault();
+  const handleSaveEdit = async (updatedData) => {
     if (!editingUser) return;
     try {
-      if (updateUser && editingUser.uid) {
-        await updateUser(editingUser.uid, {
-          name: editForm.name.trim(),
-          phone: editForm.phone.trim(),
-          email: editForm.email.trim(),
-          role: editForm.role,
-          location: editForm.location.trim(),
-          area: editForm.location.split(',')[0].trim(),
-          department: editForm.department,
-          shift: editForm.shift,
-          vehicleType: editForm.vehicleType,
-          vehicleNumber: editForm.vehicleNumber.trim(),
-          status: editForm.status,
-          isActive: editForm.status === 'Active'
+      if (updateUser) {
+        const targetUid = editingUser.uid || editingUser.id;
+        await updateUser(targetUid, {
+          name: (updatedData.name || editForm.name || '').trim(),
+          phone: (updatedData.phone || editForm.phone || '').trim(),
+          email: (updatedData.email || editForm.email || '').trim(),
+          role: editingUser.role || updatedData.role || editForm.role,
+          location: (updatedData.location || editForm.location || '').trim(),
+          area: (updatedData.location || editForm.location || '').split(',')[0].trim(),
+          department: updatedData.department || editForm.department,
+          shift: updatedData.shift || editForm.shift,
+          vehicleType: updatedData.vehicleType || editForm.vehicleType,
+          vehicleNumber: (updatedData.vehicleNumber || editForm.vehicleNumber || '').trim(),
+          status: updatedData.status || editForm.status,
+          isActive: (updatedData.status || editForm.status) === 'Active'
         });
       }
     } catch (err) {
@@ -734,16 +755,24 @@ export const AdminUsersPage = () => {
 
   // Delete User
   const handleDeleteUser = async (user) => {
-    if (window.confirm(`Are you sure you want to delete ${user.fullName || user.name}?`)) {
-      try {
-        if (deleteUser && user.uid) {
-          await deleteUser(user.uid);
-        }
-      } catch (err) {
-        console.error('Failed to delete user:', err);
+    setActiveMenuId(null);
+    if (!window.confirm(`Are you sure you want to delete ${user.fullName || user.name}?`)) return;
+    // Optimistically remove from UI immediately
+    const uid = user.uid || user.id;
+    if (uid) {
+      setDeletedUserIds(prev => [...prev, uid]);
+    }
+    try {
+      if (deleteUser && uid) {
+        await deleteUser(uid);
+      }
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+      // Revert optimistic removal on failure
+      if (uid) {
+        setDeletedUserIds(prev => prev.filter(id => id !== uid));
       }
     }
-    setActiveMenuId(null);
   };
 
   const getRoleBadge = (role) => {
@@ -1155,7 +1184,7 @@ export const AdminUsersPage = () => {
 
                       {/* Actions */}
                       <td className="td-actions-col">
-                        <div className="action-menu-anchor">
+                        <div className="action-menu-anchor" ref={activeMenuId === user.id ? popoverRef : null}>
                           <button 
                             type="button"
                             className="table-dot-menu-btn"
@@ -1397,153 +1426,14 @@ export const AdminUsersPage = () => {
         document.body
       )}
 
-      {/* Edit User Modal */}
-      {editingUser && typeof document !== 'undefined' && createPortal(
-        <div className="modal-backdrop-overlay animate-fade-in" onClick={() => setEditingUser(null)}>
-          <div className="edit-user-modal-box" onClick={(e) => e.stopPropagation()}>
-            <div className="details-modal-header">
-              <div className="ac-header-left">
-                <div className="ac-icon-badge">
-                  <Edit size={20} />
-                </div>
-                <div>
-                  <h3 className="details-user-name">Edit User Profile</h3>
-                  <span className="details-code-id">{editingUser.id}</span>
-                </div>
-              </div>
-              <button className="details-close-btn" onClick={() => setEditingUser(null)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEdit} className="edit-user-form">
-              <div className="ac-grid-2col">
-                <div className="ac-form-group">
-                  <label className="ac-label">Full Name</label>
-                  <input 
-                    type="text" 
-                    className="ac-input"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="ac-form-group">
-                  <label className="ac-label">Phone Number</label>
-                  <input 
-                    type="text" 
-                    className="ac-input"
-                    value={editForm.phone}
-                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="ac-grid-2col" style={{ marginTop: '12px' }}>
-                <div className="ac-form-group">
-                  <label className="ac-label">Email Address</label>
-                  <input 
-                    type="email" 
-                    className="ac-input"
-                    value={editForm.email}
-                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  />
-                </div>
-                <div className="ac-form-group">
-                  <label className="ac-label">Account Status</label>
-                  <select 
-                    className="ac-input"
-                    value={editForm.status}
-                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
-                </div>
-              </div>
-
-              {editingUser.role === 'customer' && (
-                <div className="ac-form-group" style={{ marginTop: '12px' }}>
-                  <label className="ac-label">Address / Locality</label>
-                  <input 
-                    type="text" 
-                    className="ac-input"
-                    value={editForm.location}
-                    onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-                  />
-                </div>
-              )}
-
-              {editingUser.role === 'staff' && (
-                <div className="ac-grid-2col" style={{ marginTop: '12px' }}>
-                  <div className="ac-form-group">
-                    <label className="ac-label">Department</label>
-                    <input 
-                      type="text" 
-                      className="ac-input"
-                      value={editForm.department}
-                      onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
-                    />
-                  </div>
-                  <div className="ac-form-group">
-                    <label className="ac-label">Shift</label>
-                    <input 
-                      type="text" 
-                      className="ac-input"
-                      value={editForm.shift}
-                      onChange={(e) => setEditForm({ ...editForm, shift: e.target.value })}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {(editingUser.role === 'agent' || editingUser.role === 'delivery') && (
-                <div className="ac-grid-2col" style={{ marginTop: '12px' }}>
-                  <div className="ac-form-group">
-                    <label className="ac-label">Vehicle Type</label>
-                    <select 
-                      className="ac-input"
-                      value={editForm.vehicleType}
-                      onChange={(e) => setEditForm({ ...editForm, vehicleType: e.target.value })}
-                    >
-                      <option value="Two-Wheeler">Two-Wheeler</option>
-                      <option value="Three-Wheeler">Three-Wheeler</option>
-                      <option value="Van">Van</option>
-                    </select>
-                  </div>
-                  <div className="ac-form-group">
-                    <label className="ac-label">Vehicle Number</label>
-                    <input 
-                      type="text" 
-                      className="ac-input"
-                      value={editForm.vehicleNumber}
-                      onChange={(e) => setEditForm({ ...editForm, vehicleNumber: e.target.value })}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="ac-modal-footer" style={{ marginTop: '20px' }}>
-                <button 
-                  type="button" 
-                  className="ac-btn-cancel"
-                  onClick={() => setEditingUser(null)}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit" 
-                  className="ac-btn-submit"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* Edit User Modal – uses redesigned component matching Reference Image 2 exactly */}
+      <EditUserProfileModal
+        isOpen={Boolean(editingUser)}
+        onClose={() => setEditingUser(null)}
+        user={editingUser}
+        currentRole={activeTab}
+        onSave={handleSaveEdit}
+      />
 
       {/* Scoped CSS Styles matching Reference Image 2 pixel-by-pixel */}
       <style>{`

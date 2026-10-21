@@ -87,8 +87,8 @@ export const AddServiceModal = () => {
               <Tag size={20} strokeWidth={2} />
             </div>
             <div className="add-service-header-text">
-              <h2 className="add-service-title">Add Item</h2>
-              <p className="add-service-subtitle">Add, edit or manage your laundry items and pricing.</p>
+              <h2 className="add-service-title">Add Service</h2>
+              <p className="add-service-subtitle">Add, edit or manage your laundry services and pricing.</p>
             </div>
           </div>
           <button 
@@ -103,6 +103,32 @@ export const AddServiceModal = () => {
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="add-service-form">
+          {/* Service */}
+          <div className="add-service-field-group">
+            <label className="add-service-label">
+              Service <span className="req-star">*</span>
+            </label>
+            <div className="add-service-select-wrap">
+              <select 
+                className="add-service-select"
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+              >
+                <option value="Wash & Fold">Wash & Fold</option>
+                <option value="Dry Cleaning">Dry Cleaning</option>
+                <option value="Steam Ironing">Steam Ironing</option>
+                <option value="Household">Household</option>
+                <option value="Wash & Iron">Wash & Iron</option>
+                <option value="Express">Express</option>
+                <option value="Express Laundry">Express Laundry</option>
+                <option value="Shoe Laundry">Shoe Laundry</option>
+                <option value="Home Care">Home Care</option>
+                <option value="Clothing">Clothing</option>
+              </select>
+              <ChevronDown size={16} className="add-service-select-chevron" />
+            </div>
+          </div>
+
           {/* Item Name */}
           <div className="add-service-field-group">
             <label className="add-service-label">
@@ -133,32 +159,6 @@ export const AddServiceModal = () => {
               placeholder="Regular shirt cleaning and pressing"
             />
             <span className="add-service-char-count">{form.description.length}/200</span>
-          </div>
-
-          {/* Service */}
-          <div className="add-service-field-group">
-            <label className="add-service-label">
-              Service <span className="req-star">*</span>
-            </label>
-            <div className="add-service-select-wrap">
-              <select 
-                className="add-service-select"
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-              >
-                <option value="Wash & Fold">Wash & Fold</option>
-                <option value="Dry Cleaning">Dry Cleaning</option>
-                <option value="Steam Ironing">Steam Ironing</option>
-                <option value="Household">Household</option>
-                <option value="Wash & Iron">Wash & Iron</option>
-                <option value="Express">Express</option>
-                <option value="Express Laundry">Express Laundry</option>
-                <option value="Shoe Laundry">Shoe Laundry</option>
-                <option value="Home Care">Home Care</option>
-                <option value="Clothing">Clothing</option>
-              </select>
-              <ChevronDown size={16} className="add-service-select-chevron" />
-            </div>
           </div>
 
           {/* Price (₹) */}

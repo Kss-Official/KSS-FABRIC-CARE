@@ -417,12 +417,30 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.warn('SignOut error:', err);
     } finally {
-      localStorage.removeItem('fabricare_user');
-      localStorage.removeItem('fabricare_token');
-      sessionStorage.removeItem('fabricare_user');
+      try {
+        localStorage.removeItem('fabricare_user');
+        localStorage.removeItem('fabricare_token');
+        localStorage.removeItem('fabricare_refresh_token');
+        sessionStorage.removeItem('fabricare_user');
+        sessionStorage.removeItem('fabricare_token');
+        sessionStorage.removeItem('fabricare_refresh_token');
+        sessionStorage.removeItem('fabricare_intended_destination');
+      } catch (_) {}
       setCurrentUser(null);
       setUserProfile(null);
-      window.location.hash = '#login';
+      if (typeof window !== 'undefined') {
+        if (typeof window.navigateTo === 'function') {
+          window.navigateTo('login', null, { replace: true });
+        } else if (window.location.pathname && window.location.pathname !== '/') {
+          try {
+            window.history.replaceState(null, '', '/#login');
+          } catch (_) {
+            window.location.hash = '#login';
+          }
+        } else {
+          window.location.hash = '#login';
+        }
+      }
     }
   };
 
