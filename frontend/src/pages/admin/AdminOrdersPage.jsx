@@ -690,12 +690,7 @@ export const AdminOrdersPage = () => {
       {/* 5 Metric Cards */}
       <div className="orders-metric-cards-row">
         {/* Total Orders */}
-        <div 
-          className={`orders-metric-pill-card ${activeTab === 'all' && statusFilter === 'all' ? 'active' : ''}`}
-          onClick={() => handleTabClick('all')}
-          style={{ cursor: 'pointer' }}
-          title="Show All Orders"
-        >
+        <div className="orders-metric-pill-card">
           <div className="metric-badge-box cyan">
             <ShoppingBag size={20} color="#0D7A75" strokeWidth={2} />
           </div>
@@ -706,12 +701,7 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* Pending Pickup */}
-        <div 
-          className={`orders-metric-pill-card ${activeTab === 'pending' || statusFilter === 'Pending Pickup' ? 'active' : ''}`}
-          onClick={() => handleTabClick('pending')}
-          style={{ cursor: 'pointer' }}
-          title="Filter by Pending Pickup"
-        >
+        <div className="orders-metric-pill-card">
           <div className="metric-badge-box orange">
             <Truck size={20} color="#EA580C" strokeWidth={2} />
           </div>
@@ -722,12 +712,7 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* In Cleaning */}
-        <div 
-          className={`orders-metric-pill-card ${activeTab === 'cleaning' || statusFilter === 'In Cleaning' ? 'active' : ''}`}
-          onClick={() => handleTabClick('cleaning')}
-          style={{ cursor: 'pointer' }}
-          title="Filter by In Cleaning"
-        >
+        <div className="orders-metric-pill-card">
           <div className="metric-badge-box yellow">
             <WasherIcon size={20} color="#D97706" />
           </div>
@@ -738,12 +723,7 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* Ready for Delivery */}
-        <div 
-          className={`orders-metric-pill-card ${activeTab === 'ready' || statusFilter === 'Ready for Delivery' ? 'active' : ''}`}
-          onClick={() => handleTabClick('ready')}
-          style={{ cursor: 'pointer' }}
-          title="Filter by Ready for Delivery"
-        >
+        <div className="orders-metric-pill-card">
           <div className="metric-badge-box purple">
             <ShoppingBag size={20} color="#9333EA" strokeWidth={2} />
           </div>
@@ -754,10 +734,7 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* Completed */}
-        <div 
-          className={`orders-metric-pill-card ${activeTab === 'completed' || statusFilter === 'Completed' ? 'active' : ''}`}
-          style={{ cursor: 'default' }}
-        >
+        <div className="orders-metric-pill-card">
           <div className="metric-badge-box green">
             <CheckCircle2 size={20} color="#16A34A" strokeWidth={2} />
           </div>
@@ -1268,18 +1245,13 @@ export const AdminOrdersPage = () => {
           align-items: center;
           gap: 14px;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-          transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+          transition: border-color 0.15s ease;
           user-select: none;
+          cursor: default;
         }
 
         .orders-metric-pill-card:hover {
-          border-color: #CBD5E1;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-        }
-
-        .orders-metric-pill-card.active {
-          border-color: #0D7A75;
-          box-shadow: 0 4px 14px rgba(13, 122, 117, 0.08);
+          border-color: #E2E8F0;
         }
 
         .metric-badge-box {
