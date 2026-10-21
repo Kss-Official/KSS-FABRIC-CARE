@@ -434,13 +434,9 @@ export const AdminLayout = ({ children }) => {
           >
             <span className="nav-icon nav-item-icon"><Bell size={18} /></span>
             <span className="nav-label nav-item-label">Notifications</span>
-            {unreadNotifsCount > 0 ? (
-              <span className="nav-count-badge bg-teal-50 text-teal-700 font-bold border border-teal-200">
-                {unreadNotifsCount}
-              </span>
-            ) : adminTab === 'notifications' ? (
+            {adminTab === 'notifications' && (
               <ChevronRight size={16} className="sidebar-active-arrow" />
-            ) : null}
+            )}
           </button>
 
           {/* Content */}
