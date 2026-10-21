@@ -225,8 +225,12 @@ export const PaymentsInvoices = () => {
   // Lock background page scroll while invoice modal is open, and reset modal scroll to top every time
   useEffect(() => {
     if (isModalOpen) {
-      const prevOverflow = document.body.style.overflow;
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
       document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      document.documentElement.classList.add('modal-open');
+      document.body.classList.add('modal-open');
 
       const resetScrollToTop = () => {
         if (modalScrollRef.current) {
@@ -248,7 +252,10 @@ export const PaymentsInvoices = () => {
       document.addEventListener('keydown', handleKeyDown);
 
       return () => {
-        document.body.style.overflow = prevOverflow || '';
+        document.body.style.overflow = prevBodyOverflow || '';
+        document.documentElement.style.overflow = prevHtmlOverflow || '';
+        document.documentElement.classList.remove('modal-open');
+        document.body.classList.remove('modal-open');
         document.removeEventListener('keydown', handleKeyDown);
         cancelAnimationFrame(animFrame);
         clearTimeout(timer1);

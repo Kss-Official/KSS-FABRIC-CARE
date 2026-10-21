@@ -269,8 +269,22 @@ export const AdminProvider = ({ children }) => {
   const [dashboardPeriod, setDashboardPeriod] = useState('today');
 
   const [faqs, setFaqs] = useState(INITIAL_FAQS_ADMIN);
-  const [termsContent, setTermsContent] = useState(INITIAL_TERMS_CONTENT);
+  const [termsContent, setTermsContent] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('fabricare_admin_terms');
+        if (saved) return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return INITIAL_TERMS_CONTENT;
+  });
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
+  const [ordersFilterTarget, setOrdersFilterTarget] = useState({ tab: 'all', status: 'all' });
+
+  const navigateToOrdersWithFilter = (tab = 'all', status = 'all') => {
+    setOrdersFilterTarget({ tab, status });
+    setAdminTab('orders');
+  };
 
   const [loading, setLoading] = useState(false);
   const [supportLoading, setSupportLoading] = useState(false);
@@ -460,6 +474,15 @@ export const AdminProvider = ({ children }) => {
   const updateOrderStatus = async (orderId, newStatus, reason = 'Admin updated order status') => {
     const order = orders.find(o => o.id === orderId || o.code === orderId || o.order_id === orderId);
     const targetOrderId = order?.rawId || order?.id || orderId;
+
+    // Optimistically update order status in state
+    setOrders(prev => (prev || []).map(o => {
+      if (o.id === orderId || o.rawId === targetOrderId || o.code === orderId || o.order_number === orderId) {
+        return { ...o, status: newStatus };
+      }
+      return o;
+    }));
+
     await adminOverrideOrderStatus(targetOrderId, newStatus, reason, currentUser);
   };
 
@@ -823,6 +846,9 @@ export const AdminProvider = ({ children }) => {
       value={{
         adminTab,
         setAdminTab,
+        ordersFilterTarget,
+        setOrdersFilterTarget,
+        navigateToOrdersWithFilter,
         isAdminAuthenticated,
         setIsAdminAuthenticated,
         orders,
@@ -925,6 +951,9 @@ export const useAdmin = () => {
     return {
       adminTab: 'dashboard',
       setAdminTab: () => {},
+      ordersFilterTarget: { tab: 'all', status: 'all' },
+      setOrdersFilterTarget: () => {},
+      navigateToOrdersWithFilter: () => {},
       isAdminAuthenticated: true,
       setIsAdminAuthenticated: () => {},
       orders: [],

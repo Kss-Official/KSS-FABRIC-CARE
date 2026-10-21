@@ -28,13 +28,19 @@ export const CustomerAuthModal = () => {
   // Lock background scroll when auth modal is open
   React.useEffect(() => {
     if (isAuthModalOpen) {
+      const origHtml = document.documentElement.style.overflow;
+      const origBody = document.body.style.overflow;
+      document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
+      document.documentElement.classList.add('modal-open');
+      document.body.classList.add('modal-open');
+      return () => {
+        document.documentElement.style.overflow = origHtml || '';
+        document.body.style.overflow = origBody || '';
+        document.documentElement.classList.remove('modal-open');
+        document.body.classList.remove('modal-open');
+      };
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
   }, [isAuthModalOpen]);
 
   if (!isAuthModalOpen) return null;

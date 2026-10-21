@@ -257,6 +257,58 @@ export const MyOrders = () => {
     }
   };
 
+  const getOrderServices = (order) => {
+    if (!order) return 'Wash & Fold';
+
+    if (Array.isArray(order.services) && order.services.length > 0) {
+      const clean = order.services.filter(Boolean);
+      if (clean.length > 0) return clean.join(', ');
+    }
+    if (Array.isArray(order.services_list) && order.services_list.length > 0) {
+      const clean = order.services_list.filter(Boolean);
+      if (clean.length > 0) return clean.join(', ');
+    }
+
+    if (typeof order.service === 'string' && order.service.trim()) {
+      return order.service.trim();
+    }
+
+    const rawItems = Array.isArray(order.items)
+      ? order.items
+      : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
+
+    if (rawItems.length > 0) {
+      const extractedServices = new Set();
+      rawItems.forEach(item => {
+        if (!item) return;
+        if (item.service_category && item.service_category !== 'General') {
+          extractedServices.add(item.service_category);
+        } else if (item.categoryName && item.categoryName !== 'General') {
+          extractedServices.add(item.categoryName);
+        } else if (Array.isArray(item.services) && item.services.length > 0) {
+          item.services.forEach(s => s && extractedServices.add(s));
+        } else if (item.category && !['Men', 'Women', 'Household', 'Kids', 'General', 'Clothing'].includes(item.category)) {
+          extractedServices.add(item.category);
+        } else {
+          const match = String(item.name || item.item_name || '').match(/\(([^)]+)\)/);
+          if (match && match[1] && !/^\d+$/.test(match[1])) {
+            extractedServices.add(match[1].trim());
+          }
+        }
+      });
+
+      if (extractedServices.size > 0) {
+        return Array.from(extractedServices).join(', ');
+      }
+    }
+
+    if (order.isExpress) {
+      return 'Express Laundry';
+    }
+
+    return 'Wash & Fold';
+  };
+
   return (
     <div className="portal-container" style={{ minHeight: '65vh' }}>
       {/* Header */}
@@ -404,11 +456,9 @@ export const MyOrders = () => {
                 </div>
 
                 <div>
-                  <span className="text-xs text-muted block mb-1">Items & Services</span>
+                  <span className="text-xs text-muted block mb-1">Services</span>
                   <div className="font-medium text-navy">
-                    {Array.isArray(order.items) && order.items.length > 0
-                      ? order.items.map(i => `${i.item_name || i.name || i.service_name || 'Item'} ×${i.quantity || 1}`).join(', ')
-                      : 'General Laundry Service'}
+                    {getOrderServices(order)}
                   </div>
                 </div>
 

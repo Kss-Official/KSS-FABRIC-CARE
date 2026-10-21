@@ -11,7 +11,8 @@ import {
   CheckCircle2,
   Instagram,
   Facebook,
-  Linkedin
+  Linkedin,
+  ExternalLink
 } from 'lucide-react';
 
 export const AdminSettingsPage = () => {
@@ -44,6 +45,13 @@ export const AdminSettingsPage = () => {
   const [errors, setErrors] = useState({});
   const [savedToast, setSavedToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('Profile saved successfully!');
+
+  const ensureUrl = (url) => {
+    if (!url) return '';
+    const trimmed = String(url).trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
 
   // Handle Photo Upload
   const handlePhotoUpload = (e) => {
@@ -289,7 +297,21 @@ export const AdminSettingsPage = () => {
 
               {/* Website URL */}
               <div className="as-field">
-                <label className="as-label">Website URL</label>
+                <div className="as-label-row">
+                  <label className="as-label">Website URL</label>
+                  {form.websiteUrl && (
+                    <a 
+                      href={ensureUrl(form.websiteUrl)} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="as-open-link-btn"
+                      title="Open website URL in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                    </a>
+                  )}
+                </div>
                 <input 
                   type="text" 
                   className="as-input"
@@ -303,12 +325,32 @@ export const AdminSettingsPage = () => {
             <div className="as-contact-col">
               {/* Instagram */}
               <div className="as-field">
-                <label className="as-label">
-                  <span className="as-social-badge as-instagram-badge">
-                    <Instagram size={12} strokeWidth={2.4} />
-                  </span>
-                  Instagram
-                </label>
+                <div className="as-label-row">
+                  <label className="as-label">
+                    <a
+                      href={ensureUrl(form.instagram)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="as-social-badge as-instagram-badge"
+                      title="Open Instagram profile in new tab"
+                    >
+                      <Instagram size={12} strokeWidth={2.4} />
+                    </a>
+                    Instagram
+                  </label>
+                  {form.instagram && (
+                    <a 
+                      href={ensureUrl(form.instagram)} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="as-open-link-btn"
+                      title="Open Instagram in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                    </a>
+                  )}
+                </div>
                 <input 
                   type="text" 
                   className="as-input"
@@ -319,12 +361,32 @@ export const AdminSettingsPage = () => {
 
               {/* Facebook */}
               <div className="as-field">
-                <label className="as-label">
-                  <span className="as-social-badge as-facebook-badge">
-                    <Facebook size={12} fill="currentColor" strokeWidth={0} />
-                  </span>
-                  Facebook
-                </label>
+                <div className="as-label-row">
+                  <label className="as-label">
+                    <a
+                      href={ensureUrl(form.facebook)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="as-social-badge as-facebook-badge"
+                      title="Open Facebook profile in new tab"
+                    >
+                      <Facebook size={12} fill="currentColor" strokeWidth={0} />
+                    </a>
+                    Facebook
+                  </label>
+                  {form.facebook && (
+                    <a 
+                      href={ensureUrl(form.facebook)} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="as-open-link-btn"
+                      title="Open Facebook in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                    </a>
+                  )}
+                </div>
                 <input 
                   type="text" 
                   className="as-input"
@@ -335,12 +397,32 @@ export const AdminSettingsPage = () => {
 
               {/* Twitter / X */}
               <div className="as-field">
-                <label className="as-label">
-                  <span className="as-social-badge as-twitter-badge">
-                    𝕏
-                  </span>
-                  Twitter / X
-                </label>
+                <div className="as-label-row">
+                  <label className="as-label">
+                    <a
+                      href={ensureUrl(form.twitter)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="as-social-badge as-twitter-badge"
+                      title="Open Twitter / X profile in new tab"
+                    >
+                      𝕏
+                    </a>
+                    Twitter / X
+                  </label>
+                  {form.twitter && (
+                    <a 
+                      href={ensureUrl(form.twitter)} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="as-open-link-btn"
+                      title="Open Twitter / X in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                    </a>
+                  )}
+                </div>
                 <input 
                   type="text" 
                   className="as-input"
@@ -351,12 +433,32 @@ export const AdminSettingsPage = () => {
 
               {/* LinkedIn */}
               <div className="as-field">
-                <label className="as-label">
-                  <span className="as-social-badge as-linkedin-badge">
-                    <Linkedin size={12} fill="currentColor" strokeWidth={0} />
-                  </span>
-                  LinkedIn
-                </label>
+                <div className="as-label-row">
+                  <label className="as-label">
+                    <a
+                      href={ensureUrl(form.linkedin)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="as-social-badge as-linkedin-badge"
+                      title="Open LinkedIn profile in new tab"
+                    >
+                      <Linkedin size={12} fill="currentColor" strokeWidth={0} />
+                    </a>
+                    LinkedIn
+                  </label>
+                  {form.linkedin && (
+                    <a 
+                      href={ensureUrl(form.linkedin)} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="as-open-link-btn"
+                      title="Open LinkedIn in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                    </a>
+                  )}
+                </div>
                 <input 
                   type="text" 
                   className="as-input"
@@ -794,6 +896,39 @@ export const AdminSettingsPage = () => {
         }
 
         /* Social Badges next to label text */
+        .as-label-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 6px;
+        }
+
+        .as-label-row .as-label {
+          margin-bottom: 0;
+        }
+
+        .as-open-link-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11.5px;
+          font-weight: 600;
+          color: #0D7A75;
+          text-decoration: none;
+          padding: 2px 7px;
+          border-radius: 6px;
+          background: #F0FDFB;
+          border: 1px solid #CCFBF1;
+          transition: all 0.15s ease;
+          line-height: 1.3;
+        }
+
+        .as-open-link-btn:hover {
+          background: #0D7A75;
+          color: #FFFFFF;
+          border-color: #0D7A75;
+        }
+
         .as-social-badge {
           display: inline-flex;
           align-items: center;
@@ -804,6 +939,14 @@ export const AdminSettingsPage = () => {
           margin-right: 6px;
           flex-shrink: 0;
           color: #FFFFFF;
+          text-decoration: none;
+          cursor: pointer;
+          transition: transform 0.15s ease, opacity 0.15s ease;
+        }
+
+        .as-social-badge:hover {
+          transform: scale(1.1);
+          opacity: 0.9;
         }
 
         .as-instagram-badge {

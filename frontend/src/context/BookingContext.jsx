@@ -4,7 +4,14 @@ import { useAuth } from './AuthContext';
 import { addressApi, servicesApi } from '../api/apiClient';
 import { INITIAL_SERVICES } from '../constants/servicesConstants';
 import { subscribeAdminServices } from '../services/adminDataService';
-import { PRICING_CATEGORIES, PRICING_SUBCATEGORIES, PRICING_ITEMS } from '../data/pricingData';
+import { 
+  PRICING_CATEGORIES, 
+  PRICING_SUBCATEGORIES, 
+  PRICING_ITEMS,
+  EXPRESS_SERVICES,
+  getItemBasePrice,
+  getExpressItemPrice
+} from '../data/pricingData';
 
 const BookingContext = createContext();
 
@@ -132,23 +139,12 @@ export const BookingProvider = ({ children }) => {
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState('dry-cleaning');
   const [servicesList, setServicesList] = useState(INITIAL_SERVICES);
+  const [adminItemsCatalog, setAdminItemsCatalog] = useState([]);
 
   useEffect(() => {
     const unsub = subscribeAdminServices((liveServices) => {
       if (liveServices && liveServices.length > 0) {
-        setServicesList(prev => {
-          return liveServices.map(ls => {
-            const existing = prev.find(p => p.id === ls.id) || {};
-            return {
-              ...existing,
-              ...ls,
-              price: Number(ls.price) || existing.price || 120,
-              name: ls.name || existing.name,
-              status: ls.status || 'Active',
-              popular: existing.popular ?? true
-            };
-          });
-        });
+        setAdminItemsCatalog(liveServices);
       }
     });
     return () => {
@@ -191,24 +187,33 @@ export const BookingProvider = ({ children }) => {
     setSelectedServices(activeCategoryIds);
   }, [selectedItems]);
 
-  const addItem = (item, categoryId, subcategoryId, qty = 1) => {
+  const addItem = (item, categoryId, subcategoryId, qty = 1, expressService = null) => {
+    const isExpress = categoryId === 'express-laundry';
+    const effectiveExpressService = expressService || item.expressService || 'wash-fold';
+    const expressSvcObj = EXPRESS_SERVICES.find(s => s.id === effectiveExpressService) || { name: 'Wash & Fold' };
     const cat = PRICING_CATEGORIES.find(c => c.id === categoryId);
     const sub = PRICING_SUBCATEGORIES.find(s => s.id === subcategoryId);
-    const itemKey = `${categoryId}__${item.id}`;
+    const itemKey = isExpress 
+      ? `express-laundry__${effectiveExpressService}__${item.id}`
+      : `${categoryId}__${item.id}`;
 
     // Determine unit price based on configured rules
     let unitPrice = 100;
-    if (cat?.isPriceEnabled && item.prices && item.prices[categoryId] != null) {
+    if (isExpress) {
+      unitPrice = item.price || getExpressItemPrice(item, effectiveExpressService);
+    } else if (cat?.isPriceEnabled && item.prices && item.prices[categoryId] != null) {
       unitPrice = Number(item.prices[categoryId]);
     } else if (categoryId === 'dry-cleaning') {
-      unitPrice = 120; // Configured base rate ₹120 / item
+      unitPrice = item.price || getItemBasePrice(item, 'dry-cleaning');
     } else if (categoryId === 'steam-iron') {
-      unitPrice = 20;  // Configured base rate ₹20 / item
-    } else if (categoryId === 'express-laundry') {
-      unitPrice = item.prices?.['express-laundry'] || 200;
+      unitPrice = item.price || getItemBasePrice(item, 'steam-iron');
     } else if (item.price != null) {
       unitPrice = Number(item.price);
     }
+
+    const categoryName = isExpress
+      ? `Express ${expressSvcObj.name}`
+      : (cat ? cat.name : categoryId);
 
     setSelectedItems(prev => {
       const existing = prev[itemKey];
@@ -220,13 +225,16 @@ export const BookingProvider = ({ children }) => {
           id: item.id,
           name: item.name,
           categoryId: categoryId,
-          categoryName: cat ? cat.name : categoryId,
+          expressService: isExpress ? effectiveExpressService : null,
+          categoryName: categoryName,
           subcategoryId: subcategoryId,
           subcategoryName: sub ? sub.name : subcategoryId,
           unit: item.unit || 'item',
           unitPrice: unitPrice,
-          isPriceEnabled: Boolean(cat?.isPriceEnabled),
-          quantity: newQty
+          baseUnitPrice: isExpress ? getItemBasePrice(item, effectiveExpressService) : unitPrice,
+          isPriceEnabled: true,
+          quantity: newQty,
+          isExpress: isExpress
         }
       };
     });
@@ -282,16 +290,28 @@ export const BookingProvider = ({ children }) => {
     });
   };
 
-  const getItemQuantity = (categoryId, itemId) => {
+  const getItemQuantity = (categoryId, itemId, expressService = null) => {
+    if (categoryId === 'express-laundry' && expressService) {
+      const itemKey = `express-laundry__${expressService}__${itemId}`;
+      return selectedItems[itemKey]?.quantity || 0;
+    }
     const itemKey = `${categoryId}__${itemId}`;
-    return selectedItems[itemKey]?.quantity || 0;
+    if (selectedItems[itemKey]) return selectedItems[itemKey].quantity || 0;
+    // Fallback check for any express key matching itemId
+    if (categoryId === 'express-laundry') {
+      const found = Object.values(selectedItems).find(it => it.categoryId === 'express-laundry' && it.id === itemId);
+      return found?.quantity || 0;
+    }
+    return 0;
   };
 
   const clearAllItems = () => {
     setSelectedItems({});
     setSelectedServices([]);
+    setIsExpressDelivery(false);
     try {
       sessionStorage.removeItem('fabricare_selected_clothing_items');
+      sessionStorage.removeItem('fabricare_is_express_delivery');
     } catch (e) {}
   };
 
@@ -350,12 +370,213 @@ export const BookingProvider = ({ children }) => {
 
   // Step 4 Instructions & Estimation
   const [specialInstructions, setSpecialInstructions] = useState('Please handle garments with extra care.');
-  const [isExpressDelivery, setIsExpressDelivery] = useState(false);
+  const [isExpressDelivery, setIsExpressDelivery] = useState(() => {
+    try {
+      return sessionStorage.getItem('fabricare_is_express_delivery') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('fabricare_is_express_delivery', String(isExpressDelivery));
+    } catch (e) {}
+  }, [isExpressDelivery]);
+
+  // Helpers to calculate calendar dates for Normal vs Express Laundry
+  const getDaysDifference = (isoDateStr) => {
+    if (!isoDateStr) return null;
+    const parts = isoDateStr.split('-');
+    if (parts.length !== 3) return null;
+    const targetDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    targetDate.setHours(0, 0, 0, 0);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const diffMs = targetDate.getTime() - now.getTime();
+    return Math.round(diffMs / (1000 * 60 * 60 * 24));
+  };
+
+  const getEarliestNormalDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dayName = days[d.getDay()];
+    const isoDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const full = `${dayName}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    return { label: dayName, date: `${d.getDate()} ${months[d.getMonth()]}`, full, isoDate };
+  };
+
+  const getEarliestExpressDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const isoDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const full = `Tomorrow, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    return { label: 'Tomorrow', date: `${d.getDate()} ${months[d.getMonth()]}`, full, isoDate };
+  };
 
   // Check if current booking has Express Laundry selected
+  const hasExpressItems = selectedItemsList.some(it => it.categoryId === 'express-laundry' || String(it.categoryName || '').toLowerCase().includes('express'));
+  const hasNormalItems = selectedItemsList.some(it => it.categoryId !== 'express-laundry' && it.quantity > 0);
+
   const isExpressBooking = Boolean(isExpressDelivery) || 
     selectedServices.some(s => s === 'express-laundry' || String(s).toLowerCase().includes('express')) ||
-    selectedItemsList.some(it => it.categoryId === 'express-laundry' || String(it.categoryName || '').toLowerCase().includes('express'));
+    hasExpressItems;
+
+  // Auto-sync isExpressDelivery if all items are normal
+  useEffect(() => {
+    if (hasNormalItems && !hasExpressItems && isExpressDelivery) {
+      setIsExpressDelivery(false);
+    }
+  }, [hasNormalItems, hasExpressItems, isExpressDelivery]);
+
+  // Synchronize date whenever service category mode changes:
+  // Normal services must never retain an urgent/next-day date (< 2 days in advance)
+  useEffect(() => {
+    if (!pickupSchedule.dateValue) return;
+    const diff = getDaysDifference(pickupSchedule.dateValue);
+
+    if (!isExpressBooking) {
+      if (diff === null || diff < 2) {
+        const earliest = getEarliestNormalDate();
+        setPickupSchedule(prev => ({
+          ...prev,
+          dateLabel: earliest.full,
+          dateValue: earliest.isoDate
+        }));
+      }
+    }
+  }, [isExpressBooking, pickupSchedule.dateValue]);
+
+  // Switch workflow: Transform normal laundry booking to Express Laundry
+  const switchToExpressLaundry = (targetDate = null) => {
+    setIsExpressDelivery(true);
+
+    setSelectedItems(prevItems => {
+      const updated = {};
+      const entries = Object.entries(prevItems || {});
+
+      entries.forEach(([key, it]) => {
+        if (!it) return;
+
+        // If it's already an express item, preserve it
+        if (it.categoryId === 'express-laundry') {
+          updated[key] = it;
+          return;
+        }
+
+        // Map prior category to corresponding Express Laundry service
+        // Express supports: 'wash-fold', 'wash-iron', 'dry-cleaning', 'steam-iron'
+        let targetService = 'wash-fold';
+        if (it.categoryId === 'wash-iron') targetService = 'wash-iron';
+        else if (it.categoryId === 'dry-cleaning') targetService = 'dry-cleaning';
+        else if (it.categoryId === 'steam-iron') targetService = 'steam-iron';
+        else if (it.expressService) targetService = it.expressService;
+
+        const expressSvcObj = EXPRESS_SERVICES.find(s => s.id === targetService) || { name: 'Wash & Fold' };
+        const newKey = `express-laundry__${targetService}__${it.id}`;
+
+        const origItem = PRICING_ITEMS.find(p => p.id === it.id) || it;
+        const doubledPrice = getExpressItemPrice(origItem, targetService);
+        const baseRate = getItemBasePrice(origItem, targetService);
+
+        updated[newKey] = {
+          ...it,
+          key: newKey,
+          categoryId: 'express-laundry',
+          expressService: targetService,
+          categoryName: `Express ${expressSvcObj.name}`,
+          unitPrice: doubledPrice,
+          baseUnitPrice: baseRate,
+          isExpress: true,
+          isPriceEnabled: true
+        };
+      });
+
+      try {
+        sessionStorage.setItem('fabricare_selected_clothing_items', JSON.stringify(updated));
+      } catch (e) {}
+
+      return updated;
+    });
+
+    // Explicitly update selectedServices to ['express-laundry']
+    setSelectedServices(['express-laundry']);
+
+    // Set date associated with Express Laundry (next-day/attempted date)
+    const expressDate = (targetDate && (targetDate.isoDate || targetDate.dateValue)) 
+      ? targetDate 
+      : getEarliestExpressDate();
+
+    setPickupSchedule(prev => ({
+      ...prev,
+      dateLabel: expressDate.full || expressDate.label || expressDate.dateLabel,
+      dateValue: expressDate.isoDate || expressDate.dateValue || expressDate.date
+    }));
+  };
+
+  // Switch workflow: Transform Express Laundry booking back to standard service
+  const switchToNormalLaundry = (targetCategoryId = 'wash-fold', targetDate = null) => {
+    setIsExpressDelivery(false);
+
+    setSelectedItems(prevItems => {
+      const updated = {};
+      const entries = Object.entries(prevItems || {});
+
+      entries.forEach(([key, it]) => {
+        if (!it) return;
+
+        if (it.categoryId !== 'express-laundry') {
+          updated[key] = it;
+          return;
+        }
+
+        const normalCatId = it.expressService || targetCategoryId || 'wash-fold';
+        const catObj = PRICING_CATEGORIES.find(c => c.id === normalCatId) || { name: 'Wash & Fold' };
+        const newKey = `${normalCatId}__${it.id}`;
+
+        const origItem = PRICING_ITEMS.find(p => p.id === it.id) || it;
+        const baseRate = getItemBasePrice(origItem, normalCatId);
+
+        updated[newKey] = {
+          ...it,
+          key: newKey,
+          categoryId: normalCatId,
+          expressService: null,
+          categoryName: catObj.name,
+          unitPrice: baseRate,
+          baseUnitPrice: baseRate,
+          isExpress: false,
+          isPriceEnabled: true
+        };
+      });
+
+      try {
+        sessionStorage.setItem('fabricare_selected_clothing_items', JSON.stringify(updated));
+      } catch (e) {}
+
+      return updated;
+    });
+
+    setSelectedServices([targetCategoryId]);
+
+    // Set date associated with Normal Laundry (at least 2 days in advance, do not retain express date)
+    let normalDate = getEarliestNormalDate();
+    if (targetDate && (targetDate.isoDate || targetDate.dateValue)) {
+      const diff = getDaysDifference(targetDate.isoDate || targetDate.dateValue);
+      if (diff !== null && diff >= 2) {
+        normalDate = targetDate;
+      }
+    }
+
+    setPickupSchedule(prev => ({
+      ...prev,
+      dateLabel: normalDate.full || normalDate.label || normalDate.dateLabel,
+      dateValue: normalDate.isoDate || normalDate.dateValue || normalDate.date
+    }));
+  };
   
   // Confirmed Order Info
   const [lastOrder, setLastOrder] = useState(null);
@@ -410,13 +631,7 @@ export const BookingProvider = ({ children }) => {
         if (srvRes.status === 'fulfilled' && srvRes.value?.data) {
           const srvs = Array.isArray(srvRes.value.data) ? srvRes.value.data : (srvRes.value.data?.results || []);
           if (srvs.length > 0) {
-            setServicesList(prev => prev.map(item => {
-              const match = srvs.find(s => 
-                (s.name && s.name.toLowerCase().includes(item.name.toLowerCase())) ||
-                (s.category_name && s.category_name.toLowerCase().includes(item.name.toLowerCase()))
-              );
-              return match ? { ...item, price: parseFloat(match.price) || item.price } : item;
-            }));
+            setAdminItemsCatalog(srvs);
           }
         }
       } catch (err) {
@@ -442,13 +657,7 @@ export const BookingProvider = ({ children }) => {
   };
 
   const calculateTotal = () => {
-    if (selectedItemsList.length > 0) {
-      return calculateItemsTotal();
-    }
-    return selectedServices.reduce((total, id) => {
-      const s = servicesList.find(item => item.id === id);
-      return total + (s ? s.price : 0);
-    }, 0);
+    return calculateItemsTotal();
   };
 
   const navigateTo = (page, idParam = null, options = {}) => {
@@ -553,18 +762,35 @@ export const BookingProvider = ({ children }) => {
 
       // Prepare order items dictionary
       const orderItemsMap = {};
-      selectedItemsList.forEach((it, idx) => {
-        const itemCat = it.categoryName || it.category || 'Wash & Fold';
-        orderItemsMap[`item_${idx + 1}`] = {
-          name: it.name || 'Laundry Item',
-          category: itemCat,
-          service_category: itemCat,
-          services: [itemCat],
-          quantity: it.quantity || 1,
-          unitPrice: Math.round((it.unitPrice || 60) * 100),
-          lineTotal: Math.round(((it.unitPrice || 60) * (it.quantity || 1)) * 100)
-        };
-      });
+      if (selectedItemsList.length > 0) {
+        selectedItemsList.forEach((it, idx) => {
+          const itemCat = it.categoryName || it.category || 'Wash & Fold';
+          orderItemsMap[`item_${idx + 1}`] = {
+            name: it.name || 'Laundry Item',
+            category: itemCat,
+            service_category: itemCat,
+            services: [itemCat],
+            quantity: it.quantity || 1,
+            unitPrice: Math.round((it.unitPrice || 60) * 100),
+            lineTotal: Math.round(((it.unitPrice || 60) * (it.quantity || 1)) * 100)
+          };
+        });
+      } else {
+        selectedServices.forEach((svcId, idx) => {
+          const s = servicesList.find(item => item.id === svcId) || INITIAL_SERVICES.find(item => item.id === svcId) || {};
+          const svcName = s.name || svcId;
+          const svcPrice = s.price || 120;
+          orderItemsMap[`item_${idx + 1}`] = {
+            name: svcName,
+            category: svcName,
+            service_category: svcName,
+            services: [svcName],
+            quantity: 1,
+            unitPrice: Math.round(svcPrice * 100),
+            lineTotal: Math.round(svcPrice * 100)
+          };
+        });
+      }
 
       let formattedPickupDate = pickupSchedule.dateValue;
       if (!formattedPickupDate || !/^\d{4}-\d{2}-\d{2}$/.test(formattedPickupDate)) {
@@ -702,6 +928,8 @@ export const BookingProvider = ({ children }) => {
         setSpecialInstructions,
         isExpressDelivery,
         setIsExpressDelivery,
+        switchToExpressLaundry,
+        switchToNormalLaundry,
         lastOrder,
         setLastOrder,
         startBooking,
@@ -730,7 +958,9 @@ export const useBooking = () => {
       bookingState: {},
       allServices: [],
       serviceCategories: [],
-      isExpressBooking: false
+      isExpressBooking: false,
+      switchToExpressLaundry: () => {},
+      switchToNormalLaundry: () => {}
     };
   }
   return context;

@@ -391,16 +391,16 @@ export const AdminServicesPage = () => {
           type="button"
         >
           <Plus size={18} strokeWidth={2.5} />
-          <span>Add Service</span>
+          <span>Add Item</span>
         </button>
       </div>
 
       {/* 4 Metric Cards */}
       <div className="services-metric-cards-row">
-        {/* Card 1: Total Services */}
+        {/* Card 1: Total Items */}
         <div className="metric-box" style={{ background: '#E6F7F7' }}>
           <div>
-            <div className="metric-tag" style={{ color: '#0D7A75' }}>TOTAL SERVICES</div>
+            <div className="metric-tag" style={{ color: '#0D7A75' }}>TOTAL ITEMS</div>
             <div className="metric-number">{totalServices}</div>
           </div>
           <div className="metric-circle-badge" style={{ background: '#CFFAFE' }}>
@@ -408,10 +408,10 @@ export const AdminServicesPage = () => {
           </div>
         </div>
 
-        {/* Card 2: Active Services */}
+        {/* Card 2: Active Items */}
         <div className="metric-box" style={{ background: '#EDFDF4' }}>
           <div>
-            <div className="metric-tag" style={{ color: '#16A34A' }}>ACTIVE SERVICES</div>
+            <div className="metric-tag" style={{ color: '#16A34A' }}>ACTIVE ITEMS</div>
             <div className="metric-number">{activeServices}</div>
           </div>
           <div className="metric-circle-badge" style={{ background: '#DCFCE7' }}>
@@ -419,10 +419,10 @@ export const AdminServicesPage = () => {
           </div>
         </div>
 
-        {/* Card 3: Inactive Services */}
+        {/* Card 3: Inactive Items */}
         <div className="metric-box" style={{ background: '#FFFBEB' }}>
           <div>
-            <div className="metric-tag" style={{ color: '#D97706' }}>INACTIVE SERVICES</div>
+            <div className="metric-tag" style={{ color: '#D97706' }}>INACTIVE ITEMS</div>
             <div className="metric-number">{inactiveServices}</div>
           </div>
           <div className="metric-circle-badge" style={{ background: '#FEF3C7' }}>
@@ -450,7 +450,7 @@ export const AdminServicesPage = () => {
           <input 
             type="text"
             className="search-field-input"
-            placeholder="Search by service name..."
+            placeholder="Search by item name..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
@@ -507,9 +507,9 @@ export const AdminServicesPage = () => {
                 setCategoryFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              aria-label="Filter by Category"
+              aria-label="Filter by Service"
             >
-              <option value="all">All Categories</option>
+              <option value="all">All Services</option>
               {availableCategories.map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
@@ -547,8 +547,8 @@ export const AdminServicesPage = () => {
                     aria-label="Select all services"
                   />
                 </th>
-                <th style={{ minWidth: '280px' }}>SERVICE</th>
-                <th style={{ minWidth: '150px' }}>CATEGORY</th>
+                <th style={{ minWidth: '280px' }}>ITEMS</th>
+                <th style={{ minWidth: '150px' }}>SERVICES</th>
                 <th style={{ minWidth: '110px' }}>
                   <div className="th-stacked">
                     <span>PRICE</span>
@@ -643,7 +643,7 @@ export const AdminServicesPage = () => {
                           <button 
                             type="button"
                             className="icon-action-btn"
-                            title="Edit Service"
+                            title="Edit Item"
                             onClick={() => handleOpenEdit(service)}
                           >
                             <Pencil size={17} strokeWidth={2} />
@@ -698,7 +698,7 @@ export const AdminServicesPage = () => {
                                   }}
                                 >
                                   <Trash2 size={15} />
-                                  <span>Delete service</span>
+                                  <span>Delete item</span>
                                 </button>
                               </div>
                             )}
@@ -711,7 +711,7 @@ export const AdminServicesPage = () => {
               ) : (
                 <tr>
                   <td colSpan="7" className="empty-table-cell">
-                    No services found matching your filters.
+                    No items found matching your filters.
                   </td>
                 </tr>
               )}
@@ -722,7 +722,7 @@ export const AdminServicesPage = () => {
         {/* Pagination Footer */}
         <div className="table-pagination-row">
           <span className="pagination-summary-text">
-            Showing {filteredServices.length === 0 ? 0 : startIndex}–{endIndex} of {filteredServices.length} services
+            Showing {filteredServices.length === 0 ? 0 : startIndex}–{endIndex} of {filteredServices.length} items
           </span>
 
           <div className="pagination-button-controls">
@@ -770,8 +770,8 @@ export const AdminServicesPage = () => {
                   <Pencil size={18} color="#0D7A75" strokeWidth={2.5} />
                 </div>
                 <div>
-                  <h3 className="modal-heading">Edit Service</h3>
-                  <p className="modal-sub">Update service pricing, details and turnaround.</p>
+                  <h3 className="modal-heading">Edit Item</h3>
+                  <p className="modal-sub">Update item pricing, service and turnaround.</p>
                 </div>
               </div>
               <button 
@@ -785,7 +785,7 @@ export const AdminServicesPage = () => {
 
             <form onSubmit={handleSaveEdit} className="modal-body-form">
               <div className="form-input-group">
-                <label className="form-input-label">Service Name</label>
+                <label className="form-input-label">Item Name</label>
                 <input 
                   type="text" 
                   required
@@ -797,7 +797,7 @@ export const AdminServicesPage = () => {
 
               <div className="form-grid-2col">
                 <div className="form-input-group">
-                  <label className="form-input-label">Category</label>
+                  <label className="form-input-label">Service</label>
                   <select 
                     className="form-text-control"
                     value={editForm.category}

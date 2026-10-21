@@ -68,8 +68,39 @@ export const AdminContentPage = () => {
     } catch (e) {}
   };
 
-  const [editingTitle, setEditingTitle] = useState(contextTerms?.title || 'Terms & Conditions');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const draft = localStorage.getItem('fabricare_terms_draft');
+        if (draft) {
+          const parsed = JSON.parse(draft);
+          if (parsed?.title) return parsed.title;
+        }
+        const saved = localStorage.getItem('fabricare_admin_terms');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.title) return parsed.title;
+        }
+      }
+    } catch (e) {}
+    return contextTerms?.title || 'Terms & Conditions';
+  });
   const [editingBody, setEditingBody] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const draft = localStorage.getItem('fabricare_terms_draft');
+        if (draft) {
+          const parsed = JSON.parse(draft);
+          if (parsed?.body) return parsed.body;
+        }
+        const saved = localStorage.getItem('fabricare_admin_terms');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.body) return parsed.body;
+        }
+      }
+    } catch (e) {}
     if (contextTerms?.body && contextTerms.body.includes('Orders & Pickup')) {
       return contextTerms.body;
     }
@@ -220,17 +251,35 @@ export const AdminContentPage = () => {
     }
   };
 
-  const handleUpdatePage = async () => {
+  const handleUpdatePageClick = async () => {
+    if (!isEditing) {
+      // Open Terms & Conditions editing page on the left
+      setIsEditing(true);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
+      }, 50);
+      return;
+    }
+
+    // When already editing, save changes and update page
     const updated = {
-      title: editingTitle,
-      body: editingBody
+      title: editingTitle || 'Terms & Conditions',
+      body: editingBody || DEFAULT_TERMS_BODY,
+      lastUpdated: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     };
     if (typeof updateTerms === 'function') {
       await updateTerms(updated);
     }
+    try {
+      localStorage.setItem('fabricare_admin_terms', JSON.stringify(updated));
+      localStorage.removeItem('fabricare_terms_draft');
+    } catch (e) {}
     setToastMessage('Terms & Conditions updated and published successfully!');
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 3500);
+    setIsEditing(false); // Return to default live preview view
   };
 
   const handleSaveDraft = () => {
@@ -246,13 +295,26 @@ export const AdminContentPage = () => {
     setTimeout(() => setSaveToast(false), 3500);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     const defaultTitle = 'Terms & Conditions';
     setEditingTitle(defaultTitle);
     setEditingBody(DEFAULT_TERMS_BODY);
     const updatedHistory = [...history, DEFAULT_TERMS_BODY];
     setHistory(updatedHistory);
     setHistoryIndex(updatedHistory.length - 1);
+    try {
+      localStorage.removeItem('fabricare_terms_draft');
+      localStorage.setItem('fabricare_admin_terms', JSON.stringify({
+        title: defaultTitle,
+        body: DEFAULT_TERMS_BODY
+      }));
+    } catch (e) {}
+    if (typeof updateTerms === 'function') {
+      await updateTerms({
+        title: defaultTitle,
+        body: DEFAULT_TERMS_BODY
+      });
+    }
     setToastMessage('Reset to default terms and conditions.');
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 3000);
@@ -551,207 +613,277 @@ export const AdminContentPage = () => {
         </div>
       )}
 
-      {/* TAB 2: TERMS & POLICIES (EDITOR + LIVE PREVIEW) */}
+      {/* TAB 2: TERMS & POLICIES (FULL SCREEN PREVIEW OR FULL SCREEN EDITOR) */}
       {activeTab === 'terms' && (
-        <div className="terms-grid animate-fade-in">
-          {/* Left Column: Editor Card */}
-          <div className="terms-card terms-editor-card">
-            <div className="card-header-block">
-              <h2 className="card-title">Terms & Conditions</h2>
-              <p className="card-subtitle">Edit the terms and conditions for your website and customer app.</p>
-            </div>
-
-            <div className="form-field-group">
-              <label className="field-label">
-                Page Title <span className="req-asterisk">*</span>
-              </label>
-              <input 
-                type="text"
-                className="field-input"
-                value={editingTitle}
-                onChange={(e) => setEditingTitle(e.target.value)}
-                placeholder="Terms & Conditions"
-              />
-            </div>
-
-            <div className="form-field-group">
-              <label className="field-label">
-                Content <span className="req-asterisk">*</span>
-              </label>
-              
-              {/* Rich Text Toolbar Container */}
-              <div className="rich-editor-box">
-                <div className="editor-toolbar">
-                  <div className="toolbar-select-wrap">
-                    <select 
-                      className="toolbar-select"
-                      value={selectedFormat}
-                      onChange={handleFormatChange}
-                    >
-                      <option value="Paragraph">Paragraph</option>
-                      <option value="Heading 1">Heading 1</option>
-                      <option value="Heading 2">Heading 2</option>
-                      <option value="Heading 3">Heading 3</option>
-                    </select>
-                    <ChevronDown size={14} className="select-arrow" />
-                  </div>
-
-                  <div className="toolbar-sep" />
-
-                  <button 
-                    type="button" 
-                    className="toolbar-icon-btn" 
-                    onClick={() => applyFormat('bold')} 
-                    title="Bold"
-                  >
-                    <span className="font-bold-txt">B</span>
-                  </button>
-                  <button 
-                    type="button" 
-                    className="toolbar-icon-btn" 
-                    onClick={() => applyFormat('italic')} 
-                    title="Italic"
-                  >
-                    <span className="font-italic-txt">I</span>
-                  </button>
-                  <button 
-                    type="button" 
-                    className="toolbar-icon-btn" 
-                    onClick={() => applyFormat('underline')} 
-                    title="Underline"
-                  >
-                    <span className="font-underline-txt">U</span>
-                  </button>
-
-                  <div className="toolbar-sep" />
-
-                  <button 
-                    type="button" 
-                    className="toolbar-icon-btn" 
-                    onClick={() => applyFormat('align')} 
-                    title="Align Left"
-                  >
-                    <AlignLeft size={15} />
-                  </button>
-                  <button 
-                    type="button" 
-                    className="toolbar-icon-btn" 
-                    onClick={() => applyFormat('list')} 
-                    title="Bullet List"
-                  >
-                    <List size={15} />
-                  </button>
-
-                  <div className="toolbar-sep" />
-
-                  <button 
-                    type="button" 
-                    className="toolbar-icon-btn" 
-                    onClick={() => applyFormat('link')} 
-                    title="Insert Link"
-                  >
-                    <Link2 size={15} />
-                  </button>
-                  <button 
-                    type="button" 
-                    className="toolbar-icon-btn" 
-                    onClick={() => applyFormat('image')} 
-                    title="Insert Image"
-                  >
-                    <Image size={15} />
-                  </button>
-
-                  <div className="toolbar-sep" />
-
-                  <button 
-                    type="button" 
-                    className="toolbar-icon-btn" 
-                    onClick={handleUndo} 
-                    title="Undo"
-                    disabled={historyIndex <= 0}
-                  >
-                    <Undo2 size={15} />
-                  </button>
-                  <button 
-                    type="button" 
-                    className="toolbar-icon-btn" 
-                    onClick={handleRedo} 
-                    title="Redo"
-                    disabled={historyIndex >= history.length - 1}
-                  >
-                    <Redo2 size={15} />
-                  </button>
+        <div className="terms-fullscreen-wrapper animate-fade-in">
+          {/* View 1: Terms & Conditions Editing Page (Full Screen when isEditing is true) */}
+          {isEditing ? (
+            <div className="terms-card terms-editor-card animate-fade-in" key="terms-editor">
+              <div className="card-header-block card-header-flex">
+                <div className="card-header-title-wrap">
+                  <h2 className="card-title">Terms & Conditions</h2>
+                  <p className="card-subtitle">Edit the terms and conditions for your website and customer app.</p>
                 </div>
+                <button 
+                  type="button" 
+                  className="btn-back-preview"
+                  onClick={() => setIsEditing(false)}
+                  title="Back to Live Preview"
+                >
+                  <ChevronLeft size={16} />
+                  <span>Back to Live Preview</span>
+                </button>
+              </div>
 
-                <textarea 
-                  ref={textareaRef}
-                  rows="16"
-                  className="editor-textarea"
-                  value={editingBody}
-                  onChange={handleBodyChange}
-                  placeholder="Write your terms and conditions here..."
+              <div className="form-field-group">
+                <label className="field-label">
+                  Page Title <span className="req-asterisk">*</span>
+                </label>
+                <input 
+                  type="text"
+                  className="field-input"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  placeholder="Terms & Conditions"
                 />
               </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="editor-footer-actions">
-              <button type="button" className="btn-reset" onClick={handleReset}>
-                <RotateCcw size={15} />
-                <span>Reset to Default</span>
-              </button>
+              <div className="form-field-group">
+                <label className="field-label">
+                  Content <span className="req-asterisk">*</span>
+                </label>
+                
+                {/* Rich Text Toolbar Container */}
+                <div className="rich-editor-box">
+                  <div className="editor-toolbar">
+                    <div className="toolbar-select-wrap">
+                      <select 
+                        className="toolbar-select"
+                        value={selectedFormat}
+                        onChange={handleFormatChange}
+                      >
+                        <option value="Paragraph">Paragraph</option>
+                        <option value="Heading 1">Heading 1</option>
+                        <option value="Heading 2">Heading 2</option>
+                        <option value="Heading 3">Heading 3</option>
+                      </select>
+                      <ChevronDown size={14} className="select-arrow" />
+                    </div>
 
-              <div className="editor-right-buttons">
-                <button type="button" className="btn-draft" onClick={handleSaveDraft}>
-                  Save as Draft
-                </button>
-                <button type="button" className="btn-update" onClick={handleUpdatePage}>
-                  Update Page
-                </button>
-              </div>
-            </div>
-          </div>
+                    <div className="toolbar-sep" />
 
-          {/* Right Column: Live Preview Card */}
-          <div className="terms-card terms-preview-card">
-            <div className="card-header-block">
-              <h2 className="card-title">Live Preview</h2>
-              <p className="card-subtitle">This is how it will appear on your website or app.</p>
-            </div>
+                    <button 
+                      type="button" 
+                      className="toolbar-icon-btn" 
+                      onClick={() => applyFormat('bold')} 
+                      title="Bold"
+                    >
+                      <span className="font-bold-txt">B</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      className="toolbar-icon-btn" 
+                      onClick={() => applyFormat('italic')} 
+                      title="Italic"
+                    >
+                      <span className="font-italic-txt">I</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      className="toolbar-icon-btn" 
+                      onClick={() => applyFormat('underline')} 
+                      title="Underline"
+                    >
+                      <span className="font-underline-txt">U</span>
+                    </button>
 
-            <div className="live-preview-box">
-              {/* Banner with gradient and folded laundry image asset */}
-              <div className="preview-banner">
-                <div className="preview-banner-content">
-                  <span className="preview-banner-tag">TERMS & CONDITIONS</span>
-                  <h3 className="preview-banner-title">
-                    {editingTitle.trim().toLowerCase() === 'terms & conditions' ? (
-                      'Our Terms & Conditions'
-                    ) : editingTitle.toLowerCase().includes('our') ? (
-                      editingTitle
-                    ) : (
-                      `Our ${editingTitle || 'Terms & Conditions'}`
-                    )}
-                  </h3>
-                  <p className="preview-banner-desc">
-                    Please read these terms carefully before using Laundrix services.
-                  </p>
-                </div>
-                <div className="preview-banner-media">
-                  <img 
-                    src="/assets/terms-folded-clothes.png" 
-                    alt="Folded Laundry" 
-                    className="preview-clothes-img"
+                    <div className="toolbar-sep" />
+
+                    <button 
+                      type="button" 
+                      className="toolbar-icon-btn" 
+                      onClick={() => applyFormat('align')} 
+                      title="Align Left"
+                    >
+                      <AlignLeft size={15} />
+                    </button>
+                    <button 
+                      type="button" 
+                      className="toolbar-icon-btn" 
+                      onClick={() => applyFormat('list')} 
+                      title="Bullet List"
+                    >
+                      <List size={15} />
+                    </button>
+
+                    <div className="toolbar-sep" />
+
+                    <button 
+                      type="button" 
+                      className="toolbar-icon-btn" 
+                      onClick={() => applyFormat('link')} 
+                      title="Insert Link"
+                    >
+                      <Link2 size={15} />
+                    </button>
+                    <button 
+                      type="button" 
+                      className="toolbar-icon-btn" 
+                      onClick={() => applyFormat('image')} 
+                      title="Insert Image"
+                    >
+                      <Image size={15} />
+                    </button>
+
+                    <div className="toolbar-sep" />
+
+                    <button 
+                      type="button" 
+                      className="toolbar-icon-btn" 
+                      onClick={handleUndo} 
+                      title="Undo"
+                      disabled={historyIndex <= 0}
+                    >
+                      <Undo2 size={15} />
+                    </button>
+                    <button 
+                      type="button" 
+                      className="toolbar-icon-btn" 
+                      onClick={handleRedo} 
+                      title="Redo"
+                      disabled={historyIndex >= history.length - 1}
+                    >
+                      <Redo2 size={15} />
+                    </button>
+                  </div>
+
+                  <textarea 
+                    ref={textareaRef}
+                    rows="16"
+                    className="editor-textarea"
+                    value={editingBody}
+                    onChange={handleBodyChange}
+                    placeholder="Write your terms and conditions here..."
                   />
                 </div>
               </div>
 
-              {/* Document Text Body */}
-              <div className="preview-sections-list">
-                {renderPreviewContent(editingBody)}
+              {/* Action Buttons in Editor mode */}
+              <div className="preview-footer-actions">
+                <button 
+                  type="button" 
+                  id="btn-terms-reset"
+                  className="btn-reset" 
+                  onClick={handleReset}
+                >
+                  <RotateCcw size={15} />
+                  <span>Reset to Default</span>
+                </button>
+
+                <div className="editor-right-buttons">
+                  <button 
+                    type="button" 
+                    id="btn-terms-cancel"
+                    className="btn-draft" 
+                    onClick={() => setIsEditing(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    id="btn-terms-draft"
+                    className="btn-draft" 
+                    onClick={handleSaveDraft}
+                  >
+                    Save as Draft
+                  </button>
+                  <button 
+                    type="button" 
+                    id="btn-terms-update"
+                    className="btn-update" 
+                    onClick={handleUpdatePageClick}
+                  >
+                    Update Page
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            /* View 2: Live Preview Page (Full Screen by default when isEditing is false) */
+            <div className="terms-card terms-preview-card animate-fade-in" key="terms-preview">
+              <div className="card-header-block card-header-flex">
+                <div>
+                  <h2 className="card-title">Live Preview</h2>
+                  <p className="card-subtitle">This is how it will appear on your website or app.</p>
+                </div>
+              </div>
+
+              <div className="live-preview-box">
+                {/* Banner with gradient and folded laundry image asset */}
+                <div className="preview-banner">
+                  <div className="preview-banner-content">
+                    <span className="preview-banner-tag">TERMS & CONDITIONS</span>
+                    <h3 className="preview-banner-title">
+                      {editingTitle.trim().toLowerCase() === 'terms & conditions' ? (
+                        'Our Terms & Conditions'
+                      ) : editingTitle.toLowerCase().includes('our') ? (
+                        editingTitle
+                      ) : (
+                        `Our ${editingTitle || 'Terms & Conditions'}`
+                      )}
+                    </h3>
+                    <p className="preview-banner-desc">
+                      Please read these terms carefully before using Laundrix services.
+                    </p>
+                  </div>
+                  <div className="preview-banner-media">
+                    <img 
+                      src="/assets/terms-folded-clothes.png" 
+                      alt="Folded Laundry" 
+                      className="preview-clothes-img"
+                    />
+                  </div>
+                </div>
+
+                {/* Document Text Body */}
+                <div className="preview-sections-list">
+                  {renderPreviewContent(editingBody)}
+                </div>
+              </div>
+
+              {/* Action Buttons at bottom of Live Preview page (Reference Image 2) */}
+              <div className="preview-footer-actions">
+                <button 
+                  type="button" 
+                  id="btn-terms-reset"
+                  className="btn-reset" 
+                  onClick={handleReset}
+                >
+                  <RotateCcw size={15} />
+                  <span>Reset to Default</span>
+                </button>
+
+                <div className="editor-right-buttons">
+                  <button 
+                    type="button" 
+                    id="btn-terms-draft"
+                    className="btn-draft" 
+                    onClick={handleSaveDraft}
+                  >
+                    Save as Draft
+                  </button>
+                  <button 
+                    type="button" 
+                    id="btn-terms-update"
+                    className="btn-update" 
+                    onClick={handleUpdatePageClick}
+                  >
+                    Update Page
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1256,25 +1388,68 @@ export const AdminContentPage = () => {
           color: #FFFFFF;
         }
 
-        /* TERMS & POLICIES GRID */
-        .terms-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 24px;
-          align-items: stretch;
+        /* TERMS & POLICIES FULL SCREEN LAYOUT */
+        .terms-fullscreen-wrapper {
+          width: 100%;
           margin-top: 8px;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .card-header-flex {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+        }
+
+        .card-header-title-wrap {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .btn-back-preview {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 8px;
+          padding: 8px 14px;
+          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          flex-shrink: 0;
+        }
+
+        .btn-back-preview:hover {
+          background: #F1F5F9;
+          border-color: #CBD5E1;
+          color: #0F172A;
+        }
+
+        .preview-footer-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-top: 24px;
+          gap: 12px;
         }
 
         .terms-card {
           background: #FFFFFF;
           border: 1px solid #E2E8F0;
           border-radius: 16px;
-          padding: 24px 28px;
+          padding: 28px 32px;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
           display: flex;
           flex-direction: column;
+          width: 100%;
           min-width: 0;
           box-sizing: border-box;
+          transition: opacity 0.2s ease, transform 0.2s ease;
         }
 
         .terms-editor-card {
@@ -1939,8 +2114,11 @@ export const AdminContentPage = () => {
         }
 
         @media (max-width: 1024px) {
-          .terms-grid {
-            grid-template-columns: 1fr;
+          .terms-fullscreen-wrapper {
+            width: 100%;
+          }
+          .terms-card {
+            padding: 20px 16px;
           }
         }
       `}</style>

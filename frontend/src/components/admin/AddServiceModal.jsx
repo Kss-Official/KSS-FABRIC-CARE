@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
@@ -13,12 +13,22 @@ export const AddServiceModal = () => {
   const { isAddServiceModalOpen, setIsAddServiceModalOpen, addService } = useAdmin();
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    if (isAddServiceModalOpen) {
+      const orig = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = orig || '';
+      };
+    }
+  }, [isAddServiceModalOpen]);
+
   const [form, setForm] = useState({
-    name: 'Dry Cleaning',
-    description: 'Premium dry cleaning for delicate fabrics like suits, sarees, coats, etc.',
-    category: 'Clothing',
-    price: 240,
-    turnaround: '2 - 3 Days',
+    name: 'Shirt',
+    description: 'Regular shirt cleaning and pressing',
+    category: 'Wash & Fold',
+    price: 80,
+    turnaround: '1 - 2 Days',
     status: true,
     image: null
   });
@@ -34,7 +44,7 @@ export const AddServiceModal = () => {
       if (addService) {
         await addService({
           ...form,
-          price: Number(form.price) || 120,
+          price: Number(form.price) || 80,
           status: form.status ? 'Active' : 'Inactive',
           image: imagePreview || form.image
         });
@@ -77,8 +87,8 @@ export const AddServiceModal = () => {
               <Tag size={20} strokeWidth={2} />
             </div>
             <div className="add-service-header-text">
-              <h2 className="add-service-title">Add Service</h2>
-              <p className="add-service-subtitle">Add, edit or manage your laundry services and pricing.</p>
+              <h2 className="add-service-title">Add Item</h2>
+              <p className="add-service-subtitle">Add, edit or manage your laundry items and pricing.</p>
             </div>
           </div>
           <button 
@@ -93,10 +103,10 @@ export const AddServiceModal = () => {
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="add-service-form">
-          {/* Service Name */}
+          {/* Item Name */}
           <div className="add-service-field-group">
             <label className="add-service-label">
-              Service Name <span className="req-star">*</span>
+              Item Name <span className="req-star">*</span>
             </label>
             <input 
               type="text" 
@@ -104,7 +114,7 @@ export const AddServiceModal = () => {
               className="add-service-input"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g. Dry Cleaning"
+              placeholder="e.g. Shirt"
             />
           </div>
 
@@ -120,15 +130,15 @@ export const AddServiceModal = () => {
               className="add-service-textarea"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Premium dry cleaning for delicate fabrics like suits, sarees, coats, etc."
+              placeholder="Regular shirt cleaning and pressing"
             />
             <span className="add-service-char-count">{form.description.length}/200</span>
           </div>
 
-          {/* Category */}
+          {/* Service */}
           <div className="add-service-field-group">
             <label className="add-service-label">
-              Category <span className="req-star">*</span>
+              Service <span className="req-star">*</span>
             </label>
             <div className="add-service-select-wrap">
               <select 

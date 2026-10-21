@@ -102,35 +102,60 @@ export const CustomerDashboard = () => {
     return true;
   });
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'PENDING':
-        return <span className="badge badge-warning">Pending Approval</span>;
-      case 'ACCEPTED':
-      case 'PICKUP_ASSIGNED':
-        return <span className="badge badge-info">Pickup Scheduled</span>;
-      case 'PICKED_UP':
-      case 'RECEIVED_AT_LAUNDRY':
-        return <span className="badge badge-info">Received at Hub</span>;
-      case 'IN_PROCESS':
-      case 'WASHING':
-      case 'DRYING':
-      case 'IRONING':
-        return <span className="badge badge-primary">Processing ({status})</span>;
-      case 'QUALITY_CHECK':
-        return <span className="badge badge-primary">Quality Check</span>;
-      case 'PACKED':
-      case 'READY_FOR_DELIVERY':
-        return <span className="badge badge-success">Ready for Delivery</span>;
-      case 'OUT_FOR_DELIVERY':
-        return <span className="badge badge-warning">Out for Delivery</span>;
-      case 'DELIVERED':
-        return <span className="badge badge-success">Delivered</span>;
-      case 'CANCELLED':
-        return <span className="badge badge-danger">Cancelled</span>;
-      default:
-        return <span className="badge badge-secondary">{status}</span>;
+  const getOrderServices = (order) => {
+    if (!order) return 'Wash & Fold';
+
+    // 1. Direct services array on order
+    if (Array.isArray(order.services) && order.services.length > 0) {
+      const clean = order.services.filter(Boolean);
+      if (clean.length > 0) return clean.join(', ');
     }
+    if (Array.isArray(order.services_list) && order.services_list.length > 0) {
+      const clean = order.services_list.filter(Boolean);
+      if (clean.length > 0) return clean.join(', ');
+    }
+
+    // 2. Direct service string on order
+    if (typeof order.service === 'string' && order.service.trim()) {
+      return order.service.trim();
+    }
+
+    // 3. Extract service categories from items
+    const rawItems = Array.isArray(order.items)
+      ? order.items
+      : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
+
+    if (rawItems.length > 0) {
+      const extractedServices = new Set();
+      rawItems.forEach(item => {
+        if (!item) return;
+        if (item.service_category && item.service_category !== 'General') {
+          extractedServices.add(item.service_category);
+        } else if (item.categoryName && item.categoryName !== 'General') {
+          extractedServices.add(item.categoryName);
+        } else if (Array.isArray(item.services) && item.services.length > 0) {
+          item.services.forEach(s => s && extractedServices.add(s));
+        } else if (item.category && !['Men', 'Women', 'Household', 'Kids', 'General', 'Clothing'].includes(item.category)) {
+          extractedServices.add(item.category);
+        } else {
+          // Check for service inside parenthesized name, e.g., "Shirt (Wash & Iron)"
+          const match = String(item.name || item.item_name || '').match(/\(([^)]+)\)/);
+          if (match && match[1] && !/^\d+$/.test(match[1])) {
+            extractedServices.add(match[1].trim());
+          }
+        }
+      });
+
+      if (extractedServices.size > 0) {
+        return Array.from(extractedServices).join(', ');
+      }
+    }
+
+    if (order.isExpress) {
+      return 'Express Laundry';
+    }
+
+    return 'Wash & Fold';
   };
 
   return (
@@ -224,9 +249,8 @@ export const CustomerDashboard = () => {
                 <tr>
                   <th>Order #</th>
                   <th>Pickup Slot</th>
-                  <th>Items / Services</th>
+                  <th>Services</th>
                   <th>Total Amount</th>
-                  <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -242,10 +266,8 @@ export const CustomerDashboard = () => {
                       <div className="text-xs text-muted">{order.pickup_time_slot}</div>
                     </td>
                     <td>
-                      <div className="text-sm">
-                        {Array.isArray(order.items) && order.items.length > 0 
-                          ? order.items.map(i => `${i.item_name || i.name || 'Item'} (${i.quantity || 1})`).join(', ')
-                          : 'General Laundry'}
+                      <div className="text-sm font-medium text-navy">
+                        {getOrderServices(order)}
                       </div>
                     </td>
                     <td>
@@ -253,9 +275,6 @@ export const CustomerDashboard = () => {
                       <span className={`text-xs block ${order.payment_status === 'PAID' ? 'text-emerald-600 font-semibold' : 'text-amber-600'}`}>
                         {order.payment_status || 'PENDING'}
                       </span>
-                    </td>
-                    <td>
-                      {getStatusBadge(order.status)}
                     </td>
                     <td>
                       <button
