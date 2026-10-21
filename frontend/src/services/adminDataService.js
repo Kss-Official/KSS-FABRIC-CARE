@@ -12,6 +12,7 @@ import {
   limitToLast
 } from 'firebase/database';
 import { rtdb } from '../config/firebase.js';
+import { addNotificationToUpdates, addRoleNotificationsToUpdates, getRoleUserIds } from './notificationService.js';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 
@@ -98,31 +99,32 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, dri
     at: now
   };
 
+  let targetAgentUid = agentId;
+  if (!targetAgentUid || targetAgentUid.startsWith('d') || targetAgentUid === 'agent_default') {
+    const agentUids = await getRoleUserIds('agent');
+    if (agentUids.length > 0) targetAgentUid = agentUids[0];
+  }
+
   // Agent notification
-  const agentNotifPush = push(ref(rtdb, `notifications/${cleanAgentKey}`));
-  updates[`notifications/${cleanAgentKey}/${agentNotifPush.key}`] = {
-    id: agentNotifPush.key,
-    type: 'task_assigned',
-    title: 'New Pickup Task',
-    body: `Pickup assigned for order ${order.code || actualOrderId} at ${order.address?.areaColony || order.pickup_address || 'Customer Address'}.`,
-    orderId: actualOrderId,
-    taskId: effectiveTaskId,
-    isRead: false,
-    createdAt: now
-  };
+  if (targetAgentUid) {
+    addNotificationToUpdates(updates, targetAgentUid, {
+      type: 'new_pickup',
+      title: 'New Pickup Task',
+      body: `Pickup assigned for order ${order.code || actualOrderId} at ${order.address?.areaColony || order.pickup_address || 'Customer Address'}.`,
+      orderId: actualOrderId,
+      createdAt: now
+    });
+  }
 
   // Customer notification
   if (order.customerId) {
-    const custNotifPush = push(ref(rtdb, `notifications/${order.customerId}`));
-    updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
-      id: custNotifPush.key,
-      type: 'driver_assigned',
-      title: 'Pickup Agent Assigned',
-      body: `${agent.name} has been assigned to pick up your laundry order ${order.code || actualOrderId}.`,
-      orderId: actualOrderId,
-      isRead: false,
+    addNotificationToUpdates(updates, order.customerId, {
+      type: 'pickup_scheduled',
+      title: 'Pickup Scheduled',
+      body: `${agent.name || 'A driver'} has been assigned to pick up your laundry order ${order.code || actualOrderId}.`,
+      orderId: order.code || actualOrderId,
       createdAt: now
-    };
+    });
   }
 
   await update(ref(rtdb), updates);
@@ -205,30 +207,31 @@ export const assignDeliveryAgent = async (orderId, taskId, agentId, adminUser, d
     at: now
   };
 
-  // Notifications
-  const agentNotifPush = push(ref(rtdb, `notifications/${cleanAgentKey}`));
-  updates[`notifications/${cleanAgentKey}/${agentNotifPush.key}`] = {
-    id: agentNotifPush.key,
-    type: 'task_assigned',
-    title: 'New Delivery Task',
-    body: `Delivery task assigned for order ${order.code || actualOrderId} to ${order.address?.areaColony || 'Customer Address'}.`,
-    orderId: actualOrderId,
-    taskId: effectiveTaskId,
-    isRead: false,
-    createdAt: now
-  };
+  let targetAgentUid = agentId;
+  if (!targetAgentUid || targetAgentUid.startsWith('d') || targetAgentUid === 'agent_default') {
+    const agentUids = await getRoleUserIds('agent');
+    if (agentUids.length > 0) targetAgentUid = agentUids[0];
+  }
+
+  // Notifications (same multi-path update)
+  if (targetAgentUid) {
+    addNotificationToUpdates(updates, targetAgentUid, {
+      type: 'new_delivery',
+      title: 'New Delivery Task',
+      body: `Delivery task assigned for order ${order.code || actualOrderId} to ${order.address?.areaColony || 'Customer Address'}.`,
+      orderId: actualOrderId,
+      createdAt: now
+    });
+  }
 
   if (order.customerId) {
-    const custNotifPush = push(ref(rtdb, `notifications/${order.customerId}`));
-    updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
-      id: custNotifPush.key,
-      type: 'delivery_assigned',
+    addNotificationToUpdates(updates, order.customerId, {
+      type: 'out_for_delivery',
       title: 'Order Out For Delivery',
-      body: `${agent.name} is on the way to deliver your order ${order.code || actualOrderId}.`,
-      orderId: actualOrderId,
-      isRead: false,
+      body: `${agent.name || 'A driver'} is on the way to deliver your order ${order.code || actualOrderId}.`,
+      orderId: order.code || actualOrderId,
       createdAt: now
-    };
+    });
   }
 
   await update(ref(rtdb), updates);
@@ -291,15 +294,13 @@ export const replyToSupportComplaint = async (complaintId, replyMessage, adminUs
     sentAt: now
   };
 
-  updates[`notifications/${complaint.customerId}/${notifPush.key}`] = {
-    id: notifPush.key,
-    type: 'support_reply',
+  addNotificationToUpdates(updates, complaint.customerId, {
+    type: 'complaint_reply',
     title: `Response to Ticket ${complaint.ticketId}`,
-    body: replyMessage.substring(0, 80) + '...',
+    body: replyMessage,
     orderId: complaint.orderId || null,
-    isRead: false,
     createdAt: now
-  };
+  });
 
   await update(ref(rtdb), updates);
 };
@@ -680,40 +681,7 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
     });
 
     onServicesUpdated(list);
-  }, async (err) => {
-    console.warn('Admin services listener note, falling back to Django /api/services/:', err);
-    try {
-      const res = await fetch('http://127.0.0.1:8000/api/services/');
-      if (res.ok) {
-        const djangoServices = await res.json();
-        if (Array.isArray(djangoServices) && djangoServices.length > 0) {
-          const mapped = djangoServices.map(s => {
-            let cat = s.category_name || 'Wash & Fold';
-            const nameLower = String(s.name || '').toLowerCase();
-            if (nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
-              cat = 'Household';
-            } else if (cat === 'Special Care' || cat === 'Special') {
-              cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
-            }
-            return {
-              id: s.id,
-              name: s.name,
-              category: cat,
-              price: Number(s.price) || 0,
-              turnaround: s.turnaround_time || '1–2 days',
-              status: s.is_active ? 'Active' : 'Inactive',
-              icon: s.icon || 'Shirt',
-              description: s.description || '',
-              type: Number(s.price) > 200 ? 'Premium' : 'Standard'
-            };
-          });
-          onServicesUpdated(mapped);
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn('Django fetch fallback error:', e);
-    }
+  }, (err) => {
     onServicesUpdated(DEFAULT_SERVICES);
     if (onError) onError(err);
   });
@@ -776,23 +744,6 @@ export const addAdminService = async (serviceData) => {
   } catch (e) {
     console.warn('RTDB add service notice:', e);
   }
-
-  // Also sync to Django API if available
-  try {
-    await fetch('http://127.0.0.1:8000/api/services/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: newService.name,
-        category: 1,
-        description: newService.description,
-        price: newService.price,
-        turnaround_time: newService.turnaround,
-        is_active: newService.status === 'Active'
-      })
-    });
-  } catch (e) {}
-
   return newService;
 };
 
@@ -811,21 +762,6 @@ export const updateAdminService = async (serviceId, updateFields) => {
     console.warn('RTDB update service notice:', e);
   }
 
-  if (/^\d+$/.test(cleanId)) {
-    try {
-      await fetch(`http://127.0.0.1:8000/api/services/${cleanId}/`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: updateFields.name,
-          price: updateFields.price,
-          turnaround_time: updateFields.turnaround,
-          description: updateFields.description,
-          is_active: updateFields.status === 'Active'
-        })
-      });
-    } catch (e) {}
-  }
   return true;
 };
 
@@ -840,13 +776,6 @@ export const deleteAdminService = async (serviceId) => {
     console.warn('RTDB delete service notice:', e);
   }
 
-  if (/^\d+$/.test(cleanId)) {
-    try {
-      await fetch(`http://127.0.0.1:8000/api/services/${cleanId}/`, {
-        method: 'DELETE'
-      });
-    } catch (e) {}
-  }
   return true;
 };
 
@@ -865,17 +794,6 @@ export const toggleAdminServiceStatus = async (serviceId, currentStatus) => {
     console.warn('RTDB toggle service status notice:', e);
   }
 
-  if (/^\d+$/.test(cleanId)) {
-    try {
-      await fetch(`http://127.0.0.1:8000/api/services/${cleanId}/`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          is_active: newStatus === 'Active'
-        })
-      });
-    } catch (e) {}
-  }
   return newStatus;
 };
 
@@ -894,49 +812,7 @@ export const fetchAdminOrdersOnce = async () => {
     console.warn('RTDB fetchAdminOrdersOnce notice:', err);
   }
 
-  try {
-    let res = await fetch('http://127.0.0.1:8000/api/admin/orders/');
-    if (!res.ok) {
-      res = await fetch('http://127.0.0.1:8000/api/orders/');
-    }
-    if (res.ok) {
-      const djangoOrders = await res.json();
-      if (Array.isArray(djangoOrders) && djangoOrders.length > 0) {
-        const orderMap = new Map();
-        list.forEach(o => {
-          const key = String(o.order_number || o.order_id || o.code || o.id);
-          orderMap.set(key, o);
-        });
 
-        djangoOrders.forEach(djO => {
-          const djCode = djO.order_number || djO.order_id || String(djO.id);
-          const existing = orderMap.get(djCode);
-          const djFormatted = {
-            id: djCode,
-            code: djCode,
-            order_number: djCode,
-            order_id: djCode,
-            customerName: djO.pickup_full_name || djO.customer_name || existing?.customerName || 'Customer',
-            customerPhone: djO.pickup_phone || djO.customer_phone || existing?.customerPhone || '',
-            pickup_address: djO.pickup_address || existing?.pickup_address || '',
-            total_amount: Number(djO.total_amount) || existing?.total_amount || 0,
-            amount: Number(djO.total_amount) || existing?.total_amount || 0,
-            status: djO.status || existing?.status || 'PENDING_REVIEW',
-            paymentStatus: djO.payment_status === 'PAID' ? 'Paid' : 'Pending',
-            createdAt: djO.created_at ? new Date(djO.created_at).getTime() : (existing?.createdAt || Date.now()),
-            updatedAt: djO.updated_at ? new Date(djO.updated_at).getTime() : (existing?.updatedAt || Date.now()),
-            items: djO.items || existing?.items || [],
-            driver: djO.assigned_pickup_driver_detail?.full_name || djO.assigned_delivery_driver_detail?.full_name || existing?.driver || 'Not Assigned'
-          };
-          orderMap.set(djCode, { ...existing, ...djFormatted });
-        });
-
-        list = Array.from(orderMap.values());
-      }
-    }
-  } catch (e) {
-    console.warn('Django orders fetch notice:', e);
-  }
 
   list.sort((a, b) => {
     const timeA = a.updatedAt || a.placedAt || a.createdAt || 0;
@@ -972,54 +848,7 @@ export const fetchAdminUsersOnce = async () => {
     console.warn('RTDB fetchAdminUsersOnce notice:', err);
   }
 
-  try {
-    let res = await fetch('http://127.0.0.1:8000/api/admin/users/');
-    if (!res.ok) {
-      res = await fetch('http://127.0.0.1:8000/api/users/');
-    }
-    if (res.ok) {
-      const djangoUsers = await res.json();
-      if (Array.isArray(djangoUsers) && djangoUsers.length > 0) {
-        const userMap = new Map();
-        list.forEach(u => {
-          const key = (u.email || '').toLowerCase().trim() || String(u.uid || u.id);
-          userMap.set(key, u);
-        });
 
-        djangoUsers.forEach(djU => {
-          const emailKey = (djU.email || '').toLowerCase().trim();
-          const uidKey = String(djU.id);
-          const key = emailKey || uidKey;
-          const existing = userMap.get(key) || userMap.get(emailKey) || userMap.get(uidKey);
-
-          const roleStr = String(djU.role || '').toLowerCase();
-          const isStaff = roleStr.includes('staff') || roleStr.includes('laundry');
-          const isDelivery = roleStr.includes('delivery') || roleStr.includes('agent');
-          const effectiveRole = isStaff ? 'staff' : (isDelivery ? 'delivery' : 'customer');
-
-          const isActive = djU.is_active_staff !== false && djU.is_active !== false;
-
-          userMap.set(key, {
-            ...existing,
-            id: String(djU.id),
-            uid: String(djU.id),
-            name: djU.full_name || djU.first_name || djU.username || existing?.name || 'User',
-            fullName: djU.full_name || djU.first_name || djU.username || existing?.name || 'User',
-            email: djU.email || existing?.email || '',
-            phone: djU.phone || existing?.phone || '',
-            role: effectiveRole,
-            status: isActive ? 'Active' : 'Inactive',
-            isActive: isActive,
-            createdAt: djU.created_at ? new Date(djU.created_at).getTime() : (existing?.createdAt || Date.now())
-          });
-        });
-
-        list = Array.from(userMap.values());
-      }
-    }
-  } catch (e) {
-    console.warn('Django users fetch notice:', e);
-  }
 
   return list;
 };
@@ -1039,40 +868,7 @@ export const fetchAdminServicesOnce = async () => {
     console.warn('RTDB fetchAdminServicesOnce notice:', err);
   }
 
-  try {
-    let res = await fetch('http://127.0.0.1:8000/api/admin/services/');
-    if (!res.ok) {
-      res = await fetch('http://127.0.0.1:8000/api/services/');
-    }
-    if (res.ok) {
-      const djangoServices = await res.json();
-      if (Array.isArray(djangoServices) && djangoServices.length > 0) {
-        const serviceMap = new Map();
-        list.forEach(s => serviceMap.set(String(s.id), s));
 
-        djangoServices.forEach(s => {
-          const key = String(s.id);
-          const existing = serviceMap.get(key);
-          serviceMap.set(key, {
-            ...existing,
-            id: s.id,
-            name: s.name,
-            category: s.category_name || existing?.category || 'Wash & Fold',
-            price: Number(s.price) || 0,
-            turnaround: s.turnaround_time || existing?.turnaround || '1–2 days',
-            status: s.is_active ? 'Active' : 'Inactive',
-            icon: s.icon || existing?.icon || 'Shirt',
-            description: s.description || existing?.description || '',
-            type: Number(s.price) > 200 ? 'Premium' : 'Standard'
-          });
-        });
-
-        list = Array.from(serviceMap.values());
-      }
-    }
-  } catch (e) {
-    console.warn('Django services fetch notice:', e);
-  }
 
   if (list.length === 0) {
     list = DEFAULT_SERVICES;

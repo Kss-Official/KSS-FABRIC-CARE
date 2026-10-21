@@ -74,6 +74,9 @@ export const seedDatabase = async () => {
         createdAt: now
       });
 
+      // Maintain roleUsers index for atomic multi-path role notifications
+      await set(ref(rtdb, `roleUsers/${u.role}/${uid}`), true);
+
       if (u.role === 'agent') {
         await set(ref(rtdb, `agents/${uid}`), {
           isOnline: true,
@@ -311,9 +314,8 @@ export const seedDatabase = async () => {
   });
   await set(ref(rtdb, `userComplaints/${custUid}/comp_sample_01`), true);
 
-  // 8. Notifications
+  // 8. Notifications (Isolated per-user schema: notifications/{uid}/{id})
   await set(ref(rtdb, `notifications/${custUid}/notif_sample_01`), {
-    id: 'notif_sample_01',
     type: 'order_update',
     title: 'Order In Cleaning',
     body: 'Your clothes for order FC-10453 are currently in the washing step.',
@@ -322,8 +324,7 @@ export const seedDatabase = async () => {
     createdAt: now - 1800000
   });
 
-  await set(ref(rtdb, 'notificationsByRole/admin/notif_adm_01'), {
-    id: 'notif_adm_01',
+  await set(ref(rtdb, `notifications/${adminUid}/notif_adm_01`), {
     type: 'new_order',
     title: 'Order FC-10452 Needs Pickup Driver',
     body: 'New order placed and paid for ₹237.00. Ready for pickup assignment.',
@@ -332,14 +333,22 @@ export const seedDatabase = async () => {
     createdAt: now - 3500000
   });
 
-  await set(ref(rtdb, 'notificationsByRole/staff/notif_stf_01'), {
-    id: 'notif_stf_01',
+  await set(ref(rtdb, `notifications/${staffUid}/notif_stf_01`), {
     type: 'new_dropoff',
     title: 'New Clothes Dropped Off at Hub',
     body: 'Order FC-10453 received at central facility.',
     orderId: 'ord_sample_02',
     isRead: false,
     createdAt: now - 5000000
+  });
+
+  await set(ref(rtdb, `notifications/${agentUid}/notif_agt_01`), {
+    type: 'new_pickup',
+    title: 'New Pickup Assignment',
+    body: 'Order FC-10452 is scheduled and waiting for pickup.',
+    orderId: 'ord_sample_01',
+    isRead: false,
+    createdAt: now - 2000000
   });
 
   // 9. Stats

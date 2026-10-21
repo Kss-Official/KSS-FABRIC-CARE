@@ -11,6 +11,7 @@ import {
   limitToLast
 } from 'firebase/database';
 import { rtdb } from '../config/firebase.js';
+import { addNotificationToUpdates, addRoleNotificationsToUpdates } from './notificationService.js';
 
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 const getTodayKey = () => new Date().toISOString().split('T')[0];
@@ -123,12 +124,6 @@ export const confirmCustomerPayment = async (orderId, paymentMethod = 'UPI_MOCK'
   const historyPushRef = push(ref(rtdb, `orderHistory/${orderId}`));
   const histKey = historyPushRef.key;
 
-  const custNotifPush = push(ref(rtdb, `notifications/${order.customerId}`));
-  const custNotifId = custNotifPush.key;
-
-  const adminNotifPush = push(ref(rtdb, 'notificationsByRole/admin'));
-  const admNotifId = adminNotifPush.key;
-
   const todayKey = getTodayKey();
 
   const updates = {};
@@ -203,26 +198,24 @@ export const confirmCustomerPayment = async (orderId, paymentMethod = 'UPI_MOCK'
     at: now
   };
 
-  // Notifications
-  updates[`notifications/${order.customerId}/${custNotifId}`] = {
-    id: custNotifId,
+  // Notifications in the same atomic multi-path update
+  addNotificationToUpdates(updates, order.customerId, {
     type: 'order_placed',
-    title: 'Order Confirmed!',
-    body: `Your order ${order.code} has been placed successfully. Pickup is scheduled.`,
-    orderId,
-    isRead: false,
+    title: 'Order Placed & Confirmed',
+    body: `Payment of ₹${(order.total / 100).toFixed(2)} received for ${order.code}. Your order is confirmed. Awaiting pickup partner assignment.`,
+    orderId: order.code || orderId,
+    orderCode: order.code,
     createdAt: now
-  };
+  });
 
-  updates[`notificationsByRole/admin/${admNotifId}`] = {
-    id: admNotifId,
+  await addRoleNotificationsToUpdates(updates, 'admin', {
     type: 'new_order',
-    title: 'New Order Placed',
-    body: `Order ${order.code} confirmed for ₹${(order.total / 100).toFixed(2)}. Requires driver assignment.`,
-    orderId,
-    isRead: false,
+    title: 'New Paid Order - Needs Agent',
+    body: `New paid order ${order.code} (₹${(order.total / 100).toFixed(2)}). Pickup task is unassigned.`,
+    orderId: order.code || orderId,
+    orderCode: order.code,
     createdAt: now
-  };
+  });
 
   // Stats daily
   updates[`stats/daily/${todayKey}/ordersPlaced`] = (orderSnap.val()?.dailyCount || 0) + 1;
@@ -268,19 +261,42 @@ export const cancelCustomerOrder = async (orderId, reason = 'Customer requested 
     to: 'CANCELLED',
     byUid: user.uid,
     byName: user.name || 'Customer',
-    note: reason,
+    note: `Order cancelled: ${reason}`,
     at: now
   };
 
-  updates[`notifications/${order.customerId}/${notifPush.key}`] = {
-    id: notifPush.key,
+  // Customer notification
+  addNotificationToUpdates(updates, order.customerId, {
+    type: 'order_cancelled',
+    title: 'Order Cancelled & Refund Initiated',
+    body: `Your order ${order.code} has been cancelled.${order.paymentStatus === 'Paid' ? ' A refund will be credited.' : ''}`,
+    orderId: order.code || orderId,
+    orderCode: order.code,
+    createdAt: now
+  });
+
+  // Admin notification (every admin)
+  await addRoleNotificationsToUpdates(updates, 'admin', {
     type: 'order_cancelled',
     title: 'Order Cancelled',
-    body: `Your order ${order.code} has been cancelled.`,
-    orderId,
-    isRead: false,
+    body: `Order ${order.code} was cancelled by customer: ${reason}`,
+    orderId: order.code || orderId,
+    orderCode: order.code,
     createdAt: now
-  };
+  });
+
+  // Delivery agent notification if an agent was assigned
+  const assignedAgentId = order.assignedPickupAgentId || order.assignedDeliveryAgentId;
+  if (assignedAgentId) {
+    addNotificationToUpdates(updates, assignedAgentId, {
+      type: 'task_cancelled',
+      title: 'Task Cancelled',
+      body: `Assigned task for order ${order.code} has been cancelled.`,
+      orderId: order.code || orderId,
+      orderCode: order.code,
+      createdAt: now
+    });
+  }
 
   await update(ref(rtdb), updates);
 };
@@ -444,17 +460,14 @@ export const submitCustomerComplaint = async (complaintData, user) => {
   };
   updates[`userComplaints/${user.uid}/${compId}`] = true;
 
-  // Alert admin
-  const admNotifPush = push(ref(rtdb, 'notificationsByRole/admin'));
-  updates[`notificationsByRole/admin/${admNotifPush.key}`] = {
-    id: admNotifPush.key,
-    type: 'complaint_created',
-    title: `New Ticket: ${ticketId}`,
-    body: `${user.name || 'Customer'} opened ticket: ${complaintData.subject}`,
+  // Alert every admin with distinct notification copy
+  await addRoleNotificationsToUpdates(updates, 'admin', {
+    type: 'new_complaint',
+    title: `New Complaint: ${ticketId}`,
+    body: `${user.name || 'Customer'} filed complaint: ${complaintData.subject}`,
     orderId: complaintData.orderId || null,
-    isRead: false,
     createdAt: now
-  };
+  });
 
   await update(ref(rtdb), updates);
   return { compId, ticketId };

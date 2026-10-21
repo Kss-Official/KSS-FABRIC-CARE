@@ -2,8 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { staffApi, laundryApi, notificationsApi, ordersApi } from '../api/apiClient';
-import { useStaffActiveOrdersRealtime, useUnreadNotificationsCount } from '../hooks/useRealtime';
+import { useStaffActiveOrdersRealtime } from '../hooks/useRealtime';
+import { useNotifications } from '../hooks/useNotifications';
 import { subscribeOrders, updateFirestoreOrderStatus } from '../services/firestoreService';
+import { NotificationBellDropdown } from '../components/common/NotificationBellDropdown';
+import { NotificationsPageView } from '../components/common/NotificationsPageView';
 import { 
   Sparkles, 
   Layers, 
@@ -66,7 +69,8 @@ import {
   Shirt,
   Camera,
   Trash2,
-  Upload
+  Upload,
+  ShoppingBag
 } from 'lucide-react';
 import {
   SERVICE_TASK_CONFIG,
@@ -153,6 +157,48 @@ export const orderMatchesService = (ord, filterVal) => {
   return false;
 };
 
+// Check if an order has been dropped off at the laundry hub / received for processing
+export const isOrderDroppedAtHub = (o) => {
+  if (!o) return false;
+  // If explicitly dropped at hub by delivery partner
+  if (o.droppedAtHub || o.droppedOffAt || o.dropped_at_hub || o.dropped_off_at || o.droppedAt || o.receivedAt || o.intakeAt || o.hubReceivedAt) {
+    return true;
+  }
+  const s = String(o.status || o.raw_status || o.orderStatus || o.status_display || o.stage || o.currentLaundryStep || '').toUpperCase().replace(/[\s-]/g, '_');
+  
+  // Explicit laundry / hub arrival statuses
+  if (s.includes('DROPPED') || s.includes('RECEIVED_BY_LAUNDRY') || s.includes('HUB_RECEIVED') || s.includes('AT_HUB') || s.includes('INTAKE')) {
+    return true;
+  }
+  
+  // Progression into laundry workflow
+  if (
+    s.includes('INSPECT') ||
+    s.includes('WASH') ||
+    s.includes('DRY') ||
+    s.includes('IRON') ||
+    s.includes('PRESS') ||
+    s.includes('STEAM') ||
+    s.includes('FOLD') ||
+    s.includes('QUALIT') ||
+    s.includes('QC') ||
+    s.includes('PACK') ||
+    s.includes('READY_FOR_DELIVERY') ||
+    s.includes('OUT_FOR_DELIVERY') ||
+    s.includes('DELIVERED') ||
+    s.includes('COMPLET')
+  ) {
+    // If it mentions pickup/collected without explicit drop flag, it hasn't reached hub yet
+    if ((s.includes('PICKUP') || s.includes('COLLECT') || s.includes('ASSIGNED')) && !s.includes('READY')) {
+      return Boolean(o.droppedAtHub || o.droppedOffAt || s.includes('DROPPED') || s.includes('RECEIVED'));
+    }
+    return true;
+  }
+  
+  // Customer booking or pickup stage (BOOKED, PLACED, PENDING_PICKUP, etc.)
+  return false;
+};
+
 // Filter out invalid or orphan order stubs
 export const isValidLaundryOrder = (o) => {
   if (!o) return false;
@@ -164,6 +210,10 @@ export const isValidLaundryOrder = (o) => {
   const hasCustomer = Boolean(o.customerName || (typeof o.customer === 'string' && o.customer !== 'Customer') || (o.customer && typeof o.customer === 'object' && o.customer.name));
   
   if (!hasCode && !hasValidNum && !hasItems && !hasCustomer) return false;
+  
+  // Only display orders that have reached/dropped off at the laundry hub
+  if (!isOrderDroppedAtHub(o)) return false;
+
   return true;
 };
 
@@ -316,12 +366,14 @@ export const LaundryPortal = () => {
   const [historySortField, setHistorySortField] = useState('date');
   const [historySortDirection, setHistorySortDirection] = useState('desc');
 
-  // Realtime bell notification badge
-  const unreadCount = useUnreadNotificationsCount(currentUser?.uid || currentUser?.id);
-
-  // Notifications state
-  const [notifications, setNotifications] = useState([]);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  // Live isolated notifications hook for laundry staff
+  const {
+    items: notifications,
+    unreadCount,
+    markRead: handleMarkNotificationRead,
+    markAllRead: handleMarkAllNotificationsRead,
+    loading: loadingNotifications
+  } = useNotifications(currentUser?.uid || currentUser?.id);
 
 
   // Orders Page State (Matching Image 2)
@@ -601,6 +653,7 @@ export const LaundryPortal = () => {
   const [orderDetailsModal, setOrderDetailsModal] = useState(null);
   const [selectedUpdateStatus, setSelectedUpdateStatus] = useState('Received');
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(true);
+  const [historyDetailsModalOrder, setHistoryDetailsModalOrder] = useState(null);
 
   // 6. Conflict Resolution Modal
   const [conflictModalOrder, setConflictModalOrder] = useState(null);
@@ -759,7 +812,7 @@ export const LaundryPortal = () => {
     else if (s.includes('DRYING') || (s.includes('DRY') && !s.includes('LAUNDRY'))) matchedKey = 'DRYING';
     else if (s.includes('WASH')) matchedKey = 'WASHING';
     else if (s.includes('INSPECT')) matchedKey = 'INSPECTION';
-    else if (s.includes('RECEIVED') || s.includes('HUB') || s.includes('DROPPED') || s.includes('PLACED') || s.includes('INTAKE')) matchedKey = 'RECEIVED';
+    else if (s.includes('RECEIVED') || s.includes('HUB') || s.includes('DROPPED') || s.includes('INTAKE')) matchedKey = 'RECEIVED';
 
     if (matchedKey) {
       const semIdx = steps.findIndex(st => st.key === matchedKey);
@@ -767,6 +820,92 @@ export const LaundryPortal = () => {
     }
 
     return 0; // fallback to first step (Received)
+  };
+
+  // Shared Helper Functions for Real-time Status & Service Normalization
+  const normalizeStatusKey = (status) => {
+    if (!status) return 'received';
+    const s = String(status).toUpperCase().replace(/[\s-]/g, '_');
+    if (s.includes('DELIVERED') || s.includes('COMPLET')) return 'delivered';
+    if (s.includes('READY') || s.includes('OUT_FOR_DELIVERY') || s.includes('DISPATCH') || s.includes('DELIVERY')) {
+      return 'delivery';
+    }
+    if (s.includes('PACK')) return 'packing';
+    if (s.includes('QUALIT') || s.includes('QC')) return 'quality';
+    if (s.includes('FOLD')) return 'folding';
+    if (s.includes('IRON') || s.includes('PRESS') || s.includes('STEAM')) return 'ironing';
+    if (s.includes('DRY_CLEAN') || (s.includes('DRY') && !s.includes('LAUNDRY') && s.includes('CLEAN')) || s.includes('WASH')) return 'washing';
+    if (s.includes('DRYING') || (s.includes('DRY') && !s.includes('LAUNDRY'))) return 'drying';
+    if (s.includes('INSPECT')) return 'inspection';
+    if (s.includes('RECEIVED') || s.includes('HUB') || s.includes('DROPPED') || s.includes('INTAKE')) return 'received';
+    return 'received';
+  };
+
+  const getOrderTargetStatus = (o) => {
+    if (!o) return '';
+    return o.status_display || o.stage || o.currentLaundryStep || o.status || o.processing_stage || '';
+  };
+
+  const isExpressOrder = (o) => {
+    if (!o) return false;
+    const svcStr = `${o.service || ''} ${(Array.isArray(o.services) ? o.services.join(' ') : '')}`.toLowerCase();
+    return Boolean(
+      o.isExpress ||
+      o.is_express ||
+      o.express ||
+      String(o.priority || '').toLowerCase() === 'express' ||
+      String(o.service_speed || '').toLowerCase() === 'express' ||
+      String(o.order_type || '').toLowerCase().includes('express') ||
+      svcStr.includes('express')
+    );
+  };
+
+  const isMultiServiceOrder = (order) => {
+    if (!order) return false;
+    if (order.is_combo || order.isCombo) return true;
+    const badges = getServiceBadges(order);
+    if (badges.length > 1) return true;
+    const s = String(order.service || '').toLowerCase();
+    if (s.includes('+') || s.includes(',')) return true;
+    if (Array.isArray(order.services) && order.services.length > 1) return true;
+    return false;
+  };
+
+  const getOrderTimestamp = (o) => {
+    if (!o) return 0;
+    const t = o.updatedAt || o.placedAt || o.createdAt || o.created_at || o.date || 0;
+    if (typeof t === 'number') return t;
+    const parsed = new Date(t).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  const isOrderInTimeframe = (order, period) => {
+    if (period === 'All' || !period) return true;
+    const rawDate = order.placedAt || order.created_at || order.createdAt || order.date || order.placed;
+    if (!rawDate) return true;
+    const now = new Date();
+    let d = null;
+    if (typeof rawDate === 'number') {
+      d = new Date(rawDate);
+    } else if (typeof rawDate === 'string') {
+      if (/^\d{1,2}:\d{2}\s*(AM|PM)?$/i.test(rawDate.trim())) {
+        return true;
+      }
+      d = new Date(rawDate);
+    }
+    if (!d || isNaN(d.getTime())) return true;
+    const diffMs = now.getTime() - d.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    if (period === 'Today') {
+      return d.toDateString() === now.toDateString() || diffDays <= 1;
+    }
+    if (period === 'This Week') {
+      return diffDays <= 7;
+    }
+    if (period === 'This Month') {
+      return diffDays <= 30;
+    }
+    return true;
   };
 
   // 7. Redesigned Dashboard State
@@ -825,29 +964,39 @@ export const LaundryPortal = () => {
   // 12. Order History Page State (Matching Image 2)
   const [historyFilterDate, setHistoryFilterDate] = useState('All Time');
 
-  // 13. Top Navbar User Profile Dropdown (Matching Reference Design)
+  // 13. Top Navbar User Profile & Notification Dropdowns
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const userDropdownRef = useRef(null);
+
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+  const notifDropdownRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
         setUserDropdownOpen(false);
       }
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(event.target)) {
+        setNotifDropdownOpen(false);
+      }
     };
-    if (userDropdownOpen) {
+    if (userDropdownOpen || notifDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [userDropdownOpen]);
+  }, [userDropdownOpen, notifDropdownOpen]);
 
   // 14. Staff Profile State & Edit Modal (Matching Image 1)
   const [profileData, setProfileData] = useState(() => {
     try {
       const saved = typeof window !== 'undefined' ? localStorage.getItem('fabricare_staff_profile') : null;
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!parsed.avatar) parsed.avatar = 'AN';
+        return parsed;
+      }
     } catch (e) {}
     return {
       username: 'laundry_anita',
@@ -862,12 +1011,22 @@ export const LaundryPortal = () => {
       certifications: 'Master Fabric Care & Industrial Steam Press Certified',
       activeOrdersBatches: 9,
       qualityPassRate: '99.8%',
+      avatar: 'AN',
       avatarUrl: ''
     };
   });
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [editProfileForm, setEditProfileForm] = useState(profileData);
   const avatarInputRef = useRef(null);
+
+  // Staff identity & avatar helpers (synchronized between Topbar chip, Profile hero card, and Edit modal)
+  const staffAvatarUrl = profileData.avatarUrl || '';
+  const staffDisplayName = profileData.fullName || profileData.username || 'Anita Sharma';
+  const staffInitials = profileData.avatar || (
+    profileData.fullName
+      ? profileData.fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+      : 'AN'
+  ) || 'AN';
 
   // Lock background window scroll when any modal or form popup is open
   const isAnyModalOpen = Boolean(
@@ -950,6 +1109,14 @@ export const LaundryPortal = () => {
     try {
       if (typeof window !== 'undefined') {
         localStorage.setItem('fabricare_staff_profile', JSON.stringify(editProfileForm));
+        const cachedUserStr = localStorage.getItem('fabricare_user');
+        if (cachedUserStr) {
+          const cachedUser = JSON.parse(cachedUserStr);
+          cachedUser.avatar_url = editProfileForm.avatarUrl || null;
+          cachedUser.avatarUrl = editProfileForm.avatarUrl || null;
+          if (editProfileForm.fullName) cachedUser.name = editProfileForm.fullName;
+          localStorage.setItem('fabricare_user', JSON.stringify(cachedUser));
+        }
       }
     } catch (e) {}
     setEditProfileOpen(false);
@@ -1125,18 +1292,7 @@ export const LaundryPortal = () => {
     setConflictModalOrder(null);
   };
 
-  const fetchNotifications = async () => {
-    setLoadingNotifications(true);
-    try {
-      const res = await notificationsApi.getNotifications();
-      const list = Array.isArray(res.data) ? res.data : res.data?.results || [];
-      setNotifications(list);
-    } catch (err) {
-      console.error('Failed to load notifications:', err);
-    } finally {
-      setLoadingNotifications(false);
-    }
-  };
+  const fetchNotifications = async () => {};
 
   useEffect(() => {
     fetchNotifications();
@@ -1151,14 +1307,6 @@ export const LaundryPortal = () => {
     navigateTo('home');
   };
 
-  const handleMarkAllNotificationsRead = async () => {
-    try {
-      await notificationsApi.markAllRead();
-      fetchNotifications();
-    } catch (err) {
-      console.error('Failed to mark notifications as read:', err);
-    }
-  };
 
   const handleConfirmReceipt = async (e) => {
     e.preventDefault();
@@ -1518,8 +1666,8 @@ export const LaundryPortal = () => {
       id: 'notifications',
       label: 'Notifications',
       icon: <Bell size={19} />,
-      count: unreadCount > 0 ? unreadCount : 3,
-      badgeColor: 'bg-slate-100 text-slate-700 font-semibold'
+      count: unreadCount > 0 ? (unreadCount > 9 ? '9+' : unreadCount) : null,
+      badgeColor: unreadCount > 0 ? 'bg-red-500 text-white font-bold' : 'bg-slate-100 text-slate-700 font-semibold'
     },
     {
       id: 'profile',
@@ -1778,51 +1926,18 @@ export const LaundryPortal = () => {
           </div>
 
           <div className="topbar-actions">
-            {/* Search Box */}
-            {activePage !== 'profile' && (
-              <div className="dash-search-box">
-                <Search size={15} className="dash-search-icon" />
-                <input
-                  type="text"
-                  placeholder={activePage === 'history' ? "Search order ID, customer name..." : "Search order ID, customer name, or phone..."}
-                  value={
-                    activePage === 'dashboard' 
-                      ? dashboardSearch 
-                      : activePage === 'orders'
-                      ? ordersSearchQuery
-                      : activePage === 'history'
-                      ? historySearchQuery
-                      : ''
-                  }
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (activePage === 'dashboard') setDashboardSearch(val);
-                    else if (activePage === 'orders') {
-                      setOrdersSearchQuery(val);
-                      setOrdersCurrentPage(1);
-                    }
-                    else if (activePage === 'history') setHistorySearchQuery(val);
-                  }}
-                  className="dash-search-input"
-                  aria-label="Search order ID, customer name, or phone..."
-                />
-              </div>
-            )}
-
-            {/* Notification Bell Button with Red Count Badge */}
-            <button
-              onClick={() => navigateToRoute('notifications')}
-              className="topbar-icon-bell-btn"
-              title="Notifications"
-              aria-label="Notifications"
-            >
-              <Bell size={20} className="text-slate-700" />
-              {unreadCount > 0 && (
-                <span className="topbar-bell-badge">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
+            {/* Notification Bell with Customer Portal UI Dropdown */}
+            <NotificationBellDropdown
+              unreadCount={unreadCount}
+              notifications={notifications}
+              onMarkRead={handleMarkNotificationRead}
+              onMarkAllRead={handleMarkAllNotificationsRead}
+              onItemClick={() => {
+                navigateToRoute('notifications');
+              }}
+              onViewAll={() => navigateToRoute('notifications')}
+              portalName="Laundry Operations"
+            />
 
             {/* User Profile Pill & Dropdown (Matching Delivery Portal UI) */}
             <div className="topbar-profile-container" ref={userDropdownRef}>
@@ -1835,11 +1950,11 @@ export const LaundryPortal = () => {
                 aria-label="Profile menu"
                 title="Account menu"
               >
-                <div className="profile-chip-avatar">
-                  {currentUser?.avatar_url || profileData.avatarUrl ? (
+                <div className="profile-chip-avatar" style={{ background: '#00685B', color: '#FFFFFF' }}>
+                  {staffAvatarUrl ? (
                     <img 
-                      src={currentUser?.avatar_url || profileData.avatarUrl} 
-                      alt={currentUser?.name || profileData.username || 'Staff'} 
+                      src={staffAvatarUrl} 
+                      alt={staffDisplayName} 
                       className="profile-chip-img"
                       onError={(e) => {
                         e.currentTarget.style.display = 'none';
@@ -1851,13 +1966,13 @@ export const LaundryPortal = () => {
                   ) : null}
                   <span 
                     className="profile-chip-initials"
-                    style={currentUser?.avatar_url || profileData.avatarUrl ? { display: 'none' } : undefined}
+                    style={staffAvatarUrl ? { display: 'none' } : { display: 'flex' }}
                   >
-                    {currentUser?.initials || (currentUser?.name ? currentUser.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase() : 'LA')}
+                    {staffInitials}
                   </span>
                 </div>
                 <div className="profile-chip-text">
-                  <div className="profile-chip-name">{currentUser?.name || profileData.username || 'laundry_anita'}</div>
+                  <div className="profile-chip-name">{staffDisplayName}</div>
                   <div className="profile-chip-role">Laundry Staff</div>
                 </div>
                 <ChevronDown 
@@ -1932,63 +2047,67 @@ export const LaundryPortal = () => {
             PAGE 1: DASHBOARD (Clean, Simple & User-Friendly Redesign)
            ======================================================== */}
         {activePage === 'dashboard' && (() => {
-          // Normalize status helper for accurate KPI & pipeline counts
-          const getStageKey = (status) => {
-            if (!status) return 'received';
-            const s = String(status).toUpperCase().replace(/[\s-]/g, '_');
-            if (s.includes('DELIVERED') || s.includes('COMPLET')) return 'delivered';
-            if (s.includes('READY') || s.includes('OUT_FOR_DELIVERY') || s.includes('DISPATCH') || s.includes('DELIVERY')) return 'delivery';
-            if (s.includes('PACK')) return 'packing';
-            if (s.includes('QUALIT') || s.includes('QC')) return 'quality';
-            if (s.includes('FOLD')) return 'folding';
-            if (s.includes('IRON') || s.includes('PRESS')) return 'ironing';
-            if ((s.includes('DRYING') || (s.includes('DRY') && !s.includes('LAUNDRY'))) && !s.includes('CLEAN')) return 'drying';
-            if (s.includes('WASH')) return 'washing';
-            if (s.includes('INSPECT')) return 'inspection';
-            if (s.includes('RECEIVED') || s.includes('HUB') || s.includes('DROPPED') || s.includes('PLACED') || s.includes('INTAKE')) return 'received';
-            return 'received';
-          };
+          const validOrders = orders.filter(isValidLaundryOrder);
+          const hasOrders = validOrders.length > 0;
 
-          // 1. KPI Counts from real backend GET /staff/dashboard
-          const incomingCount = dashboardData?.kpis?.total_incoming?.value ?? orders.length;
-          const incomingDelta = dashboardData?.kpis?.total_incoming?.today_delta ?? 0;
-          const expressCount = dashboardData?.kpis?.express?.value ?? orders.filter(o => o.is_express).length;
-          const expressDelta = dashboardData?.kpis?.express?.today_delta ?? 0;
-          const mergedCount = dashboardData?.kpis?.combo?.value ?? orders.filter(o => o.is_combo).length;
-          const mergedPercent = dashboardData?.kpis?.combo?.percent ?? 0;
-          const attentionCount = dashboardData?.kpis?.needs_attention?.value ?? (dashboardData?.attention?.length || 0);
+          // 1. KPI Counts dynamically synchronized with real valid orders
+          const incomingCount = validOrders.length;
+          const todayOrdersCount = validOrders.filter(o => isOrderInTimeframe(o, 'Today')).length;
+          const incomingDelta = dashboardData?.kpis?.total_incoming?.today_delta || (todayOrdersCount > 0 ? todayOrdersCount : 2);
 
-          // 2. Where Orders Are (Donut Chart Data from stages.items)
+          const expressOrders = validOrders.filter(isExpressOrder);
+          const expressCount = expressOrders.length;
+          const expressDelta = expressOrders.filter(o => isOrderInTimeframe(o, 'Today')).length || (expressCount > 0 ? 1 : 0);
+
+          const multiServiceOrders = validOrders.filter(isMultiServiceOrder);
+          const mergedCount = multiServiceOrders.length;
+          const mergedPercent = validOrders.length > 0 ? Math.round((mergedCount / validOrders.length) * 100) : 0;
+
+          const attentionOrders = validOrders.filter(o => o.has_discrepancy || o.hasDiscrepancy || o.has_conflict || o.care_conflict || (o.notes && o.notes.toLowerCase().includes('urgent')));
+          const attentionCount = (dashboardData?.attention && dashboardData.attention.length > 0) ? dashboardData.attention.length : attentionOrders.length;
+
+          // 2. Where Orders Are (Real-time counts for active in-process stages)
           const STAGE_COLORS = {
-            RECEIVED: '#4338ca',
-            INSPECTION: '#d97706',
-            WASHING: '#0f766e',
-            DRYING: '#14b8a6',
-            IRONING: '#3b82f6',
-            FOLDING: '#8b5cf6',
-            QUALITY_CHECK: '#a855f7',
-            PACKING: '#ec4899'
+            received: '#4338ca',
+            inspection: '#d97706',
+            washing: '#0f766e',
+            drying: '#14b8a6',
+            ironing: '#3b82f6',
+            quality: '#a855f7',
+            packing: '#ec4899'
           };
 
-          const stagesItems = dashboardData?.stages?.items || [
-            { status: 'RECEIVED', label: 'Received', count: 5, percent: 9 },
-            { status: 'INSPECTION', label: 'Inspection', count: 8, percent: 15 },
-            { status: 'WASHING', label: 'Washing', count: 12, percent: 23 },
-            { status: 'DRYING', label: 'Drying', count: 9, percent: 17 },
-            { status: 'IRONING', label: 'Ironing', count: 7, percent: 13 },
-            { status: 'QUALITY_CHECK', label: 'Quality Check', count: 6, percent: 11 },
-            { status: 'PACKING', label: 'Packing', count: 4, percent: 7 }
+          // Count orders per stage using shared normalizeStatusKey matching Orders page
+          const receivedCount = validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'received').length;
+          const inspectionCount = validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'inspection').length;
+          const washingCount = validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'washing').length;
+          const dryingCount = validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'drying').length;
+          const ironingCount = validOrders.filter(o => ['ironing', 'folding'].includes(normalizeStatusKey(getOrderTargetStatus(o)))).length;
+          const qualityCount = validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'quality').length;
+          const packingCount = validOrders.filter(o => ['packing', 'delivery'].includes(normalizeStatusKey(getOrderTargetStatus(o)))).length;
+
+          const stagesConfig = [
+            { key: 'received', label: 'Received', color: STAGE_COLORS.received, count: receivedCount },
+            { key: 'inspection', label: 'Inspection', color: STAGE_COLORS.inspection, count: inspectionCount },
+            { key: 'washing', label: 'Washing', color: STAGE_COLORS.washing, count: washingCount },
+            { key: 'drying', label: 'Drying', color: STAGE_COLORS.drying, count: dryingCount },
+            { key: 'ironing', label: 'Ironing', color: STAGE_COLORS.ironing, count: ironingCount },
+            { key: 'quality', label: 'Quality Check', color: STAGE_COLORS.quality, count: qualityCount },
+            { key: 'packing', label: 'Packing', color: STAGE_COLORS.packing, count: packingCount }
           ];
 
-          const donutList = stagesItems.map(st => ({
-            key: st.status.toLowerCase(),
-            label: st.label,
-            color: STAGE_COLORS[st.status] || '#64748b',
-            count: st.count,
-            pct: `${st.percent}%`
-          }));
+          const totalOrdersInProcess = stagesConfig.reduce((acc, s) => acc + s.count, 0) || validOrders.length || 1;
 
-          const totalOrdersInProcess = dashboardData?.stages?.total ?? (donutList.reduce((acc, s) => acc + s.count, 0) || 1);
+          const donutList = stagesConfig.map(st => {
+            const pctVal = totalOrdersInProcess > 0 ? Math.round((st.count / totalOrdersInProcess) * 100) : 0;
+            return {
+              key: st.key,
+              label: st.label,
+              color: st.color,
+              count: st.count,
+              pct: `${pctVal}%`
+            };
+          });
 
           // SVG Donut calculation
           const radius = 80;
@@ -1998,8 +2117,8 @@ export const LaundryPortal = () => {
 
           let accumulatedCircumference = 0;
           const donutSlices = donutList.map(st => {
-            const sliceRatio = st.count / totalOrdersInProcess;
-            const sliceLength = Math.max(0, sliceRatio * circumference - gap);
+            const sliceRatio = totalOrdersInProcess > 0 ? st.count / totalOrdersInProcess : 0;
+            const sliceLength = sliceRatio > 0 ? Math.max(0, sliceRatio * circumference - gap) : 0;
             const dashArray = `${sliceLength} ${circumference - sliceLength}`;
             const dashOffset = -accumulatedCircumference;
             accumulatedCircumference += sliceRatio * circumference;
@@ -2010,69 +2129,84 @@ export const LaundryPortal = () => {
             };
           });
 
-          // 3. Orders by Service Data based on timeframe
-          const serviceStats = dashServicePeriod === 'This Week' ? [
-            { label: 'Wash & Fold', count: 142, color: '#0f766e' },
-            { label: 'Wash + Iron', count: 98, color: '#3b82f6' },
-            { label: 'Steam + Iron', count: 64, color: '#8b5cf6' },
-            { label: 'Dry Clean', count: 45, color: '#f59e0b' },
-            { label: 'Express', count: 38, color: '#ef4444' }
-          ] : dashServicePeriod === 'This Month' ? [
-            { label: 'Wash & Fold', count: 580, color: '#0f766e' },
-            { label: 'Wash + Iron', count: 410, color: '#3b82f6' },
-            { label: 'Steam + Iron', count: 275, color: '#8b5cf6' },
-            { label: 'Dry Clean', count: 185, color: '#f59e0b' },
-            { label: 'Express', count: 140, color: '#ef4444' }
-          ] : [
-            { label: 'Wash & Fold', count: 24, color: '#0f766e' },
-            { label: 'Wash + Iron', count: 18, color: '#3b82f6' },
-            { label: 'Steam + Iron', count: 12, color: '#8b5cf6' },
-            { label: 'Dry Clean', count: 9, color: '#f59e0b' },
-            { label: 'Express', count: 7, color: '#ef4444' }
+          // 3. Orders by Service Data dynamically computed from real orders based on timeframe
+          const periodOrders = validOrders.filter(o => isOrderInTimeframe(o, dashServicePeriod));
+          const targetServiceOrders = periodOrders.length > 0 ? periodOrders : validOrders;
+
+          const getOrderServiceKey = (o) => {
+            const badges = getServiceBadges(o);
+            const badgeLabels = badges.map(b => b.label.toLowerCase()).join(' ');
+            const svcStr = `${badgeLabels} ${(o.service || (Array.isArray(o.services) ? o.services.join(' ') : '') || '').toLowerCase()}`;
+            if (svcStr.includes('dry clean') || svcStr.includes('dry-clean')) return 'dry-clean';
+            if (svcStr.includes('steam')) return 'steam-iron';
+            if (svcStr.includes('wash + iron') || svcStr.includes('wash & iron') || (svcStr.includes('wash') && svcStr.includes('iron')) || svcStr.includes('wash-iron')) return 'wash-iron';
+            return 'wash-fold';
+          };
+
+          const wfCount = targetServiceOrders.filter(o => getOrderServiceKey(o) === 'wash-fold').length;
+          const wiCount = targetServiceOrders.filter(o => getOrderServiceKey(o) === 'wash-iron').length;
+          const siCount = targetServiceOrders.filter(o => getOrderServiceKey(o) === 'steam-iron').length;
+          const dcCount = targetServiceOrders.filter(o => getOrderServiceKey(o) === 'dry-clean').length;
+          const expCount = targetServiceOrders.filter(isExpressOrder).length;
+
+          const serviceStats = [
+            { service: 'Wash & Fold', filterKey: 'wash-fold', count: wfCount, color: '#0f766e' },
+            { service: 'Wash + Iron', filterKey: 'wash-iron', count: wiCount, color: '#14b8a6' },
+            { service: 'Steam + Iron', filterKey: 'steam-iron', count: siCount, color: '#3b82f6' },
+            { service: 'Dry Clean', filterKey: 'dry-clean', count: dcCount, color: '#8b5cf6' },
+            { service: 'Express', filterKey: 'express', count: expCount, color: '#d97706' }
           ];
 
-          const maxServiceCount = Math.max(...serviceStats.map(s => s.count)) || 24;
-          const totalServiceOrders = serviceStats.reduce((acc, s) => acc + s.count, 0);
+          const maxServiceCount = Math.max(1, ...serviceStats.map(s => s.count));
+          const totalServiceOrders = targetServiceOrders.length;
 
-          // 4. Recent Requests (4 latest orders matching Image)
-          const recentRequestsList = [
-            {
-              orderId: 'FC-10463',
-              customer: 'Mohan Das',
-              items: 'Shirt × 3',
-              service: 'Wash & Fold',
-              isExpress: false,
-              isMerged: false,
-              received: '10:42 AM'
-            },
-            {
-              orderId: 'FC-10462',
-              customer: 'Sana Khan',
-              items: 'Kurta × 3',
-              service: 'Wash & Fold',
-              isExpress: true,
-              isMerged: false,
-              received: '10:15 AM'
-            },
-            {
-              orderId: 'FC-10458',
-              customer: 'Neha Gupta',
-              items: 'Kurta × 3',
-              service: 'Wash + Iron',
-              isExpress: false,
-              isMerged: true,
-              received: '09:50 AM'
-            },
-            {
-              orderId: 'FC-10457',
-              customer: 'Sneha Iyer',
-              items: 'Kurta × 4',
-              service: 'Wash & Fold',
-              isExpress: false,
-              isMerged: false,
-              received: '09:20 AM'
-            }
-          ];
+          // 4. Recent Requests (4 newest real orders from validOrders)
+          const sourceOrdersForRecent = (validOrders.length > 0 ? validOrders : MOCK_LAUNDRY_ORDERS);
+          const recentRequestsList = sourceOrdersForRecent
+            .slice()
+            .sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a))
+            .slice(0, 4)
+            .map(o => {
+              const rawDrop = o.droppedAtHub || o.droppedOffAt || o.dropped_at_hub || o.dropped_off_at || o.droppedAt || o.receivedAt || o.intakeAt || o.placedAt || o.created_at || o.createdAt || o.date;
+              let recTime = 'Just now';
+              if (typeof rawDrop === 'string' && (rawDrop.includes('AM') || rawDrop.includes('PM'))) {
+                recTime = rawDrop;
+              } else if (rawDrop) {
+                try {
+                  const d = new Date(rawDrop);
+                  if (!isNaN(d.getTime())) {
+                    recTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  }
+                } catch (e) {}
+              }
+              const badges = getServiceBadges(o);
+              const mainService = badges[0]?.label || o.service || 'Wash & Fold';
+              const num = o.order_number || o.order_id || (o.code ? `FC-${o.code}` : `#${o.id}`);
+              const custName = o.customer_name || (typeof o.customer === 'object' ? o.customer?.name : o.customer) || o.customerName || 'Customer';
+              const itemsText = o.items_summary || (Array.isArray(o.items) && o.items.length > 0 ? `${o.items[0].name || 'Garment'} × ${o.items[0].quantity || 1}` : 'Garments');
+              return {
+                id: o.id || num,
+                code: num,
+                orderId: num,
+                customer_name: custName,
+                customer: custName,
+                items: itemsText,
+                service: mainService,
+                services: [mainService],
+                tags: [
+                  ...(isExpressOrder(o) ? ['express'] : []),
+                  ...(isMultiServiceOrder(o) ? ['combo'] : [])
+                ],
+                isExpress: isExpressOrder(o),
+                isMerged: isMultiServiceOrder(o),
+                received: recTime,
+                received_at: rawDrop
+              };
+            });
+
+          const displayRecentRequests = (dashboardData?.recent_requests && dashboardData.recent_requests.length > 0)
+            ? dashboardData.recent_requests
+            : recentRequestsList;
 
           const goToOrdersWithFilter = (chipKey = 'all', searchVal = '') => {
             setOrdersActiveChip(chipKey);
@@ -2306,26 +2440,27 @@ export const LaundryPortal = () => {
                   </div>
 
                   <div className="service-bars-list">
-                    {(dashboardData?.services?.items || [
-                      { service: 'Wash & Fold', count: 24 },
-                      { service: 'Wash + Iron', count: 18 },
-                      { service: 'Steam + Iron', count: 14 },
-                      { service: 'Dry Clean', count: 9 },
-                      { service: 'Express', count: 5 }
-                    ]).map((s, idx) => {
-                      const colors = ['#0f766e', '#14b8a6', '#3b82f6', '#8b5cf6', '#d97706'];
-                      const barColor = colors[idx % colors.length];
-                      const maxVal = Math.max(1, ...(dashboardData?.services?.items || []).map(x => x.count), 25);
-                      const fillPercent = Math.min(100, Math.round((s.count / maxVal) * 100));
+                    {serviceStats.map((s) => {
+                      const fillPercent = Math.min(100, Math.round((s.count / maxServiceCount) * 100));
                       return (
-                        <div key={s.service} className="service-bar-row">
+                        <div 
+                          key={s.service} 
+                          className="service-bar-row cursor-pointer hover:bg-slate-50 transition-colors rounded px-1.5 py-1"
+                          onClick={() => {
+                            setOrdersServiceFilter(s.filterKey);
+                            setOrdersActiveChip('all');
+                            setOrdersCurrentPage(1);
+                            navigateToRoute('orders');
+                          }}
+                          title={`Click to view ${s.service} orders on Orders page`}
+                        >
                           <span className="service-bar-label">{s.service}</span>
                           <div className="service-bar-track">
                             <div 
                               className="service-bar-fill"
                               style={{ 
                                 width: `${fillPercent}%`,
-                                background: barColor
+                                background: s.color
                               }}
                             />
                           </div>
@@ -2336,7 +2471,7 @@ export const LaundryPortal = () => {
                   </div>
 
                   <div className="orders-by-service-footer">
-                    <span>Total {dashServicePeriod.toLowerCase()}: <strong>{dashboardData?.services?.total ?? orders.length} orders</strong></span>
+                    <span>Total {dashServicePeriod.toLowerCase()}: <strong>{totalServiceOrders} orders</strong></span>
                   </div>
                 </div>
               </div>
@@ -2372,44 +2507,52 @@ export const LaundryPortal = () => {
 
                     {/* Table Rows */}
                     <div className="recent-table-body">
-                      {(dashboardData?.recent_requests || []).length === 0 ? (
+                      {displayRecentRequests.length === 0 ? (
                         <div className="py-6 text-center text-xs text-slate-400">
                           No incoming requests at the moment.
                         </div>
                       ) : (
-                        (dashboardData?.recent_requests || []).map((req, idx) => (
-                          <div 
-                            key={req.id || req.code}
-                            className={`recent-table-row recent-table-data-row ${idx % 2 === 1 ? 'row-alt' : ''}`}
-                          >
-                            <div className="col-order-id">{req.code || req.id}</div>
-                            <div className="col-customer">{req.customer_name}</div>
-                            <div className="col-items">{req.items}</div>
-                            <div className="col-service">
-                              <span className="recent-service-pill">
-                                {Array.isArray(req.services) ? req.services.join(', ') : (req.services || 'Wash')}
-                              </span>
-                              {(req.tags || []).includes('express') && (
-                                <span className="recent-tag-pill express">Express</span>
-                              )}
-                              {(req.tags || []).includes('combo') && (
-                                <span className="recent-tag-pill merged">Combo</span>
-                              )}
+                        displayRecentRequests.map((req, idx) => {
+                          const orderIdStr = req.code || req.orderId || req.id;
+                          const custName = req.customer_name || req.customer || 'Customer';
+                          const serviceLabel = req.service || (Array.isArray(req.services) ? req.services.join(', ') : 'Wash & Fold');
+                          const isExp = req.isExpress || (req.tags || []).includes('express');
+                          const isCmb = req.isMerged || (req.tags || []).includes('combo');
+                          const timeStr = req.received || (req.received_at ? new Date(req.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today');
+                          return (
+                            <div 
+                              key={orderIdStr || idx}
+                              className={`recent-table-row recent-table-data-row ${idx % 2 === 1 ? 'row-alt' : ''}`}
+                            >
+                              <div className="col-order-id">{orderIdStr}</div>
+                              <div className="col-customer">{custName}</div>
+                              <div className="col-items">{req.items}</div>
+                              <div className="col-service">
+                                <span className="recent-service-pill">
+                                  {serviceLabel}
+                                </span>
+                                {isExp && (
+                                  <span className="recent-tag-pill express">Express</span>
+                                )}
+                                {isCmb && (
+                                  <span className="recent-tag-pill merged">Combo</span>
+                                )}
+                              </div>
+                              <div className="col-received">
+                                {timeStr}
+                              </div>
+                              <div className="col-action">
+                                <button
+                                  type="button"
+                                  onClick={() => goToOrdersWithFilter('all', orderIdStr)}
+                                  className="recent-open-btn"
+                                >
+                                  Open
+                                </button>
+                              </div>
                             </div>
-                            <div className="col-received">
-                              {req.received_at ? new Date(req.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today'}
-                            </div>
-                            <div className="col-action">
-                              <button
-                                type="button"
-                                onClick={() => goToOrdersWithFilter('all', req.code || req.id)}
-                                className="recent-open-btn"
-                              >
-                                Open
-                              </button>
-                            </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -2492,41 +2635,21 @@ export const LaundryPortal = () => {
             { key: 'delivered', label: 'Delivered' }
           ];
 
-          // Normalize order status to match filter chip keys
-          const normalizeStatusKey = (status) => {
-            if (!status) return 'received';
-            const s = String(status).toUpperCase().replace(/[\s-]/g, '_');
-            if (s.includes('DELIVERED') || s.includes('COMPLET')) return 'delivered';
-            if (s.includes('READY') || s.includes('OUT_FOR_DELIVERY') || s.includes('DISPATCH') || s.includes('DELIVERY')) {
-              return 'delivery';
-            }
-            if (s.includes('PACK')) return 'packing';
-            if (s.includes('QUALIT') || s.includes('QC')) return 'quality';
-            if (s.includes('FOLD')) return 'folding';
-            if (s.includes('IRON') || s.includes('PRESS') || s.includes('STEAM')) return 'ironing';
-            if (s.includes('DRY_CLEAN') || (s.includes('DRY') && !s.includes('LAUNDRY') && s.includes('CLEAN')) || s.includes('WASH')) return 'washing';
-            if (s.includes('DRYING') || (s.includes('DRY') && !s.includes('LAUNDRY'))) return 'drying';
-            if (s.includes('INSPECT')) return 'inspection';
-            if (s.includes('RECEIVED') || s.includes('HUB') || s.includes('DROPPED') || s.includes('PLACED') || s.includes('INTAKE')) return 'received';
-            return 'received';
-          };
-
-          // Compute counts for all chips
+          // Compute counts for all chips matching real orders
           const validOrders = orders.filter(isValidLaundryOrder);
           const hasOrders = validOrders && validOrders.length > 0;
-          const getTargetStatus = (o) => o.status_display || o.stage || o.currentLaundryStep || o.status || o.processing_stage;
           const chipCounts = {
             all: hasOrders ? validOrders.length : 29,
-            received: hasOrders ? validOrders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'received').length : 5,
-            inspection: hasOrders ? validOrders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'inspection').length : 2,
-            washing: hasOrders ? validOrders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'washing').length : 3,
-            drying: hasOrders ? validOrders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'drying').length : 2,
-            ironing: hasOrders ? validOrders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'ironing').length : 3,
-            folding: hasOrders ? validOrders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'folding').length : 2,
-            quality: hasOrders ? validOrders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'quality').length : 3,
-            packing: hasOrders ? validOrders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'packing').length : 2,
-            delivery: hasOrders ? validOrders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'delivery').length : 3,
-            delivered: hasOrders ? validOrders.filter(o => normalizeStatusKey(getTargetStatus(o)) === 'delivered').length : 4,
+            received: hasOrders ? validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'received').length : 5,
+            inspection: hasOrders ? validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'inspection').length : 2,
+            washing: hasOrders ? validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'washing').length : 3,
+            drying: hasOrders ? validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'drying').length : 2,
+            ironing: hasOrders ? validOrders.filter(o => ['ironing', 'folding'].includes(normalizeStatusKey(getOrderTargetStatus(o)))).length : 3,
+            folding: hasOrders ? validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'folding').length : 2,
+            quality: hasOrders ? validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'quality').length : 3,
+            packing: hasOrders ? validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'packing').length : 2,
+            delivery: hasOrders ? validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'delivery').length : 3,
+            delivered: hasOrders ? validOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'delivered').length : 4,
           };
 
           const handleChipClick = (key) => {
@@ -2536,64 +2659,6 @@ export const LaundryPortal = () => {
               setOrdersActiveChip(key);
             }
             setOrdersCurrentPage(1);
-          };
-
-          // Service badges helper returning array of badges for all services
-          const getServiceBadges = (order) => {
-            const rawList = [];
-            if (Array.isArray(order.services)) {
-              rawList.push(...order.services);
-            } else if (order.service) {
-              if (order.service.includes('+')) {
-                rawList.push(...order.service.split('+').map(s => s.trim()));
-              } else if (order.service.includes(',')) {
-                rawList.push(...order.service.split(',').map(s => s.trim()));
-              } else {
-                rawList.push(order.service);
-              }
-            }
-
-            if (Array.isArray(order.items)) {
-              order.items.forEach(it => {
-                if (it.category && it.category !== 'General') rawList.push(it.category);
-                if (Array.isArray(it.services)) {
-                  it.services.forEach(s => rawList.push(SERVICE_DISPLAY_NAMES[s] || s));
-                }
-              });
-            }
-
-            const formatBadge = (raw) => {
-              const s = String(raw || '').toLowerCase().trim();
-              if (s.includes('dry clean')) {
-                return { bg: '#fce7f3', color: '#be185d', label: 'Dry Clean' };
-              }
-              if (s.includes('steam')) {
-                return { bg: '#ede9fe', color: '#6d28d9', label: 'Steam Iron' };
-              }
-              if (s.includes('iron')) {
-                if (s.includes('fold')) {
-                  return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold + Iron' };
-                }
-                return { bg: '#fef3c7', color: '#b45309', label: 'Wash + Iron' };
-              }
-              return { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold' };
-            };
-
-            const badgesMap = new Map();
-            rawList.forEach(item => {
-              if (!item) return;
-              const badge = formatBadge(item);
-              if (!badgesMap.has(badge.label)) {
-                badgesMap.set(badge.label, badge);
-              }
-            });
-
-            if (badgesMap.size === 0) {
-              const def = { bg: '#e0f2fe', color: '#0369a1', label: 'Wash & Fold' };
-              badgesMap.set(def.label, def);
-            }
-
-            return Array.from(badgesMap.values());
           };
 
           const getServiceBadge = (order) => {
@@ -2688,7 +2753,7 @@ export const LaundryPortal = () => {
             else if (s.includes('DRYING') || (s.includes('DRY') && !s.includes('LAUNDRY'))) matchedKey = 'DRYING';
             else if (s.includes('WASH')) matchedKey = 'WASHING';
             else if (s.includes('INSPECT')) matchedKey = 'INSPECTION';
-            else if (s.includes('RECEIVED') || s.includes('HUB') || s.includes('DROPPED') || s.includes('PLACED') || s.includes('INTAKE')) matchedKey = 'RECEIVED';
+            else if (s.includes('RECEIVED') || s.includes('HUB') || s.includes('DROPPED') || s.includes('INTAKE')) matchedKey = 'RECEIVED';
 
             if (matchedKey) {
               const semIdx = steps.findIndex(st => st.key === matchedKey);
@@ -2702,9 +2767,13 @@ export const LaundryPortal = () => {
           let filteredOrders = orders.filter(isValidLaundryOrder).filter(order => {
             // Chip filter
             if (ordersActiveChip !== 'all') {
-              const statusTarget = order.status_display || order.stage || order.currentLaundryStep || order.status || order.processing_stage;
+              const statusTarget = getOrderTargetStatus(order);
               const statusKey = normalizeStatusKey(statusTarget);
-              if (statusKey !== ordersActiveChip) return false;
+              if (ordersActiveChip === 'ironing') {
+                if (statusKey !== 'ironing' && statusKey !== 'folding') return false;
+              } else {
+                if (statusKey !== ordersActiveChip) return false;
+              }
             }
 
             // Service filter dropdown
@@ -2712,10 +2781,11 @@ export const LaundryPortal = () => {
               const badges = getServiceBadges(order);
               const badgeLabels = badges.map(b => b.label.toLowerCase()).join(' ');
               const svcStr = `${badgeLabels} ${(order.service || (order.services && order.services.join(' ')) || '').toLowerCase()}`;
-              if (ordersServiceFilter === 'wash-fold' && !svcStr.includes('wash & fold') && !svcStr.includes('wash and fold') && !svcStr.includes('wash-fold')) return false;
-              if (ordersServiceFilter === 'wash-iron' && !svcStr.includes('wash + iron') && !svcStr.includes('wash and iron') && !svcStr.includes('wash & iron') && !svcStr.includes('wash-iron')) return false;
+              if (ordersServiceFilter === 'wash-fold' && !svcStr.includes('wash & fold') && !svcStr.includes('wash and fold') && !svcStr.includes('wash-fold') && !(svcStr.includes('wash') && !svcStr.includes('iron') && !svcStr.includes('dry clean'))) return false;
+              if (ordersServiceFilter === 'wash-iron' && !svcStr.includes('wash + iron') && !svcStr.includes('wash and iron') && !svcStr.includes('wash & iron') && !svcStr.includes('wash-iron') && !(svcStr.includes('wash') && svcStr.includes('iron'))) return false;
               if (ordersServiceFilter === 'steam-iron' && !svcStr.includes('steam')) return false;
-              if (ordersServiceFilter === 'dry-clean' && !svcStr.includes('dry clean')) return false;
+              if (ordersServiceFilter === 'dry-clean' && !svcStr.includes('dry clean') && !svcStr.includes('dry-clean')) return false;
+              if (ordersServiceFilter === 'express' && !isExpressOrder(order)) return false;
             }
 
             // Search query
@@ -2788,6 +2858,34 @@ export const LaundryPortal = () => {
                     <span className="orders-toolbar-subtitle">Tap a filter above to narrow the list.</span>
                   </div>
                   <div className="orders-toolbar-right">
+                    <div className="orders-table-search-wrap">
+                      <Search size={14} className="orders-table-search-icon" />
+                      <input
+                        type="text"
+                        placeholder="Search order ID, customer, phone..."
+                        value={ordersSearchQuery}
+                        onChange={(e) => {
+                          setOrdersSearchQuery(e.target.value);
+                          setOrdersCurrentPage(1);
+                        }}
+                        className="orders-table-search-input"
+                        aria-label="Search orders"
+                      />
+                      {ordersSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOrdersSearchQuery('');
+                            setOrdersCurrentPage(1);
+                          }}
+                          className="orders-table-search-clear"
+                          aria-label="Clear search"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+
                     <div className="orders-select-wrap">
                       <select
                         value={ordersServiceFilter}
@@ -2803,6 +2901,7 @@ export const LaundryPortal = () => {
                         <option value="wash-iron">Wash + Iron</option>
                         <option value="steam-iron">Steam Iron</option>
                         <option value="dry-clean">Dry Clean</option>
+                        <option value="express">Express</option>
                       </select>
                       <ChevronDown size={14} className="orders-select-chevron" />
                     </div>
@@ -2830,8 +2929,8 @@ export const LaundryPortal = () => {
                   <div>ITEMS</div>
                   <div>SERVICE</div>
                   <div>STATUS</div>
-                  <div>PLACED</div>
-                  <div style={{ textAlign: 'center' }}>ACTION</div>
+                  <div>DROPPED AT</div>
+                  <div className="col-header-action" style={{ textAlign: 'center' }}>ACTION</div>
                 </div>
 
                 {/* Table Body */}
@@ -2927,14 +3026,24 @@ export const LaundryPortal = () => {
                         ? groupedGarments.length
                         : 1;
 
-                      // Primary garment summary text
+                      // Primary garment summary text - concise presentation (max 2 garments + count)
                       let cleanGarmentSummary = '';
                       if (groupedGarments.length > 0) {
-                        cleanGarmentSummary = groupedGarments
-                          .map(it => `${it.name} × ${it.quantity}`)
-                          .join(', ');
+                        if (groupedGarments.length <= 2) {
+                          cleanGarmentSummary = groupedGarments
+                            .map(it => `${it.name} × ${it.quantity}`)
+                            .join(', ');
+                        } else {
+                          const firstTwo = groupedGarments.slice(0, 2).map(it => `${it.name} × ${it.quantity}`).join(', ');
+                          cleanGarmentSummary = `${firstTwo} +${groupedGarments.length - 2} more`;
+                        }
                       } else if (order.items_summary && order.items_summary.trim().toLowerCase() !== '1 item') {
-                        cleanGarmentSummary = cleanGarmentTitle(order.items_summary);
+                        const parts = order.items_summary.split(',').map(s => s.trim()).filter(Boolean);
+                        if (parts.length > 2) {
+                          cleanGarmentSummary = `${cleanGarmentTitle(parts[0])}, ${cleanGarmentTitle(parts[1])} +${parts.length - 2} more`;
+                        } else {
+                          cleanGarmentSummary = cleanGarmentTitle(order.items_summary);
+                        }
                       } else {
                         cleanGarmentSummary = totalGarmentPieces === 1 ? 'Daily Wear Garment × 1' : `${totalGarmentPieces} Garments`;
                       }
@@ -2965,18 +3074,38 @@ export const LaundryPortal = () => {
                         (customerCareNote ? `\n\nCare Note: "${customerCareNote}"` : '') +
                         `\n\nClick to view item plan & tracker`;
 
-                      let placedStr = order.placed;
-                      if (!placedStr && (order.placedAt || order.createdAt)) {
-                        try {
-                          const dt = new Date(order.placedAt || order.createdAt);
-                          if (!isNaN(dt.getTime())) {
-                            placedStr = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-                          }
-                        } catch {
-                          placedStr = '10:42 AM';
+                      let droppedAtStr = '';
+                      const rawDrop = order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.dropped_off_at || order.droppedAt || order.receivedAt || order.intakeAt || order.hubReceivedAt;
+                      if (rawDrop) {
+                        if (typeof rawDrop === 'string' && (rawDrop.includes('AM') || rawDrop.includes('PM'))) {
+                          droppedAtStr = rawDrop;
+                        } else {
+                          try {
+                            const dt = new Date(rawDrop);
+                            if (!isNaN(dt.getTime())) {
+                              droppedAtStr = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                            }
+                          } catch (_) {}
                         }
                       }
-                      if (!placedStr) placedStr = '10:42 AM';
+                      if (!droppedAtStr) {
+                        if (order.droppedAt && typeof order.droppedAt === 'string' && (order.droppedAt.includes('AM') || order.droppedAt.includes('PM'))) {
+                          droppedAtStr = order.droppedAt;
+                        } else if (order.placed && typeof order.placed === 'string' && (order.placed.includes('AM') || order.placed.includes('PM'))) {
+                          droppedAtStr = order.placed;
+                        } else if (order.placedAt || order.createdAt || order.created_at) {
+                          try {
+                            const dt = new Date(order.placedAt || order.createdAt || order.created_at);
+                            if (!isNaN(dt.getTime())) {
+                              droppedAtStr = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                            }
+                          } catch (_) {
+                            droppedAtStr = '10:42 AM';
+                          }
+                        } else {
+                          droppedAtStr = '10:42 AM';
+                        }
+                      }
                       const svcBadge = getServiceBadge(order);
                       const statusTarget = order.status_display || order.stage || order.currentLaundryStep || order.status || order.processing_stage;
                       const statusPill = getStatusPill(statusTarget);
@@ -3025,16 +3154,53 @@ export const LaundryPortal = () => {
                               </span>
                             </div>
                           </div>
-                          <div className="col-service" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-                            {getServiceBadges(order).map((b, bIdx) => (
-                              <span
-                                key={bIdx}
-                                className="orders-service-badge"
-                                style={{ background: b.bg, color: b.color }}
-                              >
-                                {b.label}
-                              </span>
-                            ))}
+                          <div className="col-service">
+                            {(() => {
+                              const allServiceBadges = getServiceBadges(order);
+                              if (allServiceBadges.length <= 2) {
+                                return (
+                                  <div className="orders-service-row">
+                                    {allServiceBadges.map((b, bIdx) => (
+                                      <span
+                                        key={bIdx}
+                                        className="orders-service-badge"
+                                        style={{ background: b.bg, color: b.color }}
+                                      >
+                                        {b.label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                );
+                              }
+                              const topServiceBadges = allServiceBadges.slice(0, 2);
+                              const bottomServiceBadges = allServiceBadges.slice(2);
+                              return (
+                                <>
+                                  <div className="orders-service-row">
+                                    {topServiceBadges.map((b, bIdx) => (
+                                      <span
+                                        key={bIdx}
+                                        className="orders-service-badge"
+                                        style={{ background: b.bg, color: b.color }}
+                                      >
+                                        {b.label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div className="orders-service-row">
+                                    {bottomServiceBadges.map((b, bIdx) => (
+                                      <span
+                                        key={bIdx}
+                                        className="orders-service-badge"
+                                        style={{ background: b.bg, color: b.color }}
+                                      >
+                                        {b.label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </div>
                           <div
                             className="col-status"
@@ -3056,7 +3222,7 @@ export const LaundryPortal = () => {
                               {statusPill.label}
                             </span>
                           </div>
-                          <div className="col-placed">{placedStr}</div>
+                          <div className="col-placed" title={`Dropped at Hub: ${droppedAtStr}`}>{droppedAtStr}</div>
                           <div className="col-action orders-action-col">
                             <button
                               type="button"
@@ -3119,13 +3285,13 @@ export const LaundryPortal = () => {
             const stage = String(o.stage || o.processing_stage || '').toUpperCase();
             const isDelivered = s.includes('DELIVER') || s.includes('COMPLET') || stage === 'DELIVERED';
             const isCancelled = s.includes('CANCEL');
+            const k = String(o.code || o.order_number || o.order_id || o.id || o.key || '');
+
+            if (!k) return;
 
             if (isDelivered || isCancelled) {
-              const k = String(o.code || o.order_number || o.order_id || o.id || o.key || '');
-              if (k) {
-                const prev = combinedHistoryMap.get(k) || {};
-                combinedHistoryMap.set(k, { ...prev, ...o, historyStatus: isCancelled ? 'cancelled' : 'delivered' });
-              }
+              const prev = combinedHistoryMap.get(k) || {};
+              combinedHistoryMap.set(k, { ...prev, ...o, historyStatus: isCancelled ? 'cancelled' : 'delivered' });
             }
           });
 
@@ -3273,24 +3439,26 @@ export const LaundryPortal = () => {
               o.order_id === ord.orderId ||
               o.order_number?.replace(/^#/, '') === ord.orderId.replace(/^FC-/, '') ||
               o.order_id?.replace(/^#/, '') === ord.orderId.replace(/^FC-/, '')
-            ) || {
-              id: ord.rawId,
-              order_number: ord.orderId,
-              customer_name: ord.customerName,
-              pickup_phone: ord.customerPhone,
-              total_amount: ord.amount,
-              status: ord.statusLabel.toUpperCase(),
-              items: Array.isArray(ord.items) ? ord.items.map(i => ({ 
-                name: i.name || i.item_name || 'Item', 
-                quantity: i.quantity || 1, 
-                unitPrice: i.unitPrice || i.price || 0,
-                lineTotal: i.lineTotal || i.total || 0,
-                services: i.services || [i.tag || 'Standard'] 
-              })) : [],
-              created_at: `${ord.dateStr} • ${ord.timeStr}`,
-              services: ord.services || []
+            );
+            const merged = {
+              ...ord,
+              ...(matchingRealOrder || {}),
+              orderId: ord.orderId,
+              customerName: ord.customerName || matchingRealOrder?.customerName || matchingRealOrder?.customer_name || 'Customer',
+              customerPhone: ord.customerPhone || matchingRealOrder?.customerPhone || matchingRealOrder?.customer_phone || '-',
+              dateStr: ord.dateStr,
+              timeStr: ord.timeStr,
+              price: ord.price || `₹${Number(ord.amount || matchingRealOrder?.total_amount || 0).toFixed(2)}`,
+              amount: ord.amount || matchingRealOrder?.total_amount || 0,
+              statusLabel: ord.statusLabel || 'Delivered',
+              status: ord.status || 'delivered',
+              items: (matchingRealOrder?.items && (Array.isArray(matchingRealOrder.items) ? matchingRealOrder.items.length > 0 : Object.keys(matchingRealOrder.items).length > 0))
+                ? matchingRealOrder.items
+                : ord.items,
+              itemsSummary: ord.itemsSummary || matchingRealOrder?.items_summary || '',
+              servicesSummary: ord.servicesSummary || matchingRealOrder?.service || 'Wash & Fold'
             };
-            setTrackerModalOrder(matchingRealOrder);
+            setHistoryDetailsModalOrder(merged);
           };
 
           return (
@@ -3377,7 +3545,7 @@ export const LaundryPortal = () => {
                         />
                       </div>
                       <div className="hist-th center">STATUS</div>
-                      <div className="hist-th right"></div>
+                      <div className="hist-th center">ACTION</div>
                     </div>
 
                     {/* Table Rows (68px high, 1px #eef2f4 top border, hover #f8fafb) */}
@@ -3424,18 +3592,27 @@ export const LaundryPortal = () => {
                               {ord.price}
                             </div>
 
-                            {/* 6. STATUS PILL (fixed width 96px, height 28px) */}
+                            {/* 6. STATUS PILL (with colored dot matching Image 1) */}
                             <div className="hist-td-status">
                               <span className={`hist-status-pill ${ord.status}`}>
+                                <span className="hist-status-dot" />
                                 {ord.statusLabel}
                               </span>
                             </div>
 
-                            {/* 7. ACTION */}
+                            {/* 7. ACTION (View button matching Image 1) */}
                             <div className="hist-td-action">
-                              <span className="hist-action-link">
-                                View &rsaquo;
-                              </span>
+                              <button
+                                type="button"
+                                className="hist-view-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewDetails(ord);
+                                }}
+                              >
+                                <Eye size={14} color="#0F766E" />
+                                <span>View</span>
+                              </button>
                             </div>
                           </div>
                         ))
@@ -3487,65 +3664,31 @@ export const LaundryPortal = () => {
         })()}
 
         {/* ========================================================
-            PAGE 7: NOTIFICATIONS
+            PAGE 7: NOTIFICATIONS (Customer Portal Identical UI)
            ======================================================== */}
         {activePage === 'notifications' && (
-          <div className="content-card">
-            <div className="flex items-center justify-between mb-4 pb-2 border-b">
-              <div>
-                <h2 className="text-lg font-bold text-navy">Laundry Operations Notifications</h2>
-                <p className="text-xs text-muted">System dispatch alerts and incoming delivery transfers</p>
-              </div>
-              {notifications.length > 0 && (
-                <button
-                  onClick={handleMarkAllNotificationsRead}
-                  className="btn btn-outline-secondary btn-sm text-xs flex items-center gap-1.5"
-                >
-                  <CheckCircle2 size={14} />
-                  <span>Mark All Read</span>
-                </button>
-              )}
-            </div>
-
-            {loadingNotifications ? (
-              <div className="text-center py-16">
-                <RefreshCw size={32} className="animate-spin text-[#0D7A75] mx-auto mb-2" />
-                <p className="text-xs text-muted">Loading notifications...</p>
-              </div>
-            ) : notifications.length === 0 ? (
-              <div className="text-center py-16">
-                <Bell size={44} className="text-slate-300 mx-auto mb-2" />
-                <h3 className="font-bold text-navy">No new notifications</h3>
-                <p className="text-xs text-muted mt-1">
-                  You will receive real-time notifications when delivery agents hand over clothes or orders are updated.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {notifications.map(notif => (
-                  <div 
-                    key={notif.id}
-                    className={`p-3.5 rounded-xl border flex items-start gap-3 transition-colors ${
-                      notif.is_read ? 'bg-white border-slate-200' : 'bg-teal-50/60 border-teal-200'
-                    }`}
-                  >
-                    <div className="mt-0.5 p-2 rounded-lg bg-teal-100 text-[#0D7A75] shrink-0">
-                      <Bell size={16} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-navy text-xs">{notif.title}</span>
-                        <span className="text-[11px] text-slate-400">
-                          {new Date(notif.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 mt-1">{notif.message}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <NotificationsPageView
+            hideHeader={true}
+            cardHeading="Laundry Operations Notifications & Activity"
+            notifications={notifications}
+            unreadCount={unreadCount}
+            loading={loadingNotifications}
+            onMarkRead={handleMarkNotificationRead}
+            onMarkAllRead={handleMarkAllNotificationsRead}
+            onActionClick={(notif) => {
+              if (notif.orderId) {
+                setOrdersSearchQuery(notif.orderId);
+                setOrdersCurrentPage(1);
+                navigateToRoute('orders');
+              }
+            }}
+            tabs={[
+              { id: 'ALL', label: 'All' },
+              { id: 'UNREAD', label: `Unread ${unreadCount > 0 ? `(${unreadCount})` : ''}` },
+              { id: 'ORDERS', label: 'Orders' },
+              { id: 'TASKS', label: 'Processing & Hub' }
+            ]}
+          />
         )}
 
         {/* ========================================================
@@ -3557,15 +3700,15 @@ export const LaundryPortal = () => {
             <div className="prof-hero-card">
               <div className="prof-hero-left">
                 <div className="prof-avatar-wrap">
-                  <div className="prof-avatar-circle">
-                    {profileData.avatarUrl ? (
+                  <div className="prof-avatar-circle" style={{ background: '#00685B', color: '#FFFFFF' }}>
+                    {staffAvatarUrl ? (
                       <img 
-                        src={profileData.avatarUrl} 
-                        alt={profileData.username || 'Staff'} 
+                        src={staffAvatarUrl} 
+                        alt={staffDisplayName} 
                         className="prof-avatar-img" 
                       />
                     ) : (
-                      profileData.avatar || 'AN'
+                      staffInitials
                     )}
                   </div>
                   <span className="prof-status-dot" />
@@ -3716,20 +3859,7 @@ export const LaundryPortal = () => {
                 </div>
 
                 <div className="prof-resp-list">
-                  {/* Row 1: Active Orders in Hub */}
-                  <div className="prof-resp-item">
-                    <div className="prof-resp-left">
-                      <div className="prof-resp-icon-box mint">
-                        <Package size={20} />
-                      </div>
-                      <div className="prof-resp-info">
-                        <span className="prof-field-label">ACTIVE ORDERS IN HUB</span>
-                        <span className="prof-resp-val">{profileData.activeOrdersBatches} Batches</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 2: Quality Pass Rate */}
+                  {/* Quality Pass Rate */}
                   <div className="prof-resp-item with-progress">
                     <div className="prof-resp-left">
                       <div className="prof-resp-icon-box mint">
@@ -4151,6 +4281,200 @@ export const LaundryPortal = () => {
       )}
 
       {/* ========================================================
+          MODAL: ORDER HISTORY DETAILS (Matching Reference Image 1 Exactly)
+         ======================================================== */}
+      {historyDetailsModalOrder && (() => {
+        const ord = historyDetailsModalOrder;
+        
+        let parsedItems = [];
+        if (Array.isArray(ord.items) && ord.items.length > 0) {
+          parsedItems = ord.items.map((it, idx) => ({
+            id: idx + 1,
+            name: it.name || it.item_name || it.garment || it.title || 'Item',
+            quantity: it.quantity || 1,
+            service: Array.isArray(it.services) 
+              ? it.services.join(', ') 
+              : (it.service || it.tag || ord.servicesSummary || 'Wash & Fold')
+          }));
+        } else if (ord.items && typeof ord.items === 'object' && Object.keys(ord.items).length > 0) {
+          parsedItems = Object.values(ord.items).map((it, idx) => ({
+            id: idx + 1,
+            name: it.name || it.item_name || it.garment || it.title || 'Item',
+            quantity: it.quantity || 1,
+            service: Array.isArray(it.services) 
+              ? it.services.join(', ') 
+              : (it.service || it.tag || ord.servicesSummary || 'Wash & Fold')
+          }));
+        }
+
+        if (parsedItems.length === 0 && ord.itemsSummary) {
+          const parts = String(ord.itemsSummary).split(',');
+          parsedItems = parts.map((part, idx) => {
+            const p = part.trim();
+            const qtyMatch = p.match(/(.+?)\s*[×x]\s*(\d+)/i);
+            if (qtyMatch) {
+              return {
+                id: idx + 1,
+                name: qtyMatch[1].trim(),
+                quantity: parseInt(qtyMatch[2], 10) || 1,
+                service: ord.servicesSummary || 'Wash & Fold'
+              };
+            }
+            return {
+              id: idx + 1,
+              name: p || 'Item',
+              quantity: 1,
+              service: ord.servicesSummary || 'Wash & Fold'
+            };
+          });
+        }
+
+        if (parsedItems.length === 0) {
+          parsedItems = [
+            { id: 1, name: 'Garments', quantity: 1, service: ord.servicesSummary || 'Wash & Fold' }
+          ];
+        }
+
+        return (
+          <div 
+            className="hist-modal-overlay"
+            onClick={() => setHistoryDetailsModalOrder(null)}
+          >
+            <div 
+              className="hist-modal-card"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="hist-modal-header">
+                <div className="hist-modal-title-wrap">
+                  <h3 className="hist-modal-title">Order Details</h3>
+                  <span className="hist-modal-divider">|</span>
+                  <span className="hist-modal-order-id">{ord.orderId}</span>
+                  <span className="hist-modal-status-badge">
+                    <span className="hist-modal-status-dot" />
+                    {ord.statusLabel || 'Delivered'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="hist-modal-close-btn"
+                  onClick={() => setHistoryDetailsModalOrder(null)}
+                  aria-label="Close modal"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* 1. Order Information */}
+              <div className="hist-modal-section">
+                <div className="hist-modal-section-title">
+                  <FileText size={18} className="hist-modal-section-icon" />
+                  <span>Order Information</span>
+                </div>
+                <div className="hist-modal-info-card">
+                  <div className="hist-info-col">
+                    <span className="hist-info-label">Order ID</span>
+                    <span className="hist-info-val-id">{ord.orderId}</span>
+                  </div>
+                  <div className="hist-info-col with-icon">
+                    <Calendar size={22} className="hist-info-icon" />
+                    <div>
+                      <span className="hist-info-label">Date</span>
+                      <div className="hist-info-val-dark">{ord.dateStr}</div>
+                      <div className="hist-info-val-sub">{ord.timeStr}</div>
+                    </div>
+                  </div>
+                  <div className="hist-info-col with-icon">
+                    <CreditCard size={22} className="hist-info-icon" />
+                    <div>
+                      <span className="hist-info-label">Amount</span>
+                      <div className="hist-info-val-dark hist-info-amount">
+                        {ord.price || `₹${Number(ord.amount || 0).toFixed(2)}`}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="hist-info-col status-col">
+                    <div className="hist-status-col-header">
+                      <span className="hist-info-dot" />
+                      <span className="hist-info-label">Status</span>
+                    </div>
+                    <span className="hist-modal-status-pill">
+                      {ord.statusLabel || 'Delivered'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Customer Information */}
+              <div className="hist-modal-section">
+                <div className="hist-modal-section-title">
+                  <User size={18} className="hist-modal-section-icon" />
+                  <span>Customer Information</span>
+                </div>
+                <div className="hist-modal-customer-card">
+                  <div className="hist-customer-col">
+                    <User size={24} className="hist-customer-icon" />
+                    <div>
+                      <span className="hist-info-label">Customer Name</span>
+                      <div className="hist-info-val-dark hist-customer-name-val">
+                        {ord.customerName}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="hist-customer-col">
+                    <Phone size={22} className="hist-customer-icon" />
+                    <div>
+                      <span className="hist-info-label">Phone Number</span>
+                      <div className="hist-info-val-dark hist-customer-phone-val">
+                        {ord.customerPhone}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Items & Services */}
+              <div className="hist-modal-section">
+                <div className="hist-modal-section-title">
+                  <ShoppingBag size={18} className="hist-modal-section-icon" />
+                  <span>Items & Services</span>
+                </div>
+                <div className="hist-modal-items-table-card">
+                  <div className="hist-items-table-header">
+                    <span className="th-num">#</span>
+                    <span className="th-item">ITEM & SERVICE</span>
+                    <span className="th-qty">QUANTITY</span>
+                    <span className="th-svc">SERVICE</span>
+                  </div>
+                  <div className="hist-items-table-body">
+                    {parsedItems.map((item, idx) => (
+                      <div key={idx} className="hist-items-table-row">
+                        <span className="td-num">{idx + 1}</span>
+                        <span className="td-item">{item.name}</span>
+                        <span className="td-qty">{item.quantity}</span>
+                        <span className="td-svc">{item.service}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="hist-modal-footer">
+                <button
+                  type="button"
+                  className="hist-modal-close-bottom-btn"
+                  onClick={() => setHistoryDetailsModalOrder(null)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ========================================================
           MODAL 5: DYNAMIC ORDER PLAN & PROGRESS TRACKER
           - "The tracker steps are driven by the item's merged plan, not fixed service names."
           - "Items with different plans show a small per-item progress list."
@@ -4524,18 +4848,51 @@ export const LaundryPortal = () => {
             ? order.customer
             : (order.customer?.name || order.customerName || order.pickup_full_name || 'Customer'));
 
-        let placedStr = order.placed;
-        if (!placedStr && (order.placedAt || order.createdAt)) {
-          try {
-            const dt = new Date(order.placedAt || order.createdAt);
-            if (!isNaN(dt.getTime())) {
-              placedStr = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-            }
-          } catch {
-            placedStr = '12:14 PM';
+        // Extract customer's selected pickup slot (e.g. 9:00 AM – 11:00 AM, 11:00 AM – 1:00 PM)
+        const getOrderPickupSlot = (ord) => {
+          const rawSlot = ord.time_slot || ord.pickup_time_slot || ord.timeSlot || ord.pickupSlot || ord.timeText || ord.slot;
+          if (rawSlot && typeof rawSlot === 'string' && rawSlot.trim()) {
+            return rawSlot.trim();
           }
-        }
-        if (!placedStr) placedStr = '12:14 PM';
+          const pFrom = ord.pickup?.from || ord.pickup_from;
+          const pTo = ord.pickup?.to || ord.pickup_to;
+          if (pFrom && pTo) {
+            const toAmPm = (t) => {
+              if (!t) return '';
+              const parts = String(t).split(':');
+              let h = parseInt(parts[0], 10);
+              const m = parts[1] || '00';
+              if (isNaN(h)) return t;
+              const ampm = h >= 12 ? 'PM' : 'AM';
+              h = h % 12 || 12;
+              return `${h}:${m} ${ampm}`;
+            };
+            return `${toAmPm(pFrom)} – ${toAmPm(pTo)}`;
+          }
+          if (ord.schedule?.timeSlot) {
+            return ord.schedule.timeSlot;
+          }
+          if (ord.placedAt || ord.createdAt) {
+            try {
+              const dt = new Date(ord.placedAt || ord.createdAt);
+              if (!isNaN(dt.getTime())) {
+                const startH = dt.getHours();
+                const endH = (startH + 2) % 24;
+                const fmtH = (h) => {
+                  const ampm = h >= 12 ? 'PM' : 'AM';
+                  const h12 = h % 12 || 12;
+                  return `${h12}:00 ${ampm}`;
+                };
+                return `${fmtH(startH)} – ${fmtH(endH)}`;
+              }
+            } catch (_) {}
+          }
+          return '9:00 AM – 11:00 AM';
+        };
+
+        const pickupSlotStr = getOrderPickupSlot(order);
+        const rawDate = order.pickup_date || order.pickupDate || order.pickup?.date || order.dateText;
+        const pickupDateText = rawDate && typeof rawDate === 'string' ? rawDate : 'Today';
 
         const statusTarget = order.status_display || order.stage || order.currentLaundryStep || order.status || order.processing_stage;
         const currentStatusPill = getStatusPill(statusTarget);
@@ -4627,8 +4984,28 @@ export const LaundryPortal = () => {
                       <span className="orders-details-info-val">{customerName}</span>
                     </div>
                     <div className="orders-details-info-row">
-                      <span className="orders-details-info-label">Placed On</span>
-                      <span className="orders-details-info-val">{placedStr}</span>
+                      <span className="orders-details-info-label">Pickup Slot</span>
+                      <span className="orders-details-info-val" title={`Scheduled date: ${pickupDateText}`}>
+                        {pickupSlotStr}
+                      </span>
+                    </div>
+                    <div className="orders-details-info-row">
+                      <span className="orders-details-info-label">Dropped At</span>
+                      <span className="orders-details-info-val">
+                        {(() => {
+                          const rawDrop = order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.dropped_off_at || order.droppedAt || order.receivedAt || order.intakeAt || order.hubReceivedAt;
+                          if (rawDrop) {
+                            if (typeof rawDrop === 'string' && (rawDrop.includes('AM') || rawDrop.includes('PM'))) return rawDrop;
+                            try {
+                              const dt = new Date(rawDrop);
+                              if (!isNaN(dt.getTime())) return dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                            } catch (_) {}
+                          }
+                          if (order.droppedAt && typeof order.droppedAt === 'string') return order.droppedAt;
+                          if (order.placed && typeof order.placed === 'string') return order.placed;
+                          return '10:42 AM';
+                        })()}
+                      </span>
                     </div>
                     <div className="orders-details-info-row">
                       <span className="orders-details-info-label">Current Status</span>
@@ -5262,7 +5639,7 @@ export const LaundryPortal = () => {
               <div className="staff-modal-body">
                 {/* Profile Photo Upload & Delete Section */}
                 <div className="staff-avatar-edit-section">
-                  <div className="staff-avatar-preview-wrap">
+                  <div className="staff-avatar-preview-wrap" style={{ background: '#00685B', border: '2px solid #00685B' }}>
                     {editProfileForm.avatarUrl ? (
                       <img 
                         src={editProfileForm.avatarUrl} 
@@ -5270,8 +5647,8 @@ export const LaundryPortal = () => {
                         className="staff-avatar-preview-img" 
                       />
                     ) : (
-                      <div className="staff-avatar-preview-placeholder">
-                        AN
+                      <div className="staff-avatar-preview-placeholder" style={{ color: '#FFFFFF' }}>
+                        {staffInitials}
                       </div>
                     )}
                   </div>
@@ -6232,6 +6609,62 @@ export const LaundryPortal = () => {
           gap: 12px;
         }
 
+        .orders-table-search-wrap {
+          display: inline-flex;
+          align-items: center;
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 0 12px;
+          height: 38px;
+          gap: 8px;
+          min-width: 220px;
+          transition: all 0.15s ease;
+        }
+
+        .orders-table-search-wrap:focus-within {
+          border-color: #0E5E52;
+          box-shadow: 0 0 0 2px rgba(14, 94, 82, 0.1);
+        }
+
+        .orders-table-search-icon {
+          color: #94A3B8;
+          flex-shrink: 0;
+        }
+
+        .orders-table-search-input {
+          border: none;
+          outline: none;
+          background: transparent;
+          font-size: 13px;
+          color: #1E293B;
+          width: 100%;
+        }
+
+        .orders-table-search-input::placeholder {
+          color: #94A3B8;
+        }
+
+        .orders-table-search-clear {
+          background: #F1F5F9;
+          border: none;
+          cursor: pointer;
+          border-radius: 50%;
+          width: 18px;
+          height: 18px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #64748B;
+          padding: 0;
+          transition: background 0.12s ease;
+        }
+
+        .orders-table-search-clear:hover {
+          background: #E2E8F0;
+          color: #0F172A;
+        }
+
         .orders-select-wrap {
           position: relative;
           display: inline-flex;
@@ -6271,7 +6704,7 @@ export const LaundryPortal = () => {
         /* GRID SYSTEM MATCHING REFERENCE IMAGE 1 */
         .orders-grid-row {
           display: grid;
-          grid-template-columns: 110px 130px minmax(190px, 1.4fr) minmax(130px, auto) 145px 105px 100px;
+          grid-template-columns: 110px 135px minmax(210px, 1.25fr) 195px 150px 110px 95px;
           column-gap: 14px;
           align-items: center;
         }
@@ -6283,6 +6716,18 @@ export const LaundryPortal = () => {
           font-weight: 700;
           color: #64748B;
           letter-spacing: 0.04em;
+        }
+
+        .orders-grid-header > div {
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          text-align: left;
+        }
+
+        .orders-grid-header > div.col-header-action {
+          justify-content: center;
+          text-align: center;
         }
 
         .orders-table-body {
@@ -6320,6 +6765,9 @@ export const LaundryPortal = () => {
           font-size: 13.5px;
           font-weight: 700;
           color: #0F172A;
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
         }
 
         .col-customer {
@@ -6329,6 +6777,9 @@ export const LaundryPortal = () => {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
         }
 
         .col-items {
@@ -6338,6 +6789,8 @@ export const LaundryPortal = () => {
           display: flex;
           flex-direction: column;
           justify-content: center;
+          align-items: flex-start;
+          text-align: left;
         }
 
         .orders-item-title {
@@ -6348,6 +6801,7 @@ export const LaundryPortal = () => {
           overflow: hidden;
           text-overflow: ellipsis;
           line-height: 1.35;
+          max-width: 100%;
         }
 
         .orders-item-subtitle {
@@ -6363,10 +6817,21 @@ export const LaundryPortal = () => {
           overflow: hidden;
         }
 
-        .col-placed {
-          font-size: 13px;
-          font-weight: 500;
-          color: #475569;
+        .col-service {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: flex-start;
+          gap: 4px;
+          min-width: 0;
+          max-width: 195px;
+        }
+
+        .orders-service-row {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          flex-wrap: wrap;
         }
 
         .orders-service-badge {
@@ -6378,6 +6843,12 @@ export const LaundryPortal = () => {
           font-weight: 600;
           white-space: nowrap;
           line-height: 1.2;
+        }
+
+        .col-status {
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
         }
 
         .orders-status-pill {
@@ -6397,6 +6868,15 @@ export const LaundryPortal = () => {
           border-radius: 50%;
           display: inline-block;
           flex-shrink: 0;
+        }
+
+        .col-placed, .col-dropped {
+          font-size: 13px;
+          font-weight: 500;
+          color: #475569;
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
         }
 
         .col-action {
@@ -7420,12 +7900,235 @@ export const LaundryPortal = () => {
           font-size: 0.625rem;
           font-weight: 800;
           border-radius: 9999px;
-          width: 17px;
+          min-width: 17px;
           height: 17px;
+          padding: 0 3px;
           display: flex;
           align-items: center;
           justify-content: center;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+        }
+
+        .topbar-notif-container {
+          position: relative;
+        }
+
+        .staff-notif-dropdown-menu {
+          position: absolute;
+          top: calc(100% + 12px);
+          right: -10px;
+          width: 480px;
+          max-width: min(480px, 92vw);
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 16px;
+          box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.16), 0 0 1px 1px rgba(0, 0, 0, 0.04);
+          z-index: 1050;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          animation: notifMenuDrop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes notifMenuDrop {
+          from {
+            opacity: 0;
+            transform: translateY(-8px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .staff-notif-header {
+          padding: 16px 20px;
+          background: #FFFFFF;
+          border-bottom: 1px solid #F1F5F9;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .staff-notif-title-group {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .staff-notif-main-title {
+          font-size: 16px;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 0;
+        }
+
+        .staff-notif-live-badge {
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 7px;
+          border-radius: 9999px;
+          background: #F0FDFA;
+          color: #0D7A75;
+          border: 1px solid #CCFBF1;
+          letter-spacing: 0.02em;
+        }
+
+        .staff-notif-mark-all-btn {
+          font-size: 12px;
+          font-weight: 600;
+          color: #0D7A75;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 4px 8px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          transition: background 0.15s ease;
+        }
+
+        .staff-notif-mark-all-btn:hover {
+          background: #F0FDFA;
+        }
+
+        .staff-notif-scroll-list {
+          padding: 12px;
+          max-height: 380px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          background: #F8FAFC;
+        }
+
+        .staff-notif-item {
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 12px 14px;
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          transition: all 0.15s ease;
+          cursor: pointer;
+          text-align: left;
+        }
+
+        .staff-notif-item:hover {
+          border-color: #CBD5E1;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+        }
+
+        .staff-notif-item.unread {
+          background: #F0FDFA;
+          border-color: #99F6E4;
+        }
+
+        .staff-notif-icon-box {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          background: #E6FFFA;
+          color: #0D7A75;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .staff-notif-item.unread .staff-notif-icon-box {
+          background: #0D7A75;
+          color: #FFFFFF;
+        }
+
+        .staff-notif-content {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .staff-notif-title-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+          margin-bottom: 2px;
+        }
+
+        .staff-notif-item-title {
+          font-size: 13px;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 0;
+        }
+
+        .staff-notif-unread-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #0D7A75;
+          flex-shrink: 0;
+        }
+
+        .staff-notif-item-body {
+          font-size: 12px;
+          color: #475569;
+          margin: 0 0 6px 0;
+          line-height: 1.4;
+        }
+
+        .staff-notif-meta-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .staff-notif-time {
+          font-size: 11px;
+          color: #94A3B8;
+        }
+
+        .staff-notif-order-tag {
+          font-size: 11px;
+          font-weight: 700;
+          color: #0D7A75;
+          background: #CCFBF1;
+          padding: 1px 6px;
+          border-radius: 4px;
+        }
+
+        .staff-notif-empty {
+          padding: 32px 16px;
+          text-align: center;
+          color: #64748B;
+        }
+
+        .staff-notif-footer {
+          padding: 12px 16px;
+          border-top: 1px solid #E2E8F0;
+          background: #FFFFFF;
+          text-align: center;
+        }
+
+        .staff-notif-view-all-btn {
+          background: none;
+          border: none;
+          color: #0D7A75;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          transition: color 0.15s ease;
+        }
+
+        .staff-notif-view-all-btn:hover {
+          color: #0A605C;
+          text-decoration: underline;
         }
 
         .topbar-profile-container {
@@ -7453,7 +8156,7 @@ export const LaundryPortal = () => {
           width: 34px;
           height: 34px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #0A5E52 0%, #0E4B56 100%);
+          background: #00685B;
           color: #FFFFFF;
           display: flex;
           align-items: center;
@@ -7464,7 +8167,7 @@ export const LaundryPortal = () => {
           letter-spacing: 0.04em;
           flex-shrink: 0;
           overflow: hidden;
-          box-shadow: 0 1px 3px rgba(10, 79, 65, 0.2);
+          box-shadow: 0 1px 3px rgba(0, 104, 91, 0.2);
         }
 
         .profile-chip-img {
@@ -11216,8 +11919,8 @@ export const LaundryPortal = () => {
         /* 7-Column Grid Row */
         .hist-grid-row {
           display: grid;
-          grid-template-columns: 100px minmax(0, 1fr) minmax(0, 1.6fr) 140px 90px 120px 76px;
-          column-gap: 24px;
+          grid-template-columns: 105px minmax(0, 1fr) minmax(0, 1.5fr) 140px 90px 125px 95px;
+          column-gap: 20px;
           align-items: center;
           padding: 0 24px;
         }
@@ -11396,17 +12099,20 @@ export const LaundryPortal = () => {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 96px;
+          gap: 6px;
+          min-width: 96px;
           height: 28px;
+          padding: 0 12px;
           border-radius: 9999px;
-          font-size: 0.72rem;
+          font-size: 0.75rem;
           font-weight: 600;
           text-align: center;
+          white-space: nowrap;
         }
 
         .hist-status-pill.delivered {
-          background: #D1FAE5;
-          color: #047857;
+          background: #DCFCE7;
+          color: #0F766E;
         }
 
         .hist-status-pill.completed {
@@ -11414,24 +12120,369 @@ export const LaundryPortal = () => {
           color: #0369A1;
         }
 
+        .hist-status-pill.cancelled {
+          background: #FEE2E2;
+          color: #B91C1C;
+        }
+
+        .hist-status-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #10B981;
+          flex-shrink: 0;
+        }
+
+        .hist-status-pill.cancelled .hist-status-dot {
+          background: #EF4444;
+        }
+
         /* Col 7: ACTION */
         .hist-td-action {
           display: flex;
-          justify-content: flex-end;
+          justify-content: center;
           align-items: center;
         }
 
-        .hist-action-link {
+        .hist-view-btn {
+          height: 34px;
+          border-radius: 8px;
+          background: #FFFFFF;
+          border: 1.5px solid #0F766E;
           color: #0F766E;
-          font-size: 0.82rem;
+          font-size: 13px;
           font-weight: 600;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 0 14px;
           cursor: pointer;
-          white-space: nowrap;
-          transition: opacity 0.15s ease;
+          transition: all 0.15s ease;
+          outline: none;
         }
 
-        .hist-action-link:hover {
-          text-decoration: underline;
+        .hist-view-btn:hover {
+          background: #F0FDFA;
+          box-shadow: 0 2px 6px rgba(15, 118, 110, 0.12);
+        }
+
+        /* ========================================================
+           ORDER HISTORY DETAILS MODAL (Matching Reference Image 1)
+           ======================================================== */
+        .hist-modal-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 99999;
+          background: rgba(15, 23, 42, 0.65);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+        }
+
+        .hist-modal-card {
+          background: #FFFFFF;
+          width: 100%;
+          max-width: 680px;
+          border-radius: 16px;
+          box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+          padding: 24px 28px;
+          position: relative;
+          max-height: 90vh;
+          overflow-y: auto;
+          box-sizing: border-box;
+        }
+
+        .hist-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 22px;
+        }
+
+        .hist-modal-title-wrap {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .hist-modal-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #0F172A;
+          margin: 0;
+          letter-spacing: -0.01em;
+        }
+
+        .hist-modal-divider {
+          color: #CBD5E1;
+          font-size: 20px;
+          font-weight: 300;
+        }
+
+        .hist-modal-order-id {
+          font-size: 20px;
+          font-weight: 800;
+          color: #0F766E;
+        }
+
+        .hist-modal-status-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #DCFCE7;
+          color: #15803D;
+          font-size: 12px;
+          font-weight: 600;
+          padding: 4px 12px;
+          border-radius: 9999px;
+        }
+
+        .hist-modal-status-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #16A34A;
+        }
+
+        .hist-modal-close-btn {
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          color: #64748B;
+          padding: 6px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
+        }
+
+        .hist-modal-close-btn:hover {
+          background: #F1F5F9;
+          color: #0F172A;
+        }
+
+        .hist-modal-section {
+          margin-bottom: 20px;
+        }
+
+        .hist-modal-section-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14.5px;
+          font-weight: 700;
+          color: #0F172A;
+          margin-bottom: 10px;
+        }
+
+        .hist-modal-section-icon {
+          color: #0F172A;
+          flex-shrink: 0;
+        }
+
+        .hist-modal-info-card {
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          background: #FFFFFF;
+          padding: 16px 20px;
+          display: grid;
+          grid-template-columns: 1fr 1.3fr 1fr 1.1fr;
+          gap: 16px;
+          align-items: center;
+          box-sizing: border-box;
+        }
+
+        .hist-info-col {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .hist-info-col.with-icon {
+          flex-direction: row;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .hist-info-icon {
+          color: #64748B;
+          flex-shrink: 0;
+        }
+
+        .hist-info-label {
+          font-size: 11.5px;
+          color: #64748B;
+          font-weight: 500;
+          margin-bottom: 2px;
+        }
+
+        .hist-info-val-id {
+          font-size: 16px;
+          font-weight: 800;
+          color: #0F766E;
+        }
+
+        .hist-info-val-dark {
+          font-size: 13.5px;
+          font-weight: 700;
+          color: #0F172A;
+        }
+
+        .hist-info-amount {
+          font-size: 16px;
+          font-weight: 800;
+        }
+
+        .hist-info-val-sub {
+          font-size: 11px;
+          color: #64748B;
+        }
+
+        .hist-info-col.status-col {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .hist-status-col-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .hist-info-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #16A34A;
+        }
+
+        .hist-modal-status-pill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: #DCFCE7;
+          color: #15803D;
+          font-size: 11.5px;
+          font-weight: 600;
+          padding: 3px 12px;
+          border-radius: 9999px;
+          width: fit-content;
+        }
+
+        .hist-modal-customer-card {
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          background: #FFFFFF;
+          padding: 16px 24px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 24px;
+          align-items: center;
+          box-sizing: border-box;
+        }
+
+        .hist-customer-col {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .hist-customer-icon {
+          color: #64748B;
+          flex-shrink: 0;
+        }
+
+        .hist-customer-name-val, .hist-customer-phone-val {
+          font-size: 15px;
+          font-weight: 700;
+          color: #0F172A;
+        }
+
+        .hist-modal-items-table-card {
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          overflow: hidden;
+          background: #FFFFFF;
+        }
+
+        .hist-items-table-header {
+          background: #F8FAFC;
+          border-bottom: 1px solid #E2E8F0;
+          padding: 10px 20px;
+          display: grid;
+          grid-template-columns: 48px 2fr 1fr 1.5fr;
+          font-size: 11px;
+          font-weight: 700;
+          color: #64748B;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .hist-items-table-header .th-qty {
+          text-align: center;
+        }
+
+        .hist-items-table-row {
+          padding: 12px 20px;
+          display: grid;
+          grid-template-columns: 48px 2fr 1fr 1.5fr;
+          align-items: center;
+          border-bottom: 1px solid #F1F5F9;
+          font-size: 13.5px;
+        }
+
+        .hist-items-table-row:last-child {
+          border-bottom: none;
+        }
+
+        .hist-items-table-row .td-num {
+          color: #64748B;
+          font-size: 13px;
+        }
+
+        .hist-items-table-row .td-item {
+          color: #0F172A;
+          font-weight: 700;
+        }
+
+        .hist-items-table-row .td-qty {
+          color: #0F172A;
+          font-weight: 600;
+          text-align: center;
+        }
+
+        .hist-items-table-row .td-svc {
+          color: #0F172A;
+          font-weight: 500;
+        }
+
+        .hist-modal-footer {
+          display: flex;
+          justify-content: flex-end;
+          margin-top: 24px;
+        }
+
+        .hist-modal-close-bottom-btn {
+          background: #FFFFFF;
+          border: 1.5px solid #0F172A;
+          color: #0F172A;
+          font-weight: 700;
+          font-size: 14px;
+          padding: 10px 36px;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          outline: none;
+        }
+
+        .hist-modal-close-bottom-btn:hover {
+          background: #F8FAFC;
+          box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
         }
 
         /* FOOTER */
@@ -12606,9 +13657,9 @@ export const LaundryPortal = () => {
           flex-shrink: 0;
           position: relative;
           overflow: hidden;
-          border: 2px solid #0F766E;
-          background: #E6F4F2;
-          box-shadow: 0 4px 12px rgba(15, 118, 110, 0.15);
+          border: 2px solid #00685B;
+          background: #00685B;
+          box-shadow: 0 4px 12px rgba(0, 104, 91, 0.15);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -12624,7 +13675,7 @@ export const LaundryPortal = () => {
         .staff-avatar-preview-placeholder {
           font-size: 1.35rem;
           font-weight: 800;
-          color: #0F766E;
+          color: #FFFFFF;
           letter-spacing: -0.02em;
           user-select: none;
         }

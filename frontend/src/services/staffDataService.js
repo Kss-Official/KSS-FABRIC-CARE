@@ -11,6 +11,7 @@ import {
 } from 'firebase/database';
 import { rtdb } from '../config/firebase.js';
 import { updateFirestoreOrderStatus } from './firestoreService.js';
+import { addNotificationToUpdates, addRoleNotificationsToUpdates } from './notificationService.js';
 
 export const LAUNDRY_STEP_ORDER = [
   'inspect',
@@ -360,29 +361,41 @@ export const updateLaundryStaffOrderStatus = async (orderId, targetStep, staffUs
 
     // Notify customer
     if (order.customerId) {
-      const custNotifPush = push(ref(rtdb, `notifications/${order.customerId}`));
-      updates[`notifications/${order.customerId}/${custNotifPush.key}`] = {
-        id: custNotifPush.key,
+      addNotificationToUpdates(updates, order.customerId, {
         type: 'order_ready',
         title: 'Clean & Ready!',
         body: `Your clothes for order ${order.code || order.order_number || orderKey} have completed processing and are ready for dispatch!`,
-        orderId: orderKey,
-        isRead: false,
+        orderId: order.code || order.order_number || orderKey,
         createdAt: now
-      };
+      });
     }
 
-    // Alert Admin
-    const admNotifPush = push(ref(rtdb, 'notificationsByRole/admin'));
-    updates[`notificationsByRole/admin/${admNotifPush.key}`] = {
-      id: admNotifPush.key,
-      type: 'ready_for_delivery',
+    // Alert Admin (every admin)
+    await addRoleNotificationsToUpdates(updates, 'admin', {
+      type: 'task_needs_agent',
       title: 'Order Ready for Delivery',
       body: `Order ${order.code || order.order_number || orderKey} is ready for delivery assignment.`,
-      orderId: orderKey,
-      isRead: false,
+      orderId: order.code || order.order_number || orderKey,
       createdAt: now
-    };
+    });
+  } else if (order.customerId && !['PAYMENT_PENDING', 'PLACED', 'CANCELLED', 'DELIVERED'].includes(canonicalKey)) {
+    addNotificationToUpdates(updates, order.customerId, {
+      type: 'laundry_step_changed',
+      title: `Order Update: ${stepDef.label}`,
+      body: `Your order ${order.code || order.order_number || orderKey} is now in ${stepDef.label}.`,
+      orderId: order.code || order.order_number || orderKey,
+      createdAt: now
+    });
+  }
+
+  if (canonicalKey === 'RECEIVED' || canonicalKey === 'DROPPED_OFF_AT_LAUNDRY') {
+    await addRoleNotificationsToUpdates(updates, 'staff', {
+      type: 'received_at_hub',
+      title: 'Order Received at Hub',
+      body: `Order ${order.code || order.order_number || orderKey} received at hub facility.`,
+      orderId: orderKey,
+      createdAt: now
+    });
   }
 
   // If marked delivered, update task completion

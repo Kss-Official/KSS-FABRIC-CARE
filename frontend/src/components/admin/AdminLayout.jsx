@@ -30,7 +30,7 @@ import {
   Headphones,
   User
 } from 'lucide-react';
-
+import { NotificationBellDropdown } from '../common/NotificationBellDropdown';
 
 export const AdminLayout = ({ children }) => {
   const { 
@@ -407,131 +407,18 @@ export const AdminLayout = ({ children }) => {
 
 
           <div className="topbar-right">
-            {/* Notification Bell with Dropdown */}
-            <div className="admin-notif-wrapper" ref={notifRef}>
-              <button 
-                type="button"
-                className={`notification-bell-btn ${notifDropdownOpen ? 'active' : ''}`}
-                onClick={() => {
-                  setNotifDropdownOpen(prev => !prev);
-                  setProfileDropdownOpen(false);
-                }}
-                aria-label="View notifications"
-              >
-                <Bell size={20} />
-                {unreadNotifsCount > 0 && <span className="notif-badge" />}
-              </button>
-
-              {notifDropdownOpen && (
-                <div className="notification-dropdown-menu animate-fade-in">
-                  <div className="notif-dropdown-header">
-                    <div className="notif-header-text-block">
-                      <span className="notif-header-live-tag">LIVE UPDATES</span>
-                      <h3 className="notif-header-main-title">Notifications &amp; Activity</h3>
-                      <p className="notif-header-subtext">
-                        Stay informed on order status changes, delivery alerts, and service updates
-                      </p>
-                    </div>
-
-                    <div className="notif-header-actions-group">
-                      <button 
-                        type="button" 
-                        className="notif-pill-btn notif-refresh-pill"
-                        onClick={handleRefreshNotifs}
-                        title="Refresh notifications"
-                      >
-                        <RotateCcw size={13} className={isRefreshing ? 'spin-anim' : ''} />
-                        <span>Refresh</span>
-                      </button>
-
-                      <button 
-                        type="button" 
-                        className="notif-pill-btn notif-mark-read-pill"
-                        onClick={() => {
-                          if (typeof markAllNotificationsAsRead === 'function') {
-                            markAllNotificationsAsRead();
-                          }
-                        }}
-                        title="Mark all notifications as read"
-                      >
-                        <CheckCheck size={15} />
-                        <span>Mark All Read</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="notif-cards-scroll-list">
-                    {(() => {
-                      const notifsList = Array.isArray(notifications) ? notifications : Object.values(notifications || {});
-                      if (notifsList.length === 0) {
-                        return (
-                          <div className="notif-dropdown-empty">
-                            <p>No notifications available</p>
-                          </div>
-                        );
-                      }
-                      return notifsList.map((notif) => (
-                        <div 
-                          key={notif.id}
-                          className={`notif-reference-card ${notif.unread ? 'unread' : 'read'}`}
-                        >
-                          <div className="notif-card-teal-icon">
-                            <Bell size={18} color="#FFFFFF" strokeWidth={2.2} />
-                          </div>
-
-                          <div 
-                            className="notif-card-text-body"
-                            onClick={() => {
-                              if (notif.unread) markNotificationAsRead(notif.id);
-                              if (notif.actionTab) {
-                                setAdminTab(notif.actionTab);
-                                setNotifDropdownOpen(false);
-                              }
-                            }}
-                          >
-                            <h4 className="notif-card-title-text">{notif.title}</h4>
-                            <p className="notif-card-desc-text">{notif.desc}</p>
-                            <span className="notif-card-time-text">
-                              {formatNotifDateTime(notif.time, notif.timestamp)}
-                            </span>
-                          </div>
-
-                          <button 
-                            type="button"
-                            className={`notif-card-circle-check-btn ${notif.unread ? '' : 'checked'}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (notif.unread) {
-                                markNotificationAsRead(notif.id);
-                              } else {
-                                markNotificationAsUnread(notif.id);
-                              }
-                            }}
-                            title={notif.unread ? "Mark as read" : "Mark as unread"}
-                            aria-label="Toggle notification read status"
-                          >
-                            <Check size={15} strokeWidth={2.4} />
-                          </button>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-
-                  <div className="notif-dropdown-footer">
-                    <button 
-                      type="button"
-                      className="notif-view-all-link"
-                      onClick={() => {
-                        setAdminTab('notifications');
-                        setNotifDropdownOpen(false);
-                      }}
-                    >
-                      View All Notifications →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Notification Bell with Customer Portal UI Dropdown */}
+            <NotificationBellDropdown
+              unreadCount={unreadNotifsCount}
+              notifications={Array.isArray(notifications) ? notifications : Object.values(notifications || {})}
+              onMarkRead={markNotificationAsRead}
+              onMarkAllRead={markAllNotificationsAsRead}
+              onItemClick={() => {
+                setAdminTab('notifications');
+              }}
+              onViewAll={() => setAdminTab('notifications')}
+              portalName="Admin Central"
+            />
 
             {/* Admin Profile Pill with Dropdown */}
             <div className="admin-profile-pill-wrapper" ref={profileRef}>
@@ -1099,13 +986,21 @@ export const AdminLayout = ({ children }) => {
 
         .notif-badge {
           position: absolute;
-          top: 9px;
-          right: 10px;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
+          top: 3px;
+          right: 3px;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 4px;
+          border-radius: 9999px;
           background: #EF4444;
           border: 2px solid #FFFFFF;
+          color: #FFFFFF;
+          font-size: 10px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
         }
 
         .notification-dropdown-menu {

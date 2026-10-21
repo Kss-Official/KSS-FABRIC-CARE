@@ -105,9 +105,14 @@ export const CustomerDashboard = () => {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'PENDING':
+      case 'PAYMENT_PENDING':
         return <span className="badge badge-warning">Pending Approval</span>;
+      case 'PLACED':
+        return <span className="badge badge-info">Booking Confirmed</span>;
       case 'ACCEPTED':
       case 'PICKUP_ASSIGNED':
+      case 'PICKUP_SCHEDULED':
+      case 'PICKUP_IN_PROGRESS':
         return <span className="badge badge-info">Pickup Scheduled</span>;
       case 'PICKED_UP':
       case 'RECEIVED_AT_LAUNDRY':

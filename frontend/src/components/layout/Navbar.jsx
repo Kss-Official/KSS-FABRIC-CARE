@@ -6,8 +6,7 @@ import {
   LayoutDashboard, Truck, Layers, ChevronDown, Package, Clock, FileText, 
   MapPin, Bell, HelpCircle, CheckCircle2, CreditCard, CheckCheck 
 } from 'lucide-react';
-import { DEFAULT_NOTIFICATIONS, normalizeNotification } from '../../customer/Notifications';
-import { subscribeCustomerNotifications, markNotificationRead } from '../../services/customerDataService';
+import { useNotifications } from '../../hooks/useNotifications';
 
 export const Navbar = () => {
   const { currentPage, navigateTo, startBooking } = useBooking();
@@ -18,56 +17,8 @@ export const Navbar = () => {
   const profileMenuRef = useRef(null);
   const notifMenuRef = useRef(null);
 
-  // Initialize notifications from localStorage fallback to defaults
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      const saved = localStorage.getItem('fabricare_customer_notifications');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return (DEFAULT_NOTIFICATIONS || []).map(n => ({ ...n }));
-  });
-
-  const unreadCount = notifications.filter(n => !n.isRead).length;
-
-  // Real-time synchronization for notifications
-  useEffect(() => {
-    const handleSync = (e) => {
-      if (e.detail && Array.isArray(e.detail)) {
-        setNotifications(e.detail);
-      }
-    };
-    window.addEventListener('fabricare-notifications-updated', handleSync);
-
-    if (!currentUser?.uid) {
-      return () => {
-        window.removeEventListener('fabricare-notifications-updated', handleSync);
-      };
-    }
-
-    const unsubscribe = subscribeCustomerNotifications(
-      currentUser.uid,
-      (list) => {
-        if (Array.isArray(list) && list.length > 0) {
-          const mapped = list.map(normalizeNotification);
-          setNotifications(mapped);
-          try {
-            localStorage.setItem('fabricare_customer_notifications', JSON.stringify(mapped));
-          } catch (e) {}
-        }
-      },
-      (err) => {
-        console.warn('Navbar notification subscription error:', err);
-      }
-    );
-
-    return () => {
-      window.removeEventListener('fabricare-notifications-updated', handleSync);
-      unsubscribe();
-    };
-  }, [currentUser?.uid]);
+  // Live isolated notifications hook
+  const { items: notifications, unreadCount, markRead, markAllRead } = useNotifications(currentUser?.uid);
 
   // Click outside handler for profile dropdown
   useEffect(() => {
@@ -110,46 +61,16 @@ export const Navbar = () => {
   // Handle clicking a single notification item
   const handleNotificationClick = async (notif) => {
     if (!notif.isRead) {
-      const updated = notifications.map(n => n.id === notif.id ? { ...n, isRead: true } : n);
-      setNotifications(updated);
-      try {
-        localStorage.setItem('fabricare_customer_notifications', JSON.stringify(updated));
-      } catch (e) {}
-      window.dispatchEvent(new CustomEvent('fabricare-notifications-updated', { detail: updated }));
-      if (currentUser?.uid) {
-        try {
-          await markNotificationRead(currentUser.uid, notif.id);
-        } catch (e) {}
-      }
+      markRead(notif.id);
     }
     setNotifDropdownOpen(false);
-
-    if (notif.actionType === 'track' || notif.type === 'delivery' || notif.category === 'Out for Delivery') {
-      navigateTo('customer-track');
-    } else if (notif.actionType === 'invoice' || notif.type === 'payment' || notif.category === 'Payment') {
-      navigateTo('customer-invoices');
-    } else if (notif.actionType === 'report' || notif.category === 'Rescheduled') {
-      navigateTo('customer-reports');
-    } else {
-      navigateTo('customer-notifications');
-    }
+    navigateTo('customer-notifications');
   };
 
   // Mark all notifications as read
   const handleMarkAllRead = async (e) => {
     if (e) e.stopPropagation();
-    const updated = notifications.map(n => ({ ...n, isRead: true }));
-    setNotifications(updated);
-    try {
-      localStorage.setItem('fabricare_customer_notifications', JSON.stringify(updated));
-    } catch (e) {}
-    window.dispatchEvent(new CustomEvent('fabricare-notifications-updated', { detail: updated }));
-    if (currentUser?.uid) {
-      try {
-        const unreadList = notifications.filter(n => !n.isRead);
-        await Promise.all(unreadList.map(n => markNotificationRead(currentUser.uid, n.id)));
-      } catch (e) {}
-    }
+    await markAllRead();
   };
 
   const renderNotifIcon = (notif) => {
