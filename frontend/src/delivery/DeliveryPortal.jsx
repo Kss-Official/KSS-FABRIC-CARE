@@ -1449,7 +1449,10 @@ export const DeliveryPortal = () => {
   };
 
   const fetchTasks = async () => {
-    setLoading(true);
+    setTasks(prev => {
+      if (!prev || prev.length === 0) setLoading(true);
+      return prev;
+    });
     setError(null);
     try {
       const [res, dashRes] = await Promise.all([
@@ -1966,7 +1969,7 @@ export const DeliveryPortal = () => {
       if (typeof navigateTo === 'function') {
         navigateTo('login', null, { replace: true });
       } else if (typeof window !== 'undefined') {
-        window.location.replace('#login');
+        window.location.href = '/#login';
       }
     }
   };
@@ -2591,10 +2594,11 @@ export const DeliveryPortal = () => {
                 />
                 <div className="brand-hanger-icon" style={{ display: 'none' }}>
                   <svg width="34" height="34" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    {/* Hanger Hook */}
-                    <path d="M18 7C18 5.2 19.4 3.8 21.2 3.8C22.8 3.8 24 5 24 6.6C24 8 22.8 9.2 21.4 9.6L18 10.8V12.8" stroke="#0E5E52" strokeWidth="2.4" strokeLinecap="round"/>
-                    {/* T-Shirt Body on Hanger */}
-                    <path d="M12.5 12.8L6.8 16L9.6 22L12.8 20.2V32H23.2V20.2L26.4 22L29.2 16L23.5 12.8C22 15 19.5 15.4 18 15.4C16.5 15.4 14 15 12.5 12.8Z" fill="#0E5E52"/>
+                    <rect width="36" height="36" rx="8" fill="#14B8A6" />
+                    <path d="M18 9C18 7.3 19.3 6 21 6C22.7 6 24 7.3 24 9C24 10.3 23.2 11.4 22 11.8L18 13.5V15.5" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M18 15.5L9 20.5C8 21 8.5 22.5 9.5 22.5H26.5C27.5 22.5 28 21 27 20.5L18 15.5Z" stroke="#FFFFFF" strokeWidth="1.8" strokeLinejoin="round" fill="none"/>
+                    <path d="M10 24C13 22 17 21 21 22.5C23.5 23.5 25.5 23 27 22C25.5 24 23 25.5 19 25.5C15 25.5 12 24.5 10 24Z" fill="#FFFFFF"/>
+                    <path d="M11 26C14 24.5 17 24 20 25C22.5 26 24.5 25.5 26 24.5C24.5 26.5 22 28 18 28C14.5 28 12.5 27 11 26Z" fill="#A5F3FC"/>
                   </svg>
                 </div>
               </div>
@@ -2668,7 +2672,6 @@ export const DeliveryPortal = () => {
               <Menu size={22} />
             </button>
             <div className="topbar-title-block">
-              <div className="topbar-kicker">DELIVERY FIELD OPERATIONS</div>
               <h1 className="topbar-heading">
                 {activeTab === 'dashboard' ? 'Dashboard' : (menuItems.find(m => m.id === activeTab)?.label || 'Agent Portal')}
               </h1>

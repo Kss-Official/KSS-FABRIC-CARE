@@ -50,16 +50,31 @@ export const registerUser = async ({ email, password, fullName, phone = '' }) =>
     const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
     const user = userCredential.user;
 
-    if (fullName) {
-      await updateProfile(user, { displayName: fullName.trim() });
+    const cleanName = fullName ? fullName.trim() : (user.displayName || 'Customer');
+
+    if (cleanName) {
+      await updateProfile(user, { displayName: cleanName });
     }
 
-    const cleanName = fullName ? fullName.trim() : (user.displayName || 'Customer');
+    const nameParts = cleanName.split(' ');
+    const firstName = nameParts[0] || cleanName;
+    const lastName = nameParts.slice(1).join(' ') || '';
+    const cleanEmail = (user.email || email || '').trim().toLowerCase();
+    const username = cleanEmail ? cleanEmail.split('@')[0] : cleanName.toLowerCase().replace(/\s+/g, '');
+    const cleanPhone = phone ? phone.trim() : (user.phoneNumber || '');
+
     const userRef = ref(rtdb, `users/${user.uid}`);
     const profileData = {
       name: cleanName,
-      email: user.email,
-      phone: phone.trim(),
+      full_name: cleanName,
+      fullName: cleanName,
+      displayName: cleanName,
+      first_name: firstName,
+      last_name: lastName,
+      username: username,
+      email: cleanEmail,
+      phone: cleanPhone,
+      phoneNumber: cleanPhone,
       role: 'customer',
       isActive: true,
       avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=0D9488&color=fff`,
@@ -68,7 +83,7 @@ export const registerUser = async ({ email, password, fullName, phone = '' }) =>
 
     await set(userRef, profileData);
     await set(ref(rtdb, `roleUsers/customer/${user.uid}`), true);
-    return { ...profileData, uid: user.uid };
+    return { ...profileData, uid: user.uid, id: user.uid };
   } catch (error) {
     console.error('Registration failed:', error);
     throw new Error(mapAuthError(error));
@@ -91,13 +106,26 @@ export const loginUser = async ({ email, password, requiredRole = null }) => {
 
     if (!profile) {
       // Create initial profile if missing
+      const cleanName = user.displayName || 'Customer';
+      const nameParts = cleanName.split(' ');
+      const cleanEmail = (user.email || email || '').trim().toLowerCase();
+      const username = cleanEmail ? cleanEmail.split('@')[0] : cleanName.toLowerCase().replace(/\s+/g, '');
+      const cleanPhone = user.phoneNumber || '';
+
       profile = {
-        name: user.displayName || 'User',
-        email: user.email,
-        phone: user.phoneNumber || '',
+        name: cleanName,
+        full_name: cleanName,
+        fullName: cleanName,
+        displayName: cleanName,
+        first_name: nameParts[0] || cleanName,
+        last_name: nameParts.slice(1).join(' ') || '',
+        username: username,
+        email: cleanEmail,
+        phone: cleanPhone,
+        phoneNumber: cleanPhone,
         role: 'customer',
         isActive: true,
-        avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'User')}&background=0D9488&color=fff`,
+        avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=0D9488&color=fff`,
         createdAt: Date.now()
       };
       await set(ref(rtdb, `users/${user.uid}`), profile);

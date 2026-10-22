@@ -3,6 +3,7 @@ import { useBooking } from '../../context/BookingContext';
 import { 
   PRICING_CATEGORIES, 
   PRICING_SUBCATEGORIES, 
+  EXPRESS_SERVICES,
   getCategoryItems 
 } from '../../data/pricingData';
 import { 
@@ -44,7 +45,9 @@ export const Step1SelectServices = () => {
     calculateTotal,
     calculateDuplicateWashSavings = () => 0,
     getItemPricing = (it) => ({ effectiveUnitPrice: it.unitPrice, lineTotal: it.unitPrice * it.quantity, hasIroningDiscount: false }),
-    setCurrentStep 
+    setCurrentStep,
+    switchToNormalLaundry,
+    switchToExpressLaundry
   } = useBooking();
 
   // 4 Subcategory Visual Cards configuration with authentic artwork & labels
@@ -77,6 +80,7 @@ export const Step1SelectServices = () => {
 
   // Category Selection State: null (shows main 5 category cards) or category.id (shows subcategories & items)
   const [activeCategory, setActiveCategory] = useState(null);
+  const [activeExpressService, setActiveExpressService] = useState('wash-fold');
   const [activeSubcategory, setActiveSubcategory] = useState('men');
   const [isItemsOpen, setIsItemsOpen] = useState(false);
   const [itemSearchQuery, setItemSearchQuery] = useState('');
@@ -206,17 +210,25 @@ export const Step1SelectServices = () => {
   };
 
   const activeCategoryItems = (activeCategory && activeSubcategory)
-    ? getCategoryItems(activeCategory, activeSubcategory).filter(item =>
+    ? getCategoryItems(
+        activeCategory, 
+        activeSubcategory, 
+        activeCategory === 'express-laundry' ? activeExpressService : 'wash-fold'
+      ).filter(item =>
         item.name.toLowerCase().includes(itemSearchQuery.trim().toLowerCase())
       )
     : [];
 
-  // Active selected categories (from selectedServices and any items selected)
+  // Validation message state when trying to proceed without selecting items in active category
+  const [categoryValidationError, setCategoryValidationError] = useState(null);
+
+  // Active selected categories: strictly categories that have at least one selected item (quantity > 0)
   const selectedCategoryIds = Array.from(
-    new Set([
-      ...selectedServices,
-      ...selectedItemsList.map(it => it.categoryId)
-    ])
+    new Set(
+      selectedItemsList
+        .filter(it => it && it.quantity > 0)
+        .map(it => it.categoryId)
+    )
   ).filter(Boolean);
 
   const selectedCategoryCards = PRICING_CATEGORIES.filter(c => 
@@ -224,55 +236,145 @@ export const Step1SelectServices = () => {
   );
 
   const isCategorySelected = (catId) => {
-    return selectedCategoryIds.includes(catId);
+    return selectedItemsList.some(it => it.categoryId === catId && it.quantity > 0);
   };
 
   const handleToggleCategory = (catId) => {
     if (isCategorySelected(catId)) {
-      if (selectedServices.includes(catId)) {
-        toggleService(catId);
-      }
+      // If category already has items, clicking checkbox deselects it by clearing its items
       const itemKeysToRemove = selectedItemsList
         .filter(it => it.categoryId === catId)
         .map(it => it.key);
       itemKeysToRemove.forEach(k => removeItem(k));
-    } else {
-      if (!selectedServices.includes(catId)) {
-        toggleService(catId);
+      if (activeCategory === catId) {
+        setActiveCategory(null);
+        setCategoryValidationError(null);
       }
+    } else {
+      // Switching between Express and Normal with existing items
+      const hasExpressItems = selectedItemsList.some(it => it.categoryId === 'express-laundry');
+      const hasNormalItems = selectedItemsList.some(it => it.categoryId !== 'express-laundry' && it.quantity > 0);
+
+      if (hasExpressItems && catId !== 'express-laundry') {
+        if (typeof switchToNormalLaundry === 'function') {
+          switchToNormalLaundry(catId);
+        }
+      } else if (hasNormalItems && catId === 'express-laundry') {
+        if (typeof switchToExpressLaundry === 'function') {
+          switchToExpressLaundry();
+        }
+      }
+
+      // Open subcategories view to pick items
+      setActiveCategory(catId);
+      if (catId === 'express-laundry') {
+        const existingExpressItem = selectedItemsList.find(it => it.categoryId === 'express-laundry' && it.expressService);
+        if (existingExpressItem) {
+          setActiveExpressService(existingExpressItem.expressService);
+        }
+      }
+      setActiveSubcategory('men');
+      setIsItemsOpen(false);
+      setItemSearchQuery('');
+      setCategoryValidationError(null);
     }
   };
 
   const handleCategoryCardClick = (catId) => {
-    if (!selectedServices.includes(catId)) {
-      toggleService(catId);
+    // If switching between Express and Normal with existing items
+    const hasExpressItems = selectedItemsList.some(it => it.categoryId === 'express-laundry');
+    const hasNormalItems = selectedItemsList.some(it => it.categoryId !== 'express-laundry' && it.quantity > 0);
+
+    if (hasExpressItems && catId !== 'express-laundry') {
+      if (typeof switchToNormalLaundry === 'function') {
+        switchToNormalLaundry(catId);
+      }
+    } else if (hasNormalItems && catId === 'express-laundry') {
+      if (typeof switchToExpressLaundry === 'function') {
+        switchToExpressLaundry();
+      }
     }
+
+    // Open subcategories view to pick items without prematurely selecting the category
     setActiveCategory(catId);
+    if (catId === 'express-laundry') {
+      const existingExpressItem = selectedItemsList.find(it => it.categoryId === 'express-laundry' && it.expressService);
+      if (existingExpressItem) {
+        setActiveExpressService(existingExpressItem.expressService);
+      }
+    }
     setActiveSubcategory('men');
     setIsItemsOpen(false);
     setItemSearchQuery('');
+    setCategoryValidationError(null);
+  };
+
+  const handleBackToCategories = () => {
+    if (activeCategory) {
+      const currentCatCount = selectedItemsList
+        .filter(it => it.categoryId === activeCategory)
+        .reduce((s, it) => s + it.quantity, 0);
+
+      if (currentCatCount === 0) {
+        const catName = PRICING_CATEGORIES.find(c => c.id === activeCategory)?.name || 'this category';
+        setCategoryValidationError(`Please select at least one item from ${catName} before proceeding to another category.`);
+        return;
+      }
+    }
+    setCategoryValidationError(null);
+    setActiveCategory(null);
+    setActiveSubcategory('men');
+    setIsItemsOpen(false);
+    setItemSearchQuery('');
+  };
+
+  const handleDiscardCategory = () => {
+    setCategoryValidationError(null);
+    setActiveCategory(null);
+    setActiveSubcategory('men');
+    setIsItemsOpen(false);
+    setItemSearchQuery('');
+  };
+
+  const handleNextStep = () => {
+    if (activeCategory) {
+      const currentCatCount = selectedItemsList
+        .filter(it => it.categoryId === activeCategory)
+        .reduce((s, it) => s + it.quantity, 0);
+
+      if (currentCatCount === 0) {
+        const catName = PRICING_CATEGORIES.find(c => c.id === activeCategory)?.name || 'this category';
+        setCategoryValidationError(`Please select at least one item from ${catName} before proceeding.`);
+        return;
+      }
+    }
+    if (selectedItemsList.length > 0) {
+      setCurrentStep(2);
+    }
   };
 
   const handleRemoveService = (catId) => {
     if (expandedCategoryId === catId) {
       setExpandedCategoryId(null);
     }
-    if (selectedServices.includes(catId)) {
-      toggleService(catId);
-    }
     const itemKeysToRemove = selectedItemsList
       .filter(it => it.categoryId === catId)
       .map(it => it.key);
     itemKeysToRemove.forEach(k => removeItem(k));
+    if (activeCategory === catId) {
+      setActiveCategory(null);
+      setCategoryValidationError(null);
+    }
   };
 
   const handleClearAll = () => {
     setExpandedCategoryId(null);
+    setCategoryValidationError(null);
     clearAllItems();
     clearAllServices();
   };
 
-  const hasSelections = selectedCategoryIds.length > 0 || selectedItemsList.length > 0;
+  const hasSelections = selectedItemsList.length > 0;
   const estimatedTotal = calculateTotal() || 0;
 
   return (
@@ -348,11 +450,7 @@ export const Step1SelectServices = () => {
                   <button
                     type="button"
                     className="circle-next-btn"
-                    onClick={() => {
-                      if (hasSelections) {
-                        setCurrentStep(2);
-                      }
-                    }}
+                    onClick={handleNextStep}
                     disabled={!hasSelections}
                     aria-label="Next step"
                   >
@@ -368,18 +466,52 @@ export const Step1SelectServices = () => {
                   <button
                     type="button"
                     className="btn-back-to-categories"
-                    onClick={() => {
-                      setActiveCategory(null);
-                      setActiveSubcategory('men');
-                      setIsItemsOpen(false);
-                      setItemSearchQuery('');
-                    }}
+                    onClick={handleBackToCategories}
                   >
                     <ArrowLeft size={16} strokeWidth={2.4} />
                     <span>Back to Categories</span>
                   </button>
                   <span className="step-count">01 / 04</span>
                 </div>
+
+                {categoryValidationError && (
+                  <div className="category-validation-banner animate-fade-in" style={{
+                    background: '#FEF3C7',
+                    border: '1px solid #FCD34D',
+                    borderRadius: '12px',
+                    padding: '10px 16px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    fontSize: '0.85rem',
+                    color: '#92400E'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+                      <span style={{ fontWeight: 600 }}>{categoryValidationError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleDiscardCategory}
+                      style={{
+                        background: '#FFFFFF',
+                        border: '1px solid #D97706',
+                        color: '#B45309',
+                        borderRadius: '8px',
+                        padding: '4px 12px',
+                        fontSize: '0.78rem',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                      title="Discard this category and return to categories list"
+                    >
+                      Discard & Return
+                    </button>
+                  </div>
+                )}
 
                 <div className="category-header-main">
                   <div className="category-header-avatar">
@@ -402,12 +534,76 @@ export const Step1SelectServices = () => {
                 </div>
               </div>
 
+              {/* Express Laundry: 4 Service Options Selector */}
+              {activeCategory === 'express-laundry' && (
+                <div className="express-services-wizard-block animate-fade-in">
+                  <div className="express-wizard-title-row">
+                    <span className="express-wizard-badge">⚡ 24-Hour Express Laundry</span>
+                    <h3 className="express-wizard-heading">Select an Express Service:</h3>
+                    <p className="express-wizard-subtext">
+                      Choose which service to expedite with next-day turnaround:
+                    </p>
+                  </div>
+                  <div className="express-wizard-options-grid">
+                    {EXPRESS_SERVICES.map(svc => {
+                      const isSvcActive = activeExpressService === svc.id;
+                      const svcItemCount = selectedItemsList
+                        .filter(it => it.categoryId === 'express-laundry' && (it.expressService === svc.id || (!it.expressService && svc.id === 'wash-fold')))
+                        .reduce((sum, it) => sum + it.quantity, 0);
+
+                      return (
+                        <div
+                          key={svc.id}
+                          className={`express-service-card-option ${isSvcActive ? 'active' : ''}`}
+                          onClick={() => {
+                            setActiveExpressService(svc.id);
+                            setIsItemsOpen(false);
+                            setItemSearchQuery('');
+                          }}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <div className="express-option-header">
+                            <div className="express-option-icon-box">
+                              {renderServiceIcon(svc.id)}
+                            </div>
+                            <div className={`express-check-circle ${isSvcActive ? 'active' : ''}`}>
+                              {isSvcActive && <Check size={12} strokeWidth={3} color="#FFFFFF" />}
+                            </div>
+                          </div>
+                          <div className="express-option-info">
+                            <h4 className="express-option-name">{svc.name}</h4>
+                            <p className="express-option-desc">{svc.desc}</p>
+                          </div>
+                          <div className="express-option-footer">
+                            <span className="express-tag-chip">{svc.tag}</span>
+                            {svcItemCount > 0 && (
+                              <span className="express-count-badge">{svcItemCount} items</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* 4 Visual Subcategory Cards Grid */}
               <div className="subcat-cards-grid">
-                {SUBCATEGORY_CARD_DATA.map(sub => {
+                {SUBCATEGORY_CARD_DATA.filter(sub => {
+                  if (activeCategory === 'express-laundry') {
+                    return getCategoryItems('express-laundry', sub.id, activeExpressService).length > 0;
+                  }
+                  return true;
+                }).map(sub => {
                   const isSubActive = activeSubcategory === sub.id;
+                  const isExpress = activeCategory === 'express-laundry';
                   const subCount = selectedItemsList
-                    .filter(it => it.categoryId === activeCategory && it.subcategoryId === sub.id)
+                    .filter(it => {
+                      if (it.categoryId !== activeCategory) return false;
+                      if (isExpress && (it.expressService || 'wash-fold') !== activeExpressService) return false;
+                      return it.subcategoryId === sub.id;
+                    })
                     .reduce((s, it) => s + it.quantity, 0);
 
                   return (
@@ -446,10 +642,15 @@ export const Step1SelectServices = () => {
                   <div className="step1-items-toolbar">
                     <div className="items-info-label">
                       <span>
-                        {PRICING_CATEGORIES.find(c => c.id === activeCategory)?.name} —{' '}
+                        {activeCategory === 'express-laundry'
+                          ? `Express ${EXPRESS_SERVICES.find(s => s.id === activeExpressService)?.name || 'Wash & Fold'}`
+                          : PRICING_CATEGORIES.find(c => c.id === activeCategory)?.name} —{' '}
                         {SUBCATEGORY_CARD_DATA.find(s => s.id === activeSubcategory)?.name} Items
                       </span>
-                      <span className="count-tag">{activeCategoryItems.length} items</span>
+                      <span className="count-tag">
+                        {activeCategoryItems.length} items
+                        {activeCategory === 'express-laundry' && ' · 2x Rate'}
+                      </span>
                     </div>
 
                     <div className="step1-search-wrap">
@@ -478,8 +679,11 @@ export const Step1SelectServices = () => {
                     {activeCategoryItems.length > 0 ? (
                       <div className="clothing-items-grid">
                         {activeCategoryItems.map(item => {
-                          const itemKey = `${activeCategory}__${item.id}`;
-                          const currentQty = getItemQuantity(activeCategory, item.id);
+                          const isExpress = activeCategory === 'express-laundry';
+                          const itemKey = isExpress
+                            ? `express-laundry__${activeExpressService}__${item.id}`
+                            : `${activeCategory}__${item.id}`;
+                          const currentQty = getItemQuantity(activeCategory, item.id, activeExpressService);
                           const isSelected = currentQty > 0;
 
                           return (
@@ -493,7 +697,12 @@ export const Step1SelectServices = () => {
                               </div>
 
                               <div className="item-row-action">
-                                {item.isPriceEnabled && item.price ? (
+                                {isExpress ? (
+                                  <div className="item-price-tag express-price-pill">
+                                    <span className="price-num">₹{item.price}</span>
+                                    <span className="express-badge-mini">⚡ Express</span>
+                                  </div>
+                                ) : item.isPriceEnabled && item.price ? (
                                   activeCategory === 'wash-iron' && selectedItemsList.some(other =>
                                     (other.categoryId === 'wash-fold' || other.categoryId === 'express-laundry') &&
                                     (other.id === item.id || (other.name && item.name && other.name.trim().toLowerCase() === item.name.trim().toLowerCase())) &&
@@ -538,7 +747,10 @@ export const Step1SelectServices = () => {
                                   <button
                                     type="button"
                                     className="btn-add-item"
-                                    onClick={() => addItem(item, activeCategory, activeSubcategory)}
+                                    onClick={() => {
+                                      setCategoryValidationError(null);
+                                      addItem(item, activeCategory, activeSubcategory, 1, activeExpressService);
+                                    }}
                                     aria-label={`Add ${item.name}`}
                                   >
                                     <Plus size={12} strokeWidth={2.5} />
@@ -768,7 +980,12 @@ export const Step1SelectServices = () => {
                                 <p className="expanded-empty-title">Select clothing items for {service.name}:</p>
                                 
                                 <div className="expanded-subcat-quick-pills">
-                                  {PRICING_SUBCATEGORIES.map(sub => (
+                                  {PRICING_SUBCATEGORIES.filter(sub => {
+                                    if (service.id === 'express-laundry') {
+                                      return getCategoryItems('express-laundry', sub.id, activeExpressService).length > 0;
+                                    }
+                                    return true;
+                                  }).map(sub => (
                                     <button
                                       key={sub.id}
                                       type="button"
@@ -781,8 +998,12 @@ export const Step1SelectServices = () => {
                                 </div>
 
                                 <div className="expanded-quick-items-grid">
-                                  {getCategoryItems(service.id, expandedActiveSubcat).slice(0, 5).map(it => {
-                                    const currentQty = getItemQuantity(service.id, it.id);
+                                  {getCategoryItems(service.id, expandedActiveSubcat, service.id === 'express-laundry' ? activeExpressService : 'wash-fold').slice(0, 5).map(it => {
+                                    const isExpress = service.id === 'express-laundry';
+                                    const itemKey = isExpress
+                                      ? `express-laundry__${activeExpressService}__${it.id}`
+                                      : `${service.id}__${it.id}`;
+                                    const currentQty = getItemQuantity(service.id, it.id, activeExpressService);
                                     return (
                                       <div key={it.id} className="expanded-quick-item-card">
                                         <span className="quick-item-name">{it.name}</span>
@@ -793,7 +1014,7 @@ export const Step1SelectServices = () => {
                                               <button
                                                 type="button"
                                                 className="expanded-step-btn"
-                                                onClick={() => updateItemQuantity(`${service.id}__${it.id}`, currentQty - 1)}
+                                                onClick={() => updateItemQuantity(itemKey, -1)}
                                               >
                                                 <Minus size={10} />
                                               </button>
@@ -801,7 +1022,7 @@ export const Step1SelectServices = () => {
                                               <button
                                                 type="button"
                                                 className="expanded-step-btn"
-                                                onClick={() => updateItemQuantity(`${service.id}__${it.id}`, currentQty + 1)}
+                                                onClick={() => updateItemQuantity(itemKey, 1)}
                                               >
                                                 <Plus size={10} />
                                               </button>
@@ -810,7 +1031,10 @@ export const Step1SelectServices = () => {
                                             <button
                                               type="button"
                                               className="btn-quick-add"
-                                              onClick={() => addItem(it, service.id, expandedActiveSubcat)}
+                                              onClick={() => {
+                                                setCategoryValidationError(null);
+                                                addItem(it, service.id, expandedActiveSubcat, 1, activeExpressService);
+                                              }}
                                             >
                                               <Plus size={11} strokeWidth={2.5} />
                                               <span>Add</span>
@@ -872,7 +1096,7 @@ export const Step1SelectServices = () => {
           <button
             type="button"
             className="btn-next-action"
-            onClick={() => setCurrentStep(2)}
+            onClick={handleNextStep}
             disabled={!hasSelections}
           >
             <span>Next</span>
@@ -1048,6 +1272,175 @@ export const Step1SelectServices = () => {
           font-weight: 700;
           padding: 3px 10px;
           border-radius: 999px;
+        }
+
+        /* Express Laundry 4 Services Selection Block */
+        .express-services-wizard-block {
+          background: #F0FDF4;
+          border: 1.5px solid #BBF7D0;
+          border-radius: 16px;
+          padding: 16px;
+          margin-bottom: 18px;
+        }
+
+        .express-wizard-title-row {
+          margin-bottom: 12px;
+        }
+
+        .express-wizard-badge {
+          display: inline-block;
+          background: #EA580C;
+          color: #FFFFFF;
+          font-size: 0.72rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 3px 10px;
+          border-radius: 999px;
+          margin-bottom: 6px;
+        }
+
+        .express-wizard-heading {
+          font-size: 1.15rem;
+          font-weight: 800;
+          color: #0F172A;
+          margin: 2px 0 4px;
+        }
+
+        .express-wizard-subtext {
+          font-size: 0.8rem;
+          color: #475569;
+          margin: 0;
+        }
+
+        .express-wizard-options-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+          margin-top: 10px;
+        }
+
+        @media (max-width: 840px) {
+          .express-wizard-options-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        .express-service-card-option {
+          background: #FFFFFF;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 12px 14px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+
+        .express-service-card-option:hover {
+          border-color: #0D7A75;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 14px rgba(13, 122, 117, 0.12);
+        }
+
+        .express-service-card-option.active {
+          border: 2px solid #0D7A75;
+          background: #F0FDF4;
+          box-shadow: 0 4px 14px rgba(13, 122, 117, 0.18);
+        }
+
+        .express-option-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 8px;
+        }
+
+        .express-option-icon-box {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          background: #E6F8F6;
+          color: #0D7A75;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .express-check-circle {
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          border: 1.5px solid #CBD5E1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .express-check-circle.active {
+          background: #0D7A75;
+          border-color: #0D7A75;
+        }
+
+        .express-option-name {
+          font-size: 0.92rem;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 0 0 3px;
+        }
+
+        .express-option-desc {
+          font-size: 0.73rem;
+          color: #64748B;
+          margin: 0 0 8px;
+          line-height: 1.35;
+        }
+
+        .express-option-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+          margin-top: auto;
+        }
+
+        .express-tag-chip {
+          font-size: 0.68rem;
+          font-weight: 700;
+          background: #FFF7ED;
+          color: #EA580C;
+          border: 1px solid #FFEDD5;
+          padding: 2px 7px;
+          border-radius: 999px;
+        }
+
+        .express-count-badge {
+          font-size: 0.68rem;
+          font-weight: 700;
+          background: #0D7A75;
+          color: #FFFFFF;
+          padding: 2px 7px;
+          border-radius: 999px;
+        }
+
+        .express-price-pill {
+          background: #FEF3C7 !important;
+          border: 1px solid #FDE68A !important;
+          color: #B45309 !important;
+          padding: 3px 8px !important;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .express-badge-mini {
+          font-size: 0.65rem;
+          font-weight: 800;
+          color: #D97706;
+          text-transform: uppercase;
         }
 
         /* 4 Subcategories Visual Cards Grid */

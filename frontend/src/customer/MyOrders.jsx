@@ -17,13 +17,37 @@ import {
   X
 } from 'lucide-react';
 import { OrderStatusDropdown } from '../components/common/OrderStatusDropdown';
-import { formatOrderId } from '../utils/helpers';
+import { formatOrderId, calculateOrderTotal } from '../utils/helpers';
 
 export const MyOrders = () => {
   const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
   const { currentUser } = useAuth();
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState(() => {
+    try {
+      const myUid = currentUser?.uid || currentUser?.id;
+      if (myUid) {
+        const cached = sessionStorage.getItem(`fabricare_customer_orders_${myUid}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+    } catch (_) {}
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    try {
+      const myUid = currentUser?.uid || currentUser?.id;
+      if (myUid) {
+        const cached = sessionStorage.getItem(`fabricare_customer_orders_${myUid}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return false;
+        }
+      }
+    } catch (_) {}
+    return true;
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [cancellingId, setCancellingId] = useState(null);
@@ -32,8 +56,29 @@ export const MyOrders = () => {
   const cancelModalRef = useRef(null);
 
   const normalizeOrders = useCallback((rawOrders) => {
-    return (rawOrders || []).map(o => {
-      const totalInr = o.total ? (o.total / 100).toFixed(2) : (o.estimatedTotal || o.total_amount || '0.00');
+    const seen = new Set();
+    const result = [];
+
+    (rawOrders || []).forEach(o => {
+      if (!o) return;
+      let totalInr = calculateOrderTotal(o, false);
+      if (!totalInr || totalInr === '0' || totalInr === '0.00') {
+        if (o.total_amount && o.total_amount !== '0' && o.total_amount !== '0.00') {
+          totalInr = o.total_amount;
+        } else if (o.total && Number(o.total) > 0) {
+          let t = Number(o.total);
+          if (t >= 1000 || (t >= 500 && t % 100 === 0)) t = t / 100;
+          totalInr = t % 1 === 0 ? t.toFixed(0) : t.toFixed(2);
+        } else if (o.subtotal && Number(o.subtotal) > 0) {
+          let s = Number(o.subtotal);
+          if (s >= 1000 || (s >= 500 && s % 100 === 0)) s = s / 100;
+          totalInr = s % 1 === 0 ? s.toFixed(0) : s.toFixed(2);
+        } else if (o.estimatedTotal || o.estimated_amount) {
+          totalInr = String(o.estimatedTotal || o.estimated_amount);
+        } else {
+          totalInr = '0.00';
+        }
+      }
 
       // Normalize items list
       let itemsList = [];
@@ -88,12 +133,33 @@ export const MyOrders = () => {
         deliveryDate = formatPrettyDate(o.delivery.date);
       }
 
-      return {
+      const rawPay = String(o.paymentStatus || o.payment_status || o.payment || '').toUpperCase();
+      const rawStat = String(o.status || '').toUpperCase();
+      const isPaid = rawPay.includes('PAID') || 
+                     rawPay.includes('COMPLETED') || 
+                     rawPay.includes('SUCCESS') || 
+                     Boolean(o.is_paid) ||
+                     ['PLACED', 'PICKED_UP', 'IN_CLEANING', 'DELIVERED', 'COMPLETED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'QUALITY_CHECK', 'PACKED', 'PENDING PICKUP'].includes(rawStat);
+
+      const isRefunded = rawPay.includes('REFUND') || rawStat === 'REFUNDED';
+      const isCancelled = (rawStat === 'CANCELLED' || rawPay.includes('CANCEL')) && !isPaid;
+
+      let paymentStatusDisplay = 'Paid';
+      if (isRefunded) paymentStatusDisplay = 'Refunded';
+      else if (isCancelled) paymentStatusDisplay = 'Cancelled';
+      else if (!isPaid && (rawStat === 'PAYMENT_PENDING' || rawPay.includes('PENDING') || rawPay.includes('UNPAID'))) paymentStatusDisplay = 'Pending';
+
+      const orderCode = o.code || o.order_number || o.id;
+      const dedupeKey = String(orderCode).trim().toLowerCase();
+      if (dedupeKey && seen.has(dedupeKey)) return;
+      if (dedupeKey) seen.add(dedupeKey);
+
+      result.push({
         ...o,
-        id: o.id || o.code,
+        id: orderCode,
         rawId: o.id,
-        order_number: o.order_number || o.code || o.id,
-        code: o.code || o.order_number || o.id,
+        order_number: orderCode,
+        code: orderCode,
         created_at: o.createdAt || o.created_at,
         total_amount: totalInr,
         pickup_address: addrStr,
@@ -102,53 +168,108 @@ export const MyOrders = () => {
         delivery_date: deliveryDate,
         delivery_time_slot: o.delivery_time_slot || '',
         items: itemsList,
-        payment_status: o.paymentStatus || o.payment_status || (o.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid')
-      };
+        isPaid,
+        is_paid: isPaid,
+        payment_status: paymentStatusDisplay
+      });
     });
+
+    result.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.created_at || a.placedAt || 0).getTime() || 0;
+      const timeB = new Date(b.createdAt || b.created_at || b.placedAt || 0).getTime() || 0;
+      return timeB - timeA;
+    });
+
+    return result;
   }, []);
 
   const fetchOrdersFromApi = useCallback(async () => {
+    const uid = currentUser?.uid || currentUser?.id;
+    const email = (currentUser?.email || '').toLowerCase().trim();
+    if (!uid && !email) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
     try {
       const res = await ordersApi.getOrders();
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
-      if (list.length > 0) {
-        const mapped = normalizeOrders(list);
-        setOrders(prev => {
-          const ids = new Set(prev.map(p => p.id));
-          return [...prev, ...mapped.filter(item => !ids.has(item.id))];
-        });
+      const myOrders = list.filter(o => {
+        if (!o) return false;
+        const oUid = String(o.customerId || o.customer_id || o.userId || '').toLowerCase().trim();
+        if (uid && oUid && oUid === String(uid).toLowerCase().trim()) return true;
+        const oEmail = String(o.customerEmail || o.customer_email || o.customer?.email || '').toLowerCase().trim();
+        if (email && oEmail && oEmail === email) return true;
+        return false;
+      });
+      const mapped = normalizeOrders(myOrders);
+      setOrders(mapped);
+      if (uid) {
+        try {
+          sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(mapped));
+        } catch (_) {}
       }
     } catch (err) {
       console.warn('Orders API fetch notice:', err);
+    } finally {
+      setLoading(false);
     }
-  }, [normalizeOrders]);
+  }, [currentUser?.uid, currentUser?.email, normalizeOrders]);
 
   useEffect(() => {
-    if (!currentUser?.uid) {
+    const uid = currentUser?.uid || currentUser?.id;
+    if (!uid) {
+      setOrders([]);
       setLoading(false);
       fetchOrdersFromApi().finally(() => setLoading(false));
       return;
     }
 
-    setLoading(true);
-    const unsubscribe = subscribeCustomerOrders(
-      currentUser.uid,
-      (liveOrders) => {
-        if (liveOrders && liveOrders.length > 0) {
-          setOrders(normalizeOrders(liveOrders));
+    try {
+      const cached = sessionStorage.getItem(`fabricare_customer_orders_${uid}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          setOrders(parsed);
+          setLoading(false);
         } else {
-          fetchOrdersFromApi();
+          setOrders([]);
+          setLoading(true);
+        }
+      } else {
+        setOrders([]);
+        setLoading(true);
+      }
+    } catch (_) {
+      setOrders([]);
+      setLoading(true);
+    }
+
+    const unsubscribe = subscribeCustomerOrders(
+      uid,
+      (liveOrders) => {
+        if (Array.isArray(liveOrders)) {
+          const norm = normalizeOrders(liveOrders);
+          setOrders(norm);
+          try {
+            sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(norm));
+          } catch (_) {}
+        } else {
+          setOrders([]);
         }
         setLoading(false);
       },
       (err) => {
         console.warn('Orders subscription note:', err);
         fetchOrdersFromApi().finally(() => setLoading(false));
-      }
+      },
+      currentUser?.email
     );
 
-    return () => unsubscribe();
-  }, [currentUser, normalizeOrders, fetchOrdersFromApi]);
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [currentUser?.uid, currentUser?.email, normalizeOrders, fetchOrdersFromApi]);
 
   useEffect(() => {
     if (!cancelModalOrder) return;
@@ -255,6 +376,58 @@ export const MyOrders = () => {
       default:
         return <span className="badge badge-secondary">{status}</span>;
     }
+  };
+
+  const getOrderServices = (order) => {
+    if (!order) return 'Wash & Fold';
+
+    if (Array.isArray(order.services) && order.services.length > 0) {
+      const clean = order.services.filter(Boolean);
+      if (clean.length > 0) return clean.join(', ');
+    }
+    if (Array.isArray(order.services_list) && order.services_list.length > 0) {
+      const clean = order.services_list.filter(Boolean);
+      if (clean.length > 0) return clean.join(', ');
+    }
+
+    if (typeof order.service === 'string' && order.service.trim()) {
+      return order.service.trim();
+    }
+
+    const rawItems = Array.isArray(order.items)
+      ? order.items
+      : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
+
+    if (rawItems.length > 0) {
+      const extractedServices = new Set();
+      rawItems.forEach(item => {
+        if (!item) return;
+        if (item.service_category && item.service_category !== 'General') {
+          extractedServices.add(item.service_category);
+        } else if (item.categoryName && item.categoryName !== 'General') {
+          extractedServices.add(item.categoryName);
+        } else if (Array.isArray(item.services) && item.services.length > 0) {
+          item.services.forEach(s => s && extractedServices.add(s));
+        } else if (item.category && !['Men', 'Women', 'Household', 'Kids', 'General', 'Clothing'].includes(item.category)) {
+          extractedServices.add(item.category);
+        } else {
+          const match = String(item.name || item.item_name || '').match(/\(([^)]+)\)/);
+          if (match && match[1] && !/^\d+$/.test(match[1])) {
+            extractedServices.add(match[1].trim());
+          }
+        }
+      });
+
+      if (extractedServices.size > 0) {
+        return Array.from(extractedServices).join(', ');
+      }
+    }
+
+    if (order.isExpress) {
+      return 'Express Laundry';
+    }
+
+    return 'Wash & Fold';
   };
 
   return (
@@ -410,11 +583,9 @@ export const MyOrders = () => {
                 </div>
 
                 <div>
-                  <span className="text-xs text-muted block mb-1">Items & Services</span>
+                  <span className="text-xs text-muted block mb-1">Services</span>
                   <div className="font-medium text-navy">
-                    {Array.isArray(order.items) && order.items.length > 0
-                      ? order.items.map(i => `${i.item_name || i.name || i.service_name || 'Item'} ×${i.quantity || 1}`).join(', ')
-                      : 'General Laundry Service'}
+                    {getOrderServices(order)}
                   </div>
                 </div>
 

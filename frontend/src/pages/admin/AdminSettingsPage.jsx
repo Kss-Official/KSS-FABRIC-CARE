@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAdmin } from '../../context/AdminContext';
+import { useAuth } from '../../context/AuthContext';
 import { 
   Upload, 
   ShoppingBag, 
@@ -11,18 +12,28 @@ import {
   CheckCircle2,
   Instagram,
   Facebook,
-  Linkedin
+  Linkedin,
+  ExternalLink,
+  Trash2,
+  X,
+  Camera,
+  ChevronDown
 } from 'lucide-react';
 
 export const AdminSettingsPage = () => {
   const { settings, updateSettings } = useAdmin();
+  const { currentUser, userProfile } = useAuth();
   const fileInputRef = useRef(null);
+  const photoDropdownRef = useRef(null);
+
+  const [photoDropdownOpen, setPhotoDropdownOpen] = useState(false);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
 
   const [form, setForm] = useState(() => ({
-    name: settings?.name || 'Admin',
-    email: settings?.email || 'admin@fabricare.com',
-    phone: settings?.phone || '+91 98765 43210',
-    role: settings?.role || 'Administrator',
+    name: settings?.name || userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name || 'Admin',
+    email: settings?.email || userProfile?.email || currentUser?.email || 'admin@fabricare.com',
+    phone: settings?.phone || userProfile?.phone || currentUser?.phone || '+91 98765 43210',
+    role: settings?.role || userProfile?.role || currentUser?.role || 'Administrator',
     supportEmail: settings?.supportEmail || 'support@fabricare.com',
     supportPhone: settings?.supportPhone || '+91 98765 43210',
     websiteUrl: settings?.websiteUrl || 'https://www.fabricare.com',
@@ -30,7 +41,7 @@ export const AdminSettingsPage = () => {
     facebook: settings?.facebook || 'https://facebook.com/fabricare',
     twitter: settings?.twitter || 'https://x.com/fabricare',
     linkedin: settings?.linkedin || 'https://linkedin.com/company/fabricare',
-    photoUrl: settings?.photoUrl || '',
+    photoUrl: settings?.photoUrl || userProfile?.avatarUrl || currentUser?.avatarUrl || '',
     notifications: {
       newOrders: settings?.notifications?.newOrders ?? true,
       customerMessages: settings?.notifications?.customerMessages ?? true,
@@ -39,27 +50,91 @@ export const AdminSettingsPage = () => {
     }
   }));
 
+  // Synchronize form whenever settings or userProfile load from backend
+  useEffect(() => {
+    if (!settings && !userProfile && !currentUser) return;
+    setForm(prev => ({
+      ...prev,
+      name: settings?.name || userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name || prev.name,
+      email: settings?.email || userProfile?.email || currentUser?.email || prev.email,
+      phone: settings?.phone || userProfile?.phone || currentUser?.phone || prev.phone,
+      role: settings?.role || userProfile?.role || currentUser?.role || prev.role,
+      supportEmail: settings?.supportEmail || prev.supportEmail,
+      supportPhone: settings?.supportPhone || prev.supportPhone,
+      websiteUrl: settings?.websiteUrl || prev.websiteUrl,
+      instagram: settings?.instagram || prev.instagram,
+      facebook: settings?.facebook || prev.facebook,
+      twitter: settings?.twitter || prev.twitter,
+      linkedin: settings?.linkedin || prev.linkedin,
+      photoUrl: settings?.photoUrl !== undefined ? settings.photoUrl : (userProfile?.avatarUrl || currentUser?.avatarUrl || prev.photoUrl),
+      notifications: {
+        ...prev.notifications,
+        ...(settings?.notifications || {})
+      }
+    }));
+  }, [settings, userProfile, currentUser]);
+
   const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' });
   const [showPwd, setShowPwd] = useState({ current: false, next: false, confirm: false });
   const [errors, setErrors] = useState({});
   const [savedToast, setSavedToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('Profile saved successfully!');
 
+  // Click outside to close photo dropdown
+  useEffect(() => {
+    if (!photoDropdownOpen) return;
+    const handleClickOutside = (e) => {
+      if (photoDropdownRef.current && !photoDropdownRef.current.contains(e.target)) {
+        setPhotoDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [photoDropdownOpen]);
+
+  const ensureUrl = (url) => {
+    if (!url) return '';
+    const trimmed = String(url).trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
+
   // Handle Photo Upload
   const handlePhotoUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setErrors(prev => ({ ...prev, photo: 'File size exceeds 2MB limit' }));
+      if (file.size > 5 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, photo: 'File size exceeds 5MB limit' }));
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setForm(prev => ({ ...prev, photoUrl: reader.result }));
+      reader.onloadend = async () => {
+        const dataUrl = reader.result;
+        setForm(prev => ({ ...prev, photoUrl: dataUrl }));
+        await updateSettings({ photoUrl: dataUrl });
         setErrors(prev => ({ ...prev, photo: '' }));
+        setToastMessage('Profile photo updated successfully!');
+        setSavedToast(true);
+        setTimeout(() => setSavedToast(false), 3500);
       };
       reader.readAsDataURL(file);
+      e.target.value = '';
     }
+  };
+
+  // Handle Delete Photo
+  const handleDeletePhoto = async () => {
+    setPhotoDropdownOpen(false);
+    setForm(prev => ({ ...prev, photoUrl: '' }));
+    await updateSettings({ photoUrl: '' });
+    setErrors(prev => ({ ...prev, photo: '' }));
+    setToastMessage('Profile photo removed.');
+    setSavedToast(true);
+    setTimeout(() => setSavedToast(false), 3000);
   };
 
   // Toggle Notification Checkboxes
@@ -158,29 +233,110 @@ export const AdminSettingsPage = () => {
           <div className="as-profile-layout">
             {/* Left Photo Column */}
             <div className="as-avatar-col">
-              <div className="as-avatar-circle">
-                {form.photoUrl ? (
-                  <img src={form.photoUrl} alt="Profile" className="as-avatar-img" />
-                ) : (
-                  <span>{avatarInitial}</span>
-                )}
+              <div className="as-avatar-wrapper">
+                <div 
+                  className="as-avatar-circle"
+                  onClick={() => setPhotoDropdownOpen(prev => !prev)}
+                  title={form.photoUrl ? "Click to manage photo" : "Click to upload photo"}
+                >
+                  {form.photoUrl ? (
+                    <img src={form.photoUrl} alt="Profile" className="as-avatar-img" />
+                  ) : (
+                    <span>{avatarInitial}</span>
+                  )}
+                </div>
+                <button 
+                  type="button" 
+                  className="as-avatar-camera-badge"
+                  onClick={() => setPhotoDropdownOpen(prev => !prev)}
+                  title="Update profile photo"
+                  aria-label="Update profile photo"
+                >
+                  <Camera size={13} strokeWidth={2.4} />
+                </button>
               </div>
+
               <input 
                 type="file" 
                 ref={fileInputRef} 
                 onChange={handlePhotoUpload} 
-                accept="image/png, image/jpeg, image/jpg" 
+                accept="image/png, image/jpeg, image/jpg, image/webp" 
                 style={{ display: 'none' }} 
               />
-              <button 
-                type="button" 
-                className="as-btn-photo" 
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload size={14} strokeWidth={2} />
-                <span>Change Photo</span>
-              </button>
-              <span className="as-photo-hint">JPG, PNG (Max. 2MB)</span>
+              
+              {/* Photo Action Dropdown Wrap */}
+              <div className="as-photo-dropdown-wrapper" ref={photoDropdownRef}>
+                <button 
+                  type="button" 
+                  className={`as-btn-photo ${photoDropdownOpen ? 'active' : ''}`}
+                  onClick={() => setPhotoDropdownOpen(prev => !prev)}
+                  aria-expanded={photoDropdownOpen}
+                >
+                  <Upload size={14} strokeWidth={2.2} />
+                  <span>{form.photoUrl ? 'Change Photo' : 'Upload Photo'}</span>
+                  <ChevronDown size={14} className={`as-photo-chevron ${photoDropdownOpen ? 'rotated' : ''}`} />
+                </button>
+
+                {photoDropdownOpen && (
+                  <div className="as-photo-dropdown-menu animate-fade-in" role="menu">
+                    <button 
+                      type="button" 
+                      className="as-photo-dropdown-item"
+                      onClick={() => {
+                        setPhotoDropdownOpen(false);
+                        fileInputRef.current?.click();
+                      }}
+                    >
+                      <div className="as-dropdown-icon-box as-icon-upload">
+                        <Upload size={14} strokeWidth={2.2} />
+                      </div>
+                      <div className="as-dropdown-item-text">
+                        <span className="as-item-title">Change photo</span>
+                        <span className="as-item-desc">Upload from your device</span>
+                      </div>
+                    </button>
+
+                    {form.photoUrl && (
+                      <button 
+                        type="button" 
+                        className="as-photo-dropdown-item"
+                        onClick={() => {
+                          setPhotoDropdownOpen(false);
+                          setPreviewModalOpen(true);
+                        }}
+                      >
+                        <div className="as-dropdown-icon-box as-icon-view">
+                          <Eye size={14} strokeWidth={2.2} />
+                        </div>
+                        <div className="as-dropdown-item-text">
+                          <span className="as-item-title">Preview photo</span>
+                          <span className="as-item-desc">View full size</span>
+                        </div>
+                      </button>
+                    )}
+
+                    {form.photoUrl && (
+                      <>
+                        <div className="as-photo-dropdown-divider" />
+                        <button 
+                          type="button" 
+                          className="as-photo-dropdown-item as-item-delete"
+                          onClick={handleDeletePhoto}
+                        >
+                          <div className="as-dropdown-icon-box as-icon-delete">
+                            <Trash2 size={14} strokeWidth={2.2} />
+                          </div>
+                          <div className="as-dropdown-item-text">
+                            <span className="as-item-title">Delete photo</span>
+                            <span className="as-item-desc">Reset to default initial</span>
+                          </div>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {errors.photo && <span className="as-error-hint">{errors.photo}</span>}
             </div>
 
@@ -289,7 +445,21 @@ export const AdminSettingsPage = () => {
 
               {/* Website URL */}
               <div className="as-field">
-                <label className="as-label">Website URL</label>
+                <div className="as-label-row">
+                  <label className="as-label">Website URL</label>
+                  {form.websiteUrl && (
+                    <a 
+                      href={ensureUrl(form.websiteUrl)} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="as-open-link-btn"
+                      title="Open website URL in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                    </a>
+                  )}
+                </div>
                 <input 
                   type="text" 
                   className="as-input"
@@ -303,12 +473,32 @@ export const AdminSettingsPage = () => {
             <div className="as-contact-col">
               {/* Instagram */}
               <div className="as-field">
-                <label className="as-label">
-                  <span className="as-social-badge as-instagram-badge">
-                    <Instagram size={12} strokeWidth={2.4} />
-                  </span>
-                  Instagram
-                </label>
+                <div className="as-label-row">
+                  <label className="as-label">
+                    <a
+                      href={ensureUrl(form.instagram)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="as-social-badge as-instagram-badge"
+                      title="Open Instagram profile in new tab"
+                    >
+                      <Instagram size={12} strokeWidth={2.4} />
+                    </a>
+                    Instagram
+                  </label>
+                  {form.instagram && (
+                    <a 
+                      href={ensureUrl(form.instagram)} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="as-open-link-btn"
+                      title="Open Instagram in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                    </a>
+                  )}
+                </div>
                 <input 
                   type="text" 
                   className="as-input"
@@ -319,12 +509,32 @@ export const AdminSettingsPage = () => {
 
               {/* Facebook */}
               <div className="as-field">
-                <label className="as-label">
-                  <span className="as-social-badge as-facebook-badge">
-                    <Facebook size={12} fill="currentColor" strokeWidth={0} />
-                  </span>
-                  Facebook
-                </label>
+                <div className="as-label-row">
+                  <label className="as-label">
+                    <a
+                      href={ensureUrl(form.facebook)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="as-social-badge as-facebook-badge"
+                      title="Open Facebook profile in new tab"
+                    >
+                      <Facebook size={12} fill="currentColor" strokeWidth={0} />
+                    </a>
+                    Facebook
+                  </label>
+                  {form.facebook && (
+                    <a 
+                      href={ensureUrl(form.facebook)} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="as-open-link-btn"
+                      title="Open Facebook in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                    </a>
+                  )}
+                </div>
                 <input 
                   type="text" 
                   className="as-input"
@@ -335,12 +545,32 @@ export const AdminSettingsPage = () => {
 
               {/* Twitter / X */}
               <div className="as-field">
-                <label className="as-label">
-                  <span className="as-social-badge as-twitter-badge">
-                    𝕏
-                  </span>
-                  Twitter / X
-                </label>
+                <div className="as-label-row">
+                  <label className="as-label">
+                    <a
+                      href={ensureUrl(form.twitter)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="as-social-badge as-twitter-badge"
+                      title="Open Twitter / X profile in new tab"
+                    >
+                      𝕏
+                    </a>
+                    Twitter / X
+                  </label>
+                  {form.twitter && (
+                    <a 
+                      href={ensureUrl(form.twitter)} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="as-open-link-btn"
+                      title="Open Twitter / X in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                    </a>
+                  )}
+                </div>
                 <input 
                   type="text" 
                   className="as-input"
@@ -351,12 +581,32 @@ export const AdminSettingsPage = () => {
 
               {/* LinkedIn */}
               <div className="as-field">
-                <label className="as-label">
-                  <span className="as-social-badge as-linkedin-badge">
-                    <Linkedin size={12} fill="currentColor" strokeWidth={0} />
-                  </span>
-                  LinkedIn
-                </label>
+                <div className="as-label-row">
+                  <label className="as-label">
+                    <a
+                      href={ensureUrl(form.linkedin)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="as-social-badge as-linkedin-badge"
+                      title="Open LinkedIn profile in new tab"
+                    >
+                      <Linkedin size={12} fill="currentColor" strokeWidth={0} />
+                    </a>
+                    LinkedIn
+                  </label>
+                  {form.linkedin && (
+                    <a 
+                      href={ensureUrl(form.linkedin)} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="as-open-link-btn"
+                      title="Open LinkedIn in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                    </a>
+                  )}
+                </div>
                 <input 
                   type="text" 
                   className="as-input"
@@ -580,6 +830,57 @@ export const AdminSettingsPage = () => {
         )}
       </form>
 
+      {/* Preview Photo Modal */}
+      {previewModalOpen && (
+        <div className="as-preview-modal-backdrop" onClick={() => setPreviewModalOpen(false)}>
+          <div className="as-preview-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="as-preview-modal-header">
+              <h3 className="as-preview-modal-title">Profile Photo Preview</h3>
+              <button 
+                type="button" 
+                className="as-preview-modal-close"
+                onClick={() => setPreviewModalOpen(false)}
+                aria-label="Close preview"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="as-preview-modal-body">
+              {form.photoUrl ? (
+                <img src={form.photoUrl} alt="Profile Preview" className="as-preview-large-img" />
+              ) : (
+                <div className="as-preview-avatar-large">
+                  <span>{avatarInitial}</span>
+                </div>
+              )}
+              <p className="as-preview-meta-text">
+                {form.photoUrl ? 'Current active profile picture' : 'Default initials avatar active'}
+              </p>
+            </div>
+            <div className="as-preview-modal-footer">
+              <button 
+                type="button" 
+                className="as-btn-modal-secondary"
+                onClick={() => setPreviewModalOpen(false)}
+              >
+                Close
+              </button>
+              <button 
+                type="button" 
+                className="as-btn-modal-primary"
+                onClick={() => {
+                  setPreviewModalOpen(false);
+                  fileInputRef.current?.click();
+                }}
+              >
+                <Upload size={14} />
+                <span>Upload New</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Scoped CSS strictly matching Reference Image 2 */}
       <style>{`
         .as-page-container {
@@ -657,16 +958,22 @@ export const AdminSettingsPage = () => {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 8px;
-          width: 130px;
+          gap: 12px;
+          width: 140px;
           flex-shrink: 0;
+          position: relative;
+        }
+
+        .as-avatar-wrapper {
+          position: relative;
+          display: inline-block;
         }
 
         .as-avatar-circle {
-          width: 74px;
-          height: 74px;
+          width: 88px;
+          height: 88px;
           border-radius: 50%;
-          background: #007E8A;
+          background: linear-gradient(135deg, #0D7A75 0%, #005F66 100%);
           color: #FFFFFF;
           display: flex;
           align-items: center;
@@ -674,34 +981,218 @@ export const AdminSettingsPage = () => {
           font-size: 32px;
           font-weight: 700;
           overflow: hidden;
-          box-shadow: 0 4px 10px rgba(0, 126, 138, 0.2);
+          box-shadow: 0 4px 14px rgba(13, 122, 117, 0.22);
+          border: 3px solid #E6F7F5;
+          cursor: pointer;
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
+          user-select: none;
+        }
+
+        .as-avatar-circle:hover {
+          transform: scale(1.02);
+          box-shadow: 0 6px 18px rgba(13, 122, 117, 0.3);
         }
 
         .as-avatar-img {
           width: 100%;
           height: 100%;
           object-fit: cover;
+          display: block;
+        }
+
+        .as-avatar-camera-badge {
+          position: absolute;
+          bottom: 1px;
+          right: 1px;
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background: #0D7A75;
+          color: #FFFFFF;
+          border: 2.5px solid #FFFFFF;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+          transition: all 0.15s ease;
+          padding: 0;
+        }
+
+        .as-avatar-camera-badge:hover {
+          background: #00606B;
+          transform: scale(1.1);
+        }
+
+        /* Photo Dropdown Wrapper & Trigger */
+        .as-photo-dropdown-wrapper {
+          position: relative;
+          display: inline-block;
+          width: 100%;
         }
 
         .as-btn-photo {
+          width: 100%;
           display: inline-flex;
           align-items: center;
+          justify-content: center;
           gap: 6px;
           background: #FFFFFF;
-          border: 1px solid #E2E8F0;
-          padding: 7px 16px;
+          border: 1px solid #CBD5E1;
+          height: 36px;
+          padding: 0 10px;
           border-radius: 8px;
-          font-size: 12px;
+          font-size: 12.5px;
           font-weight: 600;
-          color: #1E293B;
+          color: #334155;
           cursor: pointer;
           transition: all 0.15s ease;
           font-family: inherit;
+          white-space: nowrap;
         }
 
         .as-btn-photo:hover {
           background: #F8FAFC;
-          border-color: #CBD5E1;
+          border-color: #0D7A75;
+          color: #0D7A75;
+        }
+
+        .as-btn-photo.active {
+          border-color: #0D7A75;
+          background: #E6F7F5;
+          color: #0D7A75;
+          box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.12);
+        }
+
+        .as-photo-chevron {
+          transition: transform 0.2s ease;
+          color: #64748B;
+        }
+
+        .as-photo-chevron.rotated {
+          transform: rotate(180deg);
+        }
+
+        /* Modern Floating Dropdown Menu */
+        .as-photo-dropdown-menu {
+          position: absolute;
+          top: calc(100% + 8px);
+          left: 50%;
+          transform: translateX(-50%);
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 6px;
+          box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.14), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
+          min-width: 195px;
+          z-index: 100;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          animation: asDropdownFade 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes asDropdownFade {
+          from {
+            opacity: 0;
+            transform: translateX(-50%) translateY(-6px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+          }
+        }
+
+        .as-photo-dropdown-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          padding: 8px 10px;
+          border: none;
+          background: transparent;
+          border-radius: 8px;
+          font-family: inherit;
+          text-align: left;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          box-sizing: border-box;
+        }
+
+        .as-photo-dropdown-item:hover {
+          background: #F8FAFC;
+        }
+
+        .as-dropdown-icon-box {
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
+        }
+
+        .as-icon-upload {
+          background: #E6F7F5;
+          color: #0D7A75;
+        }
+
+        .as-photo-dropdown-item:hover .as-icon-upload {
+          background: #0D7A75;
+          color: #FFFFFF;
+        }
+
+        .as-icon-view {
+          background: #F1F5F9;
+          color: #475569;
+        }
+
+        .as-photo-dropdown-item:hover .as-icon-view {
+          background: #334155;
+          color: #FFFFFF;
+        }
+
+        .as-icon-delete {
+          background: #FEF2F2;
+          color: #EF4444;
+        }
+
+        .as-item-delete:hover .as-icon-delete {
+          background: #EF4444;
+          color: #FFFFFF;
+        }
+
+        .as-dropdown-item-text {
+          display: flex;
+          flex-direction: column;
+          line-height: 1.25;
+        }
+
+        .as-item-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: #1E293B;
+        }
+
+        .as-item-desc {
+          font-size: 11px;
+          color: #64748B;
+        }
+
+        .as-item-delete .as-item-title {
+          color: #EF4444;
+        }
+
+        .as-item-delete:hover {
+          background: #FEF2F2 !important;
+        }
+
+        .as-photo-dropdown-divider {
+          height: 1px;
+          background: #F1F5F9;
+          margin: 4px 6px;
         }
 
         .as-photo-hint {
@@ -794,6 +1285,39 @@ export const AdminSettingsPage = () => {
         }
 
         /* Social Badges next to label text */
+        .as-label-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 6px;
+        }
+
+        .as-label-row .as-label {
+          margin-bottom: 0;
+        }
+
+        .as-open-link-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11.5px;
+          font-weight: 600;
+          color: #0D7A75;
+          text-decoration: none;
+          padding: 2px 7px;
+          border-radius: 6px;
+          background: #F0FDFB;
+          border: 1px solid #CCFBF1;
+          transition: all 0.15s ease;
+          line-height: 1.3;
+        }
+
+        .as-open-link-btn:hover {
+          background: #0D7A75;
+          color: #FFFFFF;
+          border-color: #0D7A75;
+        }
+
         .as-social-badge {
           display: inline-flex;
           align-items: center;
@@ -804,6 +1328,14 @@ export const AdminSettingsPage = () => {
           margin-right: 6px;
           flex-shrink: 0;
           color: #FFFFFF;
+          text-decoration: none;
+          cursor: pointer;
+          transition: transform 0.15s ease, opacity 0.15s ease;
+        }
+
+        .as-social-badge:hover {
+          transform: scale(1.1);
+          opacity: 0.9;
         }
 
         .as-instagram-badge {

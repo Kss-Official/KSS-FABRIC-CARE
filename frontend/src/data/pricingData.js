@@ -30,8 +30,8 @@ export const PRICING_CATEGORIES = [
     id: 'dry-cleaning',
     name: 'Dry Cleaning',
     desc: 'For your delicate and premium wear.',
-    price: '₹ 120 / item',
-    isPriceEnabled: false, // Item prices hidden as per spec
+    price: '₹ 120 / piece',
+    isPriceEnabled: true,
     icon: 'Sparkles'
   },
   {
@@ -39,7 +39,7 @@ export const PRICING_CATEGORIES = [
     name: 'Steam Iron',
     desc: 'Crisp and perfectly pressed.',
     price: '₹ 20 / item',
-    isPriceEnabled: false, // Item prices hidden as per spec
+    isPriceEnabled: true,
     icon: 'Flame'
   },
   {
@@ -561,19 +561,170 @@ export const PRICING_ITEMS = [
 ];
 
 /**
- * Helper to fetch category items for a given category and subcategory
+ * 4 Core Express Laundry Services
  */
-export const getCategoryItems = (categoryId, subcategoryId) => {
+export const EXPRESS_SERVICES = [
+  {
+    id: 'wash-fold',
+    name: 'Wash & Fold',
+    icon: 'Shirt',
+    desc: 'Washed, dried & neatly folded',
+    tag: '24h Priority'
+  },
+  {
+    id: 'wash-iron',
+    name: 'Wash & Iron',
+    icon: 'Layers',
+    desc: 'Washed & crisply ironed',
+    tag: '24h Priority'
+  },
+  {
+    id: 'dry-cleaning',
+    name: 'Dry Cleaning',
+    icon: 'Sparkles',
+    desc: 'Delicate dry cleaning & press',
+    tag: '24h Priority'
+  },
+  {
+    id: 'steam-iron',
+    name: 'Steam Iron',
+    icon: 'Flame',
+    desc: 'Wrinkle-free steam pressing',
+    tag: '24h Priority'
+  }
+];
+
+/**
+ * Check if a specific clothing item is applicable to a given laundry service
+ */
+export const isItemApplicableToService = (item, serviceId) => {
+  if (!item) return false;
+  const id = item.id;
+
+  if (serviceId === 'wash-fold') {
+    // Structured formal 2pc suits/blazers are dry clean only
+    if (id === 'men-suit-2pc' || id === 'men-blazer') return false;
+    return true;
+  }
+
+  if (serviceId === 'wash-iron') {
+    // Exclude items that are never ironed (undergarments, socks, mats, heavy suits)
+    if (id === 'men-undergarments' || id === 'men-socks') return false;
+    if (id === 'hh-bath-mat' || id === 'hh-doormat' || id === 'hh-kitchen-towel') return false;
+    if (id === 'men-suit-2pc' || id === 'men-blazer') return false;
+    return true;
+  }
+
+  if (serviceId === 'dry-cleaning') {
+    // Delicate, formal, wool, ethnic garments and heavy linens
+    // Exclude everyday undergarments, basic socks, casual shorts, bath mats, doormats, towels
+    if (id === 'men-undergarments' || id === 'men-socks' || id === 'men-shorts') return false;
+    if (id === 'women-nightwear' || id === 'women-leggings') return false;
+    if (id === 'kids-romper' || id === 'kids-baby-clothes') return false;
+    if (id === 'hh-bath-mat' || id === 'hh-doormat' || id === 'hh-kitchen-towel' || id === 'hh-hand-towel') return false;
+    return true;
+  }
+
+  if (serviceId === 'steam-iron') {
+    // Items that can be pressed with high temperature steam
+    // Exclude undergarments, socks, thick bedding/quilts/duvets, mats, towels
+    if (id === 'men-undergarments' || id === 'men-socks') return false;
+    if (id === 'women-leggings' || id === 'women-nightwear') return false;
+    if (id === 'kids-baby-clothes' || id === 'kids-romper') return false;
+    if (id === 'hh-blanket' || id === 'hh-comforter' || id === 'hh-quilt' || id === 'hh-duvet' || id === 'hh-bath-mat' || id === 'hh-doormat' || id === 'hh-bath-towel') return false;
+    return true;
+  }
+
+  return true;
+};
+
+/**
+ * Determine base standard price for an item under a specific service
+ */
+export const getItemBasePrice = (item, serviceId) => {
+  if (!item) return 50;
+
+  if (serviceId === 'wash-fold') {
+    return item.prices?.['wash-fold'] || 40;
+  }
+
+  if (serviceId === 'wash-iron') {
+    return item.prices?.['wash-iron'] || 55;
+  }
+
+  if (serviceId === 'dry-cleaning') {
+    if (item.prices?.['dry-cleaning']) return item.prices['dry-cleaning'];
+    const n = String(item.name || '').toLowerCase();
+    if (n.includes('suit') || n.includes('lehenga')) return 250;
+    if (n.includes('blazer') || n.includes('gown') || n.includes('anarkali') || n.includes('blanket') || n.includes('quilt')) return 180;
+    if (n.includes('jacket') || n.includes('saree') || n.includes('comforter') || n.includes('curtain') || n.includes('duvet')) return 150;
+    if (n.includes('sweater') || n.includes('kurta') || n.includes('dress') || n.includes('bedsheet')) return 120;
+    if (n.includes('shirt') || n.includes('trouser') || n.includes('blouse') || n.includes('skirt')) return 90;
+    if (n.includes('tie') || n.includes('scarf') || n.includes('pillow')) return 60;
+    return 100;
+  }
+
+  if (serviceId === 'steam-iron') {
+    if (item.prices?.['steam-iron']) return item.prices['steam-iron'];
+    const n = String(item.name || '').toLowerCase();
+    if (n.includes('suit') || n.includes('blazer') || n.includes('jacket') || n.includes('saree') || n.includes('lehenga') || n.includes('gown')) return 50;
+    if (n.includes('kurta') || n.includes('pajama') || n.includes('dress') || n.includes('bedsheet') || n.includes('curtain') || n.includes('tablecloth')) return 30;
+    if (n.includes('tie') || n.includes('scarf') || n.includes('pillow') || n.includes('runner')) return 15;
+    return 20;
+  }
+
+  return 50;
+};
+
+/**
+ * Determine doubled Express Laundry price for an item based on selected service
+ */
+export const getExpressItemPrice = (item, serviceId = 'wash-fold') => {
+  const basePrice = getItemBasePrice(item, serviceId);
+  return basePrice * 2;
+};
+
+/**
+ * Helper to fetch category items for a given category and subcategory,
+ * with support for Express Laundry's 4 selected services and doubled prices.
+ */
+export const getCategoryItems = (categoryId, subcategoryId, expressService = 'wash-fold') => {
+  const isExpress = categoryId === 'express-laundry';
+  const effectiveService = isExpress ? (expressService || 'wash-fold') : categoryId;
   const category = PRICING_CATEGORIES.find(c => c.id === categoryId);
-  const isPriceEnabled = category ? category.isPriceEnabled : false;
 
   return PRICING_ITEMS
-    .filter(item => item.subcategory === subcategoryId)
-    .map(item => ({
-      id: item.id,
-      name: item.name,
-      unit: item.unit,
-      price: isPriceEnabled && item.prices ? item.prices[categoryId] : null,
-      isPriceEnabled: isPriceEnabled
-    }));
+    .filter(item => {
+      if (item.subcategory !== subcategoryId) return false;
+      return isItemApplicableToService(item, effectiveService);
+    })
+    .map(item => {
+      if (isExpress) {
+        const baseRate = getItemBasePrice(item, effectiveService);
+        const doubledPrice = getExpressItemPrice(item, effectiveService);
+        return {
+          id: item.id,
+          name: item.name,
+          unit: item.unit,
+          price: doubledPrice,
+          basePrice: baseRate,
+          isPriceEnabled: true,
+          expressService: effectiveService
+        };
+      }
+
+      const baseRate = getItemBasePrice(item, effectiveService);
+      const price = (item.prices && item.prices[effectiveService] != null) 
+        ? item.prices[effectiveService] 
+        : baseRate;
+
+      return {
+        id: item.id,
+        name: item.name,
+        unit: item.unit,
+        price: price,
+        basePrice: price,
+        isPriceEnabled: true
+      };
+    });
 };

@@ -91,7 +91,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if not user or not user.is_authenticated or user.role == User.Role.ADMIN or getattr(user, 'is_staff', False):
+        if not user or not user.is_authenticated:
+            return Order.objects.none()
+        if user.role == User.Role.ADMIN or getattr(user, 'is_staff', False):
             return Order.objects.all().prefetch_related('items', 'stage_logs').select_related(
                 'customer', 'assigned_pickup_driver', 'assigned_delivery_driver', 'assigned_laundry_staff'
             )
@@ -1384,11 +1386,22 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
                 customer_email=user.email
             )
         else:
-            default_customer = User.objects.filter(role=User.Role.CUSTOMER).first() or User.objects.first()
+            cust_email = (self.request.data.get('customer_email') or '').strip().lower()
+            cust_name = (self.request.data.get('customer_name') or 'Customer').strip()
+            cust_user = None
+            if cust_email:
+                cust_user = User.objects.filter(email__iexact=cust_email).first()
+                if not cust_user:
+                    cust_user = User.objects.create(
+                        email=cust_email,
+                        username=cust_email,
+                        full_name=cust_name,
+                        role=User.Role.CUSTOMER
+                    )
             serializer.save(
-                customer=default_customer,
-                customer_name=self.request.data.get('customer_name', 'Priya Sharma'),
-                customer_email=self.request.data.get('customer_email', 'priya.sharma@example.com')
+                customer=cust_user,
+                customer_name=cust_name,
+                customer_email=cust_email
             )
 
     @action(detail=True, methods=['post'], url_path='reply')

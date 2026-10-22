@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { useAuth } from '../context/AuthContext';
 import { ordersApi } from '../api/apiClient';
-import { subscribeOrderById, subscribeOrders } from '../services/firestoreService';
+import { subscribeOrderById } from '../services/firestoreService';
+import { subscribeCustomerOrders } from '../services/customerDataService';
 import { 
   Package, 
   Clock, 
@@ -28,7 +29,7 @@ import {
 import { formatOrderId } from '../utils/helpers';
 
 export const TrackOrder = () => {
-  const { activeTrackingOrderId, navigateTo, startBooking } = useBooking();
+  const { activeTrackingOrderId, setActiveTrackingOrderId, navigateTo, startBooking } = useBooking();
   const { currentUser } = useAuth();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -36,25 +37,54 @@ export const TrackOrder = () => {
 
   const effectiveTrackingId = activeTrackingOrderId || (typeof window !== 'undefined' ? sessionStorage.getItem('fabricare_active_tracking_id') : null);
 
+  const isOrderOwnedByCurrentCustomer = useCallback((o) => {
+    if (!o) return false;
+    const myId = String(currentUser?.uid || currentUser?.id || '').toLowerCase().trim();
+    const myEmail = (currentUser?.email || '').toLowerCase().trim();
+    if (!myId && !myEmail) return false;
+    const cId = String(o.customerId || o.customer_id || o.userId || '').toLowerCase().trim();
+    const cEmail = String(o.customerEmail || o.customer_email || o.customer?.email || '').toLowerCase().trim();
+    if (myId && cId && cId === myId) return true;
+    if (myEmail && cEmail && cEmail === myEmail) return true;
+    return false;
+  }, [currentUser]);
+
   const fetchOrderDetails = useCallback(async () => {
+    const myId = currentUser?.uid || currentUser?.id;
+    const myEmail = currentUser?.email;
+    if (!myId && !myEmail) {
+      setOrder(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       if (effectiveTrackingId) {
         const res = await ordersApi.getOrderById(effectiveTrackingId);
-        if (res?.data) {
+        if (res?.data && isOrderOwnedByCurrentCustomer(res.data)) {
           setOrder(res.data);
+          setLoading(false);
           return;
+        } else if (res?.data && !isOrderOwnedByCurrentCustomer(res.data)) {
+          // If the tracking ID belonged to a previous customer, clear it
+          if (setActiveTrackingOrderId) setActiveTrackingOrderId(null);
+          try {
+            sessionStorage.removeItem('fabricare_active_tracking_id');
+          } catch (_) {}
         }
       }
+
       const res = await ordersApi.getOrders();
       const list = Array.isArray(res?.data) ? res.data : (res?.data?.items || res?.data?.results || []);
-      if (list.length > 0) {
-        // If effectiveTrackingId was requested, match in user orders list first
+      const userList = list.filter(isOrderOwnedByCurrentCustomer);
+
+      if (userList.length > 0) {
         if (effectiveTrackingId) {
           const cleanTarget = String(effectiveTrackingId).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
           const targetDigits = cleanTarget.replace(/\D/g, '');
-          const matchedOrder = list.find(o => {
+          const matchedOrder = userList.find(o => {
             const cCode = String(o.code || o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
             const cId = String(o.id || o.docId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
             if (cCode === cleanTarget || cId === cleanTarget) return true;
@@ -63,35 +93,40 @@ export const TrackOrder = () => {
           });
           if (matchedOrder) {
             setOrder(matchedOrder);
+            setLoading(false);
             return;
           }
         }
 
-        if (!effectiveTrackingId) {
-          const myId = currentUser?.uid || currentUser?.id;
-          const myEmail = currentUser?.email;
-          const userList = list.filter(o => 
-            (myId && (o.customer_id === myId || o.customerId === myId || o.userId === myId)) ||
-            (myEmail && (o.customer?.email === myEmail || o.customer_email === myEmail))
-          );
-          const candidates = userList.length > 0 ? userList : list;
-          const act = candidates.find(o => {
-            const s = String(o.status || '').toUpperCase();
-            return s !== 'DELIVERED' && s !== 'COMPLETED' && s !== 'CANCELLED';
-          }) || candidates[0];
-          setOrder(act);
-        }
+        const act = userList.find(o => {
+          const s = String(o.status || '').toUpperCase();
+          return s !== 'DELIVERED' && s !== 'COMPLETED' && s !== 'CANCELLED';
+        }) || userList[0] || null;
+        setOrder(act);
+      } else {
+        setOrder(null);
       }
     } catch (e) {
       console.warn('Fetch order details error:', e);
       setError('Unable to refresh order details');
+      setOrder(null);
     } finally {
       setLoading(false);
     }
-  }, [effectiveTrackingId, currentUser]);
+  }, [effectiveTrackingId, currentUser, isOrderOwnedByCurrentCustomer, setActiveTrackingOrderId]);
 
   useEffect(() => {
     let isSubscribed = true;
+    const myId = currentUser?.uid || currentUser?.id;
+    const myEmail = currentUser?.email;
+
+    if (!myId && !myEmail) {
+      setOrder(null);
+      setLoading(false);
+      return;
+    }
+
+    setOrder(null);
     setLoading(true);
     setError(null);
 
@@ -102,99 +137,60 @@ export const TrackOrder = () => {
         effectiveTrackingId,
         (fireOrder) => {
           if (!isSubscribed) return;
-          if (fireOrder) {
+          if (fireOrder && isOrderOwnedByCurrentCustomer(fireOrder)) {
             setOrder(fireOrder);
             setLoading(false);
           } else {
             // Try API fallback
             ordersApi.getOrderById(effectiveTrackingId)
               .then(res => {
-                if (isSubscribed && res?.data) {
+                if (isSubscribed && res?.data && isOrderOwnedByCurrentCustomer(res.data)) {
                   setOrder(res.data);
                   setLoading(false);
                 } else {
-                  // Fallback: search in orders list for requested order
-                  ordersApi.getOrders().then(oRes => {
-                    if (!isSubscribed) return;
-                    const oList = Array.isArray(oRes?.data) ? oRes.data : [];
-                    const cleanTarget = String(effectiveTrackingId).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-                    const targetDigits = cleanTarget.replace(/\D/g, '');
-                    const matchedOrder = oList.find(o => {
-                      const cCode = String(o.code || o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-                      const cId = String(o.id || o.docId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-                      if (cCode === cleanTarget || cId === cleanTarget) return true;
-                      if (targetDigits.length >= 4 && (cCode.includes(targetDigits) || cId.includes(targetDigits))) return true;
-                      return false;
-                    });
-                    if (matchedOrder) {
-                      setOrder(matchedOrder);
-                    }
-                    setLoading(false);
-                  }).catch(() => {
-                    if (isSubscribed) setLoading(false);
-                  });
+                  // Not owned by this customer or doesn't exist, search within customer's own orders
+                  fetchOrderDetails();
                 }
               })
-              .catch(() => {})
-              .finally(() => {
-                if (isSubscribed) setLoading(false);
+              .catch(() => {
+                if (isSubscribed) fetchOrderDetails();
               });
           }
         },
         () => {
-          if (isSubscribed) setLoading(false);
+          if (isSubscribed) fetchOrderDetails();
         }
       );
     } else {
-      unsubscribe = subscribeOrders((fireOrders) => {
-        if (!isSubscribed) return;
-        if (fireOrders && fireOrders.length > 0) {
-          const myId = currentUser?.uid || currentUser?.id;
-          const myEmail = currentUser?.email;
-          const userOrders = fireOrders.filter(o => 
-            (myId && (o.customer_id === myId || o.customerId === myId || o.userId === myId)) ||
-            (myEmail && (o.customer?.email === myEmail || o.customer_email === myEmail))
-          );
-          const candidates = userOrders.length > 0 ? userOrders : fireOrders;
-          const active = candidates.find(o => {
-            const s = String(o.status || '').toUpperCase();
-            return s !== 'COMPLETED' && s !== 'DELIVERED' && s !== 'CANCELLED';
-          }) || candidates[0];
-          setOrder(active);
+      unsubscribe = subscribeCustomerOrders(
+        myId,
+        (userOrders) => {
+          if (!isSubscribed) return;
+          if (Array.isArray(userOrders) && userOrders.length > 0) {
+            const owned = userOrders.filter(isOrderOwnedByCurrentCustomer);
+            const active = owned.find(o => {
+              const s = String(o.status || '').toUpperCase();
+              return s !== 'COMPLETED' && s !== 'DELIVERED' && s !== 'CANCELLED';
+            }) || owned[0] || null;
+            setOrder(active);
+          } else {
+            setOrder(null);
+          }
           setLoading(false);
-        } else {
-          ordersApi.getOrders()
-            .then(res => {
-              if (!isSubscribed) return;
-              const list = Array.isArray(res?.data) ? res.data : (res?.data?.items || res?.data?.results || []);
-              if (list.length > 0) {
-                const myId = currentUser?.uid || currentUser?.id;
-                const myEmail = currentUser?.email;
-                const userList = list.filter(o => 
-                  (myId && (o.customer_id === myId || o.customerId === myId || o.userId === myId)) ||
-                  (myEmail && (o.customer?.email === myEmail || o.customer_email === myEmail))
-                );
-                const candidates = userList.length > 0 ? userList : list;
-                const act = candidates.find(o => {
-                  const s = String(o.status || '').toUpperCase();
-                  return s !== 'DELIVERED' && s !== 'COMPLETED' && s !== 'CANCELLED';
-                }) || candidates[0];
-                setOrder(act);
-              }
-            })
-            .catch(() => {})
-            .finally(() => {
-              if (isSubscribed) setLoading(false);
-            });
-        }
-      });
+        },
+        (err) => {
+          console.warn('Customer tracking orders subscribe note:', err);
+          fetchOrderDetails();
+        },
+        myEmail
+      );
     }
 
     return () => {
       isSubscribed = false;
-      unsubscribe();
+      if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [effectiveTrackingId, currentUser]);
+  }, [effectiveTrackingId, currentUser?.uid, currentUser?.email, fetchOrderDetails, isOrderOwnedByCurrentCustomer]);
 
   if (loading) {
     return (

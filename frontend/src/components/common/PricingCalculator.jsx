@@ -3,6 +3,7 @@ import { useBooking } from '../../context/BookingContext';
 import { 
   PRICING_CATEGORIES, 
   PRICING_SUBCATEGORIES, 
+  EXPRESS_SERVICES,
   getCategoryItems 
 } from '../../data/pricingData';
 import { 
@@ -22,6 +23,7 @@ import {
   Minus, 
   ArrowRight, 
   CheckCircle2, 
+  Check,
   Truck, 
   ShieldCheck, 
   Leaf 
@@ -78,6 +80,9 @@ export const PricingCalculator = () => {
 
   // State 1: Active Main Category ('wash-fold' | 'wash-iron' | 'dry-cleaning' | 'steam-iron' | 'express-laundry' | null)
   const [activeCategory, setActiveCategory] = useState('wash-fold');
+
+  // State for Express Laundry: Selected Service ('wash-fold' | 'wash-iron' | 'dry-cleaning' | 'steam-iron')
+  const [activeExpressService, setActiveExpressService] = useState('wash-fold');
 
   // State 2: Active Subcategory ('men' | 'women' | 'kids' | 'household' | null)
   const [activeSubcategory, setActiveSubcategory] = useState(null);
@@ -192,7 +197,7 @@ export const PricingCalculator = () => {
 
   // Active items for current category + subcategory
   const activeItems = (activeCategory && activeSubcategory)
-    ? getCategoryItems(activeCategory, activeSubcategory).filter(item =>
+    ? getCategoryItems(activeCategory, activeSubcategory, activeExpressService).filter(item =>
         item.name.toLowerCase().includes(itemSearchQuery.trim().toLowerCase())
       )
     : [];
@@ -274,16 +279,66 @@ export const PricingCalculator = () => {
                     {/* Subcategories & Items Container (Underneath Main Category) */}
                     {isCatOpen && (
                       <div className="subcategories-panel animate-fade-in">
+                        {/* If Express Laundry: Display 4 Core Service Options First */}
+                        {category.id === 'express-laundry' && (
+                          <div className="express-services-select-block">
+                            <div className="subcategories-instruction">
+                              <span>SELECT A SERVICE:</span>
+                            </div>
+                            <div className="express-service-pill-row">
+                              {EXPRESS_SERVICES.map(svc => {
+                                const isSvcActive = activeExpressService === svc.id;
+                                const svcCount = selectedItemsList
+                                  .filter(it => it.categoryId === 'express-laundry' && (it.expressService === svc.id || (!it.expressService && svc.id === 'wash-fold')))
+                                  .reduce((s, it) => s + it.quantity, 0);
+
+                                return (
+                                  <button
+                                    key={svc.id}
+                                    type="button"
+                                    className={`express-service-btn ${isSvcActive ? 'active' : ''}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveExpressService(svc.id);
+                                      setActiveSubcategory(null);
+                                      setItemSearchQuery('');
+                                    }}
+                                  >
+                                    <span className="express-svc-icon">{renderCategoryIcon(svc.icon)}</span>
+                                    <span className="express-svc-name">{svc.name}</span>
+                                    {svcCount > 0 && <span className="sub-count-badge">{svcCount}</span>}
+                                    {isSvcActive && <Check size={12} strokeWidth={3} className="express-check-icon" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="subcategories-instruction">
-                          <span>Select a subcategory:</span>
+                          <span>
+                            {category.id === 'express-laundry' 
+                              ? `SELECT A SUBCATEGORY (${EXPRESS_SERVICES.find(s => s.id === activeExpressService)?.name || 'Wash & Fold'}):`
+                              : 'SELECT A SUBCATEGORY:'}
+                          </span>
                         </div>
 
                         {/* 4 Subcategories Pills: Men, Women, Kids, Household */}
                         <div className="subcategories-pill-row">
-                          {PRICING_SUBCATEGORIES.map(sub => {
+                          {PRICING_SUBCATEGORIES.filter(sub => {
+                            if (activeCategory === 'express-laundry') {
+                              return getCategoryItems('express-laundry', sub.id, activeExpressService).length > 0;
+                            }
+                            return true;
+                          }).map(sub => {
                             const isSubOpen = activeSubcategory === sub.id;
+                            const isExpress = activeCategory === 'express-laundry';
                             const subCount = selectedItemsList
-                              .filter(it => it.categoryId === activeCategory && it.subcategoryId === sub.id)
+                              .filter(it => {
+                                if (it.categoryId !== activeCategory) return false;
+                                if (isExpress && (it.expressService || 'wash-fold') !== activeExpressService) return false;
+                                return it.subcategoryId === sub.id;
+                              })
                               .reduce((s, it) => s + it.quantity, 0);
 
                             return (
@@ -320,6 +375,11 @@ export const PricingCalculator = () => {
                               <div className="items-toolbar-left">
                                 <span className="items-toolbar-title">
                                   {PRICING_SUBCATEGORIES.find(s => s.id === activeSubcategory)?.name} Items
+                                  {activeCategory === 'express-laundry' && (
+                                    <span className="express-toolbar-sub-badge">
+                                      {EXPRESS_SERVICES.find(s => s.id === activeExpressService)?.name} · 2x Express Rate
+                                    </span>
+                                  )}
                                 </span>
                                 <span className="items-count-badge">
                                   {activeItems.length} items
@@ -353,8 +413,11 @@ export const PricingCalculator = () => {
                               {activeItems.length > 0 ? (
                                 <div className="items-table-grid">
                                   {activeItems.map((item) => {
-                                    const itemKey = `${activeCategory}__${item.id}`;
-                                    const currentQty = getItemQuantity(activeCategory, item.id);
+                                    const isExpress = activeCategory === 'express-laundry';
+                                    const itemKey = isExpress
+                                      ? `express-laundry__${activeExpressService}__${item.id}`
+                                      : `${activeCategory}__${item.id}`;
+                                    const currentQty = getItemQuantity(activeCategory, item.id, activeExpressService);
                                     const isSelected = currentQty > 0;
 
                                     return (
@@ -365,7 +428,13 @@ export const PricingCalculator = () => {
                                         </div>
 
                                         <div className="item-row-right">
-                                          {item.isPriceEnabled && item.price ? (
+                                          {isExpress ? (
+                                            <div className="item-price-pill express-pill">
+                                              <span className="price-symbol">₹</span>
+                                              <span className="price-number">{item.price}</span>
+                                              <span className="express-tag-micro">⚡ Express</span>
+                                            </div>
+                                          ) : item.isPriceEnabled && item.price ? (
                                             activeCategory === 'wash-iron' && selectedItemsList.some(other =>
                                               (other.categoryId === 'wash-fold' || other.categoryId === 'express-laundry') &&
                                               (other.id === item.id || (other.name && item.name && other.name.trim().toLowerCase() === item.name.trim().toLowerCase())) &&
@@ -417,7 +486,7 @@ export const PricingCalculator = () => {
                                               className="btn-select-item"
                                               onClick={(e) => {
                                                 e.stopPropagation();
-                                                addItem(item, activeCategory, activeSubcategory);
+                                                addItem(item, activeCategory, activeSubcategory, 1, activeExpressService);
                                               }}
                                               aria-label={`Add ${item.name}`}
                                             >
@@ -850,6 +919,90 @@ export const PricingCalculator = () => {
           text-transform: uppercase;
           letter-spacing: 0.5px;
           margin-bottom: 10px;
+        }
+
+        .express-services-select-block {
+          margin-bottom: 12px;
+        }
+
+        .express-service-pill-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+          margin-bottom: 14px;
+        }
+
+        .express-service-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 10px 10px;
+          border-radius: 10px;
+          border: 1.5px solid #CDECE7;
+          background: #FFFFFF;
+          color: #164E4D;
+          font-family: 'Poppins', sans-serif;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+        }
+
+        .express-service-btn:hover {
+          background: #E1F6F3;
+          border-color: #087F8C;
+        }
+
+        .express-service-btn.active {
+          background: #0D7A75;
+          color: #FFFFFF;
+          border-color: #0D7A75;
+          box-shadow: 0 4px 12px rgba(13, 122, 117, 0.25);
+        }
+
+        .express-service-btn.active .express-svc-icon svg {
+          stroke: #FFFFFF !important;
+          color: #FFFFFF !important;
+        }
+
+        .express-svc-icon {
+          display: flex;
+          align-items: center;
+        }
+
+        .express-check-icon {
+          margin-left: 2px;
+        }
+
+        .express-toolbar-sub-badge {
+          display: inline-block;
+          margin-left: 8px;
+          padding: 2px 8px;
+          background: #FFF7ED;
+          color: #EA580C;
+          border: 1px solid #FFEDD5;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 600;
+        }
+
+        .item-price-pill.express-pill {
+          background: #FEF3C7;
+          border-color: #FDE68A;
+          color: #B45309;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .express-tag-micro {
+          font-size: 10px;
+          font-weight: 700;
+          color: #D97706;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
         }
 
         .subcategories-pill-row {

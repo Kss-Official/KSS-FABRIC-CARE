@@ -14,13 +14,12 @@ import {
   Layers, 
   Sparkles, 
   Flame, 
-  Footprints, 
-  BedDouble, 
   Check, 
   ArrowRight,
   UserPlus,
   Menu,
-  SunMedium
+  SunMedium,
+  Zap
 } from 'lucide-react';
 
 export const CreateOrderDrawer = () => {
@@ -43,8 +42,7 @@ export const CreateOrderDrawer = () => {
     { id: 'wi', name: 'Wash & Iron', rate: 180, count: 0, selected: false, icon: 'Layers' },
     { id: 'dc', name: 'Dry Cleaning', rate: 240, count: 1, selected: true, icon: 'Sparkles' },
     { id: 'si', name: 'Steam Iron', rate: 150, count: 0, selected: false, icon: 'Flame' },
-    { id: 'sl', name: 'Shoe Laundry', rate: 200, count: 0, selected: false, icon: 'Footprints' },
-    { id: 'hc', name: 'Home Care', rate: 300, count: 0, selected: false, icon: 'BedDouble' },
+    { id: 'el', name: 'Express Laundry', rate: 200, count: 0, selected: false, icon: 'Zap' },
   ]);
 
   const todayDateStr = useMemo(() => formatDisplayDate(new Date()), []);
@@ -121,10 +119,8 @@ export const CreateOrderDrawer = () => {
         return <Layers size={18} strokeWidth={2} />;
       case 'Steam Iron':
         return <Flame size={18} strokeWidth={2} />;
-      case 'Shoe Laundry':
-        return <Footprints size={18} strokeWidth={2} />;
-      case 'Home Care':
-        return <BedDouble size={18} strokeWidth={2} />;
+      case 'Express Laundry':
+        return <Zap size={18} strokeWidth={2} />;
       default:
         return <Shirt size={18} strokeWidth={2} />;
     }

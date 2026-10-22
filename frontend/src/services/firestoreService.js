@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { ref, onValue, off, get, set, update, push } from 'firebase/database';
 import { db, rtdb, isFirebaseConfigured } from '../config/firebase.js';
+import { DEFAULT_SERVICES } from './adminDataService.js';
 
 // Standard uniform order ID formatter
 export const formatOrderId = (rawId) => {
@@ -42,140 +43,7 @@ export const formatOrderId = (rawId) => {
 // INITIAL SEED DATA FOR FIRST LAUNCH IN USER'S FIREBASE PROJECT
 // ===============================================================
 
-export const INITIAL_SERVICES_ADMIN = [
-  {
-    id: 1,
-    name: 'Shirt',
-    description: 'Regular shirt cleaning and pressing',
-    category: 'Wash & Fold',
-    price: 80,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Shirt',
-    type: 'Standard'
-  },
-  {
-    id: 2,
-    name: 'Jeans',
-    description: 'Denim washing and care',
-    category: 'Wash & Fold',
-    price: 120,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Jeans',
-    type: 'Standard'
-  },
-  {
-    id: 3,
-    name: 'T-Shirt',
-    description: 'Regular wash and fold',
-    category: 'Wash & Fold',
-    price: 70,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'TShirt',
-    type: 'Standard'
-  },
-  {
-    id: 4,
-    name: 'Formal Suit',
-    description: 'Professional dry cleaning',
-    category: 'Dry Cleaning',
-    price: 250,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Suit',
-    type: 'Premium'
-  },
-  {
-    id: 5,
-    name: 'Saree',
-    description: 'Special fabric care with dry cleaning',
-    category: 'Dry Cleaning',
-    price: 220,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Saree',
-    type: 'Premium'
-  },
-  {
-    id: 6,
-    name: 'Bedsheet (Single)',
-    description: 'Wash, dry and fold',
-    category: 'Household',
-    price: 90,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Bedsheet',
-    type: 'Standard'
-  },
-  {
-    id: 7,
-    name: 'Blanket',
-    description: 'Deep cleaning and sanitization',
-    category: 'Household',
-    price: 300,
-    turnaround: '2–3 days',
-    status: 'Inactive',
-    icon: 'Blanket',
-    type: 'Premium'
-  },
-  {
-    id: 8,
-    name: 'Curtain (Per Piece)',
-    description: 'Dry cleaning and freshening',
-    category: 'Household',
-    price: 180,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Curtain',
-    type: 'Standard'
-  },
-  {
-    id: 9,
-    name: 'Silk Saree',
-    description: 'Delicate fabric dry cleaning',
-    category: 'Dry Cleaning',
-    price: 450,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Saree',
-    type: 'Premium'
-  },
-  {
-    id: 10,
-    name: 'Winter Jacket',
-    description: 'Heavy wool dry cleaning & sanitization',
-    category: 'Dry Cleaning',
-    price: 550,
-    turnaround: '3–4 days',
-    status: 'Active',
-    icon: 'Suit',
-    type: 'Premium'
-  },
-  {
-    id: 11,
-    name: 'Carpet Cleaning',
-    description: 'Deep steam sanitization & stain removal',
-    category: 'Household',
-    price: 850,
-    turnaround: '3–4 days',
-    status: 'Inactive',
-    icon: 'Blanket',
-    type: 'Premium'
-  },
-  {
-    id: 12,
-    name: 'Cushion Covers',
-    description: 'Gentle wash and steam press',
-    category: 'Wash & Fold',
-    price: 680,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Bedsheet',
-    type: 'Standard'
-  }
-];
+export const INITIAL_SERVICES_ADMIN = DEFAULT_SERVICES;
 
 export const INITIAL_FAQS_ADMIN = [
   {
@@ -231,7 +99,7 @@ export const INITIAL_FAQS_ADMIN = [
     id: 'faq-8',
     question: 'What if I am not satisfied with the service?',
     answer: 'Your satisfaction is our priority. If you are not happy with the service, we offer a 100% free re-wash guarantee.',
-    status: 'Active',
+    status: 'Inactive',
     displayOrder: 8
   }
 ];
@@ -541,9 +409,9 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     parsedItems = d.items.map((it, idx) => {
       const q = Number(it.quantity || it.qty || 1);
       const rawPrice = Number(it.unitPrice ?? it.rate ?? it.price ?? 60);
-      const price = (rawPrice >= 2000 && rawPrice % 100 === 0) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
+      const price = (rawPrice >= 1000 || (rawPrice >= 500 && rawPrice % 100 === 0)) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
       const rawTotal = Number(it.lineTotal ?? it.total ?? q * price);
-      const total = (rawTotal >= 2000 && rawTotal % 100 === 0) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+      const total = (rawTotal >= 1000 || (rawTotal >= 500 && rawTotal % 100 === 0)) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
       const cat = detectItemCategory(it.category || it.categoryName || it.service_category, it.name || it.item_name || it.garment);
       return {
         id: it.id || `item_${idx + 1}`,
@@ -565,9 +433,9 @@ export const normalizeFirestoreOrder = (docData, docId) => {
       if (typeof val === 'object' && val !== null) {
         const q = Number(val.quantity || val.qty || 1);
         const rawPrice = Number(val.unitPrice ?? val.rate ?? val.price ?? 60);
-        const price = (rawPrice >= 2000 && rawPrice % 100 === 0) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
+        const price = (rawPrice >= 1000 || (rawPrice >= 500 && rawPrice % 100 === 0)) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
         const rawTotal = Number(val.lineTotal ?? val.total ?? q * price);
-        const total = (rawTotal >= 2000 && rawTotal % 100 === 0) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+        const total = (rawTotal >= 1000 || (rawTotal >= 500 && rawTotal % 100 === 0)) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
         const cat = detectItemCategory(val.category || val.categoryName || val.service_category, val.name || val.item_name || val.garment || k);
         return {
           id: k,
@@ -596,31 +464,31 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     : (Array.isArray(d.services) && d.services.length > 0 ? d.services.join(' + ') : (d.service || 'Laundry Bag'));
 
   let totalAmount = 0;
-  if (d.total_paise !== undefined || d.amount_paise !== undefined) {
+  if (itemsCalculatedTotal > 0) {
+    totalAmount = Number(itemsCalculatedTotal.toFixed(2));
+  } else if (d.subtotal !== undefined && d.subtotal !== null && Number(d.subtotal) > 0) {
+    const rawSub = Number(d.subtotal);
+    totalAmount = (rawSub >= 1000 || (rawSub >= 500 && rawSub % 100 === 0)) ? Number((rawSub / 100).toFixed(2)) : Number(rawSub.toFixed(2));
+  } else if (d.total_paise !== undefined || d.amount_paise !== undefined) {
     totalAmount = Number(((d.total_paise || d.amount_paise) / 100).toFixed(2));
   } else if (d.total !== undefined && d.total !== null) {
-    const rawNum = Number(d.total);
-    if (rawNum >= 2000 || (itemsCalculatedTotal > 0 && Math.abs(rawNum - itemsCalculatedTotal * 100) < 50)) {
-      totalAmount = Number((rawNum / 100).toFixed(2));
-    } else {
-      totalAmount = Number(rawNum.toFixed(2));
-    }
+    let rawNum = Number(d.total);
+    if (rawNum >= 1000 || (rawNum >= 500 && rawNum % 100 === 0)) rawNum = rawNum / 100;
+    const expCharge = Number(d.expressCharge || 0);
+    if (expCharge > 0) rawNum -= (expCharge >= 1000 ? expCharge / 100 : expCharge);
+    totalAmount = Number(Math.max(0, rawNum).toFixed(2));
   } else if (d.total_amount !== undefined && d.total_amount !== null) {
-    const rawNum = Number(d.total_amount);
-    if (rawNum >= 2000 && itemsCalculatedTotal > 0 && Math.abs(rawNum - itemsCalculatedTotal * 100) < 50) {
-      totalAmount = Number((rawNum / 100).toFixed(2));
-    } else {
-      totalAmount = Number(rawNum.toFixed(2));
-    }
+    let rawNum = Number(d.total_amount);
+    if (rawNum >= 1000 || (rawNum >= 500 && rawNum % 100 === 0)) rawNum = rawNum / 100;
+    const expCharge = Number(d.expressCharge || 0);
+    if (expCharge > 0) rawNum -= (expCharge >= 1000 ? expCharge / 100 : expCharge);
+    totalAmount = Number(Math.max(0, rawNum).toFixed(2));
   } else if (d.amount !== undefined && d.amount !== null) {
-    const rawNum = Number(d.amount);
-    if (rawNum >= 2000 && itemsCalculatedTotal > 0 && Math.abs(rawNum - itemsCalculatedTotal * 100) < 50) {
-      totalAmount = Number((rawNum / 100).toFixed(2));
-    } else {
-      totalAmount = Number(rawNum.toFixed(2));
-    }
-  } else if (itemsCalculatedTotal > 0) {
-    totalAmount = Number(itemsCalculatedTotal.toFixed(2));
+    let rawNum = Number(d.amount);
+    if (rawNum >= 1000 || (rawNum >= 500 && rawNum % 100 === 0)) rawNum = rawNum / 100;
+    const expCharge = Number(d.expressCharge || 0);
+    if (expCharge > 0) rawNum -= (expCharge >= 1000 ? expCharge / 100 : expCharge);
+    totalAmount = Number(Math.max(0, rawNum).toFixed(2));
   } else {
     totalAmount = Number(d.estimatedTotal ?? 0);
   }
@@ -1571,7 +1439,7 @@ export const subscribeServices = (callback, errorCallback) => {
         }
         const val = snap.val();
         const list = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
-        callback(list.length > 0 ? list : INITIAL_SERVICES_ADMIN);
+        callback(list.length >= 69 ? list : INITIAL_SERVICES_ADMIN);
       }, (err) => {
         console.warn('RTDB Services subscription note:', err.message);
         callback(INITIAL_SERVICES_ADMIN);
@@ -1589,7 +1457,7 @@ export const subscribeServices = (callback, errorCallback) => {
             docId: d.id,
             ...d.data()
           }));
-          callback(servList);
+          callback(servList.length >= 69 ? servList : INITIAL_SERVICES_ADMIN);
         },
         (err) => {
           console.warn('Services snapshot subscription note:', err.message);
@@ -1614,7 +1482,7 @@ export const getFirestoreServices = async () => {
       if (snap.exists()) {
         const val = snap.val();
         const list = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
-        return list.length > 0 ? list : INITIAL_SERVICES_ADMIN;
+        return list.length >= 69 ? list : INITIAL_SERVICES_ADMIN;
       }
       return INITIAL_SERVICES_ADMIN;
     }
@@ -2161,16 +2029,13 @@ export const updateFirestoreUser = async (userId, updateData) => {
 // ===============================================================
 
 export const getUserAddresses = async (userId) => {
-  if (!isFirebaseConfigured || !db || !userId) return [];
+  if (!isFirebaseConfigured || !rtdb || !userId) return [];
   try {
-    const userDocRef = doc(db, 'users', String(userId));
-    const snap = await getDoc(userDocRef);
-    if (snap.exists() && snap.data().addresses) {
-      return Object.values(snap.data().addresses);
+    const snap = await get(ref(rtdb, `users/${userId}/addresses`));
+    if (snap.exists()) {
+      return Object.values(snap.val());
     }
-    return [
-      { id: 'addr_default', title: 'Home', label: 'Home', line1: '100ft Road, Indiranagar', city: 'Bengaluru', pincode: '560038', is_default: true }
-    ];
+    return [];
   } catch (err) {
     console.error('Error fetching addresses:', err);
     return [];
@@ -2178,23 +2043,22 @@ export const getUserAddresses = async (userId) => {
 };
 
 export const addUserAddress = async (userId, addressData) => {
-  if (!isFirebaseConfigured || !db || !userId) return null;
+  if (!isFirebaseConfigured || !rtdb || !userId) return null;
   try {
-    const userDocRef = doc(db, 'users', String(userId));
-    const snap = await getDoc(userDocRef);
     const addrId = addressData.id || `addr_${Date.now()}`;
     const newAddr = {
       id: addrId,
       title: addressData.label || addressData.title || 'Home',
       label: addressData.label || addressData.title || 'Home',
       line1: addressData.line1 || addressData.address_line || 'Bengaluru',
+      address_line: addressData.address_line || addressData.line1 || 'Bengaluru',
+      landmark: addressData.landmark || '',
       city: addressData.city || 'Bengaluru',
       pincode: addressData.pincode || '560038',
-      is_default: Boolean(addressData.is_default)
+      is_default: Boolean(addressData.is_default),
+      updatedAt: Date.now()
     };
-    const currentAddresses = snap.exists() && snap.data().addresses ? { ...snap.data().addresses } : {};
-    currentAddresses[addrId] = newAddr;
-    await setDoc(userDocRef, { addresses: currentAddresses, updatedAt: serverTimestamp() }, { merge: true });
+    await set(ref(rtdb, `users/${userId}/addresses/${addrId}`), newAddr);
     return newAddr;
   } catch (err) {
     console.error('Error adding address:', err);
@@ -2203,19 +2067,18 @@ export const addUserAddress = async (userId, addressData) => {
 };
 
 export const updateUserAddress = async (userId, addressId, addressData) => {
-  if (!isFirebaseConfigured || !db || !userId) return null;
+  if (!isFirebaseConfigured || !rtdb || !userId) return null;
   try {
-    const userDocRef = doc(db, 'users', String(userId));
-    const snap = await getDoc(userDocRef);
-    if (!snap.exists()) return null;
-    const currentAddresses = snap.data().addresses || {};
-    currentAddresses[addressId] = {
-      ...(currentAddresses[addressId] || {}),
+    const snap = await get(ref(rtdb, `users/${userId}/addresses/${addressId}`));
+    const existing = snap.exists() ? snap.val() : {};
+    const updated = {
+      ...existing,
       ...addressData,
-      id: addressId
+      id: addressId,
+      updatedAt: Date.now()
     };
-    await updateDoc(userDocRef, { addresses: currentAddresses, updatedAt: serverTimestamp() });
-    return currentAddresses[addressId];
+    await set(ref(rtdb, `users/${userId}/addresses/${addressId}`), updated);
+    return updated;
   } catch (err) {
     console.error('Error updating address:', err);
     throw err;
@@ -2223,14 +2086,9 @@ export const updateUserAddress = async (userId, addressId, addressData) => {
 };
 
 export const deleteUserAddress = async (userId, addressId) => {
-  if (!isFirebaseConfigured || !db || !userId) return true;
+  if (!isFirebaseConfigured || !rtdb || !userId) return true;
   try {
-    const userDocRef = doc(db, 'users', String(userId));
-    const snap = await getDoc(userDocRef);
-    if (!snap.exists()) return true;
-    const currentAddresses = snap.data().addresses || {};
-    delete currentAddresses[addressId];
-    await updateDoc(userDocRef, { addresses: currentAddresses, updatedAt: serverTimestamp() });
+    await set(ref(rtdb, `users/${userId}/addresses/${addressId}`), null);
     return true;
   } catch (err) {
     console.error('Error deleting address:', err);

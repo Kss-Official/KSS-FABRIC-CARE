@@ -25,6 +25,7 @@ import {
   startDeliveryTask,
   verifyAndCompleteDelivery
 } from '../services/deliveryDataService.js';
+import { calculateOrderTotal } from '../utils/helpers.js';
 
 export class ApiError extends Error {
   constructor(message, code = 'UNKNOWN_ERROR', fields = {}, status = 500) {
@@ -176,11 +177,11 @@ export const normalizeOrder = (o) => {
     const quantity = Number(it.quantity || it.qty || 1);
     let p = it.unitPrice ?? it.price ?? it.rate ?? 0;
     if (typeof p === 'string') p = parseFloat(p) || 0;
-    const unitPrice = (p >= 2000 && p % 100 === 0) ? (p / 100) : p;
+    const unitPrice = (p >= 1000 || (p >= 500 && p % 100 === 0)) ? (p / 100) : p;
 
-    let t = it.lineTotal ?? it.total ?? (unitPrice * quantity);
+    let t = it.lineTotal ?? it.total_price ?? it.total ?? (unitPrice * quantity);
     if (typeof t === 'string') t = parseFloat(t) || 0;
-    const lineTotal = (t >= 2000 && t % 100 === 0) ? (t / 100) : t;
+    const lineTotal = (t >= 1000 || (t >= 500 && t % 100 === 0)) ? (t / 100) : t;
 
     return {
       ...it,
@@ -195,19 +196,31 @@ export const normalizeOrder = (o) => {
     };
   });
 
-  let numTotal = o.total ?? o.total_amount ?? o.amount;
-  if (typeof numTotal === 'string') numTotal = parseFloat(numTotal) || 0;
-  let finalTotal = 0;
-  if (typeof numTotal === 'number' && !isNaN(numTotal)) {
-    finalTotal = (numTotal >= 2000 && numTotal % 100 === 0) ? (numTotal / 100) : numTotal;
-  }
-  if (!finalTotal && normItems.length > 0) {
-    finalTotal = normItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
-  }
-  const totalAmount = finalTotal.toFixed(2);
+  const totalAmount = calculateOrderTotal(o);
+  const finalTotal = parseFloat(totalAmount) || 0;
   const itemsSummary = normItems.length > 0
     ? normItems.map(it => `${it.name} × ${it.quantity}`).join(', ')
     : '1 Item';
+
+  const rawPayment = String(o.paymentStatus || o.payment_status || o.payment || '').toUpperCase();
+  const rawStatus = String(o.status || '').toUpperCase();
+  const isPaid = rawPayment.includes('PAID') || 
+                 rawPayment.includes('COMPLETED') || 
+                 rawPayment.includes('SUCCESS') || 
+                 Boolean(o.is_paid) ||
+                 ['PLACED', 'PICKED_UP', 'IN_CLEANING', 'DELIVERED', 'COMPLETED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'QUALITY_CHECK', 'PACKED', 'PENDING PICKUP', 'IN CLEANING', 'READY FOR DELIVERY', 'IN TRANSIT'].includes(rawStatus);
+
+  const isRefunded = rawPayment.includes('REFUND') || rawStatus === 'REFUNDED';
+  const isCancelled = (rawStatus === 'CANCELLED' || rawPayment.includes('CANCEL')) && !isPaid;
+
+  let paymentStatusDisplay = 'PAID';
+  if (isRefunded) {
+    paymentStatusDisplay = 'REFUNDED';
+  } else if (isCancelled) {
+    paymentStatusDisplay = 'CANCELLED';
+  } else if (!isPaid && (rawStatus === 'PAYMENT_PENDING' || rawPayment.includes('PENDING') || rawPayment.includes('UNPAID'))) {
+    paymentStatusDisplay = 'PENDING';
+  }
 
   return {
     ...o,
@@ -223,6 +236,11 @@ export const normalizeOrder = (o) => {
     total_amount: totalAmount,
     amount: totalAmount,
     total: finalTotal,
+    paymentStatus: paymentStatusDisplay === 'PAID' ? 'Paid' : (paymentStatusDisplay === 'PENDING' ? 'Pending' : paymentStatusDisplay),
+    payment_status: paymentStatusDisplay,
+    payment: paymentStatusDisplay === 'PAID' ? 'Paid' : (paymentStatusDisplay === 'PENDING' ? 'Pending' : paymentStatusDisplay),
+    is_paid: paymentStatusDisplay === 'PAID',
+    isPaid: paymentStatusDisplay === 'PAID',
     items: normItems,
     items_summary: itemsSummary,
     customer_name: o.customerName || o.customer_name || 'Customer',
@@ -235,12 +253,16 @@ export const ordersApi = {
   getOrders: async () => {
     let currentUid = auth.currentUser?.uid;
     let role = null;
+    let userEmail = auth.currentUser?.email;
+    let userPhone = '';
 
     if (!currentUid) {
       try {
         const cached = JSON.parse(localStorage.getItem('fabricare_user') || '{}');
         currentUid = cached?.uid || cached?.id;
         role = cached?.role;
+        userEmail = userEmail || cached?.email;
+        userPhone = cached?.phone || cached?.phoneNumber || '';
       } catch (_) { }
     }
 
@@ -253,38 +275,54 @@ export const ordersApi = {
       }
 
       if (role === 'admin') {
-        const snap = await get(query(ref(rtdb, 'orders'), limitToLast(50)));
+        const snap = await get(query(ref(rtdb, 'orders'), limitToLast(100)));
         if (!snap.exists()) return { data: [] };
         const raw = Object.values(snap.val()).reverse();
         return { data: raw.map(normalizeOrder) };
       }
+
+      const collectedOrders = [];
+      const seenIds = new Set();
+
+      const addUniqueOrder = (rawItem) => {
+        if (!rawItem) return;
+        const norm = normalizeOrder(rawItem);
+        const codeKey = String(norm.order_number || norm.code || norm.id || '').trim().toLowerCase();
+        const rawKey = String(rawItem.key || rawItem.id || norm.key || norm.id || '').trim().toLowerCase();
+        if (codeKey && seenIds.has(codeKey)) return;
+        if (rawKey && seenIds.has(rawKey)) return;
+        if (codeKey) seenIds.add(codeKey);
+        if (rawKey) seenIds.add(rawKey);
+        collectedOrders.push(norm);
+      };
 
       const uOrdersSnap = await get(ref(rtdb, `userOrders/${currentUid}`));
       if (uOrdersSnap.exists()) {
         const ids = Object.keys(uOrdersSnap.val());
         const promises = ids.map(async id => {
           const s = await get(ref(rtdb, `orders/${id}`));
-          return s.exists() ? normalizeOrder(s.val()) : null;
+          return s.exists() ? { ...s.val(), id, docId: id, key: id } : null;
         });
-        const res = (await Promise.all(promises)).filter(Boolean).reverse();
-        if (res.length > 0) return { data: res };
+        const res = (await Promise.all(promises)).filter(Boolean);
+        res.forEach(rawItem => addUniqueOrder(rawItem));
       }
 
-      // Fallback query across orders by customerId
-      const allSnap = await get(query(ref(rtdb, 'orders'), limitToLast(50)));
+      // Robust scan across orders strictly filtered by customerId / customerEmail / customerPhone
+      const allSnap = await get(ref(rtdb, 'orders'));
       if (allSnap.exists()) {
-        const all = Object.values(allSnap.val());
-        const matched = all.filter(o =>
-          o.customerId === currentUid ||
-          o.customer_id === currentUid ||
-          o.userId === currentUid
-        );
-        if (matched.length > 0) {
-          return { data: matched.map(normalizeOrder).reverse() };
-        }
+        const all = Object.entries(allSnap.val()).map(([k, val]) => ({ ...val, id: k, docId: k, key: k }));
+        const matched = all.filter(o => {
+          const cId = o.customerId || o.customer_id || o.userId;
+          if (cId && String(cId) === String(currentUid)) return true;
+          if (userEmail && (String(o.customerEmail || o.customer?.email || '').toLowerCase() === userEmail.toLowerCase())) return true;
+          if (userPhone && o.customerPhone && userPhone.length >= 10 && o.customerPhone.replace(/\D/g, '').endsWith(userPhone.replace(/\D/g, '').slice(-10))) return true;
+          return false;
+        });
+        matched.forEach(m => addUniqueOrder(m));
       }
 
-      return { data: [] };
+      collectedOrders.sort((a, b) => (b.createdAt || b.created_at || 0) - (a.createdAt || a.created_at || 0));
+      return { data: collectedOrders };
     } catch (err) {
       console.warn('ordersApi.getOrders error:', err);
       return { data: [] };
@@ -298,78 +336,111 @@ export const ordersApi = {
     const cleanTarget = cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     const targetDigits = cleanTarget.replace(/\D/g, '');
 
+    let foundOrder = null;
+
     // 1. Direct match on key
     try {
       const snap = await get(ref(rtdb, `orders/${cleanId}`));
       if (snap.exists()) {
-        return { data: normalizeOrder({ ...snap.val(), docId: cleanId, id: cleanId }) };
+        foundOrder = normalizeOrder({ ...snap.val(), docId: cleanId, id: cleanId });
       }
-      const rawSnap = await get(ref(rtdb, `orders/${rawId}`));
-      if (rawSnap.exists()) {
-        return { data: normalizeOrder({ ...rawSnap.val(), docId: rawId, id: rawId }) };
-      }
-    } catch (_) {}
-
-    // 2. Query by code
-    try {
-      const qSnap = await get(query(ref(rtdb, 'orders'), orderByChild('code'), equalTo(cleanId)));
-      if (qSnap.exists()) {
-        const firstKey = Object.keys(qSnap.val())[0];
-        return { data: normalizeOrder({ ...qSnap.val()[firstKey], docId: firstKey, id: firstKey }) };
-      }
-    } catch (_) {}
-
-    // 3. Scan all orders for robust matching by code, order_number, or digits
-    try {
-      const allSnap = await get(ref(rtdb, 'orders'));
-      if (allSnap.exists()) {
-        const all = allSnap.val() || {};
-        const foundKey = Object.keys(all).find(k => {
-          const o = all[k];
-          if (!o) return false;
-          const cK = String(k || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-          const cCode = String(o.code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-          const cId = String(o.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-          const cNum = String(o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-          const cDisp = String(o.displayId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-
-          // 1. Exact matches
-          if (
-            cK === cleanTarget ||
-            cCode === cleanTarget ||
-            cId === cleanTarget ||
-            cNum === cleanTarget ||
-            cDisp === cleanTarget
-          ) {
-            return true;
-          }
-
-          // 2. Suffix matches (only if candidate string has at least 4 chars)
-          if (cleanTarget.length >= 4) {
-            if (cCode.length >= 4 && (cCode.endsWith(cleanTarget) || cleanTarget.endsWith(cCode))) return true;
-            if (cNum.length >= 4 && (cNum.endsWith(cleanTarget) || cleanTarget.endsWith(cNum))) return true;
-            if (cId.length >= 4 && (cId.endsWith(cleanTarget) || cleanTarget.endsWith(cId))) return true;
-          }
-
-          // 3. Digit matches (only if candidate digits have at least 4 digits)
-          if (targetDigits.length >= 4) {
-            const codeDigits = cCode.replace(/\D/g, '');
-            const numDigits = cNum.replace(/\D/g, '');
-            const idDigits = cId.replace(/\D/g, '');
-            if (codeDigits.length >= 4 && (codeDigits === targetDigits || codeDigits.endsWith(targetDigits) || targetDigits.endsWith(codeDigits))) return true;
-            if (numDigits.length >= 4 && (numDigits === targetDigits || numDigits.endsWith(targetDigits) || targetDigits.endsWith(numDigits))) return true;
-            if (idDigits.length >= 4 && (idDigits === targetDigits || idDigits.endsWith(targetDigits) || targetDigits.endsWith(idDigits))) return true;
-          }
-          return false;
-        });
-
-        if (foundKey) {
-          return { data: normalizeOrder({ ...all[foundKey], docId: foundKey, id: foundKey }) };
+      if (!foundOrder) {
+        const rawSnap = await get(ref(rtdb, `orders/${rawId}`));
+        if (rawSnap.exists()) {
+          foundOrder = normalizeOrder({ ...rawSnap.val(), docId: rawId, id: rawId });
         }
       }
     } catch (_) {}
 
-    return { data: null };
+    // 2. Query by code
+    if (!foundOrder) {
+      try {
+        const qSnap = await get(query(ref(rtdb, 'orders'), orderByChild('code'), equalTo(cleanId)));
+        if (qSnap.exists()) {
+          const firstKey = Object.keys(qSnap.val())[0];
+          foundOrder = normalizeOrder({ ...qSnap.val()[firstKey], docId: firstKey, id: firstKey });
+        }
+      } catch (_) {}
+    }
+
+    // 3. Scan all orders for robust matching by code, order_number, or digits
+    if (!foundOrder) {
+      try {
+        const allSnap = await get(ref(rtdb, 'orders'));
+        if (allSnap.exists()) {
+          const all = allSnap.val() || {};
+          const foundKey = Object.keys(all).find(k => {
+            const o = all[k];
+            if (!o) return false;
+            const cK = String(k || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const cCode = String(o.code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const cId = String(o.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const cNum = String(o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const cDisp = String(o.displayId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+            // 1. Exact matches
+            if (
+              cK === cleanTarget ||
+              cCode === cleanTarget ||
+              cId === cleanTarget ||
+              cNum === cleanTarget ||
+              cDisp === cleanTarget
+            ) {
+              return true;
+            }
+
+            // 2. Suffix matches (only if candidate string has at least 4 chars)
+            if (cleanTarget.length >= 4) {
+              if (cCode.length >= 4 && (cCode.endsWith(cleanTarget) || cleanTarget.endsWith(cCode))) return true;
+              if (cNum.length >= 4 && (cNum.endsWith(cleanTarget) || cleanTarget.endsWith(cNum))) return true;
+              if (cId.length >= 4 && (cId.endsWith(cleanTarget) || cleanTarget.endsWith(cId))) return true;
+            }
+
+            // 3. Digit matches (only if candidate digits have at least 4 digits)
+            if (targetDigits.length >= 4) {
+              const codeDigits = cCode.replace(/\D/g, '');
+              const numDigits = cNum.replace(/\D/g, '');
+              const idDigits = cId.replace(/\D/g, '');
+              if (codeDigits.length >= 4 && (codeDigits === targetDigits || codeDigits.endsWith(targetDigits) || targetDigits.endsWith(codeDigits))) return true;
+              if (numDigits.length >= 4 && (numDigits === targetDigits || numDigits.endsWith(targetDigits) || targetDigits.endsWith(numDigits))) return true;
+              if (idDigits.length >= 4 && (idDigits === targetDigits || idDigits.endsWith(targetDigits) || targetDigits.endsWith(idDigits))) return true;
+            }
+            return false;
+          });
+
+          if (foundKey) {
+            foundOrder = normalizeOrder({ ...all[foundKey], docId: foundKey, id: foundKey });
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!foundOrder) return { data: null };
+
+    // Security check: if user is logged in as a customer, verify order belongs to them
+    let currentUid = auth.currentUser?.uid;
+    let role = null;
+    let userEmail = auth.currentUser?.email;
+    if (!currentUid) {
+      try {
+        const cached = JSON.parse(localStorage.getItem('fabricare_user') || '{}');
+        currentUid = cached?.uid || cached?.id;
+        role = cached?.role;
+        userEmail = userEmail || cached?.email;
+      } catch (_) {}
+    }
+
+    const isPrivileged = role === 'admin' || role === 'staff' || role === 'laundry_staff' || role === 'agent' || role === 'delivery_agent';
+    if (!isPrivileged && currentUid && foundOrder) {
+      const cId = foundOrder.customerId || foundOrder.customer_id || foundOrder.userId;
+      const cEmail = foundOrder.customerEmail || foundOrder.customer?.email;
+      const belongsToCustomer = (cId && String(cId) === String(currentUid)) || (userEmail && cEmail && String(cEmail).toLowerCase() === String(userEmail).toLowerCase());
+      if (!belongsToCustomer) {
+        return { data: null };
+      }
+    }
+
+    return { data: foundOrder };
   },
 
   createOrder: async (payload) => {
@@ -827,6 +898,70 @@ export const supportApi = {
     return { data: list };
   },
 
+  getReports: async (params = {}) => {
+    let uid = params?.customer_id || params?.customerId || auth.currentUser?.uid;
+    let userEmail = auth.currentUser?.email;
+    let userPhone = '';
+
+    if (!uid) {
+      try {
+        const saved = JSON.parse(localStorage.getItem('fabricare_user') || '{}');
+        uid = saved?.uid || saved?.id;
+        userEmail = userEmail || saved?.email;
+        userPhone = saved?.phone || saved?.phoneNumber || '';
+      } catch (_) {}
+    }
+
+    if (!uid) return { data: { results: [], items: [], total: 0 } };
+
+    try {
+      let complaintList = [];
+      const seenIds = new Set();
+
+      // 1. Fetch complaints indexed for this user in userComplaints/${uid}
+      const uSnap = await get(ref(rtdb, `userComplaints/${uid}`));
+      if (uSnap.exists()) {
+        const ids = Object.keys(uSnap.val());
+        const promises = ids.map(async id => {
+          const c = await get(ref(rtdb, `complaints/${id}`));
+          return c.exists() ? { ...c.val(), id } : null;
+        });
+        const resolved = (await Promise.all(promises)).filter(Boolean);
+        resolved.forEach(item => {
+          if (!seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            complaintList.push(item);
+          }
+        });
+      }
+
+      // 2. Also check general complaints table for records matching this customer ID or customer contact
+      const allCompSnap = await get(ref(rtdb, 'complaints'));
+      if (allCompSnap.exists()) {
+        const allComps = Object.entries(allCompSnap.val()).map(([k, v]) => ({ ...v, id: k }));
+        const matched = allComps.filter(c => {
+          const cUid = c.customerId || c.customer_id || c.userId;
+          if (cUid && String(cUid) === String(uid)) return true;
+          if (userEmail && c.customerEmail && String(c.customerEmail).toLowerCase() === userEmail.toLowerCase()) return true;
+          if (userPhone && c.customerPhone && userPhone.length >= 10 && c.customerPhone.replace(/\D/g, '').endsWith(userPhone.replace(/\D/g, '').slice(-10))) return true;
+          return false;
+        });
+        matched.forEach(m => {
+          if (!seenIds.has(m.id)) {
+            seenIds.add(m.id);
+            complaintList.push(m);
+          }
+        });
+      }
+
+      complaintList.sort((a, b) => (b.createdAt || b.report_date || b.updatedAt || 0) - (a.createdAt || a.report_date || a.updatedAt || 0));
+      return { data: { results: complaintList, items: complaintList, total: complaintList.length } };
+    } catch (err) {
+      console.warn('supportApi.getReports notice:', err);
+      return { data: { results: [], items: [], total: 0 } };
+    }
+  },
+
   createTicket: async (payload) => {
     const user = { uid: auth.currentUser?.uid, name: auth.currentUser?.displayName || 'Customer' };
     const res = await submitCustomerComplaint(payload, user);
@@ -903,10 +1038,175 @@ export const adminApi = {
 };
 
 export const addressApi = {
-  getAddresses: async () => ({ data: [] }),
-  createAddress: async (addr) => ({ data: { id: `addr_${Date.now()}`, ...addr } }),
-  updateAddress: async (id, addr) => ({ data: { id, ...addr } }),
-  deleteAddress: async (id) => ({ data: { success: true } })
+  getAddresses: async () => {
+    const uid = auth.currentUser?.uid || (() => {
+      try {
+        const saved = localStorage.getItem('fabricare_user');
+        return saved ? JSON.parse(saved)?.uid : null;
+      } catch {
+        return null;
+      }
+    })();
+    if (!uid) return { data: [] };
+    try {
+      const snap = await get(ref(rtdb, `users/${uid}/addresses`));
+      if (!snap.exists()) {
+        const userSnap = await get(ref(rtdb, `users/${uid}`));
+        const uData = userSnap.exists() ? userSnap.val() : {};
+        if (uData.address) {
+          return {
+            data: [{
+              id: 'addr_default',
+              title: 'Home',
+              address_line: uData.address,
+              landmark: '',
+              city: uData.city || 'Bengaluru',
+              pincode: uData.pincode || '560043',
+              is_default: true
+            }]
+          };
+        }
+        return { data: [] };
+      }
+      const raw = snap.val();
+      const list = Object.entries(raw).map(([key, val]) => ({
+        id: key,
+        title: val.title || val.label || 'Home',
+        address_line: val.address_line || val.line1 || val.address || '',
+        landmark: val.landmark || val.address_line2 || '',
+        city: val.city || 'Bengaluru',
+        pincode: val.pincode || '560043',
+        is_default: Boolean(val.is_default)
+      }));
+      return { data: list };
+    } catch (err) {
+      console.error('addressApi.getAddresses error:', err);
+      return { data: [] };
+    }
+  },
+  createAddress: async (addr) => {
+    const uid = auth.currentUser?.uid || (() => {
+      try {
+        const saved = localStorage.getItem('fabricare_user');
+        return saved ? JSON.parse(saved)?.uid : null;
+      } catch {
+        return null;
+      }
+    })();
+    if (!uid) throw new Error('User not authenticated');
+    const addrId = addr.id || `addr_${Date.now()}`;
+    const newAddressObj = {
+      id: addrId,
+      title: addr.title || 'Home',
+      address_line: addr.address_line || addr.line1 || '',
+      landmark: addr.landmark || '',
+      city: addr.city || 'Bengaluru',
+      pincode: addr.pincode || '560043',
+      is_default: Boolean(addr.is_default),
+      updatedAt: Date.now()
+    };
+
+    const updates = {};
+    updates[`users/${uid}/addresses/${addrId}`] = newAddressObj;
+
+    if (newAddressObj.is_default) {
+      const formatted = `${newAddressObj.address_line}${newAddressObj.landmark ? ', ' + newAddressObj.landmark : ''}, ${newAddressObj.city} - ${newAddressObj.pincode}`;
+      updates[`users/${uid}/address`] = formatted;
+      updates[`users/${uid}/city`] = newAddressObj.city;
+      updates[`users/${uid}/pincode`] = newAddressObj.pincode;
+
+      try {
+        const snap = await get(ref(rtdb, `users/${uid}/addresses`));
+        if (snap.exists()) {
+          const current = snap.val();
+          Object.keys(current).forEach(k => {
+            if (k !== addrId && current[k].is_default) {
+              updates[`users/${uid}/addresses/${k}/is_default`] = false;
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Could not reset previous defaults:', e);
+      }
+    } else {
+      try {
+        const userSnap = await get(ref(rtdb, `users/${uid}/address`));
+        if (!userSnap.exists() || !userSnap.val()) {
+          const formatted = `${newAddressObj.address_line}${newAddressObj.landmark ? ', ' + newAddressObj.landmark : ''}, ${newAddressObj.city} - ${newAddressObj.pincode}`;
+          updates[`users/${uid}/address`] = formatted;
+          updates[`users/${uid}/city`] = newAddressObj.city;
+          updates[`users/${uid}/pincode`] = newAddressObj.pincode;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    await update(ref(rtdb), updates);
+    return { data: newAddressObj };
+  },
+  updateAddress: async (id, addr) => {
+    const uid = auth.currentUser?.uid || (() => {
+      try {
+        const saved = localStorage.getItem('fabricare_user');
+        return saved ? JSON.parse(saved)?.uid : null;
+      } catch {
+        return null;
+      }
+    })();
+    if (!uid) throw new Error('User not authenticated');
+
+    const updatedObj = {
+      id,
+      title: addr.title || 'Home',
+      address_line: addr.address_line || addr.line1 || '',
+      landmark: addr.landmark || '',
+      city: addr.city || 'Bengaluru',
+      pincode: addr.pincode || '560043',
+      is_default: Boolean(addr.is_default),
+      updatedAt: Date.now()
+    };
+
+    const updates = {};
+    updates[`users/${uid}/addresses/${id}`] = updatedObj;
+
+    if (updatedObj.is_default) {
+      const formatted = `${updatedObj.address_line}${updatedObj.landmark ? ', ' + updatedObj.landmark : ''}, ${updatedObj.city} - ${updatedObj.pincode}`;
+      updates[`users/${uid}/address`] = formatted;
+      updates[`users/${uid}/city`] = updatedObj.city;
+      updates[`users/${uid}/pincode`] = updatedObj.pincode;
+
+      try {
+        const snap = await get(ref(rtdb, `users/${uid}/addresses`));
+        if (snap.exists()) {
+          const current = snap.val();
+          Object.keys(current).forEach(k => {
+            if (k !== id && current[k].is_default) {
+              updates[`users/${uid}/addresses/${k}/is_default`] = false;
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Could not reset previous defaults:', e);
+      }
+    }
+
+    await update(ref(rtdb), updates);
+    return { data: updatedObj };
+  },
+  deleteAddress: async (id) => {
+    const uid = auth.currentUser?.uid || (() => {
+      try {
+        const saved = localStorage.getItem('fabricare_user');
+        return saved ? JSON.parse(saved)?.uid : null;
+      } catch {
+        return null;
+      }
+    })();
+    if (!uid) throw new Error('User not authenticated');
+    await set(ref(rtdb, `users/${uid}/addresses/${id}`), null);
+    return { data: { success: true } };
+  }
 };
 
 export const customerApi = {

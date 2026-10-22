@@ -23,12 +23,32 @@ export const Step3ChooseTime = () => {
     isExpressDelivery,
     setIsExpressDelivery,
     selectedItemsList = [],
-    setCurrentStep 
+    setCurrentStep,
+    switchToExpressLaundry,
+    switchToNormalLaundry
   } = useBooking();
 
   const dateInputRef = useRef(null);
   const [showExpressModal, setShowExpressModal] = useState(false);
   const [attemptedDate, setAttemptedDate] = useState(null);
+
+  // Lock background scroll when Express recommendation modal is open
+  useEffect(() => {
+    if (showExpressModal) {
+      const origHtmlOverflow = document.documentElement.style.overflow;
+      const origBodyOverflow = document.body.style.overflow;
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      document.documentElement.classList.add('modal-open');
+      document.body.classList.add('modal-open');
+      return () => {
+        document.documentElement.style.overflow = origHtmlOverflow || '';
+        document.body.style.overflow = origBodyOverflow || '';
+        document.documentElement.classList.remove('modal-open');
+        document.body.classList.remove('modal-open');
+      };
+    }
+  }, [showExpressModal]);
 
   // Check if current booking has Express Laundry
   const isExpressBooking = useMemo(() => {
@@ -97,7 +117,7 @@ export const Step3ChooseTime = () => {
         }
       }
     }
-  }, [isExpressBooking, earliestNormalDate]);
+  }, [isExpressBooking, earliestNormalDate, pickupSchedule.dateValue]);
 
   // Handle Date Pill Click
   const handleDateSelect = (opt) => {
@@ -170,29 +190,38 @@ export const Step3ChooseTime = () => {
 
   // Modal Action: Switch to Express Laundry (enables next-day booking)
   const handleUpgradeToExpress = () => {
-    if (typeof setIsExpressDelivery === 'function') {
-      setIsExpressDelivery(true);
-    }
-    if (typeof setSelectedServices === 'function') {
-      setSelectedServices(prev => {
-        if (prev.includes('express-laundry')) return prev;
-        return [...prev, 'express-laundry'];
-      });
-    }
-    const tomorrowOpt = dateOptions[1];
-    if (tomorrowOpt) {
-      setPickupSchedule(prev => ({
-        ...prev,
-        dateLabel: tomorrowOpt.full,
-        dateValue: tomorrowOpt.isoDate
-      }));
+    const targetDateObj = attemptedDate 
+      ? { label: attemptedDate.label, full: attemptedDate.full, isoDate: attemptedDate.isoDate }
+      : (dateOptions[1] ? { label: 'Tomorrow', full: dateOptions[1].full, isoDate: dateOptions[1].isoDate } : null);
+
+    if (typeof switchToExpressLaundry === 'function') {
+      switchToExpressLaundry(targetDateObj);
+    } else {
+      if (typeof setIsExpressDelivery === 'function') {
+        setIsExpressDelivery(true);
+      }
+      if (typeof setSelectedServices === 'function') {
+        setSelectedServices(prev => {
+          if (prev.includes('express-laundry')) return prev;
+          return [...prev, 'express-laundry'];
+        });
+      }
+      if (targetDateObj) {
+        setPickupSchedule(prev => ({
+          ...prev,
+          dateLabel: targetDateObj.full,
+          dateValue: targetDateObj.isoDate
+        }));
+      }
     }
     setShowExpressModal(false);
   };
 
   // Modal Action: Keep Normal Service (auto-selects 2 days in advance)
   const handleKeepNormalService = () => {
-    if (earliestNormalDate) {
+    if (typeof switchToNormalLaundry === 'function') {
+      switchToNormalLaundry('wash-fold', earliestNormalDate);
+    } else if (earliestNormalDate) {
       setPickupSchedule(prev => ({
         ...prev,
         dateLabel: earliestNormalDate.full,
@@ -200,6 +229,27 @@ export const Step3ChooseTime = () => {
       }));
     }
     setShowExpressModal(false);
+  };
+
+  // Banner Action: Switch back to standard Normal Laundry
+  const handleDowngradeToNormal = () => {
+    if (typeof switchToNormalLaundry === 'function') {
+      switchToNormalLaundry('wash-fold', earliestNormalDate);
+    } else {
+      if (typeof setIsExpressDelivery === 'function') {
+        setIsExpressDelivery(false);
+      }
+      if (typeof setSelectedServices === 'function') {
+        setSelectedServices(['wash-fold']);
+      }
+      if (earliestNormalDate) {
+        setPickupSchedule(prev => ({
+          ...prev,
+          dateLabel: earliestNormalDate.full,
+          dateValue: earliestNormalDate.isoDate
+        }));
+      }
+    }
   };
 
   const timeSlots = [
@@ -301,6 +351,13 @@ export const Step3ChooseTime = () => {
                 <Zap size={16} className="rule-banner-icon text-amber-500" />
                 <div className="rule-banner-text">
                   <span><strong>Express Laundry Active:</strong> Superfast priority turnaround! <strong>Next-day pickup</strong> is available ({dateOptions[1]?.label}, {dateOptions[1]?.date}).</span>
+                  <button 
+                    type="button" 
+                    className="rule-banner-upgrade-btn rule-banner-downgrade-btn"
+                    onClick={handleDowngradeToNormal}
+                  >
+                    Switch to Normal (Standard rates) ↩
+                  </button>
                 </div>
               </div>
             )}
@@ -681,6 +738,14 @@ export const Step3ChooseTime = () => {
           background: #095F5B;
         }
 
+        .rule-banner-downgrade-btn {
+          background: #B45309;
+        }
+
+        .rule-banner-downgrade-btn:hover {
+          background: #92400E;
+        }
+
         /* Date selector row */
         .date-pills-row {
           display: grid;
@@ -786,6 +851,9 @@ export const Step3ChooseTime = () => {
           justify-content: center;
           z-index: 9999;
           padding: 20px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          touch-action: pan-y;
           animation: modalFadeIn 0.2s ease-out;
         }
 
@@ -794,6 +862,10 @@ export const Step3ChooseTime = () => {
           border-radius: 20px;
           max-width: 480px;
           width: 100%;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
+          overflow-y: auto;
+          overscroll-behavior: contain;
           padding: 28px 24px 22px;
           position: relative;
           box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);

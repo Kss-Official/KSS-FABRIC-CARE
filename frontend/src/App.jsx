@@ -83,7 +83,7 @@ const CustomerAccountLayout = ({ children }) => {
     { id: 'customer-support', label: 'Help & Support', icon: '💬' },
   ];
 
-  const displayName = userProfile?.displayName || currentUser?.displayName || currentUser?.full_name || currentUser?.first_name || 'Customer';
+  const displayName = userProfile?.displayName || userProfile?.name || userProfile?.full_name || currentUser?.displayName || currentUser?.name || currentUser?.full_name || currentUser?.fullName || currentUser?.first_name || 'Customer';
 
   return (
     <div className="customer-account-wrapper" style={{ background: '#F8FAFC', flex: 1, display: 'flex', flexDirection: 'column', margin: 0, paddingBottom: '24px' }}>
@@ -164,7 +164,7 @@ const CustomerAccountLayout = ({ children }) => {
 
 const AppContent = () => {
   const { currentPage, navigateTo } = useBooking();
-  const { isAuthenticated, userRole, loading } = useAuth();
+  const { isAuthenticated, userRole, loading, currentUser } = useAuth();
 
   const normalizedRoute = String(currentPage || 'home').replace(/^#\/?/, '').trim().toLowerCase();
   const cleanPageName = (currentPage || '').split('?')[0].replace(/^#\/?/, '').replace(/^\//, '').toLowerCase();
@@ -231,24 +231,33 @@ const AppContent = () => {
 
   // Route 2: Admin Portal (Strictly Protected: role === 'admin')
   if (normalizedRoute === 'admin') {
-    if (!isAuthenticated || userRole !== 'admin') {
-      return null;
+    if (!isAuthenticated) {
+      return <LoginPage />;
+    }
+    if (userRole !== 'admin') {
+      return <LoginPage />;
     }
     return <AdminPortal />;
   }
 
   // Route 3: Delivery Portal (Strictly Protected: role === 'agent' or 'delivery_agent' or 'admin')
   if (normalizedRoute === 'delivery-portal') {
-    if (!isAuthenticated || (userRole !== 'agent' && userRole !== 'delivery_agent' && userRole !== 'admin')) {
-      return null;
+    if (!isAuthenticated) {
+      return <LoginPage />;
+    }
+    if (userRole !== 'agent' && userRole !== 'delivery_agent' && userRole !== 'delivery' && userRole !== 'delivery_staff' && userRole !== 'admin') {
+      return <LoginPage />;
     }
     return <DeliveryPortal />;
   }
 
   // Route 4: Laundry Hub Portal (Strictly Protected: role === 'staff' or 'laundry_staff' or 'admin')
   if (isLaundryRoute) {
-    if (!isAuthenticated || (userRole !== 'staff' && userRole !== 'laundry_staff' && userRole !== 'admin')) {
-      return null;
+    if (!isAuthenticated) {
+      return <LoginPage />;
+    }
+    if (userRole !== 'staff' && userRole !== 'laundry_staff' && userRole !== 'laundry' && userRole !== 'admin') {
+      return <LoginPage />;
     }
     return <LaundryPortal />;
   }
@@ -256,14 +265,14 @@ const AppContent = () => {
   // Route 5: Customer Account Pages (Protected: requires customer/user authentication)
   if (CUSTOMER_PORTAL_PAGES.includes(normalizedRoute)) {
     if (!isAuthenticated) {
-      return null;
+      return <LoginPage />;
     }
 
     return (
       <div className="app-layout">
         <Navbar />
         <main className="main-content">
-          <CustomerAccountLayout>
+          <CustomerAccountLayout key={currentUser?.uid || 'guest'}>
             {(normalizedRoute === 'customer-dashboard' || normalizedRoute === 'customer-orders') && <CustomerDashboard />}
             {normalizedRoute === 'customer-track' && <TrackOrder />}
             {normalizedRoute === 'customer-reports' && <CustomerReports />}

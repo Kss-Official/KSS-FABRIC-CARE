@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useBooking } from '../../context/BookingContext';
+import { useAdmin } from '../../context/AdminContext';
 import {
   Instagram,
   Facebook,
@@ -8,11 +9,21 @@ import {
   MapPin,
   Clock,
   Mail,
-  ArrowRight
+  ArrowRight,
+  X
 } from 'lucide-react';
 
 export const Footer = () => {
   const { navigateTo, startBooking } = useBooking();
+  const { settings } = useAdmin();
+  const [activeLegalModal, setActiveLegalModal] = useState(null);
+
+  const instagramUrl = settings?.instagram || 'https://instagram.com/fabricare';
+  const facebookUrl = settings?.facebook || 'https://facebook.com/fabricare';
+  const twitterUrl = settings?.twitter || 'https://x.com/fabricare';
+  const linkedinUrl = settings?.linkedin || 'https://linkedin.com/company/fabricare';
+  const youtubeUrl = settings?.youtube || 'https://youtube.com';
+  const supportEmail = settings?.supportEmail || 'support@fabricare.com';
 
   const handleLinkClick = (pageId, scrollId = null) => {
     if (navigateTo) {
@@ -40,8 +51,15 @@ export const Footer = () => {
               role="button"
               tabIndex={0}
             >
-              <span className="logo-teal">Fabri</span>
-              <span className="logo-coral">Care</span>
+              <img 
+                src="/images/fabricare-logo.png" 
+                alt="FabriCare" 
+                className="footer-brand-logo-img" 
+              />
+              <div>
+                <span className="logo-teal">Fabri</span>
+                <span className="logo-coral">Care</span>
+              </div>
             </div>
 
             <p className="footer-slogan">Fresh clothes, brighter days.</p>
@@ -51,7 +69,7 @@ export const Footer = () => {
 
             <div className="footer-social-row">
               <a
-                href="https://instagram.com"
+                href={instagramUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="footer-social-circle"
@@ -60,7 +78,7 @@ export const Footer = () => {
                 <Instagram size={17} strokeWidth={2.2} />
               </a>
               <a
-                href="https://facebook.com"
+                href={facebookUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="footer-social-circle"
@@ -69,7 +87,16 @@ export const Footer = () => {
                 <Facebook size={17} strokeWidth={2.2} />
               </a>
               <a
-                href="https://linkedin.com"
+                href={twitterUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-social-circle"
+                aria-label="Twitter / X"
+              >
+                <span style={{ fontSize: '13px', fontWeight: 800, lineHeight: 1, fontFamily: 'system-ui, -apple-system, sans-serif' }}>𝕏</span>
+              </a>
+              <a
+                href={linkedinUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="footer-social-circle"
@@ -78,7 +105,7 @@ export const Footer = () => {
                 <Linkedin size={17} strokeWidth={2.2} />
               </a>
               <a
-                href="https://youtube.com"
+                href={youtubeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="footer-social-circle"
@@ -142,7 +169,7 @@ export const Footer = () => {
                 <button
                   type="button"
                   className="footer-nav-link"
-                  onClick={() => handleLinkClick('about')}
+                  onClick={() => handleLinkClick('why-us', 'faq-section')}
                 >
                   FAQs
                 </button>
@@ -249,10 +276,10 @@ export const Footer = () => {
                   <Mail size={15} strokeWidth={2.4} />
                 </div>
                 <a
-                  href="mailto:info@fabricare.in"
+                  href={`mailto:${supportEmail}`}
                   className="contact-item-text contact-mail-link"
                 >
-                  info@fabricare.in
+                  {supportEmail}
                 </a>
               </div>
             </div>
@@ -275,24 +302,82 @@ export const Footer = () => {
           </p>
 
           <div className="footer-legal-links">
-            <a
-              href="#privacy"
+            <button
+              type="button"
               className="footer-legal-link"
-              onClick={(e) => e.preventDefault()}
+              onClick={() => setActiveLegalModal('privacy')}
             >
               Privacy Policy
-            </a>
+            </button>
             <span className="footer-legal-divider">|</span>
-            <a
-              href="#terms"
+            <button
+              type="button"
               className="footer-legal-link"
-              onClick={(e) => e.preventDefault()}
+              onClick={() => setActiveLegalModal('terms')}
             >
               Terms &amp; Conditions
-            </a>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Legal Modal (Privacy Policy & Terms) */}
+      {activeLegalModal && (
+        <div 
+          className="legal-modal-backdrop animate-fade-in" 
+          onClick={() => setActiveLegalModal(null)}
+        >
+          <div className="legal-modal-card" onClick={e => e.stopPropagation()}>
+            <div className="legal-modal-header">
+              <h3 className="legal-modal-title">
+                {activeLegalModal === 'privacy' ? 'Privacy Policy' : 'Terms & Conditions'}
+              </h3>
+              <button 
+                type="button" 
+                className="legal-modal-close"
+                onClick={() => setActiveLegalModal(null)}
+                aria-label="Close"
+              >
+                <X size={18} strokeWidth={2.5} />
+              </button>
+            </div>
+            <div className="legal-modal-body">
+              {activeLegalModal === 'privacy' ? (
+                <>
+                  <h4>1. Information We Collect</h4>
+                  <p>We collect essential personal information such as your name, mobile number, email address, and pickup/delivery address when you schedule an order or register an account.</p>
+                  <h4>2. How We Use Your Information</h4>
+                  <p>Your details are used solely to process laundry orders, schedule doorstep pickups and deliveries, send order status updates, and provide customer support.</p>
+                  <h4>3. Data Security</h4>
+                  <p>We implement stringent security measures and encryption to ensure your personal data remains private and protected. We do not sell or share personal data with external advertisers.</p>
+                  <h4>4. Contact Support</h4>
+                  <p>If you have any questions regarding your personal information, reach out to us at {supportEmail}.</p>
+                </>
+              ) : (
+                <>
+                  <h4>1. Introduction</h4>
+                  <p>Welcome to FabriCare. These Terms & Conditions govern your use of our doorstep laundry services and platform.</p>
+                  <h4>2. Garment Care & Handling</h4>
+                  <p>Every garment is handled with utmost professional care in accordance with its fabric care label. Special care instructions should be specified during order booking.</p>
+                  <h4>3. Scheduled Pickup & Delivery</h4>
+                  <p>We provide pickup and delivery within your chosen time slots. You will receive live updates when our rider is assigned and on the way.</p>
+                  <h4>4. Cancellations & Rescheduling</h4>
+                  <p>Orders may be cancelled or rescheduled free of charge before our rider is dispatched for pickup via your customer portal or by contacting support.</p>
+                </>
+              )}
+            </div>
+            <div className="legal-modal-footer">
+              <button 
+                type="button" 
+                className="legal-modal-btn"
+                onClick={() => setActiveLegalModal(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         /* ==========================================================================
@@ -347,7 +432,6 @@ export const Footer = () => {
           border-right: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        /* Column 1: Brand & Socials */
         .footer-logo-title {
           font-family: 'Poppins', sans-serif;
           font-size: 32px;
@@ -356,7 +440,17 @@ export const Footer = () => {
           line-height: 1;
           margin-bottom: 18px;
           cursor: pointer;
-          display: inline-block;
+          display: inline-flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .footer-brand-logo-img {
+          width: 38px;
+          height: 38px;
+          border-radius: 9px;
+          object-fit: contain;
+          flex-shrink: 0;
         }
 
         .logo-teal {
@@ -556,11 +650,132 @@ export const Footer = () => {
           font-size: 13px;
           color: #8FA4B0;
           text-decoration: none;
+          background: transparent;
+          border: none;
+          padding: 0;
+          cursor: pointer;
           transition: color 0.2s ease;
         }
 
         .footer-legal-link:hover {
           color: #FFFFFF;
+        }
+
+        /* Legal Modal */
+        .legal-modal-backdrop {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(7, 26, 36, 0.75);
+          backdrop-filter: blur(4px);
+          z-index: 99999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+          box-sizing: border-box;
+        }
+
+        .legal-modal-card {
+          background: #FFFFFF;
+          border-radius: 18px;
+          max-width: 560px;
+          width: 100%;
+          max-height: 85vh;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+          overflow: hidden;
+          animation: scaleIn 0.2s ease;
+        }
+
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.96); }
+          to { opacity: 1; transform: scale(1); }
+        }
+
+        .legal-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px;
+          border-bottom: 1px solid #E2E8F0;
+        }
+
+        .legal-modal-title {
+          font-size: 1.15rem;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 0;
+        }
+
+        .legal-modal-close {
+          background: #F1F5F9;
+          border: none;
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: #64748B;
+          transition: all 0.15s ease;
+        }
+
+        .legal-modal-close:hover {
+          background: #E2E8F0;
+          color: #0F172A;
+        }
+
+        .legal-modal-body {
+          padding: 24px;
+          overflow-y: auto;
+          color: #334155;
+          font-size: 0.9rem;
+          line-height: 1.6;
+        }
+
+        .legal-modal-body h4 {
+          font-size: 0.95rem;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 16px 0 6px 0;
+        }
+
+        .legal-modal-body h4:first-child {
+          margin-top: 0;
+        }
+
+        .legal-modal-body p {
+          margin: 0 0 12px 0;
+          color: #64748B;
+        }
+
+        .legal-modal-footer {
+          padding: 16px 24px;
+          border-top: 1px solid #E2E8F0;
+          display: flex;
+          justify-content: flex-end;
+          background: #F8FAFC;
+        }
+
+        .legal-modal-btn {
+          background: #0D7A75;
+          color: #FFFFFF;
+          border: none;
+          padding: 9px 22px;
+          border-radius: 8px;
+          font-weight: 600;
+          font-size: 0.875rem;
+          cursor: pointer;
+          transition: background 0.15s ease;
+        }
+
+        .legal-modal-btn:hover {
+          background: #095D59;
         }
 
         .footer-legal-divider {

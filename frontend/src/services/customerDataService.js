@@ -32,8 +32,8 @@ export const createCustomerOrder = async (bookingData, user) => {
   const deliveryOtp = generateOtp();
 
   const subtotal = Math.round((bookingData.subtotal || bookingData.total || 0) * 100);
-  const expressCharge = bookingData.isExpress ? 10000 : 0;
-  const total = subtotal + expressCharge;
+  const expressCharge = 0;
+  const total = subtotal;
 
   const staffNames = ['ravi sharma', 'administrator', 'anil verma', 'anita sharma', 'delivery agent'];
   let cleanCustName = (bookingData.customerName || '').trim();
@@ -51,6 +51,10 @@ export const createCustomerOrder = async (bookingData, user) => {
     id: orderId,
     code,
     customerId: user.uid,
+    customer_id: user.uid,
+    userId: user.uid,
+    customerEmail: (user.email || bookingData.customerEmail || '').toLowerCase().trim(),
+    customer_email: (user.email || bookingData.customerEmail || '').toLowerCase().trim(),
     customerName: cleanCustName || user.name || user.displayName || 'Customer',
     customerPhone: cleanCustPhone || user.phone || '',
     address: bookingData.address || {
@@ -64,10 +68,15 @@ export const createCustomerOrder = async (bookingData, user) => {
       from: '09:00',
       to: '11:00'
     },
+    pickup_date: bookingData.pickup?.date || new Date(now + 86400000).toISOString().split('T')[0],
+    pickup_time_slot: bookingData.pickup?.time_slot || (bookingData.pickup?.from ? `${bookingData.pickup.from} - ${bookingData.pickup.to}` : '09:00 AM - 11:00 AM'),
     status: 'PAYMENT_PENDING',
     stage: 'placed',
     currentLaundryStep: 'inspect',
     paymentStatus: 'Pending',
+    payment_status: 'PENDING',
+    payment: 'Pending',
+    is_paid: false,
     isExpress: Boolean(bookingData.isExpress),
     notes: bookingData.notes || '',
     services: Array.isArray(bookingData.services) && bookingData.services.length > 0 ? bookingData.services : ['Wash & Fold'],
@@ -78,6 +87,8 @@ export const createCustomerOrder = async (bookingData, user) => {
     expressCharge,
     tax: 0,
     total,
+    total_amount: (total / 100).toFixed(2).replace(/\.00$/, ''),
+    amount: (total / 100).toFixed(2).replace(/\.00$/, ''),
     createdAt: now,
     placedAt: null,
     dueBy: now + (bookingData.isExpress ? 86400000 : 172800000),
@@ -142,6 +153,9 @@ export const confirmCustomerPayment = async (orderId, paymentMethod = 'UPI_MOCK'
   // Order updates
   updates[`orders/${orderId}/status`] = 'PLACED';
   updates[`orders/${orderId}/paymentStatus`] = 'Paid';
+  updates[`orders/${orderId}/payment_status`] = 'PAID';
+  updates[`orders/${orderId}/payment`] = 'Paid';
+  updates[`orders/${orderId}/is_paid`] = true;
   updates[`orders/${orderId}/placedAt`] = now;
   updates[`orders/${orderId}/pickupTaskId`] = pickupTaskId;
 
@@ -188,6 +202,9 @@ export const confirmCustomerPayment = async (orderId, paymentMethod = 'UPI_MOCK'
     orderId,
     orderCode: order.code,
     customerId: order.customerId,
+    customer_id: order.customerId,
+    customerEmail: order.customerEmail || user?.email || '',
+    customerName: order.customerName || user?.name || '',
     invoiceNumber: invNum,
     date: now,
     subtotal: order.subtotal,
@@ -233,6 +250,11 @@ export const confirmCustomerPayment = async (orderId, paymentMethod = 'UPI_MOCK'
   updates[`stats/daily/${todayKey}/ordersPlaced`] = (orderSnap.val()?.dailyCount || 0) + 1;
 
   await update(ref(rtdb), updates);
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('fabricare_new_order_placed', { detail: { orderId, orderCode: order.code } }));
+    }
+  } catch (_) {}
   return { orderId, invoiceNumber: invNum, pickupTaskId };
 };
 
@@ -252,9 +274,11 @@ export const cancelCustomerOrder = async (orderId, reason = 'Customer requested 
   const histPush = push(ref(rtdb, `orderHistory/${orderId}`));
   const notifPush = push(ref(rtdb, `notifications/${order.customerId}`));
 
-  const updates = {};
+  const isOrderPaid = order.paymentStatus === 'Paid' || String(order.payment_status).toUpperCase() === 'PAID';
   updates[`orders/${orderId}/status`] = 'CANCELLED';
-  updates[`orders/${orderId}/paymentStatus`] = order.paymentStatus === 'Paid' ? 'Refunded' : 'Cancelled';
+  updates[`orders/${orderId}/paymentStatus`] = isOrderPaid ? 'Refunded' : 'Cancelled';
+  updates[`orders/${orderId}/payment_status`] = isOrderPaid ? 'REFUNDED' : 'CANCELLED';
+  updates[`orders/${orderId}/payment`] = isOrderPaid ? 'Refunded' : 'Cancelled';
   updates[`orders/${orderId}/cancelledAt`] = now;
   updates[`orders/${orderId}/cancelReason`] = reason;
 
@@ -314,26 +338,34 @@ export const cancelCustomerOrder = async (orderId, reason = 'Customer requested 
 };
 
 /**
- * Real-time subscription to Customer's orders
+ * Real-time subscription to Customer's orders strictly isolated by customerId and/or customerEmail
  */
-export const subscribeCustomerOrders = (customerId, onOrdersUpdated, onError) => {
-  if (!customerId) return () => {};
-  const userOrdersRef = ref(rtdb, `userOrders/${customerId}`);
+export const subscribeCustomerOrders = (customerId, onOrdersUpdated, onError, customerEmail = null) => {
+  if (!customerId && !customerEmail) return () => {};
+  const targetId = customerId ? String(customerId).toLowerCase().trim() : '';
+  const targetEmail = customerEmail ? String(customerEmail).toLowerCase().trim() : '';
+  const ordersRef = ref(rtdb, 'orders');
 
-  const unsubscribe = onValue(userOrdersRef, async (snapshot) => {
+  const unsubscribe = onValue(ordersRef, (snapshot) => {
     try {
       if (!snapshot.exists()) {
         onOrdersUpdated([]);
         return;
       }
-      const orderIds = Object.keys(snapshot.val());
-      const orderPromises = orderIds.map(async (id) => {
-        const oSnap = await get(ref(rtdb, `orders/${id}`));
-        return oSnap.exists() ? { ...oSnap.val(), id } : null;
-      });
-      const resolvedOrders = (await Promise.all(orderPromises))
-        .filter(Boolean)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      const allData = snapshot.val() || {};
+      const resolvedOrders = Object.entries(allData)
+        .filter(([key, o]) => {
+          if (!o) return false;
+          const oCustId = String(o.customerId || o.customer_id || o.userId || '').toLowerCase().trim();
+          if (targetId && oCustId && oCustId === targetId) return true;
+          const oEmail = String(o.customerEmail || o.customer_email || o.customer?.email || '').toLowerCase().trim();
+          if (targetId && targetId.includes('@') && oEmail === targetId) return true;
+          if (targetEmail && oEmail && oEmail === targetEmail) return true;
+          return false;
+        })
+        .map(([key, o]) => ({ ...o, id: o.id || key, key }))
+        .sort((a, b) => (b.createdAt || b.updatedAt || b.placedAt || 0) - (a.createdAt || a.updatedAt || a.placedAt || 0));
+
       onOrdersUpdated(resolvedOrders);
     } catch (err) {
       if (onError) onError(err);
@@ -342,7 +374,10 @@ export const subscribeCustomerOrders = (customerId, onOrdersUpdated, onError) =>
     if (onError) onError(err);
   });
 
-  return () => off(userOrdersRef, 'value', unsubscribe);
+  return () => {
+    if (typeof unsubscribe === 'function') unsubscribe();
+    else off(ordersRef, 'value', unsubscribe);
+  };
 };
 
 /**
