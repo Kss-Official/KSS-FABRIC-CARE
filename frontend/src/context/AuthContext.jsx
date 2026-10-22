@@ -57,15 +57,15 @@ export const AuthProvider = ({ children }) => {
 
           if (emailLower === 'admin@fabricare.com' || emailLower.startsWith('admin@') || emailLower.includes('admin') || rtdbProfile?.role === 'admin' || rtdbProfile?.role === 'super_admin') {
             role = 'admin';
-          } else if (emailLower === 'delivery@fabricare.com' || emailLower.startsWith('delivery@') || emailLower.startsWith('agent@') || (emailLower.includes('delivery') && emailLower.includes('fabricare.com')) || rtdbProfile?.role === 'agent' || rtdbProfile?.role === 'delivery_agent') {
+          } else if (emailLower === 'delivery@fabricare.com' || emailLower.startsWith('delivery@') || emailLower.startsWith('agent@') || (emailLower.includes('delivery') && emailLower.includes('fabricare.com')) || emailLower.includes('ravi') || rtdbProfile?.role === 'agent' || rtdbProfile?.role === 'delivery_agent') {
             role = 'agent';
-          } else if (emailLower === 'staff@fabricare.com' || emailLower.startsWith('staff@') || (emailLower.includes('staff') && emailLower.includes('fabricare.com')) || rtdbProfile?.role === 'staff' || rtdbProfile?.role === 'laundry_staff') {
+          } else if (emailLower === 'staff@fabricare.com' || emailLower.startsWith('staff@') || (emailLower.includes('staff') && emailLower.includes('fabricare.com')) || emailLower.includes('anita') || emailLower.includes('laundry') || rtdbProfile?.role === 'staff' || rtdbProfile?.role === 'laundry_staff' || rtdbProfile?.role === 'laundry') {
             role = 'staff';
           }
 
           if (!rtdbProfile) {
             // Auto-create initial profile with detected role
-            const name = fbUser.displayName || (role === 'admin' ? 'Administrator' : (role === 'staff' ? 'Staff Member' : (role === 'agent' ? 'Delivery Agent' : 'Customer')));
+            const name = fbUser.displayName || (role === 'admin' ? 'Administrator' : (role === 'staff' ? (emailLower.includes('anita') ? 'Anita Sharma' : 'Staff Member') : (role === 'agent' ? 'Delivery Agent' : 'Customer')));
             rtdbProfile = {
               name,
               email: fbUser.email,
@@ -82,7 +82,19 @@ export const AuthProvider = ({ children }) => {
             update(ref(rtdb, `users/${fbUser.uid}`), { role }).catch(() => {});
           }
           if (role) {
-            set(ref(rtdb, `roleUsers/${String(role).toLowerCase()}/${fbUser.uid}`), true).catch(() => {});
+            const cleanRoleStr = String(role).toLowerCase();
+            const roleUpdates = {
+              [`roleUsers/${cleanRoleStr}/${fbUser.uid}`]: true
+            };
+            if (cleanRoleStr === 'staff') {
+              roleUpdates[`roleUsers/laundry_staff/${fbUser.uid}`] = true;
+              roleUpdates[`roleUsers/laundry/${fbUser.uid}`] = true;
+            } else if (cleanRoleStr === 'agent') {
+              roleUpdates[`roleUsers/delivery/${fbUser.uid}`] = true;
+            } else if (cleanRoleStr === 'admin') {
+              roleUpdates[`roleUsers/super_admin/${fbUser.uid}`] = true;
+            }
+            update(ref(rtdb), roleUpdates).catch(() => {});
           }
           const cleanProfile = {
             uid: fbUser.uid,
@@ -228,12 +240,12 @@ export const AuthProvider = ({ children }) => {
         role = 'admin';
       } else if (emailLower === 'delivery@fabricare.com' || emailLower.startsWith('delivery@') || emailLower.startsWith('agent@') || emailLower.includes('delivery') || emailLower.includes('ravi') || rtdbData?.role === 'agent' || rtdbData?.role === 'delivery_agent') {
         role = 'agent';
-      } else if (emailLower === 'staff@fabricare.com' || emailLower.startsWith('staff@') || emailLower.includes('staff') || rtdbData?.role === 'staff' || rtdbData?.role === 'laundry_staff') {
+      } else if (emailLower === 'staff@fabricare.com' || emailLower.startsWith('staff@') || emailLower.includes('staff') || emailLower.includes('anita') || emailLower.includes('laundry') || rtdbData?.role === 'staff' || rtdbData?.role === 'laundry_staff' || rtdbData?.role === 'laundry') {
         role = 'staff';
       }
 
       if (!rtdbData) {
-        const defaultName = role === 'admin' ? 'Administrator' : role === 'agent' ? 'Ravi Sharma' : role === 'staff' ? 'Anil Verma' : 'Customer';
+        const defaultName = role === 'admin' ? 'Administrator' : role === 'agent' ? 'Ravi Sharma' : role === 'staff' ? (emailLower.includes('anita') ? 'Anita Sharma' : 'Staff Member') : 'Customer';
         const defaultPhone = role === 'agent' ? '+919811122233' : role === 'staff' ? '+919822233344' : '';
         rtdbData = {
           name: fbUser.displayName || defaultName,
@@ -248,6 +260,23 @@ export const AuthProvider = ({ children }) => {
       } else if (rtdbData.role !== role) {
         rtdbData.role = role;
         update(ref(rtdb, `users/${fbUser.uid}`), { role }).catch(() => {});
+      }
+
+      // Index roleUsers
+      if (role) {
+        const cleanRoleStr = String(role).toLowerCase();
+        const roleUpdates = {
+          [`roleUsers/${cleanRoleStr}/${fbUser.uid}`]: true
+        };
+        if (cleanRoleStr === 'staff') {
+          roleUpdates[`roleUsers/laundry_staff/${fbUser.uid}`] = true;
+          roleUpdates[`roleUsers/laundry/${fbUser.uid}`] = true;
+        } else if (cleanRoleStr === 'agent') {
+          roleUpdates[`roleUsers/delivery/${fbUser.uid}`] = true;
+        } else if (cleanRoleStr === 'admin') {
+          roleUpdates[`roleUsers/super_admin/${fbUser.uid}`] = true;
+        }
+        update(ref(rtdb), roleUpdates).catch(() => {});
       }
 
       const profileData = {

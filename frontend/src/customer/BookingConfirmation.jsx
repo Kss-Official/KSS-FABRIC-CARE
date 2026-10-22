@@ -77,8 +77,9 @@ export const BookingConfirmation = () => {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <button
             onClick={() => {
-              if (lastOrder?.id) {
-                navigateTo('customer-track', lastOrder.id.toString());
+              const targetTrackId = String(lastOrder?.order_number || lastOrder?.code || lastOrder?.order_id || lastOrder?.id || '').trim();
+              if (targetTrackId) {
+                navigateTo('customer-track', targetTrackId);
               } else {
                 navigateTo('customer-dashboard');
               }

@@ -5,6 +5,12 @@ import { staffApi, laundryApi, notificationsApi, ordersApi } from '../api/apiCli
 import { useStaffActiveOrdersRealtime } from '../hooks/useRealtime';
 import { useNotifications } from '../hooks/useNotifications';
 import { subscribeOrders, updateFirestoreOrderStatus } from '../services/firestoreService';
+import { rtdb } from '../config/firebase';
+import { ref, onValue } from 'firebase/database';
+
+const cleanCode = (val) => String(val || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+import { formatOrderId } from '../utils/helpers';
+import { registerRoleUser } from '../services/notificationService';
 import { NotificationBellDropdown } from '../components/common/NotificationBellDropdown';
 import { NotificationsPageView } from '../components/common/NotificationsPageView';
 import { 
@@ -375,6 +381,15 @@ export const LaundryPortal = () => {
     loading: loadingNotifications
   } = useNotifications(currentUser?.uid || currentUser?.id);
 
+  // Ensure staff user is continuously registered in roleUsers/staff for real-time dropoff and order notifications
+  useEffect(() => {
+    const staffUid = currentUser?.uid || currentUser?.id;
+    if (staffUid) {
+      registerRoleUser(staffUid, 'staff');
+      registerRoleUser(staffUid, 'laundry_staff');
+    }
+  }, [currentUser?.uid, currentUser?.id]);
+
 
   // Orders Page State (Matching Image 2)
   const [ordersActiveChip, setOrdersActiveChip] = useState('all');
@@ -497,6 +512,20 @@ export const LaundryPortal = () => {
             });
             return Array.from(map.values()).filter(isValidLaundryOrder);
           });
+
+          // Synchronize order details modal in real time if open
+          setOrderDetailsModal((currentModal) => {
+            if (!currentModal) return null;
+            const currentModalCode = cleanCode(currentModal.code || currentModal.order_number || currentModal.id);
+            const matched = firebaseOrders.find((fo) => {
+              const foCode = cleanCode(fo.code || fo.order_number || fo.id);
+              return currentModalCode && foCode && (currentModalCode === foCode || currentModalCode.endsWith(foCode) || foCode.endsWith(currentModalCode));
+            });
+            if (matched) {
+              return normalizeOrder({ ...currentModal, ...matched });
+            }
+            return currentModal;
+          });
         }
       },
       (err) => {
@@ -507,6 +536,66 @@ export const LaundryPortal = () => {
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
+  }, []);
+
+  // Realtime Firebase RTDB hubDropoffs listener (receives drop-off events instantly when delivery partner submits handover)
+  useEffect(() => {
+    if (!rtdb) return;
+    try {
+      const dropRef = ref(rtdb, 'hubDropoffs');
+      const unsub = onValue(dropRef, (snap) => {
+        if (snap.exists()) {
+          const val = snap.val();
+          const dropList = Object.values(val);
+          setOrders(prev => prev.map(o => {
+            const oCode = cleanCode(o.code || o.order_number || o.id);
+            const matchedDrop = dropList.find(d => {
+              if (!d) return false;
+              const dCode = cleanCode(d.orderCode || d.orderId);
+              return oCode && dCode && (oCode === dCode || oCode.endsWith(dCode) || dCode.endsWith(oCode));
+            });
+            if (matchedDrop && matchedDrop.droppedAt) {
+              const dt = new Date(matchedDrop.droppedAt);
+              const timeStr = !isNaN(dt.getTime()) ? dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : (matchedDrop.droppedAtTime || o.droppedAt);
+              return {
+                ...o,
+                droppedAtHub: matchedDrop.droppedAt,
+                droppedOffAt: matchedDrop.droppedAt,
+                dropped_at_hub: matchedDrop.droppedAt,
+                dropped_off_at: matchedDrop.droppedAt,
+                droppedAt: timeStr,
+                status: o.status === 'Pending Pickup' ? 'DROPPED_OFF_AT_LAUNDRY' : o.status
+              };
+            }
+            return o;
+          }));
+
+          setOrderDetailsModal(currentModal => {
+            if (!currentModal) return null;
+            const oCode = cleanCode(currentModal.code || currentModal.order_number || currentModal.id);
+            const matchedDrop = dropList.find(d => {
+              if (!d) return false;
+              const dCode = cleanCode(d.orderCode || d.orderId);
+              return oCode && dCode && (oCode === dCode || oCode.endsWith(dCode) || dCode.endsWith(oCode));
+            });
+            if (matchedDrop && matchedDrop.droppedAt) {
+              const dt = new Date(matchedDrop.droppedAt);
+              const timeStr = !isNaN(dt.getTime()) ? dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : (matchedDrop.droppedAtTime || currentModal.droppedAt);
+              return {
+                ...currentModal,
+                droppedAtHub: matchedDrop.droppedAt,
+                droppedOffAt: matchedDrop.droppedAt,
+                dropped_at_hub: matchedDrop.droppedAt,
+                dropped_off_at: matchedDrop.droppedAt,
+                droppedAt: timeStr
+              };
+            }
+            return currentModal;
+          });
+        }
+      });
+      return () => unsub();
+    } catch (_) {}
   }, []);
 
   // Modals state
@@ -944,31 +1033,70 @@ export const LaundryPortal = () => {
   };
 
   const isOrderInTimeframe = (order, period) => {
+    if (!order) return false;
     if (period === 'All' || !period) return true;
-    const rawDate = order.placedAt || order.created_at || order.createdAt || order.date || order.placed;
-    if (!rawDate) return true;
+
+    const rawDate = order.placedAt || order.created_at || order.createdAt || order.date || order.placed || order.timestamp || order.orderDate;
+    if (!rawDate) return false;
+
     const now = new Date();
     let d = null;
-    if (typeof rawDate === 'number') {
-      d = new Date(rawDate);
+
+    if (rawDate instanceof Date) {
+      d = rawDate;
+    } else if (typeof rawDate === 'object' && typeof rawDate.toDate === 'function') {
+      d = rawDate.toDate();
+    } else if (typeof rawDate === 'object' && typeof rawDate.seconds === 'number') {
+      d = new Date(rawDate.seconds * 1000);
+    } else if (typeof rawDate === 'number') {
+      d = new Date(rawDate > 1e11 ? rawDate : rawDate * 1000);
     } else if (typeof rawDate === 'string') {
-      if (/^\d{1,2}:\d{2}\s*(AM|PM)?$/i.test(rawDate.trim())) {
-        return true;
+      const trimmed = rawDate.trim();
+      // Time-only string (e.g. "10:30 AM") does not specify date -> cannot confirm today
+      if (/^\d{1,2}:\d{2}\s*(AM|PM)?$/i.test(trimmed)) {
+        return false;
       }
-      d = new Date(rawDate);
+      d = new Date(trimmed);
+      if (isNaN(d.getTime())) {
+        const match = trimmed.match(/(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})/);
+        if (match) {
+          d = new Date(match[1]);
+        }
+      }
     }
-    if (!d || isNaN(d.getTime())) return true;
-    const diffMs = now.getTime() - d.getTime();
-    const diffDays = diffMs / (1000 * 60 * 60 * 24);
-    if (period === 'Today') {
-      return d.toDateString() === now.toDateString() || diffDays <= 1;
+
+    if (!d || isNaN(d.getTime())) return false;
+
+    const normPeriod = String(period).toLowerCase().replace(/[\s_-]+/g, '');
+
+    if (normPeriod === 'today') {
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
     }
-    if (period === 'This Week') {
-      return diffDays <= 7;
+
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+    const time = d.getTime();
+
+    if (normPeriod === 'yesterday') {
+      const yStart = todayStart - 86400000;
+      const yEnd = todayEnd - 86400000;
+      return time >= yStart && time <= yEnd;
     }
-    if (period === 'This Month') {
-      return diffDays <= 30;
+
+    if (normPeriod === 'thisweek' || normPeriod === 'lastweek' || normPeriod === '7days') {
+      const weekStart = todayStart - (7 * 86400000);
+      return time >= weekStart && time <= todayEnd;
     }
+
+    if (normPeriod === 'thismonth' || normPeriod === 'last30' || normPeriod === 'last30days') {
+      const monthStart = todayStart - (30 * 86400000);
+      return time >= monthStart && time <= todayEnd;
+    }
+
     return true;
   };
 
@@ -1211,6 +1339,8 @@ export const LaundryPortal = () => {
   };
 
   const handleAdvanceItemTask = (orderId, itemId) => {
+    let orderMovedToQc = false;
+    let activeTaskName = 'washing';
     const updated = orders.map(order => {
       if (order.id !== orderId) return order;
 
@@ -1222,6 +1352,7 @@ export const LaundryPortal = () => {
         const nextIdx = currentIdx + 1;
 
         if (nextIdx < tasks.length) {
+          activeTaskName = tasks[nextIdx] || 'washing';
           return {
             ...item,
             currentTaskIndex: nextIdx,
@@ -1241,6 +1372,7 @@ export const LaundryPortal = () => {
       const allItemsReady = newItems.every(
         it => it.status === 'READY_FOR_QC' || it.status === 'COMPLETED'
       );
+      if (allItemsReady) orderMovedToQc = true;
 
       return {
         ...order,
@@ -1250,9 +1382,24 @@ export const LaundryPortal = () => {
     });
 
     saveOrdersState(updated);
+    const targetOrder = updated.find(o => o.id === orderId);
+    if (orderMovedToQc) {
+      updateFirestoreOrderStatus(orderId, 'Ready for Delivery', {
+        stage: 'quality',
+        raw_status: 'QUALITY_CHECK',
+        items: targetOrder?.items || []
+      }).catch(e => console.warn('Sync QC status error:', e));
+    } else {
+      updateFirestoreOrderStatus(orderId, 'In Cleaning', {
+        stage: activeTaskName,
+        raw_status: 'PROCESSING',
+        items: targetOrder?.items || []
+      }).catch(e => console.warn('Sync item task error:', e));
+    }
   };
 
   const handleAdvanceAllItemsInStage = (orderId, taskId) => {
+    let orderMovedToQc = false;
     const updated = orders.map(order => {
       if (order.id !== orderId) return order;
 
@@ -1283,6 +1430,7 @@ export const LaundryPortal = () => {
       const allItemsReady = newItems.every(
         it => it.status === 'READY_FOR_QC' || it.status === 'COMPLETED'
       );
+      if (allItemsReady) orderMovedToQc = true;
 
       return {
         ...order,
@@ -1292,6 +1440,20 @@ export const LaundryPortal = () => {
     });
 
     saveOrdersState(updated);
+    const targetOrder = updated.find(o => o.id === orderId);
+    if (orderMovedToQc) {
+      updateFirestoreOrderStatus(orderId, 'Ready for Delivery', {
+        stage: 'quality',
+        raw_status: 'QUALITY_CHECK',
+        items: targetOrder?.items || []
+      }).catch(e => console.warn('Sync stage QC error:', e));
+    } else {
+      updateFirestoreOrderStatus(orderId, 'In Cleaning', {
+        stage: taskId || 'washing',
+        raw_status: 'PROCESSING',
+        items: targetOrder?.items || []
+      }).catch(e => console.warn('Sync stage task error:', e));
+    }
   };
 
   const handleApproveInspection = (orderId) => {
@@ -1312,6 +1474,12 @@ export const LaundryPortal = () => {
       };
     });
     saveOrdersState(updated);
+    updateFirestoreOrderStatus(orderId, 'In Cleaning', {
+      stage: 'washing',
+      raw_status: 'WASHING',
+      inspected: true,
+      items: updated.find(o => o.id === orderId)?.items || []
+    }).catch(e => console.warn('Sync inspection error:', e));
   };
 
   const handleResolveConflict = (orderId, decisionType) => {
@@ -1657,7 +1825,7 @@ export const LaundryPortal = () => {
   const totalActiveHubOrders = incomingOrders.length + receivedOrders.length + inspectionOrders.length + 
     processingOrders.length + qcOrders.length + packingOrders.length + readyOrders.length;
   
-  const unreadNotificationsCount = notifications.filter(n => !n.is_read).length;
+  const unreadNotificationsCount = notifications.filter(n => !n.isRead).length;
 
   const incomingTotalCount = incomingOrders.length + receivedOrders.length + inspectionOrders.length;
   const processingTotalCount = processingOrders.length;
@@ -2026,7 +2194,12 @@ export const LaundryPortal = () => {
               notifications={notifications}
               onMarkRead={handleMarkNotificationRead}
               onMarkAllRead={handleMarkAllNotificationsRead}
-              onItemClick={() => {
+              onItemClick={(notif) => {
+                // Always navigate to the notifications page when a notification is clicked.
+                // Mark it read first so the bell badge updates immediately.
+                if (!notif.isRead && handleMarkNotificationRead) {
+                  handleMarkNotificationRead(notif.id);
+                }
                 navigateToRoute('notifications');
               }}
               onViewAll={() => navigateToRoute('notifications')}
@@ -2147,11 +2320,11 @@ export const LaundryPortal = () => {
           // 1. KPI Counts dynamically synchronized with real valid orders
           const incomingCount = validOrders.length;
           const todayOrdersCount = validOrders.filter(o => isOrderInTimeframe(o, 'Today')).length;
-          const incomingDelta = dashboardData?.kpis?.total_incoming?.today_delta || (todayOrdersCount > 0 ? todayOrdersCount : 2);
+          const incomingDelta = hasOrders ? todayOrdersCount : (dashboardData?.kpis?.total_incoming?.today_delta || 0);
 
           const expressOrders = validOrders.filter(isExpressOrder);
           const expressCount = expressOrders.length;
-          const expressDelta = expressOrders.filter(o => isOrderInTimeframe(o, 'Today')).length || (expressCount > 0 ? 1 : 0);
+          const expressDelta = expressOrders.filter(o => isOrderInTimeframe(o, 'Today')).length;
 
           const multiServiceOrders = validOrders.filter(isMultiServiceOrder);
           const mergedCount = multiServiceOrders.length;
@@ -2225,7 +2398,7 @@ export const LaundryPortal = () => {
 
           // 3. Orders by Service Data dynamically computed from real orders based on timeframe
           const periodOrders = validOrders.filter(o => isOrderInTimeframe(o, dashServicePeriod));
-          const targetServiceOrders = periodOrders.length > 0 ? periodOrders : validOrders;
+          const targetServiceOrders = periodOrders;
 
           const getOrderServiceKey = (o) => {
             const badges = getServiceBadges(o);
@@ -2287,6 +2460,8 @@ export const LaundryPortal = () => {
                 items: itemsText,
                 service: mainService,
                 services: [mainService],
+                badges: badges,
+                rawOrder: o,
                 tags: [
                   ...(isExpressOrder(o) ? ['express'] : []),
                   ...(isMultiServiceOrder(o) ? ['combo'] : [])
@@ -2618,7 +2793,7 @@ export const LaundryPortal = () => {
                         displayRecentRequests.map((req, idx) => {
                           const orderIdStr = req.code || req.orderId || req.id;
                           const custName = req.customer_name || req.customer || 'Customer';
-                          const serviceLabel = req.service || (Array.isArray(req.services) ? req.services.join(', ') : 'Wash & Fold');
+                          const serviceBadges = req.badges || (req.rawOrder ? getServiceBadges(req.rawOrder) : getServiceBadges({ service: req.service, services: req.services }));
                           const isExp = req.isExpress || (req.tags || []).includes('express');
                           const isCmb = req.isMerged || (req.tags || []).includes('combo');
                           const timeStr = req.received || (req.received_at ? new Date(req.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today');
@@ -2628,12 +2803,18 @@ export const LaundryPortal = () => {
                               className={`recent-table-row recent-table-data-row ${idx % 2 === 1 ? 'row-alt' : ''}`}
                             >
                               <div className="col-order-id">{orderIdStr}</div>
-                              <div className="col-customer">{custName}</div>
-                              <div className="col-items">{req.items}</div>
+                              <div className="col-customer" title={custName}>{custName}</div>
+                              <div className="col-items" title={req.items}>{req.items}</div>
                               <div className="col-service">
-                                <span className="recent-service-pill">
-                                  {serviceLabel}
-                                </span>
+                                {serviceBadges.map((b, bIdx) => (
+                                  <span
+                                    key={bIdx}
+                                    className="recent-service-pill"
+                                    style={{ background: b.bg, color: b.color }}
+                                  >
+                                    {b.label}
+                                  </span>
+                                ))}
                                 {isExp && (
                                   <span className="recent-tag-pill express">Express</span>
                                 )}
@@ -2668,6 +2849,16 @@ export const LaundryPortal = () => {
                       <h3 className="dash-card-title">Needs Attention</h3>
                       <p className="dash-card-subtitle">{attentionCount} {attentionCount === 1 ? 'item' : 'items'} to check</p>
                     </div>
+                    {attentionCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => goToOrdersWithFilter('all', '', 'needs-attention')}
+                        className="dash-view-all-link"
+                        title="View all attention requests on Orders page"
+                      >
+                        View all &gt;
+                      </button>
+                    )}
                   </div>
 
                   <div className="needs-attention-list">
@@ -3246,35 +3437,57 @@ export const LaundryPortal = () => {
                         `\n\nClick to view item plan & tracker`;
 
                       let droppedAtStr = '';
-                      const rawDrop = order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.dropped_off_at || order.droppedAt || order.receivedAt || order.intakeAt || order.hubReceivedAt;
+                      const rawDrop = order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.dropped_off_at || order.droppedAtTime || order.hubReceivedAt || order.receivedAt || order.intakeAt;
                       if (rawDrop) {
                         if (typeof rawDrop === 'string' && (rawDrop.includes('AM') || rawDrop.includes('PM'))) {
                           droppedAtStr = rawDrop;
                         } else {
                           try {
-                            const dt = new Date(rawDrop);
+                            const dt = new Date(typeof rawDrop === 'number' ? rawDrop : (typeof rawDrop === 'string' && /^\d+$/.test(rawDrop) ? Number(rawDrop) : rawDrop));
                             if (!isNaN(dt.getTime())) {
                               droppedAtStr = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
                             }
                           } catch (_) {}
                         }
                       }
+                      if (!droppedAtStr && order.droppedAt && typeof order.droppedAt === 'string' && (order.droppedAt.includes('AM') || order.droppedAt.includes('PM'))) {
+                        droppedAtStr = order.droppedAt;
+                      }
+                      if (!droppedAtStr && Array.isArray(order.history)) {
+                        const dropHist = order.history.find(h => 
+                          h && (
+                            String(h.status || '').toUpperCase().includes('DROPPED') ||
+                            String(h.status || '').toUpperCase().includes('INTAKE') ||
+                            String(h.status || '').toUpperCase().includes('RECEIVED') ||
+                            String(h.note || '').toLowerCase().includes('drop')
+                          )
+                        );
+                        if (dropHist) {
+                          if (typeof dropHist.time === 'string' && (dropHist.time.includes('AM') || dropHist.time.includes('PM'))) {
+                            droppedAtStr = dropHist.time;
+                          } else if (dropHist.at) {
+                            const dt = new Date(dropHist.at);
+                            if (!isNaN(dt.getTime())) {
+                              droppedAtStr = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                            }
+                          }
+                        }
+                      }
                       if (!droppedAtStr) {
-                        if (order.droppedAt && typeof order.droppedAt === 'string' && (order.droppedAt.includes('AM') || order.droppedAt.includes('PM'))) {
-                          droppedAtStr = order.droppedAt;
-                        } else if (order.placed && typeof order.placed === 'string' && (order.placed.includes('AM') || order.placed.includes('PM'))) {
-                          droppedAtStr = order.placed;
-                        } else if (order.placedAt || order.createdAt || order.created_at) {
+                        const s = String(order.status || order.raw_status || order.orderStatus || order.stage || '').toUpperCase();
+                        if (s.includes('PENDING') || s.includes('PICKUP') || s.includes('ON_THE_WAY') || s.includes('ARRIVED') || s.includes('BOOKED')) {
+                          droppedAtStr = 'Pending Drop-off';
+                        } else if (order.updatedAt) {
                           try {
-                            const dt = new Date(order.placedAt || order.createdAt || order.created_at);
+                            const dt = new Date(order.updatedAt);
                             if (!isNaN(dt.getTime())) {
                               droppedAtStr = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
                             }
                           } catch (_) {
-                            droppedAtStr = '10:42 AM';
+                            droppedAtStr = '--';
                           }
                         } else {
-                          droppedAtStr = '10:42 AM';
+                          droppedAtStr = '--';
                         }
                       }
                       const svcBadge = getServiceBadge(order);
@@ -3410,7 +3623,13 @@ export const LaundryPortal = () => {
                               {statusPill.label}
                             </span>
                           </div>
-                          <div className="col-placed" title={`Dropped at Hub: ${droppedAtStr}`}>{droppedAtStr}</div>
+                          <div className="col-placed" title={`Dropped at Hub: ${droppedAtStr}`}>
+                            {droppedAtStr === 'Pending Drop-off' ? (
+                              <span style={{ color: '#94A3B8', fontSize: '11px', fontWeight: 600 }}>Pending Drop-off</span>
+                            ) : (
+                              droppedAtStr
+                            )}
+                          </div>
                           <div className="col-action orders-action-col">
                             <button
                               type="button"
@@ -3458,28 +3677,89 @@ export const LaundryPortal = () => {
             PAGE 6: ORDER HISTORY (Matching Image 2 Exactly)
            ======================================================== */}
         {activePage === 'history' && (() => {
-          // Combine database historyOrders with completed/delivered/cancelled orders from realtime orders state
+          // Combine database historyOrders with strictly completed/delivered/cancelled orders
           const combinedHistoryMap = new Map();
 
-          // 1. Seed from explicit history query
-          (historyOrders || []).forEach(o => {
-            const k = String(o.code || o.order_number || o.order_id || o.id || o.key || '');
-            if (k) combinedHistoryMap.set(k, o);
-          });
-
-          // 2. Supplement from realtime active orders list
-          (orders || []).forEach(o => {
+          const isOrderTerminalDelivered = (o) => {
+            if (!o) return false;
             const s = String(o.status_display || o.status || o.orderStatus || o.raw_status || '').toUpperCase();
             const stage = String(o.stage || o.processing_stage || '').toUpperCase();
-            const isDelivered = s.includes('DELIVER') || s.includes('COMPLET') || stage === 'DELIVERED';
-            const isCancelled = s.includes('CANCEL');
-            const k = String(o.code || o.order_number || o.order_id || o.id || o.key || '');
+            const isActiveStage = s.includes('READY') || s.includes('OUT_FOR_DELIVERY') || s.includes('NEARBY') ||
+                                  s.includes('ASSIGN') || s.includes('INTAKE') || s.includes('WASH') ||
+                                  s.includes('DRY') || s.includes('IRON') || s.includes('FOLD') ||
+                                  s.includes('PACK') || s.includes('QUALITY') || s.includes('PICKUP') ||
+                                  s.includes('PENDING') || s.includes('PROGRESS');
+            return !isActiveStage && (s === 'DELIVERED' || s === 'COMPLETED' || stage === 'DELIVERED' || stage === 'COMPLETED');
+          };
 
+          const isOrderTerminalCancelled = (o) => {
+            if (!o) return false;
+            const s = String(o.status_display || o.status || o.orderStatus || o.raw_status || '').toUpperCase();
+            return s.includes('CANCEL');
+          };
+
+          const isOrderActiveLaundryOrTransit = (o) => {
+            if (!o) return false;
+            if (isOrderTerminalCancelled(o)) return false;
+            if (isOrderTerminalDelivered(o)) return false;
+            return true;
+          };
+
+          const getCanonicalOrderKey = (o) => {
+            if (!o) return '';
+            const code = String(o.code || o.order_number || o.order_id || o.id || o.key || '');
+            const digits = code.replace(/\D/g, '');
+            if (digits && digits.length >= 4) return `FC-${digits}`;
+            return code.toUpperCase().trim();
+          };
+
+          // Build index of currently active orders from live orders array
+          const activeOrderKeySet = new Set();
+          (orders || []).forEach(o => {
+            if (isOrderActiveLaundryOrTransit(o)) {
+              const cK = getCanonicalOrderKey(o);
+              if (cK) activeOrderKeySet.add(cK);
+              if (o.id) activeOrderKeySet.add(String(o.id));
+              if (o.key) activeOrderKeySet.add(String(o.key));
+              if (o.code) activeOrderKeySet.add(String(o.code));
+              if (o.order_number) activeOrderKeySet.add(String(o.order_number));
+            }
+          });
+
+          // 1. Seed from explicit history query ONLY if genuinely terminal and NOT active in live orders
+          (historyOrders || []).forEach(o => {
+            const k = getCanonicalOrderKey(o) || String(o.code || o.order_number || o.order_id || o.id || o.key || '');
+            if (!k) return;
+            if (activeOrderKeySet.has(k) || activeOrderKeySet.has(String(o.id)) || activeOrderKeySet.has(String(o.code))) {
+              return; // Do not include active order in history!
+            }
+            if (isOrderTerminalDelivered(o) || isOrderTerminalCancelled(o)) {
+              combinedHistoryMap.set(k, { ...o, historyStatus: isOrderTerminalCancelled(o) ? 'cancelled' : 'delivered' });
+            }
+          });
+
+          // 2. Synchronize from realtime orders list
+          (orders || []).forEach(o => {
+            const k = getCanonicalOrderKey(o) || String(o.code || o.order_number || o.order_id || o.id || o.key || '');
             if (!k) return;
 
-            if (isDelivered || isCancelled) {
+            // If an order is currently active (e.g. Ready for Delivery, Hub Intake, Washing),
+            // it MUST be deleted from Order History!
+            if (isOrderActiveLaundryOrTransit(o) || activeOrderKeySet.has(k)) {
+              combinedHistoryMap.delete(k);
+              if (o.id) combinedHistoryMap.delete(String(o.id));
+              if (o.key) combinedHistoryMap.delete(String(o.key));
+            } else if (isOrderTerminalDelivered(o) || isOrderTerminalCancelled(o)) {
               const prev = combinedHistoryMap.get(k) || {};
-              combinedHistoryMap.set(k, { ...prev, ...o, historyStatus: isCancelled ? 'cancelled' : 'delivered' });
+              combinedHistoryMap.set(k, { ...prev, ...o, historyStatus: isOrderTerminalCancelled(o) ? 'cancelled' : 'delivered' });
+            }
+          });
+
+          // 3. Final sanity check: prune any entry that is still active
+          combinedHistoryMap.forEach((ord, key) => {
+            const cK = getCanonicalOrderKey(ord);
+            if (activeOrderKeySet.has(cK) || activeOrderKeySet.has(key) || isOrderActiveLaundryOrTransit(ord) || (!isOrderTerminalDelivered(ord) && !isOrderTerminalCancelled(ord))) {
+              combinedHistoryMap.delete(key);
             }
           });
 
@@ -3494,7 +3774,7 @@ export const LaundryPortal = () => {
               let rawA = ord.total_amount ?? ord.amount ?? ord.total;
               if (typeof rawA === 'string') rawA = parseFloat(rawA) || 0;
               if (typeof rawA === 'number' && !isNaN(rawA)) {
-                amt = rawA > 500 ? (rawA / 100) : rawA;
+                amt = (rawA >= 2000 && rawA % 100 === 0) ? (rawA / 100) : rawA;
               }
             } else if (ord.amount_paise || ord.total_paise) {
               amt = (ord.amount_paise || ord.total_paise) / 100;
@@ -3526,8 +3806,7 @@ export const LaundryPortal = () => {
               ? ord.services.join(', ')
               : (ord.service || ord.services || 'Wash & Fold');
 
-            const rawSt = String(ord.historyStatus || ord.raw_status || ord.status_display || ord.status || '').toUpperCase();
-            const isCancelled = rawSt.includes('CANCEL');
+            const isCancelled = isOrderTerminalCancelled(ord);
             const statusKey = isCancelled ? 'cancelled' : 'delivered';
             const statusLabel = isCancelled ? 'Cancelled' : 'Delivered';
 
@@ -3864,9 +4143,14 @@ export const LaundryPortal = () => {
             onMarkRead={handleMarkNotificationRead}
             onMarkAllRead={handleMarkAllNotificationsRead}
             onActionClick={(notif) => {
-              if (notif.orderId) {
-                setOrdersSearchQuery(notif.orderId);
+              const targetCode = notif?.orderCode || notif?.orderId;
+              if (targetCode) {
+                const m = String(notif?.message || notif?.body || '').match(/FC-\d{5}/i);
+                const searchCode = m ? m[0].toUpperCase() : formatOrderId(targetCode);
+                setOrdersSearchQuery(searchCode);
                 setOrdersCurrentPage(1);
+                setOrdersActiveChip('all');
+                setOrdersServiceFilter('all');
                 navigateToRoute('orders');
               }
             }}
@@ -5181,17 +5465,43 @@ export const LaundryPortal = () => {
                       <span className="orders-details-info-label">Dropped At</span>
                       <span className="orders-details-info-val">
                         {(() => {
-                          const rawDrop = order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.dropped_off_at || order.droppedAt || order.receivedAt || order.intakeAt || order.hubReceivedAt;
+                          const rawDrop = order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.dropped_off_at || order.droppedAtTime || order.hubReceivedAt || order.receivedAt || order.intakeAt;
                           if (rawDrop) {
                             if (typeof rawDrop === 'string' && (rawDrop.includes('AM') || rawDrop.includes('PM'))) return rawDrop;
                             try {
-                              const dt = new Date(rawDrop);
+                              const dt = new Date(typeof rawDrop === 'number' ? rawDrop : (typeof rawDrop === 'string' && /^\d+$/.test(rawDrop) ? Number(rawDrop) : rawDrop));
                               if (!isNaN(dt.getTime())) return dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
                             } catch (_) {}
                           }
-                          if (order.droppedAt && typeof order.droppedAt === 'string') return order.droppedAt;
-                          if (order.placed && typeof order.placed === 'string') return order.placed;
-                          return '10:42 AM';
+                          if (order.droppedAt && typeof order.droppedAt === 'string' && (order.droppedAt.includes('AM') || order.droppedAt.includes('PM'))) return order.droppedAt;
+                          if (Array.isArray(order.history)) {
+                            const dropHist = order.history.find(h => 
+                              h && (
+                                String(h.status || '').toUpperCase().includes('DROPPED') ||
+                                String(h.status || '').toUpperCase().includes('INTAKE') ||
+                                String(h.status || '').toUpperCase().includes('RECEIVED') ||
+                                String(h.note || '').toLowerCase().includes('drop')
+                              )
+                            );
+                            if (dropHist) {
+                              if (typeof dropHist.time === 'string' && (dropHist.time.includes('AM') || dropHist.time.includes('PM'))) return dropHist.time;
+                              if (dropHist.at) {
+                                const dt = new Date(dropHist.at);
+                                if (!isNaN(dt.getTime())) return dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                              }
+                            }
+                          }
+                          const s = String(order.status || order.raw_status || order.orderStatus || order.stage || '').toUpperCase();
+                          if (s.includes('PENDING') || s.includes('PICKUP') || s.includes('ON_THE_WAY') || s.includes('ARRIVED') || s.includes('BOOKED')) {
+                            return 'Pending Drop-off';
+                          }
+                          if (order.updatedAt) {
+                            try {
+                              const dt = new Date(order.updatedAt);
+                              if (!isNaN(dt.getTime())) return dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                            } catch (_) {}
+                          }
+                          return '--';
                         })()}
                       </span>
                     </div>
@@ -6425,7 +6735,12 @@ export const LaundryPortal = () => {
           display: grid;
           grid-template-columns: minmax(0, 1fr) 392px;
           gap: 18px;
-          align-items: stretch;
+          align-items: start;
+        }
+
+        .needs-attention-card {
+          justify-content: flex-start !important;
+          height: auto !important;
         }
 
         .dash-view-all-link {
@@ -6447,7 +6762,7 @@ export const LaundryPortal = () => {
         /* RECENT REQUESTS TABLE */
         .recent-table-row {
           display: grid;
-          grid-template-columns: 110px 140px 120px minmax(170px, 1fr) 95px 75px;
+          grid-template-columns: 96px minmax(115px, 1.2fr) minmax(130px, 1.4fr) minmax(150px, 1.5fr) 85px 68px;
           column-gap: 12px;
           align-items: center;
         }
@@ -6469,7 +6784,7 @@ export const LaundryPortal = () => {
         }
 
         .recent-table-data-row {
-          padding: 11px 14px;
+          padding: 10px 14px;
           border-radius: 12px;
           background: #FFFFFF;
           transition: background 0.15s ease;
@@ -6483,13 +6798,50 @@ export const LaundryPortal = () => {
           background: #F1F6F8;
         }
 
+        .recent-table-row .col-order-id {
+          font-weight: 700;
+          color: #0F172A;
+          font-size: 13px;
+          white-space: nowrap;
+        }
+
+        .recent-table-row .col-customer {
+          font-weight: 600;
+          color: #1E293B;
+          font-size: 13px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          min-width: 0;
+        }
+
+        .recent-table-row .col-items {
+          font-size: 12.5px;
+          color: #334155;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          min-width: 0;
+        }
+
+        .recent-table-row .col-service {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 5px;
+          min-width: 0;
+          line-height: 1.2;
+        }
+
         .recent-service-pill {
           display: inline-flex;
           align-items: center;
           padding: 3px 9px;
           border-radius: 9999px;
-          font-size: 12px;
+          font-size: 11.5px;
           font-weight: 600;
+          line-height: 1.2;
+          white-space: nowrap;
           background: #E0F2FE;
           color: #0369A1;
         }
@@ -6497,11 +6849,13 @@ export const LaundryPortal = () => {
         .recent-tag-pill {
           display: inline-flex;
           align-items: center;
-          padding: 3px 8px;
+          padding: 2.5px 8px;
           border-radius: 9999px;
-          font-size: 11px;
+          font-size: 10.5px;
           font-weight: 700;
-          margin-left: 6px;
+          line-height: 1.2;
+          white-space: nowrap;
+          margin-left: 0;
         }
 
         .recent-tag-pill.express {
@@ -6515,9 +6869,15 @@ export const LaundryPortal = () => {
         }
 
         .col-received {
-          font-size: 13px;
+          font-size: 12.5px;
           font-weight: 500;
           color: #475569;
+          white-space: nowrap;
+        }
+
+        .recent-table-row .col-action {
+          display: flex;
+          justify-content: flex-end;
         }
 
         .recent-open-btn {

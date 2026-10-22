@@ -295,7 +295,25 @@ export const updateLaundryStaffOrderStatus = async (orderId, targetStep, staffUs
   updates[`orders/${orderKey}/assignedStaffId`] = user.uid;
   updates[`orders/${orderKey}/assignedStaffName`] = user.name;
 
-  if (canonicalKey === 'DELIVERED') {
+  if (canonicalKey === 'READY_FOR_DELIVERY') {
+    updates[`orders/${orderKey}/readyAt`] = now;
+    updates[`orders/${orderKey}/ready_at`] = now;
+    updates[`orders/${orderKey}/packagedAt`] = now;
+  } else if (['WASHING', 'DRYING', 'IRONING', 'PROCESSING', 'STEAMING', 'PRESSING', 'DRY_CLEANING'].includes(canonicalKey)) {
+    if (!order.processing_started_at && !order.processingStartedAt) {
+      updates[`orders/${orderKey}/processing_started_at`] = now;
+      updates[`orders/${orderKey}/processingStartedAt`] = now;
+    }
+  } else if (['RECEIVED', 'DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF'].includes(canonicalKey)) {
+    if (!order.facility_received_at && !order.facilityReceivedAt && !order.droppedAtHub) {
+      updates[`orders/${orderKey}/facility_received_at`] = now;
+      updates[`orders/${orderKey}/facilityReceivedAt`] = now;
+      updates[`orders/${orderKey}/droppedAtHub`] = now;
+    }
+  } else if (canonicalKey === 'OUT_FOR_DELIVERY') {
+    updates[`orders/${orderKey}/out_for_delivery_at`] = now;
+    updates[`orders/${orderKey}/outForDeliveryAt`] = now;
+  } else if (canonicalKey === 'DELIVERED') {
     updates[`orders/${orderKey}/deliveredAt`] = now;
     updates[`orders/${orderKey}/delivered_at`] = now;
     updates[`orders/${orderKey}/completedAt`] = now;
@@ -389,11 +407,13 @@ export const updateLaundryStaffOrderStatus = async (orderId, targetStep, staffUs
   }
 
   if (canonicalKey === 'RECEIVED' || canonicalKey === 'DROPPED_OFF_AT_LAUNDRY') {
+    const codeDisplay = order.code || order.order_number || (orderKey && !String(orderKey).startsWith('-') ? orderKey : 'Order');
     await addRoleNotificationsToUpdates(updates, 'staff', {
       type: 'received_at_hub',
       title: 'Order Received at Hub',
-      body: `Order ${order.code || order.order_number || orderKey} received at hub facility.`,
-      orderId: orderKey,
+      body: `Order ${codeDisplay} received at hub facility.`,
+      orderId: codeDisplay,
+      orderCode: codeDisplay,
       createdAt: now
     });
   }

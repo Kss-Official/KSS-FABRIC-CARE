@@ -176,11 +176,11 @@ export const normalizeOrder = (o) => {
     const quantity = Number(it.quantity || it.qty || 1);
     let p = it.unitPrice ?? it.price ?? it.rate ?? 0;
     if (typeof p === 'string') p = parseFloat(p) || 0;
-    const unitPrice = p > 500 ? (p / 100) : p;
+    const unitPrice = (p >= 2000 && p % 100 === 0) ? (p / 100) : p;
 
     let t = it.lineTotal ?? it.total ?? (unitPrice * quantity);
     if (typeof t === 'string') t = parseFloat(t) || 0;
-    const lineTotal = t > 500 ? (t / 100) : t;
+    const lineTotal = (t >= 2000 && t % 100 === 0) ? (t / 100) : t;
 
     return {
       ...it,
@@ -199,7 +199,7 @@ export const normalizeOrder = (o) => {
   if (typeof numTotal === 'string') numTotal = parseFloat(numTotal) || 0;
   let finalTotal = 0;
   if (typeof numTotal === 'number' && !isNaN(numTotal)) {
-    finalTotal = numTotal > 500 ? (numTotal / 100) : numTotal;
+    finalTotal = (numTotal >= 2000 && numTotal % 100 === 0) ? (numTotal / 100) : numTotal;
   }
   if (!finalTotal && normItems.length > 0) {
     finalTotal = normItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
@@ -292,16 +292,83 @@ export const ordersApi = {
   },
 
   getOrderById: async (id) => {
-    const snap = await get(ref(rtdb, `orders/${id}`));
-    if (snap.exists()) {
-      return { data: normalizeOrder(snap.val()) };
-    }
-    // Query by code
-    const qSnap = await get(query(ref(rtdb, 'orders'), orderByChild('code'), equalTo(id)));
-    if (qSnap.exists()) {
-      const firstKey = Object.keys(qSnap.val())[0];
-      return { data: normalizeOrder(qSnap.val()[firstKey]) };
-    }
+    if (!id) return { data: null };
+    const rawId = String(id).trim();
+    const cleanId = rawId.replace(/^#/, '');
+    const cleanTarget = cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const targetDigits = cleanTarget.replace(/\D/g, '');
+
+    // 1. Direct match on key
+    try {
+      const snap = await get(ref(rtdb, `orders/${cleanId}`));
+      if (snap.exists()) {
+        return { data: normalizeOrder({ ...snap.val(), docId: cleanId, id: cleanId }) };
+      }
+      const rawSnap = await get(ref(rtdb, `orders/${rawId}`));
+      if (rawSnap.exists()) {
+        return { data: normalizeOrder({ ...rawSnap.val(), docId: rawId, id: rawId }) };
+      }
+    } catch (_) {}
+
+    // 2. Query by code
+    try {
+      const qSnap = await get(query(ref(rtdb, 'orders'), orderByChild('code'), equalTo(cleanId)));
+      if (qSnap.exists()) {
+        const firstKey = Object.keys(qSnap.val())[0];
+        return { data: normalizeOrder({ ...qSnap.val()[firstKey], docId: firstKey, id: firstKey }) };
+      }
+    } catch (_) {}
+
+    // 3. Scan all orders for robust matching by code, order_number, or digits
+    try {
+      const allSnap = await get(ref(rtdb, 'orders'));
+      if (allSnap.exists()) {
+        const all = allSnap.val() || {};
+        const foundKey = Object.keys(all).find(k => {
+          const o = all[k];
+          if (!o) return false;
+          const cK = String(k || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cCode = String(o.code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cId = String(o.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cNum = String(o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cDisp = String(o.displayId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+          // 1. Exact matches
+          if (
+            cK === cleanTarget ||
+            cCode === cleanTarget ||
+            cId === cleanTarget ||
+            cNum === cleanTarget ||
+            cDisp === cleanTarget
+          ) {
+            return true;
+          }
+
+          // 2. Suffix matches (only if candidate string has at least 4 chars)
+          if (cleanTarget.length >= 4) {
+            if (cCode.length >= 4 && (cCode.endsWith(cleanTarget) || cleanTarget.endsWith(cCode))) return true;
+            if (cNum.length >= 4 && (cNum.endsWith(cleanTarget) || cleanTarget.endsWith(cNum))) return true;
+            if (cId.length >= 4 && (cId.endsWith(cleanTarget) || cleanTarget.endsWith(cId))) return true;
+          }
+
+          // 3. Digit matches (only if candidate digits have at least 4 digits)
+          if (targetDigits.length >= 4) {
+            const codeDigits = cCode.replace(/\D/g, '');
+            const numDigits = cNum.replace(/\D/g, '');
+            const idDigits = cId.replace(/\D/g, '');
+            if (codeDigits.length >= 4 && (codeDigits === targetDigits || codeDigits.endsWith(targetDigits) || targetDigits.endsWith(codeDigits))) return true;
+            if (numDigits.length >= 4 && (numDigits === targetDigits || numDigits.endsWith(targetDigits) || targetDigits.endsWith(numDigits))) return true;
+            if (idDigits.length >= 4 && (idDigits === targetDigits || idDigits.endsWith(targetDigits) || targetDigits.endsWith(idDigits))) return true;
+          }
+          return false;
+        });
+
+        if (foundKey) {
+          return { data: normalizeOrder({ ...all[foundKey], docId: foundKey, id: foundKey }) };
+        }
+      }
+    } catch (_) {}
+
     return { data: null };
   },
 
@@ -373,6 +440,23 @@ export const staffApi = {
     return { data: res };
   },
 
+  advanceStage: async (orderId, { stage, notes } = {}) => {
+    return staffApi.updateStatus(orderId, stage || 'WASHING', notes || '');
+  },
+
+  qualityCheck: async (orderId, { passed, notes, reprocess_stage } = {}) => {
+    const targetStep = passed ? 'PACKING' : (reprocess_stage || 'WASHING');
+    return staffApi.updateStatus(orderId, targetStep, notes || '');
+  },
+
+  packOrder: async (orderId, { notes } = {}) => {
+    return staffApi.updateStatus(orderId, 'READY_FOR_DELIVERY', notes || '');
+  },
+
+  confirmReceipt: async (orderId, payload = {}) => {
+    return staffApi.updateStatus(orderId, 'RECEIVED', payload?.notes || 'Receipt confirmed');
+  },
+
   getDashboard: async () => {
     const today = new Date().toISOString().split('T')[0];
     const snap = await get(ref(rtdb, `stats/daily/${today}`));
@@ -401,11 +485,19 @@ export const staffApi = {
         const all = snap.val() || {};
         for (const [key, raw] of Object.entries(all)) {
           if (!raw || typeof raw !== 'object') continue;
-          const s = String(raw.status || raw.orderStatus || raw.status_display || raw.raw_status || '').toUpperCase();
-          const stage = String(raw.stage || raw.processing_stage || '').toUpperCase();
+          const s = String(raw.status || raw.orderStatus || raw.status_display || raw.raw_status || '').toUpperCase().trim();
+          const stage = String(raw.stage || raw.processing_stage || '').toUpperCase().trim();
 
-          const isDelivered = s.includes('DELIVER') || s.includes('COMPLET') || stage === 'DELIVERED';
-          const isCancelled = s.includes('CANCEL');
+          // Exclude orders in active delivery or cleaning stages
+          const isActiveStage = s.includes('READY') || s.includes('OUT_FOR_DELIVERY') || s.includes('OUT FOR DELIVERY') ||
+                                s.includes('NEARBY') || s.includes('PACK') || s.includes('WASH') || s.includes('DRY') ||
+                                s.includes('IRON') || s.includes('CLEAN') || s.includes('IN_PROCESS') || s.includes('INTAKE') ||
+                                s.includes('PICK') || s.includes('TRANSIT') || stage === 'READY' || stage === 'PACKED' ||
+                                stage === 'OUT_FOR_DELIVERY' || stage === 'NEARBY' || stage === 'INSPECTION' ||
+                                stage === 'WASHING' || stage === 'DRYING' || stage === 'IRONING';
+
+          const isDelivered = !isActiveStage && (s === 'DELIVERED' || s === 'COMPLETED' || stage === 'DELIVERED' || stage === 'COMPLETED');
+          const isCancelled = s.includes('CANCEL') || stage.includes('CANCEL');
 
           if (isDelivered || isCancelled) {
             const norm = normalizeOrder({ ...raw, id: raw.id || raw.code || key, key });
@@ -425,10 +517,14 @@ export const staffApi = {
             if (!itemsMap.has(id)) {
               const oSnap = await get(ref(rtdb, `orders/${id}`));
               if (oSnap.exists()) {
-                const norm = normalizeOrder({ ...oSnap.val(), id, key: id });
-                norm.historyStatus = 'delivered';
-                const k = String(norm.code || norm.id || norm.order_number || id);
-                itemsMap.set(k, norm);
+                const val = oSnap.val();
+                const s = String(val.status || val.raw_status || val.orderStatus || '').toUpperCase().trim();
+                if (!s.includes('READY') && !s.includes('OUT_FOR_DELIVERY') && (s === 'DELIVERED' || s === 'COMPLETED')) {
+                  const norm = normalizeOrder({ ...val, id, key: id });
+                  norm.historyStatus = 'delivered';
+                  const k = String(norm.code || norm.id || norm.order_number || id);
+                  itemsMap.set(k, norm);
+                }
               }
             }
           }

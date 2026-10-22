@@ -134,7 +134,10 @@ export const OrderConfirmedPage = () => {
             <button
               id="confirmed-track-order-btn"
               className="btn btn-outline-teal confirmed-btn"
-              onClick={() => navigateTo('customer-track', lastOrder?.id)}
+              onClick={() => {
+                const targetTrackId = String(lastOrder?.order_number || lastOrder?.code || lastOrder?.order_id || lastOrder?.id || '').trim();
+                navigateTo('customer-track', targetTrackId || lastOrder?.id);
+              }}
             >
               <Truck size={17} />
               <span>Track Live Order</span>

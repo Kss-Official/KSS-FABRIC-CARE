@@ -307,37 +307,89 @@ export const normalizeFirestoreOrder = (docData, docId) => {
   const orderCode = d.order_number || d.order_id || d.code || (idStr.startsWith('#') ? idStr : `#${idStr}`);
 
   // Safely extract customer name
-  let custName = 'Customer';
-  let custPhone = '';
-  let custEmail = '';
-  let custAddress = 'Bengaluru';
-  let custAvatar = 'CU';
-
+  let rawCustName = '';
   if (typeof d.customer === 'object' && d.customer !== null) {
-    custName = d.customer.name || d.customer_name || 'Customer';
-    custPhone = d.customer.phone || d.customer_phone || '';
-    custEmail = d.customer.email || d.customer_email || '';
-    custAddress = d.customer.address || d.pickup_address || 'Bengaluru';
-    custAvatar = d.customer.avatar || (custName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CU');
-  } else if (typeof d.customer === 'string') {
-    custName = d.customer;
-  } else if (d.customer_name) {
-    custName = d.customer_name;
+    rawCustName = d.customer.name || d.customer.fullName || d.customer.customerName || d.customer_name || '';
+  } else if (typeof d.customer === 'string' && d.customer.trim() && d.customer.trim().toLowerCase() !== 'customer') {
+    rawCustName = d.customer.trim();
   }
+  if (!rawCustName || rawCustName.trim().toLowerCase() === 'customer') {
+    rawCustName = d.customerName || d.customer_name || d.pickup_full_name || d.recipient_name || d.userName || d.name || '';
+  }
+  const custName = (rawCustName && rawCustName.trim().toLowerCase() !== 'customer') ? rawCustName.trim() : 'Customer';
 
-  if (d.pickup_phone) custPhone = d.pickup_phone;
-  if (d.pickup_address) custAddress = d.pickup_address;
+  // Safely extract customer phone
+  let rawCustPhone = '';
+  if (typeof d.customer === 'object' && d.customer !== null) {
+    rawCustPhone = d.customer.phone || d.customer.mobile || d.customer.phoneNumber || d.customer_phone || '';
+  }
+  if (!rawCustPhone) {
+    rawCustPhone = d.customerPhone || d.customer_phone || d.pickup_phone || d.phone || d.mobile || d.phoneNumber || d.userPhone || '';
+  }
+  const custPhone = rawCustPhone && String(rawCustPhone).trim() !== '-' ? String(rawCustPhone).trim() : '';
+
+  // Safely extract customer email
+  let rawCustEmail = '';
+  if (typeof d.customer === 'object' && d.customer !== null) {
+    rawCustEmail = d.customer.email || d.customer_email || '';
+  }
+  if (!rawCustEmail) {
+    rawCustEmail = d.customerEmail || d.customer_email || d.email || d.userEmail || '';
+  }
+  const custEmail = rawCustEmail ? String(rawCustEmail).trim() : '';
+
+  // Safely extract address & pincode
+  let custAddress = '';
+  let addrObj = null;
   if (d.address && typeof d.address === 'object') {
+    addrObj = d.address;
     const parts = [d.address.flatHouse, d.address.areaColony, d.address.city, d.address.pincode].filter(Boolean);
     if (parts.length > 0) custAddress = parts.join(', ');
+  } else if (typeof d.address === 'string' && d.address.trim()) {
+    custAddress = d.address.trim();
   }
 
-  let totalAmount = 0;
-  if (d.total !== undefined && d.total !== null) {
-    totalAmount = Number(d.total > 500 ? (d.total / 100).toFixed(2) : d.total);
-  } else {
-    totalAmount = Number(d.total_amount ?? d.amount ?? d.estimatedTotal ?? 0);
+  if (!custAddress && d.delivery_address && typeof d.delivery_address === 'string' && d.delivery_address.trim()) {
+    custAddress = d.delivery_address.trim();
+  } else if (!custAddress && d.deliveryAddress) {
+    if (typeof d.deliveryAddress === 'object') {
+      addrObj = addrObj || d.deliveryAddress;
+      const parts = [d.deliveryAddress.flatHouse, d.deliveryAddress.areaColony, d.deliveryAddress.city, d.deliveryAddress.pincode].filter(Boolean);
+      if (parts.length > 0) custAddress = parts.join(', ');
+    } else {
+      custAddress = String(d.deliveryAddress).trim();
+    }
   }
+
+  if (!custAddress && d.pickup_address && typeof d.pickup_address === 'string' && d.pickup_address.trim()) {
+    custAddress = d.pickup_address.trim();
+  } else if (!custAddress && d.pickupAddress) {
+    if (typeof d.pickupAddress === 'object') {
+      addrObj = addrObj || d.pickupAddress;
+      const parts = [d.pickupAddress.flatHouse, d.pickupAddress.areaColony, d.pickupAddress.city, d.pickupAddress.pincode].filter(Boolean);
+      if (parts.length > 0) custAddress = parts.join(', ');
+    } else {
+      custAddress = String(d.pickupAddress).trim();
+    }
+  }
+
+  if (!custAddress && d.customer && typeof d.customer === 'object' && d.customer.address) {
+    if (typeof d.customer.address === 'object') {
+      addrObj = addrObj || d.customer.address;
+      const parts = [addrObj.flatHouse, addrObj.areaColony, addrObj.city, addrObj.pincode].filter(Boolean);
+      if (parts.length > 0) custAddress = parts.join(', ');
+    } else {
+      custAddress = String(d.customer.address).trim();
+    }
+  }
+
+  if (!custAddress) {
+    custAddress = 'Bengaluru';
+  }
+
+  const pincode = d.pincode || (addrObj && addrObj.pincode) || (custAddress.match(/\b\d{6}\b/)?.[0]) || '';
+  const zone = d.zone || (pincode ? `PIN ${pincode}` : 'Zone 4');
+  const custAvatar = custName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CU';
 
   const detectItemCategory = (rawCat, rawName) => {
     const sCat = String(rawCat || '').trim();
@@ -357,9 +409,9 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     parsedItems = d.items.map((it, idx) => {
       const q = Number(it.quantity || it.qty || 1);
       const rawPrice = Number(it.unitPrice ?? it.rate ?? it.price ?? 60);
-      const price = rawPrice > 500 ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
+      const price = (rawPrice >= 2000 && rawPrice % 100 === 0) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
       const rawTotal = Number(it.lineTotal ?? it.total ?? q * price);
-      const total = rawTotal > 500 ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+      const total = (rawTotal >= 2000 && rawTotal % 100 === 0) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
       const cat = detectItemCategory(it.category || it.categoryName || it.service_category, it.name || it.item_name || it.garment);
       return {
         id: it.id || `item_${idx + 1}`,
@@ -381,9 +433,9 @@ export const normalizeFirestoreOrder = (docData, docId) => {
       if (typeof val === 'object' && val !== null) {
         const q = Number(val.quantity || val.qty || 1);
         const rawPrice = Number(val.unitPrice ?? val.rate ?? val.price ?? 60);
-        const price = rawPrice > 500 ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
+        const price = (rawPrice >= 2000 && rawPrice % 100 === 0) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
         const rawTotal = Number(val.lineTotal ?? val.total ?? q * price);
-        const total = rawTotal > 500 ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+        const total = (rawTotal >= 2000 && rawTotal % 100 === 0) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
         const cat = detectItemCategory(val.category || val.categoryName || val.service_category, val.name || val.item_name || val.garment || k);
         return {
           id: k,
@@ -406,9 +458,40 @@ export const normalizeFirestoreOrder = (docData, docId) => {
   }
 
   const totalItemsCount = parsedItems.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0);
+  const itemsCalculatedTotal = parsedItems.reduce((acc, it) => acc + (Number(it.lineTotal || it.total) || 0), 0);
   const itemsSummaryStr = parsedItems.length > 0
     ? parsedItems.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ')
-    : '1 Item';
+    : (Array.isArray(d.services) && d.services.length > 0 ? d.services.join(' + ') : (d.service || 'Laundry Bag'));
+
+  let totalAmount = 0;
+  if (d.total_paise !== undefined || d.amount_paise !== undefined) {
+    totalAmount = Number(((d.total_paise || d.amount_paise) / 100).toFixed(2));
+  } else if (d.total !== undefined && d.total !== null) {
+    const rawNum = Number(d.total);
+    if (rawNum >= 2000 || (itemsCalculatedTotal > 0 && Math.abs(rawNum - itemsCalculatedTotal * 100) < 50)) {
+      totalAmount = Number((rawNum / 100).toFixed(2));
+    } else {
+      totalAmount = Number(rawNum.toFixed(2));
+    }
+  } else if (d.total_amount !== undefined && d.total_amount !== null) {
+    const rawNum = Number(d.total_amount);
+    if (rawNum >= 2000 && itemsCalculatedTotal > 0 && Math.abs(rawNum - itemsCalculatedTotal * 100) < 50) {
+      totalAmount = Number((rawNum / 100).toFixed(2));
+    } else {
+      totalAmount = Number(rawNum.toFixed(2));
+    }
+  } else if (d.amount !== undefined && d.amount !== null) {
+    const rawNum = Number(d.amount);
+    if (rawNum >= 2000 && itemsCalculatedTotal > 0 && Math.abs(rawNum - itemsCalculatedTotal * 100) < 50) {
+      totalAmount = Number((rawNum / 100).toFixed(2));
+    } else {
+      totalAmount = Number(rawNum.toFixed(2));
+    }
+  } else if (itemsCalculatedTotal > 0) {
+    totalAmount = Number(itemsCalculatedTotal.toFixed(2));
+  } else {
+    totalAmount = Number(d.estimatedTotal ?? 0);
+  }
 
   const placedTime = d.placed || (d.placedAt ? new Date(d.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (d.createdAt ? new Date(d.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''));
 
@@ -425,7 +508,9 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     uiStatus = 'Driver on the Way';
   } else if (['PENDING', 'ACCEPTED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PLACED', 'PAYMENT_PENDING'].includes(rawStatus)) {
     uiStatus = 'Pending Pickup';
-  } else if (['QUALITY_CHECK', 'PACKED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY'].includes(rawStatus)) {
+  } else if (['OUT_FOR_DELIVERY'].includes(rawStatus)) {
+    uiStatus = 'Out for Delivery';
+  } else if (['QUALITY_CHECK', 'PACKED', 'READY_FOR_DELIVERY'].includes(rawStatus)) {
     uiStatus = 'Ready for Delivery';
   } else if (['DELIVERED', 'COMPLETED', 'CLOSED'].includes(rawStatus)) {
     uiStatus = 'Completed';
@@ -625,11 +710,13 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     amount: totalAmount,
     total_amount: totalAmount,
     estimatedTotal: totalAmount,
+    pincode: pincode,
+    zone: zone,
     services: servicesList,
     services_list: servicesList,
     service: servicesList.join(' + '),
     items: parsedItems,
-    itemsCount: totalItemsCount || 1,
+    itemsCount: totalItemsCount || d.itemsCount || d.items_count || 0,
     items_summary: itemsSummaryStr,
     status: d.status || uiStatus,
     status_display: d.status_display || uiStatus,
@@ -694,33 +781,83 @@ export const subscribeOrderById = (orderId, callback, errorCallback) => {
     const withHash = `#${cleanId}`;
 
     if (rtdb) {
-      const orderRef = ref(rtdb, `orders/${cleanId}`);
-      const unsub = onValue(orderRef, async (snap) => {
-        if (snap.exists()) {
-          callback(normalizeFirestoreOrder(snap.val(), cleanId));
+      const ordersRef = ref(rtdb, 'orders');
+      const cleanTarget = cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+      const unsub = onValue(ordersRef, (snap) => {
+        if (!snap.exists()) {
+          callback(null);
+          return;
+        }
+        const all = snap.val() || {};
+
+        // 1. Direct match on key
+        if (all[cleanId]) {
+          callback(normalizeFirestoreOrder(all[cleanId], cleanId));
+          return;
+        }
+        if (all[rawId]) {
+          callback(normalizeFirestoreOrder(all[rawId], rawId));
+          return;
+        }
+
+        // 2. Scan all orders for code, id, order_number, displayId, or numeric match
+        const foundKey = Object.keys(all).find(k => {
+          const o = all[k];
+          if (!o) return false;
+          const cK = String(k || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cCode = String(o.code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cId = String(o.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cNum = String(o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cDisp = String(o.displayId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+          // 1. Exact matches
+          if (
+            cK === cleanTarget ||
+            cCode === cleanTarget ||
+            cId === cleanTarget ||
+            cNum === cleanTarget ||
+            cDisp === cleanTarget
+          ) {
+            return true;
+          }
+
+          // 2. Suffix matches (only if candidate string has at least 4 chars)
+          if (cleanTarget.length >= 4) {
+            if (cCode.length >= 4 && (cCode.endsWith(cleanTarget) || cleanTarget.endsWith(cCode))) return true;
+            if (cNum.length >= 4 && (cNum.endsWith(cleanTarget) || cleanTarget.endsWith(cNum))) return true;
+            if (cId.length >= 4 && (cId.endsWith(cleanTarget) || cleanTarget.endsWith(cId))) return true;
+          }
+
+          // 3. Digit matches (only if candidate digits have at least 4 digits)
+          const targetDigits = cleanTarget.replace(/\D/g, '');
+          if (targetDigits.length >= 4) {
+            const codeDigits = cCode.replace(/\D/g, '');
+            const numDigits = cNum.replace(/\D/g, '');
+            const idDigits = cId.replace(/\D/g, '');
+            if (codeDigits.length >= 4 && (codeDigits === targetDigits || codeDigits.endsWith(targetDigits) || targetDigits.endsWith(codeDigits))) return true;
+            if (numDigits.length >= 4 && (numDigits === targetDigits || numDigits.endsWith(targetDigits) || targetDigits.endsWith(numDigits))) return true;
+            if (idDigits.length >= 4 && (idDigits === targetDigits || idDigits.endsWith(targetDigits) || targetDigits.endsWith(idDigits))) return true;
+          }
+
+          return false;
+        });
+
+        if (foundKey) {
+          callback(normalizeFirestoreOrder(all[foundKey], foundKey));
         } else {
-          try {
-            const allSnap = await get(ref(rtdb, 'orders'));
-            if (allSnap.exists()) {
-              const all = allSnap.val();
-              const foundKey = Object.keys(all).find(k => 
-                String(all[k].code || '').toUpperCase() === cleanId.toUpperCase() ||
-                String(all[k].id || '').toUpperCase() === cleanId.toUpperCase() ||
-                String(all[k].order_number || '').toUpperCase() === cleanId.toUpperCase()
-              );
-              if (foundKey) {
-                callback(normalizeFirestoreOrder(all[foundKey], foundKey));
-                return;
-              }
-            }
-          } catch (_) {}
           callback(null);
         }
       }, (err) => {
         console.warn('RTDB Order subscription error:', err.message);
         if (errorCallback) errorCallback(err);
       });
-      return () => off(orderRef, 'value', unsub);
+      return () => {
+        try {
+          if (typeof unsub === 'function') unsub();
+          off(ordersRef, 'value', unsub);
+        } catch (_) {}
+      };
     }
 
     if (!db) return () => {};
@@ -881,12 +1018,40 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
           const allSnap = await get(ref(rtdb, 'orders'));
           if (allSnap.exists()) {
             const all = allSnap.val();
-            const found = Object.keys(all).find(k => 
-              String(all[k].code || '').toUpperCase() === cleanId.toUpperCase() ||
-              String(all[k].id || '').toUpperCase() === cleanId.toUpperCase() ||
-              String(all[k].order_number || '').toUpperCase() === cleanId.toUpperCase() ||
-              String(all[k].displayId || '').toUpperCase() === cleanId.toUpperCase()
-            );
+            const cleanTarget = cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const altTargets = [
+              extraFields.order_number,
+              extraFields.orderId,
+              extraFields.order_id,
+              extraFields.code
+            ].filter(Boolean).map(x => String(x).replace(/[^a-zA-Z0-9]/g, '').toLowerCase());
+            const allTargets = [cleanTarget, ...altTargets].filter(Boolean);
+
+            const found = Object.keys(all).find(k => {
+              const o = all[k];
+              if (!o) return false;
+              const cK = String(k || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              const cCode = String(o.code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              const cId = String(o.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              const cNum = String(o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              const cDisp = String(o.displayId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+              return allTargets.some(t => 
+                t && (
+                  cK === t ||
+                  cCode === t ||
+                  cId === t ||
+                  cNum === t ||
+                  cDisp === t ||
+                  (t.length >= 4 && (
+                    (cCode.length >= 4 && (t.endsWith(cCode) || cCode.endsWith(t))) ||
+                    (cId.length >= 4 && (t.endsWith(cId) || cId.endsWith(t))) ||
+                    (cNum.length >= 4 && (t.endsWith(cNum) || cNum.endsWith(t))) ||
+                    (cDisp.length >= 4 && (t.endsWith(cDisp) || cDisp.endsWith(t)))
+                  ))
+                )
+              );
+            });
             if (found) key = found;
           }
         }
@@ -897,6 +1062,9 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
     const rawStatus = extraFields.raw_status || status;
     const isDelivered = ['COMPLETED', 'DELIVERED'].includes(String(status).toUpperCase()) || ['COMPLETED', 'DELIVERED'].includes(String(rawStatus).toUpperCase());
     const isCancelled = String(status).toUpperCase() === 'CANCELLED' || String(rawStatus).toUpperCase() === 'CANCELLED';
+    const isDroppedAtHub = ['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'AT_HUB', 'HUB INTAKE'].includes(String(status).toUpperCase()) ||
+                           ['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'AT_HUB'].includes(String(rawStatus).toUpperCase()) ||
+                           Boolean(extraFields.droppedAtHub || extraFields.droppedOffAt);
 
     const updatePayload = {
       status,
@@ -906,6 +1074,39 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
       updatedAt: now,
       ...extraFields
     };
+
+    const isReady = ['READY_FOR_DELIVERY', 'READY', 'PACKED', 'QUALITY_CHECK'].includes(String(status).toUpperCase()) ||
+                    ['READY_FOR_DELIVERY', 'READY', 'PACKED'].includes(String(rawStatus).toUpperCase()) ||
+                    String(status).toLowerCase().includes('ready') ||
+                    extraFields.stage === 'ready';
+
+    const isProcessing = ['IN_CLEANING', 'WASHING', 'DRYING', 'IRONING', 'PROCESSING', 'STEAMING', 'PRESSING'].includes(String(status).toUpperCase()) ||
+                         ['IN_CLEANING', 'WASHING', 'DRYING', 'IRONING', 'PROCESSING', 'STEAMING', 'PRESSING'].includes(String(rawStatus).toUpperCase()) ||
+                         ['washing', 'drying', 'ironing', 'steaming', 'pressing', 'cleaning'].includes(String(extraFields.stage || '').toLowerCase());
+
+    if (isReady) {
+      updatePayload.readyAt = updatePayload.readyAt || now;
+      updatePayload.ready_at = updatePayload.ready_at || now;
+      updatePayload.packagedAt = updatePayload.packagedAt || now;
+    }
+
+    if (isProcessing) {
+      updatePayload.processing_started_at = updatePayload.processing_started_at || now;
+      updatePayload.processingStartedAt = updatePayload.processingStartedAt || now;
+    }
+
+    if (isDroppedAtHub) {
+      const dropTime = extraFields.droppedAtHub || extraFields.droppedOffAt || now;
+      const formattedDropTime = new Date(dropTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      updatePayload.droppedAtHub = dropTime;
+      updatePayload.droppedOffAt = dropTime;
+      updatePayload.dropped_at_hub = dropTime;
+      updatePayload.dropped_off_at = dropTime;
+      updatePayload.droppedAt = formattedDropTime;
+      updatePayload.hubReceivedAt = dropTime;
+      updatePayload.facility_received_at = updatePayload.facility_received_at || dropTime;
+      updatePayload.facilityReceivedAt = updatePayload.facilityReceivedAt || dropTime;
+    }
 
     if (isDelivered) {
       updatePayload.deliveredAt = updatePayload.deliveredAt || now;

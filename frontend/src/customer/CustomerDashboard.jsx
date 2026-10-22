@@ -26,7 +26,7 @@ import { formatOrderId } from '../utils/helpers';
 
 export const CustomerDashboard = () => {
   const { currentUser } = useAuth();
-  const { navigateTo, startBooking } = useBooking();
+  const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('ALL');
@@ -314,7 +314,18 @@ export const CustomerDashboard = () => {
                     </td>
                     <td>
                       <button
-                        onClick={() => navigateTo('customer-track', order.id.toString())}
+                        onClick={() => {
+                          const targetTrackId = String(order.order_number || order.code || order.docId || order.id || '').trim();
+                          if (targetTrackId) {
+                            if (typeof setActiveTrackingOrderId === 'function') {
+                              setActiveTrackingOrderId(targetTrackId);
+                            }
+                            try {
+                              sessionStorage.setItem('fabricare_active_tracking_id', targetTrackId);
+                            } catch (_) {}
+                          }
+                          navigateTo('customer-track', targetTrackId || order.id?.toString());
+                        }}
                         className="btn-view-order-action"
                         title={`Track order ${formatOrderId(order.order_number || order.code || order.id)}`}
                       >

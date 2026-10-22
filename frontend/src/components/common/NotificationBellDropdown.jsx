@@ -10,6 +10,7 @@ import {
   ArrowRight,
   Box
 } from 'lucide-react';
+import { formatOrderId } from '../../utils/helpers';
 
 /**
  * Shared Notification Bell & Dropdown Component
@@ -53,14 +54,20 @@ export const NotificationBellDropdown = ({
   };
 
   const handleItemClick = (notif) => {
-    if (!notif.isRead && onMarkRead) {
-      onMarkRead(notif.id);
-    }
+    // Close the dropdown first, then delegate all logic (mark-read + navigation)
+    // to the parent via onItemClick. The parent is responsible for marking read
+    // to avoid double-writes to Firebase.
     setIsOpen(false);
     if (onItemClick) {
       onItemClick(notif);
-    } else if (onViewAll) {
-      onViewAll();
+    } else {
+      // Fallback: mark read locally and navigate via onViewAll
+      if (!notif.isRead && onMarkRead) {
+        onMarkRead(notif.id);
+      }
+      if (onViewAll) {
+        onViewAll();
+      }
     }
   };
 
@@ -187,6 +194,18 @@ export const NotificationBellDropdown = ({
             ) : (
               notifications.slice(0, 8).map((notif) => {
                 const isUnread = notif.unread !== undefined ? Boolean(notif.unread) : !notif.isRead;
+                const rawBadge = notif.orderCode || notif.orderId;
+                let displayBadge = '';
+                if (rawBadge) {
+                  const str = String(rawBadge).trim();
+                  if (str.startsWith('-') || str.startsWith('#-')) {
+                    const m = String(notif.message || notif.body || '').match(/FC-\d{5}/i) || String(notif.title || '').match(/FC-\d{5}/i);
+                    displayBadge = m ? m[0].toUpperCase() : formatOrderId(str);
+                  } else {
+                    displayBadge = formatOrderId(str);
+                  }
+                }
+
                 return (
                   <div
                     key={notif.id}
@@ -202,9 +221,9 @@ export const NotificationBellDropdown = ({
                     <p className="shared-notif-item-desc">{notif.message || notif.body || notif.desc}</p>
                     <div className="shared-notif-item-meta">
                       <span className="shared-notif-item-time">{notif.formattedDate || notif.time || 'Recent'}</span>
-                      {notif.orderId && (
+                      {displayBadge && (
                         <span className="shared-notif-order-badge">
-                          {notif.orderId}
+                          {displayBadge}
                         </span>
                       )}
                     </div>

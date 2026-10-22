@@ -153,7 +153,28 @@ export const BookingProvider = ({ children }) => {
   }, []);
 
   const [serviceCategories, setServiceCategories] = useState([]);
-  const [activeTrackingOrderId, setActiveTrackingOrderId] = useState(null);
+
+  const [activeTrackingOrderId, setActiveTrackingOrderIdState] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        return sessionStorage.getItem('fabricare_active_tracking_id') || null;
+      }
+    } catch (_) {}
+    return null;
+  });
+
+  const setActiveTrackingOrderId = (id) => {
+    setActiveTrackingOrderIdState(id);
+    try {
+      if (typeof window !== 'undefined') {
+        if (id) {
+          sessionStorage.setItem('fabricare_active_tracking_id', String(id));
+        } else {
+          sessionStorage.removeItem('fabricare_active_tracking_id');
+        }
+      }
+    } catch (_) {}
+  };
 
   // Booking Flow State
   const [currentStep, setCurrentStep] = useState(1);

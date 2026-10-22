@@ -423,10 +423,16 @@ export const MyOrders = () => {
                   )}
                   <button
                     onClick={() => {
-                      if (setActiveTrackingOrderId) {
-                        setActiveTrackingOrderId(order.id || order.code);
+                      const targetTrackId = String(order.order_number || order.code || order.docId || order.id || '').trim();
+                      if (targetTrackId) {
+                        if (typeof setActiveTrackingOrderId === 'function') {
+                          setActiveTrackingOrderId(targetTrackId);
+                        }
+                        try {
+                          sessionStorage.setItem('fabricare_active_tracking_id', targetTrackId);
+                        } catch (_) {}
                       }
-                      navigateTo('customer-track', (order.id || order.code).toString());
+                      navigateTo('customer-track', targetTrackId || (order.id || order.code)?.toString());
                     }}
                     className="btn-view-order-action"
                   >

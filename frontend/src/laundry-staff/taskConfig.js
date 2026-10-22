@@ -385,15 +385,15 @@ export const normalizeOrderItem = (item, index = 0) => {
   const name = item.name || item.item_name || item.itemName || 'Garment';
   const quantity = Number(item.quantity || item.qty || 1);
 
-  // Normalize price and unitPrice (convert paise to rupees if > 500)
+  // Normalize price and unitPrice (convert paise to rupees if >= 2000 and multiple of 100)
   let rawPrice = item.price ?? item.unitPrice ?? item.rate ?? item.unit_price ?? 0;
   if (typeof rawPrice === 'string') rawPrice = parseFloat(rawPrice) || 0;
-  let finalUnitPrice = rawPrice > 500 ? (rawPrice / 100) : rawPrice;
+  let finalUnitPrice = (rawPrice >= 2000 && rawPrice % 100 === 0) ? (rawPrice / 100) : rawPrice;
 
   // Normalize total and lineTotal
   let rawTotal = item.total ?? item.lineTotal ?? item.subtotal ?? (finalUnitPrice * quantity);
   if (typeof rawTotal === 'string') rawTotal = parseFloat(rawTotal) || 0;
-  let finalLineTotal = rawTotal > 500 ? (rawTotal / 100) : rawTotal;
+  let finalLineTotal = (rawTotal >= 2000 && rawTotal % 100 === 0) ? (rawTotal / 100) : rawTotal;
   if (!finalLineTotal && finalUnitPrice) {
     finalLineTotal = finalUnitPrice * quantity;
   }
@@ -465,12 +465,12 @@ export const normalizeOrder = (order) => {
     : (order.items_summary || '1 Item');
   const itemsCount = items.reduce((sum, it) => sum + (it.quantity || 1), 0);
 
-  // Normalize total order amount (convert paise if > 500)
+  // Normalize total order amount (convert paise if >= 2000 and multiple of 100)
   let rawTotal = order.total ?? order.total_amount ?? order.amount ?? order.totalPaise;
   let totalRupees = 0;
   if (typeof rawTotal === 'string') rawTotal = parseFloat(rawTotal) || 0;
   if (typeof rawTotal === 'number' && !isNaN(rawTotal)) {
-    totalRupees = rawTotal > 500 ? (rawTotal / 100) : rawTotal;
+    totalRupees = (rawTotal >= 2000 && rawTotal % 100 === 0) ? (rawTotal / 100) : rawTotal;
   }
   if (!totalRupees && items.length > 0) {
     totalRupees = items.reduce((sum, it) => sum + (it.total || it.lineTotal || 0), 0);
@@ -491,21 +491,20 @@ export const normalizeOrder = (order) => {
 
   // Formatted dropped at time (hub intake / delivery drop-off time)
   let droppedAtTime = null;
-  const rawDropTime = order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.dropped_off_at || order.droppedAt || order.receivedAt || order.intakeAt;
+  const rawDropTime = order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.dropped_off_at || order.droppedAtTime || order.hubReceivedAt || order.receivedAt || order.intakeAt;
   if (rawDropTime) {
     if (typeof rawDropTime === 'string' && (rawDropTime.includes('AM') || rawDropTime.includes('PM'))) {
       droppedAtTime = rawDropTime;
     } else {
       try {
-        const dt = new Date(rawDropTime);
+        const dt = new Date(typeof rawDropTime === 'number' ? rawDropTime : (typeof rawDropTime === 'string' && /^\d+$/.test(rawDropTime) ? Number(rawDropTime) : rawDropTime));
         if (!isNaN(dt.getTime())) {
           droppedAtTime = dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
         }
       } catch (_) {}
     }
-  }
-  if (!droppedAtTime && order.placed && typeof order.placed === 'string' && (order.placed.includes('AM') || order.placed.includes('PM'))) {
-    droppedAtTime = order.placed;
+  } else if (order.droppedAt && typeof order.droppedAt === 'string' && (order.droppedAt.includes('AM') || order.droppedAt.includes('PM'))) {
+    droppedAtTime = order.droppedAt;
   }
 
   // Derive all unique services for the order from order.services, order.service and items
@@ -549,8 +548,8 @@ export const normalizeOrder = (order) => {
     amount: totalRupees.toFixed(2),
     total: totalRupees,
     placed: placedTime || order.placed || '10:42 AM',
-    droppedAt: droppedAtTime || placedTime || '10:42 AM',
-    droppedAtHub: order.droppedAtHub || rawDropTime || droppedAtTime,
+    droppedAt: droppedAtTime || null,
+    droppedAtHub: order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.dropped_off_at || (typeof rawDropTime === 'number' ? rawDropTime : null),
     is_express: Boolean(order.is_express || order.express || order.priority === 'EXPRESS'),
     has_conflict: conflict.hasConflict,
     conflict_reason: conflict.reason,
