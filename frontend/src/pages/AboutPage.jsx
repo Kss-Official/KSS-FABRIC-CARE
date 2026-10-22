@@ -624,6 +624,8 @@ export const AboutPage = () => {
           display: flex;
           align-items: center;
           justify-content: center;
+          background: #05636D url('/assets/about-cta-stack.jpg') center / cover no-repeat fixed;
+          background-attachment: fixed;
         }
 
         .about-cta-bg-wrapper {
@@ -632,6 +634,7 @@ export const AboutPage = () => {
           width: 100%;
           height: 100%;
           z-index: 0;
+          display: none;
         }
 
         .about-cta-bg-img {

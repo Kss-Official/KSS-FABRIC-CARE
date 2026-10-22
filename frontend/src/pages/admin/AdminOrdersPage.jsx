@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { filterMatchesDate } from '../../utils/dateFilterUtils';
 import { formatOrderId } from '../../utils/helpers';
+import { OrderProcessingModal } from '../../components/admin/OrderProcessingModal';
 
 // Washing Machine / Washer SVG icon matching Reference Image 2 Metric Card 3
 const WasherIcon = ({ size = 20, color = 'currentColor', className = '' }) => (
@@ -39,6 +40,60 @@ const WasherIcon = ({ size = 20, color = 'currentColor', className = '' }) => (
     <path d="M12 6h.01" />
   </svg>
 );
+
+// Universal status category matcher ensuring 100% consistency across metrics, tabs, and filters
+export const isStatusMatchingCategory = (orderStatus, categoryKey) => {
+  if (!categoryKey || categoryKey === 'all') return true;
+  const s = String(orderStatus || '').toLowerCase().trim();
+  const cat = String(categoryKey).toLowerCase().trim();
+
+  // Pending Pickup category (all incoming/pending pickup orders, including driver-assigned/scheduled)
+  if (cat === 'pending' || cat === 'pending pickup' || cat === 'pickup scheduled') {
+    return (
+      s === 'pending pickup' ||
+      s === 'pickup scheduled' ||
+      s === 'pickup assigned' ||
+      s === 'order placed' ||
+      s === 'placed' ||
+      s === 'pending_review' ||
+      s === 'payment_pending' ||
+      s.includes('pickup') ||
+      s.includes('pending')
+    );
+  }
+
+  // In Cleaning category (processing, washing, cleaning)
+  if (cat === 'cleaning' || cat === 'in cleaning') {
+    return (
+      s === 'in cleaning' ||
+      s === 'cleaning' ||
+      s === 'washing' ||
+      s === 'processing' ||
+      s === 'picked up'
+    );
+  }
+
+  // Ready for Delivery category (ready, out for delivery, in transit)
+  if (cat === 'ready' || cat === 'ready for delivery') {
+    return (
+      s === 'ready for delivery' ||
+      s === 'ready' ||
+      s === 'in transit' ||
+      s === 'out for delivery' ||
+      s === 'delivery assigned'
+    );
+  }
+
+  // Completed category (completed, delivered)
+  if (cat === 'completed' || cat === 'delivered') {
+    return (
+      s === 'completed' ||
+      s === 'delivered'
+    );
+  }
+
+  return s === cat;
+};
 
 // Exact baseline orders matching the reference image
 export const BASELINE_ADMIN_ORDERS = [
@@ -139,8 +194,8 @@ export const BASELINE_ADMIN_ORDERS = [
     },
     customer_name: 'Sneha Reddy',
     customer_phone: '+91 99887 66554',
-    services: ['Home Care'],
-    services_list: ['Home Care'],
+    services: ['Wash & Iron', 'Steam Iron'],
+    services_list: ['Wash & Iron', 'Steam Iron'],
     pickupTime: '23 Sep, 02:00 PM – 04:00 PM',
     amount: 780,
     total_amount: 780,
@@ -166,8 +221,9 @@ export const BASELINE_ADMIN_ORDERS = [
     },
     customer_name: 'Karan Verma',
     customer_phone: '+91 98712 34567',
-    services: ['Shoe Laundry'],
-    services_list: ['Shoe Laundry'],
+    services: ['Express Laundry'],
+    services_list: ['Express Laundry'],
+    isExpress: true,
     pickupTime: '23 Sep, 03:00 PM – 05:00 PM',
     amount: 350,
     total_amount: 350,
@@ -321,12 +377,13 @@ export const AdminOrdersPage = () => {
     setIsCreateOrderDrawerOpen, 
     setIsAssignOrderModalOpen, 
     setAssigningOrder,
-    updateOrderStatus 
+    updateOrderStatus,
+    ordersFilterTarget
   } = useAdmin();
 
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState(() => ordersFilterTarget?.tab || 'all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(() => ordersFilterTarget?.status || 'all');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [dateRangeFilter, setDateRangeFilter] = useState('all');
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
@@ -337,53 +394,80 @@ export const AdminOrdersPage = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState(null);
 
-  // Synchronize orders with dynamic updates while guaranteeing exact reference image data
-  const combinedOrders = useMemo(() => {
-    const contextMap = new Map();
-    (orders || []).forEach(o => {
-      if (!o) return;
-      const key = String(o.id || o.order_number || o.order_id || '');
-      contextMap.set(key, o);
-    });
-
-    // Merge dynamic updates from context into the baseline orders
-    const mergedBaseline = BASELINE_ADMIN_ORDERS.map((baseOrd, idx) => {
-      const live = contextMap.get(baseOrd.id);
-      if (live) {
-        return {
-          ...baseOrd,
-          ...live,
-          orderIndex: idx,
-          customer: { ...baseOrd.customer, ...(live.customer || {}) },
-          services: live.services || baseOrd.services,
-          status: live.status || baseOrd.status,
-          payment: live.payment || baseOrd.payment,
-          amount: live.amount || baseOrd.amount
-        };
+  // Close action dropdown menu and date dropdown on outside click or Escape
+  useEffect(() => {
+    if (!activeActionMenuId && !isDateDropdownOpen) return;
+    const handleOutsideClick = (e) => {
+      if (activeActionMenuId && !e.target.closest('.action-button-anchor')) {
+        setActiveActionMenuId(null);
       }
-      return { ...baseOrd, orderIndex: idx };
-    });
+      if (isDateDropdownOpen && !e.target.closest('.orders-date-dropdown-wrapper')) {
+        setIsDateDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setActiveActionMenuId(null);
+        setIsDateDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeActionMenuId, isDateDropdownOpen]);
 
-    // Any new orders created by admin dynamically that are not in baseline
-    const baselineIds = new Set(BASELINE_ADMIN_ORDERS.map(b => b.id));
-    const extraOrders = (orders || []).filter(o => {
-      if (!o || !o.id) return false;
-      if (baselineIds.has(o.id)) return false;
-      // Filter out generic mock seed order 'FC-10452' / 'ord_sample_01'
-      if (o.id === 'FC-10452' || o.id === 'ord_sample_01' || o.rawId === 'ord_sample_01') return false;
-      return true;
-    });
+  // Synchronize with external navigation targets (e.g. clicking dashboard cards)
+  useEffect(() => {
+    if (ordersFilterTarget) {
+      if (ordersFilterTarget.tab) setActiveTab(ordersFilterTarget.tab);
+      if (ordersFilterTarget.status) setStatusFilter(ordersFilterTarget.status);
+      if (ordersFilterTarget.service !== undefined) setServiceFilter(ordersFilterTarget.service);
+      setCurrentPage(1);
+    }
+  }, [ordersFilterTarget]);
 
-    return [...extraOrders, ...mergedBaseline];
+  // Synchronize orders with dynamic updates from real-time database
+  const combinedOrders = useMemo(() => {
+    if (orders && orders.length > 0) {
+      return orders;
+    }
+    return BASELINE_ADMIN_ORDERS;
   }, [orders]);
 
-  // Exact order metrics matching the dataset
-  const counts = {
-    total: combinedOrders.length,
-    pending: combinedOrders.filter(o => o.status === 'Pending Pickup' || o.status === 'Pickup Scheduled').length,
-    cleaning: combinedOrders.filter(o => o.status === 'In Cleaning').length,
-    ready: combinedOrders.filter(o => o.status === 'Ready for Delivery').length,
-    completed: combinedOrders.filter(o => o.status === 'Completed' || o.status === 'Delivered').length,
+  // Exact order metrics dynamically updated and guaranteed 1:1 with filtered lists
+  const counts = useMemo(() => {
+    const list = combinedOrders || [];
+    return {
+      total: list.length,
+      pending: list.filter(o => isStatusMatchingCategory(o?.status, 'pending')).length,
+      cleaning: list.filter(o => isStatusMatchingCategory(o?.status, 'cleaning')).length,
+      ready: list.filter(o => isStatusMatchingCategory(o?.status, 'ready')).length,
+      completed: list.filter(o => isStatusMatchingCategory(o?.status, 'completed')).length,
+    };
+  }, [combinedOrders]);
+
+  // Synchronized Tab and Filter Handlers
+  const handleTabClick = (tabKey) => {
+    setActiveTab(tabKey);
+    if (tabKey === 'all') setStatusFilter('all');
+    else if (tabKey === 'pending') setStatusFilter('Pending Pickup');
+    else if (tabKey === 'cleaning') setStatusFilter('In Cleaning');
+    else if (tabKey === 'ready') setStatusFilter('Ready for Delivery');
+    else if (tabKey === 'completed') setStatusFilter('Completed');
+    setCurrentPage(1);
+  };
+
+  const handleStatusFilterChange = (val) => {
+    setStatusFilter(val);
+    if (val === 'all') setActiveTab('all');
+    else if (val === 'Pending Pickup') setActiveTab('pending');
+    else if (val === 'In Cleaning') setActiveTab('cleaning');
+    else if (val === 'Ready for Delivery') setActiveTab('ready');
+    else if (val === 'Completed') setActiveTab('completed');
+    setCurrentPage(1);
   };
 
   const handleRefresh = async () => {
@@ -409,16 +493,49 @@ export const AdminOrdersPage = () => {
     const custPhone = o.customer?.phone || o.customer_phone || '';
     const idStr = String(o.id || o.order_number || o.order_id || '');
 
-    if (activeTab === 'pending' && o.status !== 'Pending Pickup' && o.status !== 'Pickup Scheduled') return false;
-    if (activeTab === 'cleaning' && o.status !== 'In Cleaning') return false;
-    if (activeTab === 'ready' && o.status !== 'Ready for Delivery') return false;
-    if (activeTab === 'completed' && o.status !== 'Completed' && o.status !== 'Delivered') return false;
-
-    if (statusFilter !== 'all') {
-      const matchStatus = o.status?.toLowerCase() === statusFilter.toLowerCase();
-      if (!matchStatus) return false;
+    // Synchronized status filtering matching the active category
+    if (activeTab !== 'all') {
+      if (!isStatusMatchingCategory(o.status, activeTab)) return false;
     }
-    if (serviceFilter !== 'all' && !services.includes(serviceFilter)) return false;
+    if (statusFilter !== 'all') {
+      if (!isStatusMatchingCategory(o.status, statusFilter)) return false;
+    }
+    if (serviceFilter !== 'all') {
+      const allOrderServices = new Set();
+      if (Array.isArray(o.services)) o.services.forEach(s => s && allOrderServices.add(String(s).trim()));
+      if (Array.isArray(o.services_list)) o.services_list.forEach(s => s && allOrderServices.add(String(s).trim()));
+      if (typeof o.service === 'string' && o.service) allOrderServices.add(o.service.trim());
+      if (o.isExpress || o.is_express || o.isExpressDelivery) {
+        allOrderServices.add('Express Laundry');
+      }
+
+      // Check items if any
+      const rawItems = Array.isArray(o.items) ? o.items : (o.items && typeof o.items === 'object' ? Object.values(o.items) : []);
+      rawItems.forEach(it => {
+        if (!it) return;
+        if (it.service_category) allOrderServices.add(String(it.service_category).trim());
+        if (it.categoryName) allOrderServices.add(String(it.categoryName).trim());
+        if (it.categoryId === 'express-laundry' || it.isExpress || String(it.categoryName || '').toLowerCase().includes('express')) {
+          allOrderServices.add('Express Laundry');
+        }
+      });
+
+      const target = serviceFilter.toLowerCase();
+      const hasMatch = Array.from(allOrderServices).some(s => {
+        const norm = String(s).toLowerCase();
+        if (norm === target) return true;
+        if (target === 'shoe laundry' && (norm.includes('shoe') || norm.includes('express') || o.isExpress || o.is_express)) return true;
+        if (target === 'home care' && norm.includes('home')) return true;
+        if (target === 'express laundry' && (norm.includes('express') || o.isExpress || o.is_express)) return true;
+        if (target === 'wash & fold' && norm.includes('fold')) return true;
+        if (target === 'wash & iron' && norm.includes('iron') && !norm.includes('steam')) return true;
+        if (target === 'dry cleaning' && norm.includes('dry')) return true;
+        if (target === 'steam iron' && norm.includes('steam')) return true;
+        return false;
+      });
+
+      if (!hasMatch) return false;
+    }
 
     // Date range filter
     if (dateRangeFilter !== 'all' && !filterMatchesDate(o, dateRangeFilter, ['placedAt', 'createdAt', 'updatedAt', 'date', 'pickup_time', 'created_at'])) {
@@ -451,15 +568,52 @@ export const AdminOrdersPage = () => {
     setServiceFilter('all');
     setDateRangeFilter('all');
     setSelectedOrderIds([]);
+    setCurrentPage(1);
     handleRefresh();
   };
 
-  const toggleSelectAll = () => {
-    if (selectedOrderIds.length === filteredOrders.length) {
-      setSelectedOrderIds([]);
-    } else {
-      setSelectedOrderIds(filteredOrders.map(o => o.id));
+  const ITEMS_PER_PAGE = 10;
+  const totalOrders = filteredOrders.length;
+  const totalPages = Math.max(1, Math.ceil(totalOrders / ITEMS_PER_PAGE));
+
+  // Reset to page 1 when any filter or tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchTerm, statusFilter, serviceFilter, dateRangeFilter]);
+
+  // Ensure currentPage is within bounds if totalPages changes
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
     }
+  }, [totalPages, currentPage]);
+
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, totalOrders);
+  const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+
+  const isAllCurrentPageSelected = paginatedOrders.length > 0 && paginatedOrders.every(o => selectedOrderIds.includes(o.id));
+
+  const toggleSelectAll = () => {
+    if (isAllCurrentPageSelected) {
+      setSelectedOrderIds(prev => prev.filter(id => !paginatedOrders.some(o => o.id === id)));
+    } else {
+      const pageIds = paginatedOrders.map(o => o.id);
+      setSelectedOrderIds(prev => Array.from(new Set([...prev, ...pageIds])));
+    }
+  };
+
+  const getPageNumbers = () => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    if (currentPage <= 4) {
+      return [1, 2, 3, 4, 5, '...', totalPages];
+    }
+    if (currentPage >= totalPages - 3) {
+      return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    }
+    return [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages];
   };
 
   const toggleSelectOrder = (id) => {
@@ -606,7 +760,7 @@ export const AdminOrdersPage = () => {
             <select 
               className="filter-custom-select"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => handleStatusFilterChange(e.target.value)}
             >
               <option value="all">All Status</option>
               <option value="Pending Pickup">Pending Pickup</option>
@@ -629,8 +783,7 @@ export const AdminOrdersPage = () => {
               <option value="Dry Cleaning">Dry Cleaning</option>
               <option value="Wash & Iron">Wash & Iron</option>
               <option value="Steam Iron">Steam Iron</option>
-              <option value="Shoe Laundry">Shoe Laundry</option>
-              <option value="Home Care">Home Care</option>
+              <option value="Express Laundry">Express Laundry</option>
             </select>
             <ChevronDown size={15} className="filter-select-chevron" />
           </div>
@@ -697,35 +850,35 @@ export const AdminOrdersPage = () => {
         <button 
           type="button"
           className={`tab-item-link ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => setActiveTab('all')}
+          onClick={() => handleTabClick('all')}
         >
           All Orders ({counts.total})
         </button>
         <button 
           type="button"
           className={`tab-item-link ${activeTab === 'pending' ? 'active' : ''}`}
-          onClick={() => setActiveTab('pending')}
+          onClick={() => handleTabClick('pending')}
         >
           Pending Pickup ({counts.pending})
         </button>
         <button 
           type="button"
           className={`tab-item-link ${activeTab === 'cleaning' ? 'active' : ''}`}
-          onClick={() => setActiveTab('cleaning')}
+          onClick={() => handleTabClick('cleaning')}
         >
           In Cleaning ({counts.cleaning})
         </button>
         <button 
           type="button"
           className={`tab-item-link ${activeTab === 'ready' ? 'active' : ''}`}
-          onClick={() => setActiveTab('ready')}
+          onClick={() => handleTabClick('ready')}
         >
           Ready for Delivery ({counts.ready})
         </button>
         <button 
           type="button"
           className={`tab-item-link ${activeTab === 'completed' ? 'active' : ''}`}
-          onClick={() => setActiveTab('completed')}
+          onClick={() => handleTabClick('completed')}
         >
           Completed ({counts.completed})
         </button>
@@ -741,7 +894,7 @@ export const AdminOrdersPage = () => {
                   <input 
                     type="checkbox" 
                     className="orders-custom-checkbox" 
-                    checked={filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length}
+                    checked={isAllCurrentPageSelected}
                     onChange={toggleSelectAll}
                   />
                 </th>
@@ -756,14 +909,14 @@ export const AdminOrdersPage = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.length === 0 ? (
+              {paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan="9" className="empty-orders-cell">
                     No orders found matching the filter criteria.
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map(ord => {
+                paginatedOrders.map(ord => {
                   const isChecked = selectedOrderIds.includes(ord.id);
                   return (
                     <tr key={ord.id} className={isChecked ? 'row-selected' : ''}>
@@ -803,16 +956,16 @@ export const AdminOrdersPage = () => {
                       {/* Services */}
                       <td>
                         <div className="order-services-pill-group">
-                          <span className="service-name-capsule">
+                          <span 
+                            className="service-name-capsule"
+                            title={Array.isArray(ord.services) && ord.services.length > 0 ? ord.services.join(', ') : (ord.service || 'Wash & Fold')}
+                          >
                             {Array.isArray(ord.services) && ord.services.length > 0 
                               ? ord.services[0] 
                               : (Array.isArray(ord.services_list) && ord.services_list.length > 0
                                 ? ord.services_list[0]
                                 : (ord.service || 'Wash & Fold'))}
                           </span>
-                          {Array.isArray(ord.services) && ord.services.length > 1 && (
-                            <span className="service-count-badge">+{ord.services.length - 1}</span>
-                          )}
                         </div>
                       </td>
 
@@ -904,7 +1057,11 @@ export const AdminOrdersPage = () => {
 
       {/* Pagination Bar */}
       <div className="orders-pagination-row">
-        <span className="pagination-summary-text">Showing 1–10 of 128 orders</span>
+        <span className="pagination-summary-text">
+          {totalOrders === 0 
+            ? 'Showing 0 orders' 
+            : `Showing ${startIndex + 1}–${endIndex} of ${totalOrders} orders`}
+        </span>
         <div className="pagination-buttons-cluster">
           <button 
             type="button" 
@@ -916,55 +1073,29 @@ export const AdminOrdersPage = () => {
             <ChevronLeft size={16} />
           </button>
           
-          <button 
-            type="button" 
-            className={`pagination-num-btn ${currentPage === 1 ? 'active' : ''}`}
-            onClick={() => setCurrentPage(1)}
-          >
-            1
-          </button>
-          <button 
-            type="button" 
-            className={`pagination-num-btn ${currentPage === 2 ? 'active' : ''}`}
-            onClick={() => setCurrentPage(2)}
-          >
-            2
-          </button>
-          <button 
-            type="button" 
-            className={`pagination-num-btn ${currentPage === 3 ? 'active' : ''}`}
-            onClick={() => setCurrentPage(3)}
-          >
-            3
-          </button>
-          <button 
-            type="button" 
-            className={`pagination-num-btn ${currentPage === 4 ? 'active' : ''}`}
-            onClick={() => setCurrentPage(4)}
-          >
-            4
-          </button>
-          <button 
-            type="button" 
-            className={`pagination-num-btn ${currentPage === 5 ? 'active' : ''}`}
-            onClick={() => setCurrentPage(5)}
-          >
-            5
-          </button>
-          <span className="pagination-ellipsis-dots">...</span>
-          <button 
-            type="button" 
-            className={`pagination-num-btn ${currentPage === 13 ? 'active' : ''}`}
-            onClick={() => setCurrentPage(13)}
-          >
-            13
-          </button>
+          {getPageNumbers().map((item, idx) => {
+            if (item === '...') {
+              return (
+                <span key={`dots-${idx}`} className="pagination-ellipsis-dots">...</span>
+              );
+            }
+            return (
+              <button 
+                key={`page-${item}`}
+                type="button" 
+                className={`pagination-num-btn ${currentPage === item ? 'active' : ''}`}
+                onClick={() => setCurrentPage(item)}
+              >
+                {item}
+              </button>
+            );
+          })}
 
           <button 
             type="button" 
             className="pagination-chevron-btn"
-            onClick={() => setCurrentPage(p => Math.min(13, p + 1))}
-            disabled={currentPage === 13}
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages || totalOrders === 0}
             aria-label="Next page"
           >
             <ChevronRight size={16} />
@@ -972,26 +1103,16 @@ export const AdminOrdersPage = () => {
         </div>
       </div>
 
-      {/* Order Details Modal */}
-      {selectedOrderDetails && typeof document !== 'undefined' && createPortal(
-        <div className="details-modal-backdrop animate-fade-in" onClick={() => setSelectedOrderDetails(null)}>
-          <div className="details-modal-card animate-scale-up" onClick={e => e.stopPropagation()}>
-            <div className="details-modal-header">
-              <h3 className="details-title">Order Details – {selectedOrderDetails.id}</h3>
-              <button className="details-close" onClick={() => setSelectedOrderDetails(null)}>×</button>
-            </div>
-            <div className="details-modal-body">
-              <div className="details-row"><strong>Customer:</strong> <span>{selectedOrderDetails.customer?.name || selectedOrderDetails.customer_name || 'Customer'} ({selectedOrderDetails.customer?.phone || selectedOrderDetails.customer_phone || ''})</span></div>
-              <div className="details-row"><strong>Address:</strong> <span>{selectedOrderDetails.customer?.address || selectedOrderDetails.pickup_address || 'Bengaluru'}</span></div>
-              <div className="details-row"><strong>Services:</strong> <span>{Array.isArray(selectedOrderDetails.services) ? selectedOrderDetails.services.join(', ') : (Array.isArray(selectedOrderDetails.services_list) ? selectedOrderDetails.services_list.join(', ') : (selectedOrderDetails.service || 'Wash & Fold'))}</span></div>
-              <div className="details-row"><strong>Pickup Time:</strong> <span>{selectedOrderDetails.pickupTime || selectedOrderDetails.pickup_time_slot || 'Today'}</span></div>
-              <div className="details-row"><strong>Amount:</strong> <span>₹{selectedOrderDetails.amount || selectedOrderDetails.total_amount || 0} ({selectedOrderDetails.payment || 'Paid'})</span></div>
-              <div className="details-row"><strong>Status:</strong> <span className={`order-status-capsule-badge ${getStatusBadgeClass(selectedOrderDetails.status)}`}>{selectedOrderDetails.status}</span></div>
-              <div className="details-row"><strong>Driver:</strong> <span>{selectedOrderDetails.driver || 'Not Assigned'}</span></div>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {/* Dynamic Order Processing & Details Modal matching Reference Images */}
+      {selectedOrderDetails && (
+        <OrderProcessingModal
+          order={selectedOrderDetails}
+          onClose={() => setSelectedOrderDetails(null)}
+          onOrderUpdated={(updated) => {
+            setSelectedOrderDetails(updated);
+            if (typeof handleRefresh === 'function') handleRefresh();
+          }}
+        />
       )}
 
       <style>{`
@@ -1120,11 +1241,12 @@ export const AdminOrdersPage = () => {
           align-items: center;
           gap: 14px;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-          transition: border-color 0.15s ease;
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
 
         .orders-metric-pill-card:hover {
-          border-color: #E2E8F0;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          transform: translateY(-1px);
         }
 
         .metric-badge-box {

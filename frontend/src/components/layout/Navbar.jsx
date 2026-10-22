@@ -173,6 +173,11 @@ export const Navbar = () => {
       <div className="container nav-container">
         {/* Brand Logo */}
         <div className="brand-logo" onClick={() => navigateTo('home')}>
+          <img 
+            src="/images/fabricare-logo.png" 
+            alt="FabriCare" 
+            className="navbar-brand-logo-img" 
+          />
           <span className="logo-text">Fabri<span className="logo-accent">Care</span></span>
         </div>
 
@@ -307,7 +312,11 @@ export const Navbar = () => {
                   title="Account Settings"
                 >
                   <div className="nav-user-avatar">
-                    {userProfile?.displayName ? userProfile.displayName.substring(0, 2).toUpperCase() : 'CU'}
+                    {userProfile?.avatarUrl || userProfile?.photoUrl ? (
+                      <img src={userProfile.avatarUrl || userProfile.photoUrl} alt={userProfile.displayName || 'User'} className="nav-avatar-img" />
+                    ) : (
+                      userProfile?.displayName ? userProfile.displayName.substring(0, 2).toUpperCase() : 'CU'
+                    )}
                   </div>
                   <span className="nav-user-name">{userProfile?.displayName?.split(' ')[0] || 'Customer'}</span>
                 </button>
@@ -503,6 +512,15 @@ export const Navbar = () => {
           align-items: center;
           cursor: pointer;
           user-select: none;
+        }
+
+        .navbar-brand-logo-img {
+          width: 34px;
+          height: 34px;
+          margin-right: 9px;
+          border-radius: 8px;
+          object-fit: contain;
+          flex-shrink: 0;
         }
 
         .logo-text {
@@ -934,6 +952,16 @@ export const Navbar = () => {
           display: flex;
           align-items: center;
           justify-content: center;
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+
+        .nav-avatar-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 50%;
+          display: block;
         }
 
         .nav-user-name {

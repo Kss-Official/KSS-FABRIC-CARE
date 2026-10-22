@@ -163,8 +163,12 @@ export const AddCustomerModal = () => {
               <UserPlus size={22} strokeWidth={2.2} />
             </div>
             <div className="ac-header-text">
-              <h2 className="ac-title">Add Customer</h2>
-              <p className="ac-subtitle">Add a new customer to create orders or manage their details.</p>
+              <h2 className="ac-title">{isAddUserModalOpen ? 'Add User' : 'Add Customer'}</h2>
+              <p className="ac-subtitle">
+                {isAddUserModalOpen 
+                  ? 'Add a new user (customer, staff member, or delivery personnel) to the system.' 
+                  : 'Add a new customer to create orders or manage their details.'}
+              </p>
             </div>
           </div>
           <button 
@@ -185,36 +189,26 @@ export const AddCustomerModal = () => {
             </div>
           )}
 
-          {/* User Type / Role Selector (From Reference Image 2) */}
+          {/* User Type / Role Selector */}
           <div className="ac-section">
-            <label className="ac-label">
+            <label className="ac-label" htmlFor="user-role-select">
               User Type / Role <span className="ac-required">*</span>
             </label>
-            <div className="ac-role-toggle-group">
-              <button
-                type="button"
-                className={`ac-role-btn ${form.role === 'customer' ? 'active' : ''}`}
-                onClick={() => setForm(f => ({ ...f, role: 'customer' }))}
+            <div className="ac-input-wrapper ac-select-wrapper">
+              {form.role === 'customer' && <User size={17} className="ac-field-icon" />}
+              {form.role === 'staff' && <Briefcase size={17} className="ac-field-icon" />}
+              {form.role === 'agent' && <Truck size={17} className="ac-field-icon" />}
+              <select
+                id="user-role-select"
+                className="ac-input ac-select"
+                value={form.role}
+                onChange={(e) => setForm(f => ({ ...f, role: e.target.value }))}
               >
-                <User size={16} />
-                <span>Customer</span>
-              </button>
-              <button
-                type="button"
-                className={`ac-role-btn ${form.role === 'staff' ? 'active' : ''}`}
-                onClick={() => setForm(f => ({ ...f, role: 'staff' }))}
-              >
-                <Briefcase size={16} />
-                <span>Staff Member</span>
-              </button>
-              <button
-                type="button"
-                className={`ac-role-btn ${form.role === 'agent' ? 'active' : ''}`}
-                onClick={() => setForm(f => ({ ...f, role: 'agent' }))}
-              >
-                <Truck size={16} />
-                <span>Delivery Personnel</span>
-              </button>
+                <option value="customer">Customer</option>
+                <option value="staff">Staff Member</option>
+                <option value="agent">Delivery Personnel</option>
+              </select>
+              <ChevronDown size={16} className="ac-select-chevron" />
             </div>
           </div>
 
@@ -503,7 +497,7 @@ export const AddCustomerModal = () => {
               className="ac-btn-submit"
               disabled={isSubmitting}
             >
-              {isSubmitting ? 'Adding...' : 'Add Customer'}
+              {isSubmitting ? 'Adding...' : (isAddUserModalOpen ? 'Add User' : 'Add Customer')}
             </button>
           </div>
         </form>

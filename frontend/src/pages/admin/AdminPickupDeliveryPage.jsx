@@ -434,6 +434,59 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
   }
 ];
 
+// Helpers for real-time Pickup & Delivery status and customer avatar colors
+const getCustomerAvatarColor = (name) => {
+  const palettes = [
+    { bg: '#CFFAFE', color: '#0891B2' },
+    { bg: '#EDE9FE', color: '#7C3AED' },
+    { bg: '#FCE7F3', color: '#DB2777' },
+    { bg: '#DCFCE7', color: '#15803D' },
+    { bg: '#FEF3C7', color: '#D97706' },
+    { bg: '#E0E7FF', color: '#4F46E5' }
+  ];
+  const str = String(name || 'CU');
+  const code = str.charCodeAt(0) + (str.charCodeAt(1) || 0);
+  return palettes[code % palettes.length];
+};
+
+const getPickupDeliveryType = (order) => {
+  const s = String(order.rawStat || order.status || '').toUpperCase();
+  if (
+    s.includes('READY') ||
+    s.includes('DELIVERY') ||
+    s.includes('DELIVERED') ||
+    s.includes('COMPLETED') ||
+    (order.deliveryTaskId && !s.includes('PICKUP')) ||
+    (order.type && String(order.type).toLowerCase() === 'delivery')
+  ) {
+    return 'Delivery';
+  }
+  return 'Pickup';
+};
+
+const getPickupDeliveryStatus = (order, hasDriver) => {
+  const s = String(order.rawStat || order.status || '').toUpperCase();
+  if (s === 'DELIVERED' || s === 'COMPLETED') {
+    return 'Completed';
+  }
+  if (s === 'IN_TRANSIT' || s === 'OUT_FOR_DELIVERY' || s === 'PICKED_UP') {
+    return 'In Transit';
+  }
+  if (s === 'CANCELLED') {
+    return 'Cancelled';
+  }
+  if (hasDriver || s === 'PICKUP_SCHEDULED' || s === 'PICKUP_ASSIGNED' || s === 'DELIVERY_ASSIGNED') {
+    return 'Assigned';
+  }
+  if (s === 'PLACED' || s === 'PAYMENT_PENDING' || s === 'PENDING_PICKUP' || s === 'PENDING') {
+    return 'Pending';
+  }
+  if (s.includes('CLEANING') || s.includes('WASHING') || s.includes('PROCESSING') || s.includes('DROPPED_OFF')) {
+    return 'Assigned';
+  }
+  return hasDriver ? 'Assigned' : 'Pending';
+};
+
 export const AdminPickupDeliveryPage = () => {
   const { 
     orders: contextOrders, 
@@ -474,14 +527,6 @@ export const AdminPickupDeliveryPage = () => {
     return found ? found.pillLabel : formatDisplayDate(todayDateObj, { weekday: true });
   }, [dateFilterOptions, selectedDateRange, todayDateObj]);
 
-  // Exact metric counts matching Reference Image 2
-  const metrics = {
-    pickups: 10,
-    deliveries: 8,
-    completed: 15,
-    pending: 7
-  };
-
   const [updateTick, setUpdateTick] = useState(0);
 
   useEffect(() => {
@@ -490,140 +535,99 @@ export const AdminPickupDeliveryPage = () => {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  // Synchronize orders with dynamic updates from AdminContext if any
+  // Synchronize orders with dynamic real-time updates from AdminContext (RTDB backend)
   const combinedOrders = useMemo(() => {
-    // Map context updates into the baseline orders
-    const contextMap = new Map();
-    (contextOrders || []).forEach(o => {
-      if (!o) return;
-      const idStr = String(o.id || '');
-      const cleanId = idStr.replace('#LDX12', '#LDX1028');
-      contextMap.set(o.id, o);
-      contextMap.set(idStr, o);
-      contextMap.set(cleanId, o);
-      if (o.order_number) {
-        contextMap.set(o.order_number, o);
-        contextMap.set(String(o.order_number), o);
-        contextMap.set(String(o.order_number).replace('#LDX12', '#LDX1028'), o);
-      }
-      if (o.order_id) {
-        contextMap.set(o.order_id, o);
-        contextMap.set(String(o.order_id), o);
-        contextMap.set(String(o.order_id).replace('#LDX12', '#LDX1028'), o);
-      }
-    });
-
     let persistedMap = {};
     try {
       persistedMap = JSON.parse(localStorage.getItem('fabricare_pickup_delivery_assignments') || '{}');
     } catch (e) {}
 
-    const updatedBaseline = BASELINE_PICKUP_DELIVERY_ORDERS.map(baseOrd => {
-      const live = contextMap.get(baseOrd.id);
-      const persisted = persistedMap[baseOrd.id];
+    const hasLiveOrders = Array.isArray(contextOrders) && contextOrders.length > 0;
+    const sourceOrders = hasLiveOrders ? contextOrders : BASELINE_PICKUP_DELIVERY_ORDERS;
 
-      // Extract driver info if live driver changed
-      let driverName = baseOrd.driver.name;
-      let driverPhone = baseOrd.driver.phone;
-      let driverInitials = baseOrd.driver.initials;
-      let isAssigned = baseOrd.driver.assigned;
-      let status = baseOrd.status;
-
-      if (live && live.driver && live.driver !== 'Not Assigned') {
-        isAssigned = true;
-        const driverStr = typeof live.driver === 'string' ? live.driver : (live.driver?.name || 'Driver');
-        const namePart = driverStr.split('(')[0]?.trim();
-        const phonePart = typeof live.driver === 'string' 
-          ? (live.driver.match(/\((.*?)\)/)?.[1]?.trim() || '+91 98765 43210')
-          : (live.driver?.phone || '+91 98765 43210');
-        driverName = namePart || driverStr;
-        driverPhone = phonePart;
-        driverInitials = String(driverName || 'DR').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
-        status = 'Assigned';
+    return sourceOrders.map(o => {
+      if (!hasLiveOrders) {
+        return o;
       }
 
+      const orderIdDisplay = formatOrderId(o.order_number || o.order_id || o.code || o.id);
+      const custName = o.customer_name || o.customer?.name || o.pickup_full_name || 'Customer';
+      const custPhone = o.customer_phone || o.customer?.phone || o.pickup_phone || '+91 98765 00000';
+      const custAddress = o.pickup_address || o.customer?.address || (typeof o.address === 'object' ? `${o.address?.areaColony || ''}, ${o.address?.city || ''}` : o.address) || 'Bengaluru';
+      const custInitials = String(custName || 'CU').split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'CU';
+
+      const avatarColors = getCustomerAvatarColor(custName);
+      const type = getPickupDeliveryType(o);
+
+      const persisted = persistedMap[o.id] || persistedMap[orderIdDisplay] || persistedMap[o.rawId] || persistedMap[o.code];
+      const hasDriver = Boolean(
+        persisted ||
+        o.assignedAgentName ||
+        (o.driver && o.driver !== 'Not Assigned' && o.driver !== '—') ||
+        o.assigned_pickup_driver_detail ||
+        o.assigned_pickup_driver ||
+        o.assigned_delivery_driver
+      );
+
+      let driverName = 'Not Assigned';
+      let driverPhone = '';
+      let driverInitials = '—';
+
       if (persisted) {
-        isAssigned = true;
-        driverName = persisted.driverName || driverName;
-        driverPhone = persisted.driverPhone || driverPhone;
-        driverInitials = persisted.driverInitials || driverInitials;
-        status = 'Assigned';
-      }
-
-      return {
-        ...baseOrd,
-        status: isAssigned && baseOrd.status === 'Pending' ? 'Assigned' : (live?.status === 'Ready for Delivery' ? 'In Transit' : status),
-        driver: {
-          ...baseOrd.driver,
-          name: driverName,
-          phone: driverPhone,
-          initials: driverInitials,
-          assigned: isAssigned
-        }
-      };
-    });
-
-    // Real live orders (e.g. FC-10452, FC-43719, etc.) from RTDB
-    const baseIdSet = new Set(BASELINE_PICKUP_DELIVERY_ORDERS.map(b => b.id));
-    const dynamicPickupOrders = (contextOrders || []).filter(o => {
-      const idStr = String(o?.id || '');
-      const orderNum = String(o?.order_number || '');
-      const orderId = String(o?.order_id || '');
-      return !baseIdSet.has(o?.id) && !baseIdSet.has(idStr) && !baseIdSet.has(orderNum) && !baseIdSet.has(orderId);
-    }).map(o => {
-      const orderIdDisplay = formatOrderId(o.order_number || o.order_id || o.id);
-      const custName = o.customer_name || o.customer?.name || 'Customer';
-      const custPhone = o.customer_phone || o.customer?.phone || '+91 98765 00000';
-      const custAddress = o.pickup_address || o.customer?.address || 'Bengaluru';
-      const custInitials = String(custName || 'CU').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'CU';
-
-      const isDelivery = o.status === 'Ready for Delivery' || o.status === 'In Transit' || o.deliveryTaskId || (o.type && String(o.type).toLowerCase() === 'delivery');
-      const type = isDelivery ? 'Delivery' : 'Pickup';
-
-      const persisted = persistedMap[o.id] || persistedMap[orderIdDisplay] || persistedMap[o.rawId];
-      const hasDriver = Boolean(o.assignedAgentName || (o.driver && o.driver !== 'Not Assigned') || persisted);
-
-      let driverName = 'Ravi Kumar';
-      let driverPhone = '+91 98765 43210';
-      if (persisted) {
-        driverName = persisted.driverName || driverName;
-        driverPhone = persisted.driverPhone || driverPhone;
+        driverName = persisted.driverName || 'Assigned Driver';
+        driverPhone = persisted.driverPhone || '';
+        driverInitials = persisted.driverInitials || String(driverName).split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
       } else if (o.assignedAgentName) {
         driverName = o.assignedAgentName;
-        driverPhone = o.assignedAgentPhone || '+91 98765 43210';
-      } else if (o.driver && o.driver !== 'Not Assigned') {
+        driverPhone = o.assignedAgentPhone || '';
+        driverInitials = String(driverName).split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
+      } else if (o.driver && o.driver !== 'Not Assigned' && o.driver !== '—') {
         const match = String(o.driver).match(/^(.*?)\s*\((.*?)\)$/);
         driverName = match ? match[1].trim() : o.driver;
-        driverPhone = match ? match[2].trim() : '+91 98765 43210';
+        driverPhone = match ? match[2].trim() : '';
+        driverInitials = String(driverName).split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
+      } else if (o.assigned_pickup_driver_detail?.full_name) {
+        driverName = o.assigned_pickup_driver_detail.full_name;
+        driverPhone = o.assigned_pickup_driver_detail.phone || '';
+        driverInitials = String(driverName).split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
       }
 
-      const driverInitials = String(driverName || 'DR').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
+      const status = getPickupDeliveryStatus(o, hasDriver);
 
-      let status = 'Pending';
-      if (hasDriver) {
-        status = 'Assigned';
-      }
-      if (o.status === 'Completed' || o.status === 'Delivered') {
-        status = 'Completed';
-      } else if (o.status === 'In Transit') {
-        status = 'In Transit';
+      let rawDate = o.pickup?.date || o.pickup_date || o.date || o.createdAt || o.placedAt;
+      let dateDisplay = 'Today';
+      if (rawDate) {
+        try {
+          const dObj = new Date(rawDate);
+          if (!isNaN(dObj.getTime())) {
+            dateDisplay = formatDisplayDate(dObj);
+          } else {
+            dateDisplay = String(rawDate);
+          }
+        } catch (_) {
+          dateDisplay = String(rawDate);
+        }
       }
 
-      const timeSlot = o.pickup?.from ? `${o.pickup.from} – ${o.pickup.to || ''}` : (o.pickupTime || '09:00 AM – 11:00 AM');
-      const timeParts = timeSlot.split('–').map(s => s.trim());
+      const timeSlot = o.pickup?.from 
+        ? `${o.pickup.from} – ${o.pickup.to || ''}` 
+        : (o.pickup_time_slot || o.pickupTime || '09:00 AM – 11:00 AM');
+      const timeParts = timeSlot.split(/[–—-]| to /).map(s => s.trim());
 
       return {
         id: orderIdDisplay,
         rawId: o.rawId || o.id,
-        date: o.pickup?.date || o.date || 'Today',
+        rawOrder: o,
+        date: dateDisplay,
+        rawDate: rawDate,
         timeStart: timeParts[0] || '09:00 AM',
         timeEnd: timeParts[1] || '11:00 AM',
         customer: {
           name: custName,
           phone: custPhone,
           avatar: custInitials,
-          avatarBg: '#CFFAFE',
-          avatarColor: '#0891B2',
+          avatarBg: avatarColors.bg,
+          avatarColor: avatarColors.color,
           address: custAddress
         },
         type,
@@ -636,9 +640,38 @@ export const AdminPickupDeliveryPage = () => {
         }
       };
     });
-
-    return [...dynamicPickupOrders, ...updatedBaseline];
   }, [contextOrders, updateTick]);
+
+  // Exact real-time metrics calculated from live database orders
+  const metrics = useMemo(() => {
+    let pickups = 0;
+    let deliveries = 0;
+    let completed = 0;
+    let pending = 0;
+
+    combinedOrders.forEach(o => {
+      const s = String(o.status || '').toLowerCase();
+      const t = String(o.type || '').toLowerCase();
+
+      if (s === 'completed' || s === 'delivered') {
+        completed += 1;
+      } else if (s !== 'cancelled') {
+        if (s.includes('pending') || !o.driver?.assigned) {
+          pending += 1;
+        }
+      }
+
+      if (s !== 'completed' && s !== 'delivered' && s !== 'cancelled') {
+        if (t === 'pickup') {
+          pickups += 1;
+        } else if (t === 'delivery') {
+          deliveries += 1;
+        }
+      }
+    });
+
+    return { pickups, deliveries, completed, pending };
+  }, [combinedOrders]);
 
   // Tab counts
   const totalAllCount = combinedOrders.length;

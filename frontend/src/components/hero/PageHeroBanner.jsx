@@ -35,16 +35,25 @@ export const PageHeroBanner = ({
         ...containerStyle
       }}
     >
-      {/* 1. Background Image */}
+      {/* 1. Background Image (Fixed attachment so image remains stationary while page content scrolls) */}
       {bgImage && bgImage.trim() !== '' && !imgError && (
-        <img
-          src={bgImage}
-          alt={altText || heading || 'FabriCare Garment Care'}
-          className={`page-hero-img ${imgLoaded ? 'loaded' : ''}`}
-          style={imgStyle}
-          onLoad={() => setImgLoaded(true)}
-          onError={() => setImgError(true)}
-        />
+        <div
+          className={`page-hero-bg-layer ${imgLoaded ? 'loaded' : ''}`}
+          style={{
+            backgroundImage: `url(${bgImage})`,
+            ...imgStyle
+          }}
+          aria-hidden="true"
+        >
+          <img
+            src={bgImage}
+            alt={altText || heading || 'FabriCare Garment Care'}
+            className="preload-hero-img"
+            style={{ display: 'none' }}
+            onLoad={() => setImgLoaded(true)}
+            onError={() => setImgError(true)}
+          />
+        </div>
       )}
 
       {/* 2. Fallback Placeholder if image fails to load */}
@@ -121,7 +130,28 @@ export const PageHeroBanner = ({
           touch-action: manipulation;
         }
 
-        /* 1. Background image */
+        /* 1. Background image (Fixed to viewport so it remains fixed while page content scrolls) */
+        .page-hero-bg-layer {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          background-attachment: fixed;
+          background-position: center top;
+          background-size: cover;
+          background-repeat: no-repeat;
+          opacity: 0;
+          transition: opacity 0.7s ease-out;
+          display: block;
+          image-rendering: -webkit-optimize-contrast;
+          image-rendering: high-quality;
+          z-index: 1;
+        }
+
+        .page-hero-bg-layer.loaded {
+          opacity: 1;
+        }
+
         .page-hero-img {
           position: absolute;
           inset: 0;

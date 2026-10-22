@@ -112,14 +112,27 @@ export const LaundrixHero = ({ onBookPickup, onExploreServices }) => {
         {/* Background Layer: Image + Gradient Readability Overlay or Dashed Placeholder */}
         <div className="hero-bg-layer">
           {HERO_BG && !bgImageError && (
-            <img 
+            <div 
               id="hero-bg"
-              src={HERO_BG}
-              alt="Bright laundry room with folded towels"
               className={`hero-bg-image ${bgImageLoaded ? 'loaded' : ''}`}
-              onLoad={() => setBgImageLoaded(true)}
-              onError={() => setBgImageError(true)}
-            />
+              style={{
+                backgroundImage: `url(${HERO_BG})`,
+                backgroundAttachment: 'fixed',
+                backgroundPosition: 'center top',
+                backgroundSize: 'cover',
+                backgroundRepeat: 'no-repeat'
+              }}
+              role="img"
+              aria-label="Bright laundry room with folded towels"
+            >
+              <img
+                src={HERO_BG}
+                alt=""
+                style={{ display: 'none' }}
+                onLoad={() => setBgImageLoaded(true)}
+                onError={() => setBgImageError(true)}
+              />
+            </div>
           )}
 
           {/* Placeholder when HERO_BG is empty or fails to load */}
@@ -450,10 +463,13 @@ export const LaundrixHero = ({ onBookPickup, onExploreServices }) => {
         .hero-bg-image {
           width: 100%;
           height: 100%;
-          object-fit: cover;
-          object-position: center;
+          background-attachment: fixed;
+          background-position: center top;
+          background-size: cover;
+          background-repeat: no-repeat;
           opacity: 0;
           transition: opacity 0.4s ease;
+          display: block;
         }
         .hero-bg-image.loaded {
           opacity: 1;

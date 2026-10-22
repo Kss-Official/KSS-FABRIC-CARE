@@ -17,6 +17,189 @@ import { seedDatabase } from '../services/seedDatabase';
 
 const AuthContext = createContext();
 
+export const VALID_DEMO_PASSWORDS = [
+  'Test@1234',
+  'test@1234',
+  'delivery123',
+  'admin123',
+  'laundry123',
+  'customer123',
+  'Password@123'
+];
+
+export const DEMO_USERS = {
+  'admin@fabricare.com': {
+    id: '0nLkchVi61geb6gqhHQ9W8cAP0u2',
+    name: 'Admin Superuser',
+    email: 'admin@fabricare.com',
+    phone: '+919800000000',
+    role: 'admin'
+  },
+  'admin': {
+    id: '0nLkchVi61geb6gqhHQ9W8cAP0u2',
+    name: 'Admin Superuser',
+    email: 'admin@fabricare.com',
+    phone: '+919800000000',
+    role: 'admin'
+  },
+  'delivery@fabricare.com': {
+    id: 'b0DHZGmo4mVuhPTS9HngWS7VulB2',
+    name: 'Ravi Sharma',
+    email: 'delivery@fabricare.com',
+    phone: '+919811122233',
+    role: 'agent'
+  },
+  'ravi.kumar@fabricare.com': {
+    id: 'b0DHZGmo4mVuhPTS9HngWS7VulB2',
+    name: 'Ravi Kumar',
+    email: 'delivery@fabricare.com',
+    phone: '+919876543210',
+    role: 'agent'
+  },
+  'delivery': {
+    id: 'b0DHZGmo4mVuhPTS9HngWS7VulB2',
+    name: 'Ravi Sharma',
+    email: 'delivery@fabricare.com',
+    phone: '+919811122233',
+    role: 'agent'
+  },
+  'agent': {
+    id: 'b0DHZGmo4mVuhPTS9HngWS7VulB2',
+    name: 'Ravi Sharma',
+    email: 'delivery@fabricare.com',
+    phone: '+919811122233',
+    role: 'agent'
+  },
+  'staff@fabricare.com': {
+    id: 'dYe9mpk1zNQtUKFPSUdTovgTQGo1',
+    name: 'Anil Verma',
+    email: 'staff@fabricare.com',
+    phone: '+919822233344',
+    role: 'staff'
+  },
+  'anita.sharma@fabricare.com': {
+    id: 'dYe9mpk1zNQtUKFPSUdTovgTQGo1',
+    name: 'Anita Sharma',
+    email: 'staff@fabricare.com',
+    phone: '+919822233344',
+    role: 'staff'
+  },
+  'staff': {
+    id: 'dYe9mpk1zNQtUKFPSUdTovgTQGo1',
+    name: 'Anil Verma',
+    email: 'staff@fabricare.com',
+    phone: '+919822233344',
+    role: 'staff'
+  },
+  'laundry': {
+    id: 'dYe9mpk1zNQtUKFPSUdTovgTQGo1',
+    name: 'Anil Verma',
+    email: 'staff@fabricare.com',
+    phone: '+919822233344',
+    role: 'staff'
+  },
+  'customer@fabricare.com': {
+    id: 'Qb0mccqhzFgxSs3yoGGFkj4b76G3',
+    name: 'Pratiksha Sharma',
+    email: 'customer@fabricare.com',
+    phone: '+919876543210',
+    role: 'customer'
+  },
+  'rohan.mehta@gmail.com': {
+    id: 'Qb0mccqhzFgxSs3yoGGFkj4b76G3',
+    name: 'Rohan Mehta',
+    email: 'customer@fabricare.com',
+    phone: '+919876543210',
+    role: 'customer'
+  },
+  'customer': {
+    id: 'Qb0mccqhzFgxSs3yoGGFkj4b76G3',
+    name: 'Pratiksha Sharma',
+    email: 'customer@fabricare.com',
+    phone: '+919876543210',
+    role: 'customer'
+  }
+};
+
+const tryDjangoAuth = async (email, password) => {
+  const endpoints = ['http://127.0.0.1:8001/api/auth/login/', 'http://127.0.0.1:8000/api/auth/login/'];
+  for (const url of endpoints) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        return data;
+      }
+    } catch (_) {}
+  }
+  return null;
+};
+
+export const clearCustomerSessionData = () => {
+  try {
+    localStorage.removeItem('fabricare_user');
+    localStorage.removeItem('fabricare_token');
+    localStorage.removeItem('fabricare_refresh_token');
+    localStorage.removeItem('fabricare_customer_reports');
+    sessionStorage.removeItem('fabricare_user');
+    sessionStorage.removeItem('fabricare_token');
+    sessionStorage.removeItem('fabricare_refresh_token');
+    sessionStorage.removeItem('fabricare_intended_destination');
+    sessionStorage.removeItem('fabricare_active_tracking_id');
+    sessionStorage.removeItem('fabricare_customer_orders');
+    sessionStorage.removeItem('fabricare_customer_invoices');
+    sessionStorage.removeItem('fabricare_selected_clothing_items');
+    sessionStorage.removeItem('fabricare_is_express_delivery');
+
+    if (typeof localStorage !== 'undefined') {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (
+          k.startsWith('fabricare_customer_') || 
+          k.startsWith('fabricare_order_') ||
+          k.startsWith('fabricare_orders_') ||
+          k.startsWith('fabricare_invoices_') ||
+          k.startsWith('fabricare_invoice_') ||
+          k.startsWith('fabricare_reports_') ||
+          k.startsWith('fabricare_active_')
+        )) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    }
+
+    if (typeof sessionStorage !== 'undefined') {
+      const sessionKeysToRemove = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k && (
+          k.startsWith('fabricare_customer_') || 
+          k.startsWith('fabricare_order_') ||
+          k.startsWith('fabricare_orders_') ||
+          k.startsWith('fabricare_invoices_') ||
+          k.startsWith('fabricare_invoice_') ||
+          k.startsWith('fabricare_reports_') ||
+          k.startsWith('fabricare_active_') ||
+          k.startsWith('fabricare_selected_')
+        )) {
+          sessionKeysToRemove.push(k);
+        }
+      }
+      sessionKeysToRemove.forEach(k => sessionStorage.removeItem(k));
+    }
+  } catch (_) {}
+};
+
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -109,12 +292,39 @@ export const AuthProvider = ({ children }) => {
             rawRole: rtdbProfile.role,
             avatarUrl: rtdbProfile.avatarUrl || null,
             avatar_url: rtdbProfile.avatarUrl || null,
-            initials: getInitials(rtdbProfile.name || fbUser.displayName || 'User')
+            initials: getInitials(rtdbProfile.name || fbUser.displayName || 'User'),
+            address: rtdbProfile.address || '',
+            city: rtdbProfile.city || '',
+            pincode: rtdbProfile.pincode || ''
           };
 
           if (isMounted) {
-            setCurrentUser(cleanProfile);
-            setUserProfile(cleanProfile);
+            setCurrentUser(prev => {
+              if (
+                prev &&
+                prev.uid === cleanProfile.uid &&
+                prev.role === cleanProfile.role &&
+                prev.name === cleanProfile.name &&
+                prev.email === cleanProfile.email &&
+                prev.phone === cleanProfile.phone
+              ) {
+                return prev;
+              }
+              return cleanProfile;
+            });
+            setUserProfile(prev => {
+              if (
+                prev &&
+                prev.uid === cleanProfile.uid &&
+                prev.role === cleanProfile.role &&
+                prev.name === cleanProfile.name &&
+                prev.email === cleanProfile.email &&
+                prev.phone === cleanProfile.phone
+              ) {
+                return prev;
+              }
+              return cleanProfile;
+            });
             localStorage.setItem('fabricare_user', JSON.stringify(cleanProfile));
           }
         } catch (err) {
@@ -122,10 +332,12 @@ export const AuthProvider = ({ children }) => {
         }
       } else {
         if (isMounted) {
-          setCurrentUser(null);
-          setUserProfile(null);
-          localStorage.removeItem('fabricare_user');
-          localStorage.removeItem('fabricare_token');
+          const cached = localStorage.getItem('fabricare_user');
+          if (!cached) {
+            setCurrentUser(null);
+            setUserProfile(null);
+            clearCustomerSessionData();
+          }
         }
       }
 
@@ -141,9 +353,10 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   /**
-   * Firebase-Only Login
+   * Universal Login: Firebase Auth + Django Backend API + Demo Users Fallback
    */
   const login = async (email, password) => {
+    clearCustomerSessionData();
     setLoading(true);
     setAuthError(null);
     let cleanEmail = (email || '').trim().toLowerCase();
@@ -161,152 +374,208 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      // Build candidate emails (for delivery, prioritize delivery@fabricare.com which has active RTDB orders)
-      const candidateEmails = [cleanEmail];
-      if (cleanEmail === 'ravi.kumar@fabricare.com' || cleanEmail === 'agent@fabricare.com' || cleanEmail.includes('delivery')) {
-        if (!candidateEmails.includes('delivery@fabricare.com')) candidateEmails.unshift('delivery@fabricare.com');
-        if (!candidateEmails.includes('ravi.kumar@fabricare.com')) candidateEmails.push('ravi.kumar@fabricare.com');
-      }
-
-      // Build candidate passwords
-      const candidatePasswords = [cleanPwd];
-      const standardPasswords = ['Test@1234', 'delivery123', 'laundry123', 'admin123', 'customer123', 'Password@123'];
-      for (const p of standardPasswords) {
-        if (p && !candidatePasswords.includes(p)) {
-          candidatePasswords.push(p);
-        }
-      }
-
       let fbUserCredential = null;
       let lastErr = null;
 
-      for (const tryEmail of candidateEmails) {
-        for (const tryPwd of candidatePasswords) {
-          try {
-            fbUserCredential = await signInWithEmailAndPassword(auth, tryEmail, tryPwd);
-            if (fbUserCredential) break;
-          } catch (err) {
-            lastErr = err;
-            if (err.code === 'auth/network-request-failed' || err.code === 'auth/user-disabled') {
-              throw err;
-            }
+      // Tier 1: Direct Firebase Auth Attempt
+      if (auth && cleanEmail.includes('@')) {
+        try {
+          fbUserCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPwd);
+        } catch (err) {
+          lastErr = err;
+          // Single targeted fallback for accounts with known legacy passwords
+          if (cleanEmail === 'customer@fabricare.com' && cleanPwd !== 'customer123') {
+            try {
+              fbUserCredential = await signInWithEmailAndPassword(auth, cleanEmail, 'customer123');
+            } catch (_) {}
+          } else if (cleanEmail === 'admin@fabricare.com' && cleanPwd !== 'admin123') {
+            try {
+              fbUserCredential = await signInWithEmailAndPassword(auth, cleanEmail, 'admin123');
+            } catch (_) {}
           }
         }
-        if (fbUserCredential) break;
       }
 
-      if (!fbUserCredential) {
-        // Fallback: check demo users
-        const demoUser = DEMO_USERS[cleanEmail] || DEMO_USERS[email];
-        if (demoUser && VALID_DEMO_PASSWORDS.includes(cleanPwd)) {
-          const role = normalizeRole(demoUser.role);
-          const profileData = {
-            uid: demoUser.id || 'demo-user',
-            id: demoUser.id || 'demo-user',
-            name: demoUser.name,
-            displayName: demoUser.name,
-            fullName: demoUser.name,
-            email: demoUser.email,
-            phone: demoUser.phone || '',
-            phoneNumber: demoUser.phone || '',
-            role,
-            rawRole: demoUser.role,
-            avatarUrl: null,
-            initials: getInitials(demoUser.name)
-          };
-          setCurrentUser(profileData);
-          setUserProfile(profileData);
-          localStorage.setItem('fabricare_user', JSON.stringify(profileData));
-          setIsAuthModalOpen(false);
-          setLoading(false);
-          return {
-            user: profileData,
-            profile: profileData,
-            role,
-            portal: getPortalForRole(role)
-          };
+      // If Firebase Auth succeeded, resolve profile and save session
+      if (fbUserCredential?.user) {
+        const fbUser = fbUserCredential.user;
+        let rtdbData = null;
+        try {
+          const userSnap = await get(ref(rtdb, `users/${fbUser.uid}`));
+          if (userSnap.exists()) {
+            rtdbData = userSnap.val();
+          }
+        } catch (_) {}
+
+        let role = normalizeRole(rtdbData?.role);
+        const emailLower = (fbUser.email || cleanEmail).toLowerCase();
+
+        if (emailLower === 'admin@fabricare.com' || emailLower.startsWith('admin@') || emailLower.includes('admin') || rtdbData?.role === 'admin' || rtdbData?.role === 'super_admin') {
+          role = 'admin';
+        } else if (emailLower === 'delivery@fabricare.com' || emailLower.startsWith('delivery@') || emailLower.startsWith('agent@') || emailLower.includes('delivery') || emailLower.includes('ravi') || rtdbData?.role === 'agent' || rtdbData?.role === 'delivery_agent') {
+          role = 'agent';
+        } else if (emailLower === 'staff@fabricare.com' || emailLower.startsWith('staff@') || emailLower.includes('staff') || emailLower.includes('anita') || emailLower.includes('laundry') || rtdbData?.role === 'staff' || rtdbData?.role === 'laundry_staff' || rtdbData?.role === 'laundry') {
+          role = 'staff';
         }
-        throw lastErr || new Error('auth/invalid-credential');
-      }
 
-      const fbUser = fbUserCredential.user;
-      const userSnap = await get(ref(rtdb, `users/${fbUser.uid}`));
-      let rtdbData = userSnap.exists() ? userSnap.val() : null;
+        if (!rtdbData) {
+          const defaultName = role === 'admin' ? 'Administrator' : role === 'agent' ? 'Ravi Sharma' : role === 'staff' ? 'Anil Verma' : 'Pratiksha Sharma';
+          const defaultPhone = role === 'agent' ? '+919811122233' : role === 'staff' ? '+919822233344' : '+919876543210';
+          rtdbData = {
+            name: fbUser.displayName || defaultName,
+            email: fbUser.email,
+            phone: defaultPhone,
+            role,
+            isActive: true,
+            avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || defaultName)}&background=0D9488&color=fff`,
+            createdAt: Date.now()
+          };
+          try {
+            await set(ref(rtdb, `users/${fbUser.uid}`), rtdbData);
+          } catch (_) {}
+        } else if (rtdbData.role !== role) {
+          rtdbData.role = role;
+          try {
+            update(ref(rtdb, `users/${fbUser.uid}`), { role }).catch(() => {});
+          } catch (_) {}
+        }
 
-      let role = normalizeRole(rtdbData?.role);
-      const emailLower = (fbUser.email || cleanEmail).toLowerCase();
+        if (role) {
+          const cleanRoleStr = String(role).toLowerCase();
+          const roleUpdates = {
+            [`roleUsers/${cleanRoleStr}/${fbUser.uid}`]: true
+          };
+          if (cleanRoleStr === 'staff') {
+            roleUpdates[`roleUsers/laundry_staff/${fbUser.uid}`] = true;
+            roleUpdates[`roleUsers/laundry/${fbUser.uid}`] = true;
+          } else if (cleanRoleStr === 'agent') {
+            roleUpdates[`roleUsers/delivery/${fbUser.uid}`] = true;
+          } else if (cleanRoleStr === 'admin') {
+            roleUpdates[`roleUsers/super_admin/${fbUser.uid}`] = true;
+          }
+          try {
+            update(ref(rtdb), roleUpdates).catch(() => {});
+          } catch (_) {}
+        }
 
-      if (emailLower === 'admin@fabricare.com' || emailLower.startsWith('admin@') || emailLower.includes('admin') || rtdbData?.role === 'admin' || rtdbData?.role === 'super_admin') {
-        role = 'admin';
-      } else if (emailLower === 'delivery@fabricare.com' || emailLower.startsWith('delivery@') || emailLower.startsWith('agent@') || emailLower.includes('delivery') || emailLower.includes('ravi') || rtdbData?.role === 'agent' || rtdbData?.role === 'delivery_agent') {
-        role = 'agent';
-      } else if (emailLower === 'staff@fabricare.com' || emailLower.startsWith('staff@') || emailLower.includes('staff') || emailLower.includes('anita') || emailLower.includes('laundry') || rtdbData?.role === 'staff' || rtdbData?.role === 'laundry_staff' || rtdbData?.role === 'laundry') {
-        role = 'staff';
-      }
+        let token = 'fb-token';
+        try {
+          token = await fbUser.getIdToken();
+        } catch (_) {}
 
-      if (!rtdbData) {
-        const defaultName = role === 'admin' ? 'Administrator' : role === 'agent' ? 'Ravi Sharma' : role === 'staff' ? (emailLower.includes('anita') ? 'Anita Sharma' : 'Staff Member') : 'Customer';
-        const defaultPhone = role === 'agent' ? '+919811122233' : role === 'staff' ? '+919822233344' : '';
-        rtdbData = {
-          name: fbUser.displayName || defaultName,
+        const profileData = {
+          uid: fbUser.uid,
+          id: fbUser.uid,
+          name: rtdbData.name || fbUser.displayName || 'User',
+          displayName: rtdbData.name || fbUser.displayName || 'User',
+          fullName: rtdbData.name || fbUser.displayName || '',
           email: fbUser.email,
-          phone: defaultPhone,
+          phone: rtdbData.phone || '',
+          phoneNumber: rtdbData.phone || '',
           role,
-          isActive: true,
-          avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || defaultName)}&background=0D9488&color=fff`,
-          createdAt: Date.now()
+          rawRole: rtdbData.role,
+          avatarUrl: rtdbData.avatarUrl || null,
+          avatar_url: rtdbData.avatarUrl || null,
+          initials: getInitials(rtdbData.name || fbUser.displayName || 'User'),
+          address: rtdbData.address || '',
+          city: rtdbData.city || '',
+          pincode: rtdbData.pincode || ''
         };
-        await set(ref(rtdb, `users/${fbUser.uid}`), rtdbData);
-      } else if (rtdbData.role !== role) {
-        rtdbData.role = role;
-        update(ref(rtdb, `users/${fbUser.uid}`), { role }).catch(() => {});
+
+        setCurrentUser(profileData);
+        setUserProfile(profileData);
+        localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+        localStorage.setItem('fabricare_token', token);
+        setIsAuthModalOpen(false);
+        setLoading(false);
+
+        return {
+          user: profileData,
+          profile: profileData,
+          role,
+          portal: getPortalForRole(role)
+        };
       }
 
-      // Index roleUsers
-      if (role) {
-        const cleanRoleStr = String(role).toLowerCase();
-        const roleUpdates = {
-          [`roleUsers/${cleanRoleStr}/${fbUser.uid}`]: true
+      // Tier 2: Django REST Backend Authentication
+      const djangoResult = await tryDjangoAuth(cleanEmail, cleanPwd);
+      if (djangoResult?.user) {
+        const djUser = djangoResult.user;
+        const role = normalizeRole(djUser.role);
+        const demoMatch = DEMO_USERS[cleanEmail] || DEMO_USERS[email];
+        const uid = demoMatch?.id || `dj_${djUser.id}`;
+        const token = djangoResult.access || djangoResult.tokens?.access || 'django-token';
+
+        const profileData = {
+          uid,
+          id: uid,
+          name: djUser.full_name || djUser.first_name || demoMatch?.name || 'User',
+          displayName: djUser.full_name || djUser.first_name || demoMatch?.name || 'User',
+          fullName: djUser.full_name || demoMatch?.name || '',
+          email: djUser.email || cleanEmail,
+          phone: djUser.phone || demoMatch?.phone || '',
+          phoneNumber: djUser.phone || demoMatch?.phone || '',
+          role,
+          rawRole: djUser.role,
+          avatarUrl: djUser.profile_picture_url || null,
+          avatar_url: djUser.profile_picture_url || null,
+          initials: getInitials(djUser.full_name || djUser.first_name || demoMatch?.name || 'User'),
+          address: djUser.address || '',
+          city: djUser.city || 'Bengaluru',
+          pincode: djUser.pincode || ''
         };
-        if (cleanRoleStr === 'staff') {
-          roleUpdates[`roleUsers/laundry_staff/${fbUser.uid}`] = true;
-          roleUpdates[`roleUsers/laundry/${fbUser.uid}`] = true;
-        } else if (cleanRoleStr === 'agent') {
-          roleUpdates[`roleUsers/delivery/${fbUser.uid}`] = true;
-        } else if (cleanRoleStr === 'admin') {
-          roleUpdates[`roleUsers/super_admin/${fbUser.uid}`] = true;
-        }
-        update(ref(rtdb), roleUpdates).catch(() => {});
+
+        setCurrentUser(profileData);
+        setUserProfile(profileData);
+        localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+        localStorage.setItem('fabricare_token', token);
+        setIsAuthModalOpen(false);
+        setLoading(false);
+
+        return {
+          user: profileData,
+          profile: profileData,
+          role,
+          portal: getPortalForRole(role)
+        };
       }
 
-      const profileData = {
-        uid: fbUser.uid,
-        id: fbUser.uid,
-        name: rtdbData.name || fbUser.displayName || 'User',
-        displayName: rtdbData.name || fbUser.displayName || 'User',
-        fullName: rtdbData.name || '',
-        email: fbUser.email,
-        phone: rtdbData.phone || '',
-        phoneNumber: rtdbData.phone || '',
-        role,
-        rawRole: rtdbData.role,
-        avatarUrl: rtdbData.avatarUrl || null,
-        avatar_url: rtdbData.avatarUrl || null,
-        initials: getInitials(rtdbData.name || fbUser.displayName || 'User')
-      };
+      // Tier 3: Demo Users Verification with Standard Passwords
+      const demoUser = DEMO_USERS[cleanEmail] || DEMO_USERS[email];
+      if (demoUser && VALID_DEMO_PASSWORDS.includes(cleanPwd)) {
+        const role = normalizeRole(demoUser.role);
+        const profileData = {
+          uid: demoUser.id || 'demo-user',
+          id: demoUser.id || 'demo-user',
+          name: demoUser.name,
+          displayName: demoUser.name,
+          fullName: demoUser.name,
+          email: demoUser.email,
+          phone: demoUser.phone || '',
+          phoneNumber: demoUser.phone || '',
+          role,
+          rawRole: demoUser.role,
+          avatarUrl: null,
+          avatar_url: null,
+          initials: getInitials(demoUser.name),
+          city: 'Bengaluru'
+        };
+        setCurrentUser(profileData);
+        setUserProfile(profileData);
+        localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+        localStorage.setItem('fabricare_token', 'demo-token');
+        setIsAuthModalOpen(false);
+        setLoading(false);
+        return {
+          user: profileData,
+          profile: profileData,
+          role,
+          portal: getPortalForRole(role)
+        };
+      }
 
-      setCurrentUser(profileData);
-      setUserProfile(profileData);
-      localStorage.setItem('fabricare_user', JSON.stringify(profileData));
-      setIsAuthModalOpen(false);
-      setLoading(false);
-
-      return {
-        user: profileData,
-        profile: profileData,
-        role,
-        portal: getPortalForRole(role)
-      };
+      // Tier 4: Error Handling
+      throw lastErr || new Error('Invalid email address or password. Please check your credentials and try again.');
     } catch (err) {
       setLoading(false);
       const friendlyMsg = mapAuthError(err);
@@ -319,6 +588,7 @@ export const AuthProvider = ({ children }) => {
    * Firebase-Only Customer Registration
    */
   const register = async ({ name, fullName, email, phone, password }) => {
+    clearCustomerSessionData();
     setLoading(true);
     setAuthError(null);
     try {
@@ -411,7 +681,10 @@ export const AuthProvider = ({ children }) => {
         rawRole: rtdbProfile.role,
         avatarUrl: rtdbProfile.avatarUrl || null,
         avatar_url: rtdbProfile.avatarUrl || null,
-        initials: getInitials(rtdbProfile.name || fbUser.displayName || 'User')
+        initials: getInitials(rtdbProfile.name || fbUser.displayName || 'User'),
+        address: rtdbProfile.address || '',
+        city: rtdbProfile.city || '',
+        pincode: rtdbProfile.pincode || ''
       };
 
       setCurrentUser(cleanProfile);
@@ -446,12 +719,22 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.warn('SignOut error:', err);
     } finally {
-      localStorage.removeItem('fabricare_user');
-      localStorage.removeItem('fabricare_token');
-      sessionStorage.removeItem('fabricare_user');
+      clearCustomerSessionData();
       setCurrentUser(null);
       setUserProfile(null);
-      window.location.hash = '#login';
+      if (typeof window !== 'undefined') {
+        if (typeof window.navigateTo === 'function') {
+          window.navigateTo('login', null, { replace: true });
+        } else if (window.location.pathname && window.location.pathname !== '/') {
+          try {
+            window.history.replaceState(null, '', '/#login');
+          } catch (_) {
+            window.location.hash = '#login';
+          }
+        } else {
+          window.location.hash = '#login';
+        }
+      }
     }
   };
 
@@ -502,7 +785,10 @@ export const AuthProvider = ({ children }) => {
           phoneNumber: val.phone,
           role: normalizeRole(val.role || 'customer'),
           rawRole: val.role,
-          avatarUrl: val.avatarUrl
+          avatarUrl: val.avatarUrl,
+          address: val.address !== undefined ? val.address : (currentUser.address || ''),
+          city: val.city !== undefined ? val.city : (currentUser.city || ''),
+          pincode: val.pincode !== undefined ? val.pincode : (currentUser.pincode || '')
         };
         setCurrentUser(updated);
         setUserProfile(updated);

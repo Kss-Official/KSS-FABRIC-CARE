@@ -11,7 +11,8 @@ import {
   ChevronLeft, 
   ArrowRight, 
   Loader2, 
-  AlertCircle 
+  AlertCircle,
+  Zap 
 } from 'lucide-react';
 
 export const Step4ReviewConfirm = () => {
@@ -29,11 +30,20 @@ export const Step4ReviewConfirm = () => {
     calculateTotal, 
     calculateDuplicateWashSavings = () => 0,
     getItemPricing = (it) => ({ effectiveUnitPrice: it.unitPrice, lineTotal: it.unitPrice * it.quantity, hasIroningDiscount: false }),
+    isExpressDelivery,
     isSubmittingOrder, 
     orderError 
   } = useBooking();
 
   const [isEditingInstructions, setIsEditingInstructions] = useState(false);
+
+  const isExpressBooking = Boolean(isExpressDelivery) || 
+    (selectedServices && selectedServices.some(s => s === 'express-laundry' || String(s).toLowerCase().includes('express'))) ||
+    (selectedItemsList && selectedItemsList.some(it => it.categoryId === 'express-laundry' || String(it.categoryName || '').toLowerCase().includes('express')));
+
+  const primaryCategoryId = isExpressBooking 
+    ? 'express-laundry' 
+    : (selectedItemsList[0]?.categoryId || selectedServices[0] || 'wash-fold');
 
   const selectedItemsData = allServices.filter(s => selectedServices.includes(s.id));
   const estimatedTotal = calculateTotal() || 300;
@@ -65,6 +75,8 @@ export const Step4ReviewConfirm = () => {
             <path d="M4 17h16a1 1 0 0 0 1-1c0-4-3-6-7-6H9a5 5 0 0 0-5 5v2z" /><path d="M9 10V6h7v4" />
           </svg>
         );
+      case 'express-laundry':
+        return <Zap size={20} color="#087F8C" strokeWidth={2.2} />;
       case 'shoe-laundry':
         return (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -104,7 +116,7 @@ export const Step4ReviewConfirm = () => {
               <div className="inner-card-header">
                 <div className="inner-header-left">
                   <div className="icon-square">
-                    {renderServiceIcon('wash-fold')}
+                    {renderServiceIcon(primaryCategoryId)}
                   </div>
                   <h3 className="inner-card-title">
                     {selectedItemsList.length > 0 

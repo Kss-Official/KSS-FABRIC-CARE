@@ -14,6 +14,8 @@ import {
   subscribeAdminComplaints,
   subscribeAdminNotifications,
   subscribeAdminServices,
+  subscribeAdminSettings,
+  saveAdminSettings,
   DEFAULT_SERVICES,
   fetchAdminOrdersOnce,
   fetchAdminUsersOnce,
@@ -30,8 +32,62 @@ import {
 import { createStaffOrAgentByAdmin } from '../services/authService';
 
 export const INITIAL_FAQS_ADMIN = [
-  { id: '1', question: 'How do I schedule a pickup?', answer: 'Go to your customer portal, select items and choose a time slot.', category: 'General' },
-  { id: '2', question: 'What is the turnaround time?', answer: 'Standard delivery takes 48 hours; Express delivery takes 24 hours.', category: 'Delivery' }
+  {
+    id: 'faq-1',
+    question: 'How does Laundrix pickup and delivery work?',
+    answer: 'Schedule a pickup through our app or website. Our executive will arrive with specialized laundry bags and deliver clean clothes within 24-48 hours.',
+    status: 'Active',
+    displayOrder: 1
+  },
+  {
+    id: 'faq-2',
+    question: 'What areas do you service?',
+    answer: 'We currently provide pickup and delivery services across Bengaluru including Indiranagar, Koramangala, Whitefield, HSR Layout, Banaswadi, and Malleshwaram.',
+    status: 'Active',
+    displayOrder: 2
+  },
+  {
+    id: 'faq-3',
+    question: 'What types of clothes do you clean?',
+    answer: 'We clean all types of everyday and premium fabrics including cotton, silk, linen, wool, denim, party wear, suits, and curtains.',
+    status: 'Active',
+    displayOrder: 3
+  },
+  {
+    id: 'faq-4',
+    question: 'How long does the cleaning process take?',
+    answer: 'Standard turnaround time is 1–2 days. Express services may be delivered within 24 hours.',
+    status: 'Active',
+    displayOrder: 4
+  },
+  {
+    id: 'faq-5',
+    question: 'How should I prepare my clothes for pickup?',
+    answer: 'Please keep your clothes in a clean bag. You can also add special instructions for delicate items during booking.',
+    status: 'Active',
+    displayOrder: 5
+  },
+  {
+    id: 'faq-6',
+    question: 'What are the payment options?',
+    answer: 'We accept online payments (UPI, cards, net banking) and cash on delivery (COD) upon inspection.',
+    status: 'Active',
+    displayOrder: 6
+  },
+  {
+    id: 'faq-7',
+    question: 'How can I track my order?',
+    answer: 'You can track your order in real-time through our app or website with live SMS and WhatsApp status updates.',
+    status: 'Active',
+    displayOrder: 7
+  },
+  {
+    id: 'faq-8',
+    question: 'What if I am not satisfied with the service?',
+    answer: 'Your satisfaction is our priority. If you are not happy with the service, we offer a 100% free re-wash guarantee.',
+    status: 'Inactive',
+    displayOrder: 8
+  }
 ];
 
 export const INITIAL_TERMS_CONTENT = {
@@ -151,19 +207,54 @@ export const mapAdminOrderRecord = (o) => {
   const totalPaise = o.total || 0;
   const totalInr = totalPaise > 0 ? (totalPaise / 100).toFixed(2) : (Number(o.total_amount || o.amount || 0).toFixed(2));
   const rawItems = o.items;
-  const normItems = Array.isArray(rawItems)
-    ? rawItems
-    : (rawItems && typeof rawItems === 'object'
-      ? Object.values(rawItems).map(it => ({
-          name: it.name || it.item_name || 'Laundry Care',
-          item_name: it.name || it.item_name || 'Laundry Care',
-          quantity: it.quantity || 1,
-          price: it.price || it.unitPrice || 60,
-          service_name: it.service_name || it.service || 'Wash & Fold'
-        }))
-      : []);
+  let itemsArray = [];
+  if (Array.isArray(rawItems)) {
+    itemsArray = rawItems;
+  } else if (rawItems && typeof rawItems === 'object') {
+    itemsArray = Object.values(rawItems);
+  }
+
+  const normItems = itemsArray.map(it => {
+    const qty = Number(it.quantity || it.qty || 1) || 1;
+    let rawUnitPrice = it.unitPrice ?? it.unit_price ?? it.rate ?? it.baseUnitPrice ?? null;
+    if (rawUnitPrice == null && it.price != null) {
+      const rawP = Number(it.price);
+      if (it.lineTotal && Number(it.lineTotal) === rawP && qty > 1) {
+        rawUnitPrice = rawP / qty;
+      } else if (it.total && Number(it.total) === rawP && qty > 1) {
+        rawUnitPrice = rawP / qty;
+      } else if (qty > 1 && rawP > 150 && !it.unitPrice) {
+        rawUnitPrice = rawP / qty;
+      } else {
+        rawUnitPrice = rawP;
+      }
+    }
+    if (rawUnitPrice == null) {
+      if (it.lineTotal != null) rawUnitPrice = Number(it.lineTotal) / qty;
+      else if (it.total != null) rawUnitPrice = Number(it.total) / qty;
+      else rawUnitPrice = 60;
+    }
+    let unitPrice = Number(rawUnitPrice);
+    if (isNaN(unitPrice) || unitPrice <= 0) unitPrice = 60;
+    if (unitPrice >= 1000 || (unitPrice >= 500 && unitPrice % 100 === 0)) {
+      unitPrice = unitPrice / 100;
+    }
+    const finalUnitPrice = Number(unitPrice.toFixed(2));
+
+    return {
+      ...it,
+      name: it.name || it.item_name || 'Laundry Care',
+      item_name: it.name || it.item_name || 'Laundry Care',
+      quantity: qty,
+      unitPrice: finalUnitPrice,
+      price: finalUnitPrice,
+      service_name: it.service_name || it.service || 'Wash & Fold'
+    };
+  });
   const rawStat = String(o.status || '').toUpperCase();
-  const hasDriver = Boolean(o.assignedAgentName || (o.driver && o.driver !== 'Not Assigned'));
+  const driverName = o.assignedAgentName || o.assignedDeliveryAgentName || o.assignedPickupAgentName || o.assigned_pickup_driver_detail?.full_name || '';
+  const driverPhone = o.assignedAgentPhone || o.assignedDeliveryAgentPhone || o.assignedPickupAgentPhone || o.assigned_pickup_driver_detail?.phone || '';
+  const hasDriver = Boolean(driverName || (o.driver && o.driver !== 'Not Assigned' && o.driver !== '—'));
 
   let normalizedStatus = 'Pending Pickup';
   if (rawStat === 'PLACED' || rawStat === 'PAYMENT_PENDING' || rawStat === 'PENDING_REVIEW') {
@@ -184,8 +275,8 @@ export const mapAdminOrderRecord = (o) => {
     normalizedStatus = o.status;
   }
 
-  const driverDisplay = o.assignedAgentName
-    ? (o.assignedAgentPhone ? `${o.assignedAgentName} (${o.assignedAgentPhone})` : o.assignedAgentName)
+  const driverDisplay = driverName
+    ? (driverPhone ? `${driverName} (${driverPhone})` : driverName)
     : (o.driver || 'Not Assigned');
 
   const custName = o.customerName || o.pickup_full_name || (o.customer && typeof o.customer === 'object' ? o.customer.name : null) || 'Customer';
@@ -246,7 +337,7 @@ export const AdminProvider = ({ children }) => {
     return 'dashboard';
   });
 
-  const { currentUser, userRole } = useAuth();
+  const { currentUser, userProfile, userRole, updateCurrentUserProfile, refreshProfile } = useAuth();
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(true);
 
   // Live isolated notifications hook for admin
@@ -276,9 +367,67 @@ export const AdminProvider = ({ children }) => {
   const [dashboardData, setDashboardData] = useState({ ordersPlaced: 0, revenue: 0, completedOrders: 0 });
   const [dashboardPeriod, setDashboardPeriod] = useState('today');
 
-  const [faqs, setFaqs] = useState(INITIAL_FAQS_ADMIN);
-  const [termsContent, setTermsContent] = useState(INITIAL_TERMS_CONTENT);
-  const [settings, setSettings] = useState(INITIAL_SETTINGS);
+  const [faqs, setFaqs] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('fabricare_admin_faqs');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length >= 8 && !parsed[0]?.question?.includes('How do I schedule a pickup')) {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {}
+    return INITIAL_FAQS_ADMIN;
+  });
+  const [termsContent, setTermsContent] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('fabricare_admin_terms');
+        if (saved) return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return INITIAL_TERMS_CONTENT;
+  });
+  const [settings, setSettings] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('fabricare_admin_settings');
+        if (saved) return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return INITIAL_SETTINGS;
+  });
+
+  // Sync settings with userProfile and currentUser from backend
+  useEffect(() => {
+    if (userProfile || currentUser) {
+      const pName = userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name;
+      const pPhoto = userProfile?.avatarUrl || currentUser?.avatarUrl;
+      const pPhone = userProfile?.phone || currentUser?.phone;
+      if (pName || pPhoto || pPhone) {
+        setSettings(prev => {
+          const updated = {
+            ...prev,
+            name: prev?.name && prev.name !== 'Admin' ? prev.name : (pName || prev?.name || 'Admin'),
+            photoUrl: prev?.photoUrl || pPhoto || '',
+            phone: prev?.phone || pPhone || '+91 98765 43210'
+          };
+          try {
+            localStorage.setItem('fabricare_admin_settings', JSON.stringify(updated));
+          } catch (_) {}
+          return updated;
+        });
+      }
+    }
+  }, [userProfile, currentUser]);
+  const [ordersFilterTarget, setOrdersFilterTarget] = useState({ tab: 'all', status: 'all', service: 'all' });
+
+  const navigateToOrdersWithFilter = (tab = 'all', status = 'all', service = 'all') => {
+    setOrdersFilterTarget({ tab, status, service });
+    setAdminTab('orders');
+  };
 
   const [loading, setLoading] = useState(false);
   const [supportLoading, setSupportLoading] = useState(false);
@@ -323,11 +472,14 @@ export const AdminProvider = ({ children }) => {
   // REAL-TIME RTDB SUBSCRIPTIONS (Strict cleanup on unmount)
   // ========================================================
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser && !isAdminAuthenticated) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    setOrders(prev => {
+      if (prev.length === 0) setLoading(true);
+      return prev;
+    });
 
     const unsubOrders = subscribeAdminOrders((rtdbOrders) => {
       const mapped = (rtdbOrders || []).map(mapAdminOrderRecord).filter(Boolean);
@@ -367,6 +519,12 @@ export const AdminProvider = ({ children }) => {
       setCustomers(mapped);
     });
 
+    const unsubAllUsers = subscribeAdminAllUsers((rtdbUsers) => {
+      if (rtdbUsers && Array.isArray(rtdbUsers)) {
+        setAllUsers(rtdbUsers);
+      }
+    });
+
     const unsubStats = subscribeAdminDashboardStats((rtdbStats) => {
       setDashboardData(rtdbStats || { ordersPlaced: 0, revenue: 0, completedOrders: 0 });
     });
@@ -379,15 +537,23 @@ export const AdminProvider = ({ children }) => {
       }
     });
 
-    const unsubAllUsers = subscribeAdminAllUsers((rtdbUsers) => {
-      setAllUsers(rtdbUsers || []);
-    });
-
     const unsubServices = subscribeAdminServices((rtdbServices) => {
       if (rtdbServices && rtdbServices.length > 0) {
         setServices(rtdbServices);
       } else {
         setServices(DEFAULT_SERVICES);
+      }
+    });
+
+    const unsubSettings = subscribeAdminSettings((rtdbSettings) => {
+      if (rtdbSettings) {
+        setSettings(prev => {
+          const merged = { ...prev, ...rtdbSettings };
+          try {
+            localStorage.setItem('fabricare_admin_settings', JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
+        });
       }
     });
 
@@ -400,8 +566,9 @@ export const AdminProvider = ({ children }) => {
       if (typeof unsubStats === 'function') unsubStats();
       if (typeof unsubComplaints === 'function') unsubComplaints();
       if (typeof unsubServices === 'function') unsubServices();
+      if (typeof unsubSettings === 'function') unsubSettings();
     };
-  }, [currentUser]);
+  }, [currentUser?.uid, isAdminAuthenticated]);
 
   // Workflow Handlers
   const assignDriverToOrder = async (orderId, driverParam, taskType = 'pickup') => {
@@ -463,11 +630,20 @@ export const AdminProvider = ({ children }) => {
   const updateOrderStatus = async (orderId, newStatus, reason = 'Admin updated order status') => {
     const order = orders.find(o => o.id === orderId || o.code === orderId || o.order_id === orderId);
     const targetOrderId = order?.rawId || order?.id || orderId;
+
+    // Optimistically update order status in state
+    setOrders(prev => (prev || []).map(o => {
+      if (o.id === orderId || o.rawId === targetOrderId || o.code === orderId || o.order_number === orderId) {
+        return { ...o, status: newStatus };
+      }
+      return o;
+    }));
+
     await adminOverrideOrderStatus(targetOrderId, newStatus, reason, currentUser);
   };
 
   const addUser = async (userData) => {
-    return await createStaffOrAgentByAdmin({
+    const created = await createStaffOrAgentByAdmin({
       email: userData.email,
       password: userData.password || 'Test@1234',
       name: userData.name,
@@ -482,6 +658,13 @@ export const AdminProvider = ({ children }) => {
       status: userData.status || 'Active',
       notes: userData.notes || ''
     });
+    if (created) {
+      setAllUsers(prev => {
+        const exists = (prev || []).some(u => u.uid === created.uid || u.id === created.id);
+        return exists ? prev.map(u => (u.uid === created.uid || u.id === created.id) ? { ...u, ...created } : u) : [created, ...(prev || [])];
+      });
+    }
+    return created;
   };
 
   const addCustomer = async (userData) => {
@@ -489,15 +672,44 @@ export const AdminProvider = ({ children }) => {
   };
 
   const updateUser = async (uid, updateFields) => {
-    return await updateAdminUser(uid, updateFields);
+    try {
+      if (uid) {
+        await updateAdminUser(uid, updateFields);
+      }
+    } catch (err) {
+      console.warn('Backend updateAdminUser warning:', err);
+    }
+    setAllUsers(prev => (prev || []).map(u => (u.uid === uid || u.id === uid) ? { ...u, ...updateFields } : u));
+    setCustomers(prev => (prev || []).map(c => (c.uid === uid || c.id === uid) ? { ...c, ...updateFields } : c));
+    return true;
   };
 
   const toggleUserStatus = async (uid, currentStatus) => {
-    return await toggleAdminUserStatus(uid, currentStatus);
+    let newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+    try {
+      if (uid) {
+        const res = await toggleAdminUserStatus(uid, currentStatus);
+        if (res) newStatus = res;
+      }
+    } catch (err) {
+      console.warn('Backend toggleAdminUserStatus warning:', err);
+    }
+    setAllUsers(prev => (prev || []).map(u => (u.uid === uid || u.id === uid) ? { ...u, status: newStatus, isActive: newStatus === 'Active' } : u));
+    setCustomers(prev => (prev || []).map(c => (c.uid === uid || c.id === uid) ? { ...c, status: newStatus, isActive: newStatus === 'Active' } : c));
+    return newStatus;
   };
 
   const deleteUser = async (uid) => {
-    return await deleteAdminUser(uid);
+    try {
+      if (uid) {
+        await deleteAdminUser(uid);
+      }
+    } catch (err) {
+      console.warn('Backend deleteAdminUser warning:', err);
+    }
+    setAllUsers(prev => (prev || []).filter(u => u.uid !== uid && u.id !== uid));
+    setCustomers(prev => (prev || []).filter(c => c.uid !== uid && c.id !== uid));
+    return true;
   };
 
   const addService = async (serviceData) => {
@@ -748,15 +960,67 @@ export const AdminProvider = ({ children }) => {
   }, []);
 
   const updateSettings = useCallback(async (newSettings) => {
+    let merged = {};
     setSettings(prev => {
-      const updated = { ...prev, ...newSettings };
+      merged = { ...prev, ...newSettings };
       try {
-        localStorage.setItem('fabricare_admin_settings', JSON.stringify(updated));
+        localStorage.setItem('fabricare_admin_settings', JSON.stringify(merged));
       } catch (e) {}
-      return updated;
+      return merged;
     });
+
+    const effectiveName = newSettings.name;
+    const effectivePhone = newSettings.phone;
+    const effectivePhoto = newSettings.photoUrl !== undefined ? newSettings.photoUrl : undefined;
+
+    // 1. Update AuthContext if available
+    if (updateCurrentUserProfile && currentUser?.uid) {
+      try {
+        await updateCurrentUserProfile({
+          ...(effectiveName ? { name: effectiveName, displayName: effectiveName } : {}),
+          ...(effectivePhone ? { phone: effectivePhone } : {}),
+          ...(effectivePhoto !== undefined ? { avatarUrl: effectivePhoto, photoUrl: effectivePhoto } : {})
+        });
+      } catch (err) {
+        console.warn('AuthContext update error:', err);
+      }
+    }
+
+    // 2. Persist to backend RTDB adminSettings & user record
+    try {
+      await saveAdminSettings(merged);
+
+      const uid = currentUser?.uid;
+      if (uid) {
+        const { ref: rRef, update: rUpdate } = await import('firebase/database');
+        const { rtdb } = await import('../config/firebase');
+
+        const userUpdates = {};
+        if (effectiveName) {
+          userUpdates.name = effectiveName;
+          userUpdates.displayName = effectiveName;
+        }
+        if (effectivePhone) userUpdates.phone = effectivePhone;
+        if (effectivePhoto !== undefined) {
+          userUpdates.avatarUrl = effectivePhoto;
+          userUpdates.photoUrl = effectivePhoto;
+        }
+        userUpdates.updatedAt = Date.now();
+        await rUpdate(rRef(rtdb, `users/${uid}`), userUpdates);
+      }
+      if (refreshProfile) await refreshProfile();
+    } catch (err) {
+      console.warn('Backend adminSettings persistence notice:', err);
+    }
+
+    // Broadcast change across tabs / components
+    try {
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('fabricare_profile_updated', { detail: merged }));
+    } catch (_) {}
+
     return { success: true };
-  }, []);
+  }, [currentUser?.uid, updateCurrentUserProfile, refreshProfile]);
 
   const updateTerms = useCallback(async (newTerms) => {
     setTermsContent(prev => {
@@ -806,6 +1070,9 @@ export const AdminProvider = ({ children }) => {
       value={{
         adminTab,
         setAdminTab,
+        ordersFilterTarget,
+        setOrdersFilterTarget,
+        navigateToOrdersWithFilter,
         isAdminAuthenticated,
         setIsAdminAuthenticated,
         orders,
@@ -908,6 +1175,9 @@ export const useAdmin = () => {
     return {
       adminTab: 'dashboard',
       setAdminTab: () => {},
+      ordersFilterTarget: { tab: 'all', status: 'all' },
+      setOrdersFilterTarget: () => {},
+      navigateToOrdersWithFilter: () => {},
       isAdminAuthenticated: true,
       setIsAdminAuthenticated: () => {},
       orders: [],

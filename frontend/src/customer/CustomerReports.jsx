@@ -109,16 +109,30 @@ export const CustomerReports = () => {
   const { currentUser, userProfile } = useAuth();
   const { navigateTo } = useBooking();
 
+  const isDemoCustomer = useCallback(() => {
+    const email = (currentUser?.email || '').toLowerCase().trim();
+    const uid = String(currentUser?.uid || currentUser?.id || '').trim();
+    return email === 'customer@fabricare.com' || email === 'rohan.mehta@gmail.com' || uid === 'Qb0mccqhzFgxSs3yoGGFkj4b76G3';
+  }, [currentUser?.email, currentUser?.uid, currentUser?.id]);
+
   // State
   const [reports, setReports] = useState(() => {
-    try {
-      const saved = localStorage.getItem('fabricare_customer_reports');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return DEFAULT_REPORTS.map(r => ({ ...r }));
+    const myUid = currentUser?.uid || currentUser?.id;
+    if (myUid) {
+      try {
+        const saved = localStorage.getItem(`fabricare_customer_reports_${myUid}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) {}
+    }
+    const email = (currentUser?.email || '').toLowerCase().trim();
+    const uid = String(currentUser?.uid || currentUser?.id || '').trim();
+    if (email === 'customer@fabricare.com' || email === 'rohan.mehta@gmail.com' || uid === 'Qb0mccqhzFgxSs3yoGGFkj4b76G3') {
+      return DEFAULT_REPORTS.map(r => ({ ...r }));
+    }
+    return [];
   });
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -154,22 +168,36 @@ export const CustomerReports = () => {
       new_delivery_date_formatted: reschedDate,
       rescheduled_time_slot: item.rescheduled_time_slot || item.time_slot || '',
       status: item.status || 'UNDER_REVIEW',
-      customer_name: item.customer_name || 'Rohan Mehta',
-      customer_phone: item.customer_phone || '+91 98765 43210',
+      customer_name: item.customer_name || currentUser?.name || currentUser?.displayName || 'Customer',
+      customer_phone: item.customer_phone || currentUser?.phone || '',
       reported_by_name: item.reported_by_name || 'Rajesh Kumar (Delivery Executive)'
     };
   };
 
   // Synchronize reports across Backend API, Admin Context complaints, and localStorage
   const syncReportsData = (backendData = null) => {
+    const myUid = currentUser?.uid || currentUser?.id;
+    const myEmail = (currentUser?.email || '').toLowerCase().trim();
     let baseList = [];
 
-    // If live backend records are provided, prioritize backend as primary source of truth
-    if (backendData && Array.isArray(backendData) && backendData.length > 0) {
-      baseList = backendData.map(normalizeReport);
-    } else {
+    // If live backend records are provided, filter strictly to this customer
+    if (backendData && Array.isArray(backendData)) {
+      const filtered = backendData.filter(item => {
+        if (!item) return false;
+        const cId = String(item.customer_id || item.customerId || item.user_id || '').toLowerCase().trim();
+        if (myUid && cId && cId === String(myUid).toLowerCase().trim()) return true;
+        const cEmail = String(item.customer_email || item.customerEmail || item.email || '').toLowerCase().trim();
+        if (myEmail && cEmail && cEmail === myEmail) return true;
+        return false;
+      });
+      if (filtered.length > 0) {
+        baseList = filtered.map(normalizeReport);
+      }
+    }
+
+    if (baseList.length === 0 && myUid) {
       try {
-        const savedCustomerReports = localStorage.getItem('fabricare_customer_reports');
+        const savedCustomerReports = localStorage.getItem(`fabricare_customer_reports_${myUid}`);
         if (savedCustomerReports) {
           const parsed = JSON.parse(savedCustomerReports);
           if (Array.isArray(parsed) && parsed.length > 0) {
@@ -177,10 +205,16 @@ export const CustomerReports = () => {
           }
         }
       } catch (e) {}
+    }
 
-      if (baseList.length === 0) {
-        baseList = DEFAULT_REPORTS.map(r => normalizeReport({ ...r }));
-      }
+    if (baseList.length === 0 && isDemoCustomer()) {
+      baseList = DEFAULT_REPORTS.map(r => normalizeReport({ ...r }));
+    }
+
+    if (myUid) {
+      try {
+        localStorage.setItem(`fabricare_customer_reports_${myUid}`, JSON.stringify(baseList));
+      } catch (e) {}
     }
 
     // Merge any live reschedules from Admin Context / Delivery Portal (fabricare_admin_complaints)
@@ -220,19 +254,18 @@ export const CustomerReports = () => {
       }
     } catch (e) {}
 
-    // Persist to localStorage for persistence across reloads
-    try {
-      localStorage.setItem('fabricare_customer_reports', JSON.stringify(baseList));
-    } catch (e) {}
-
     return baseList;
   };
 
   // Lock background page scroll while report modal is open, and reset modal scroll to top (matching invoice-view behavior)
   useEffect(() => {
     if (isModalOpen) {
-      const prevOverflow = document.body.style.overflow;
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
       document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      document.documentElement.classList.add('modal-open');
+      document.body.classList.add('modal-open');
 
       const resetScrollToTop = () => {
         if (modalScrollRef.current) {
@@ -253,7 +286,10 @@ export const CustomerReports = () => {
       document.addEventListener('keydown', handleKeyDown);
 
       return () => {
-        document.body.style.overflow = prevOverflow || '';
+        document.body.style.overflow = prevBodyOverflow || '';
+        document.documentElement.style.overflow = prevHtmlOverflow || '';
+        document.documentElement.classList.remove('modal-open');
+        document.body.classList.remove('modal-open');
         document.removeEventListener('keydown', handleKeyDown);
         cancelAnimationFrame(animFrame);
         clearTimeout(timer1);
@@ -357,7 +393,10 @@ export const CustomerReports = () => {
       setRefreshing(true);
       setRefreshSuccess(false);
     } else {
-      setLoading(true);
+      setReports(prev => {
+        if (!prev || prev.length === 0) setLoading(true);
+        return prev;
+      });
     }
     setError(null);
 
@@ -403,18 +442,39 @@ export const CustomerReports = () => {
   };
 
   useEffect(() => {
+    const myUid = currentUser?.uid || currentUser?.id;
+    if (myUid) {
+      try {
+        const saved = localStorage.getItem(`fabricare_customer_reports_${myUid}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setReports(parsed);
+          } else {
+            setReports(isDemoCustomer() ? DEFAULT_REPORTS.map(r => ({ ...r })) : []);
+          }
+        } else {
+          setReports(isDemoCustomer() ? DEFAULT_REPORTS.map(r => ({ ...r })) : []);
+        }
+      } catch (_) {
+        setReports(isDemoCustomer() ? DEFAULT_REPORTS.map(r => ({ ...r })) : []);
+      }
+    } else {
+      setReports([]);
+    }
+
     fetchReports();
 
     // Listen for storage changes from admin portal or delivery portal
     const handleStorageChange = (e) => {
-      if (e.key === 'fabricare_admin_complaints' || e.key === 'fabricare_customer_reports') {
+      if (e.key === 'fabricare_admin_complaints' || e.key === `fabricare_customer_reports_${myUid}`) {
         const synced = syncReportsData(null);
         setReports(synced);
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  }, [currentUser?.uid, currentUser?.email]);
 
   // Filtered reports in memory for instant typing feedback
   const filteredReports = useMemo(() => {
@@ -483,9 +543,10 @@ export const CustomerReports = () => {
   const displayName =
     userProfile?.displayName ||
     currentUser?.displayName ||
+    currentUser?.name ||
     currentUser?.full_name ||
     currentUser?.first_name ||
-    'Rohan Mehta';
+    'Valued Customer';
 
   return (
     <div className="reports-portal-page animate-fade-in">
@@ -721,11 +782,12 @@ export const CustomerReports = () => {
                 {/* Brand Logo & Report Header */}
                 <div className="invoice-doc-header">
                   <div className="brand-logo-stack">
-                    <div className="brand-circle-logo">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-                        <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-                      </svg>
+                    <div className="brand-circle-logo" style={{ background: 'transparent' }}>
+                      <img 
+                        src="/images/fabricare-logo.png" 
+                        alt="FabriCare" 
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '10px' }} 
+                      />
                     </div>
                     <div>
                       <h2 className="brand-name">FabriCare</h2>

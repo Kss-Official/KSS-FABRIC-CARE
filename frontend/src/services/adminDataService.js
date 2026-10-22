@@ -13,6 +13,7 @@ import {
 } from 'firebase/database';
 import { rtdb } from '../config/firebase.js';
 import { addNotificationToUpdates, addRoleNotificationsToUpdates, getRoleUserIds } from './notificationService.js';
+import { PRICING_ITEMS, PRICING_SUBCATEGORIES } from '../data/pricingData.js';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 
@@ -408,6 +409,31 @@ export const subscribeAdminAllUsers = (onUsersUpdated, onError) => {
 };
 
 /**
+ * Subscribe to admin settings in RTDB
+ */
+export const subscribeAdminSettings = (onSettingsUpdated, onError) => {
+  const settingsRef = ref(rtdb, 'adminSettings');
+  const unsub = onValue(settingsRef, (snap) => {
+    if (!snap.exists()) {
+      onSettingsUpdated(null);
+      return;
+    }
+    onSettingsUpdated(snap.val());
+  }, onError);
+
+  return () => off(settingsRef, 'value', unsub);
+};
+
+export const saveAdminSettings = async (newSettings) => {
+  const settingsRef = ref(rtdb, 'adminSettings');
+  await update(settingsRef, {
+    ...newSettings,
+    updatedAt: Date.now()
+  });
+  return true;
+};
+
+/**
  * Admin updates a user profile
  */
 export const updateAdminUser = async (uid, updateFields) => {
@@ -499,140 +525,93 @@ export const subscribeAdminNotifications = (onNotifsUpdated, onError) => {
 // SERVICES CATALOG MANAGEMENT & SUBSCRIPTION
 // ===============================================================
 
-export const DEFAULT_SERVICES = [
-  {
-    id: 1,
-    name: 'Shirt',
-    description: 'Regular shirt cleaning and pressing',
-    category: 'Wash & Fold',
-    price: 80,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Shirt',
-    type: 'Standard'
-  },
-  {
-    id: 2,
-    name: 'Jeans',
-    description: 'Denim washing and care',
-    category: 'Wash & Fold',
-    price: 120,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Jeans',
-    type: 'Standard'
-  },
-  {
-    id: 3,
-    name: 'T-Shirt',
-    description: 'Regular wash and fold',
-    category: 'Wash & Fold',
-    price: 70,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'TShirt',
-    type: 'Standard'
-  },
-  {
-    id: 4,
-    name: 'Formal Suit',
-    description: 'Professional dry cleaning',
-    category: 'Dry Cleaning',
-    price: 250,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Suit',
-    type: 'Premium'
-  },
-  {
-    id: 5,
-    name: 'Saree',
-    description: 'Special fabric care with dry cleaning',
-    category: 'Dry Cleaning',
-    price: 220,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Saree',
-    type: 'Premium'
-  },
-  {
-    id: 6,
-    name: 'Bedsheet (Single)',
-    description: 'Wash, dry and fold',
-    category: 'Household',
-    price: 90,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Bedsheet',
-    type: 'Standard'
-  },
-  {
-    id: 7,
-    name: 'Blanket',
-    description: 'Deep cleaning and sanitization',
-    category: 'Household',
-    price: 300,
-    turnaround: '2–3 days',
-    status: 'Inactive',
-    icon: 'Blanket',
-    type: 'Premium'
-  },
-  {
-    id: 8,
-    name: 'Curtain (Per Piece)',
-    description: 'Dry cleaning and freshening',
-    category: 'Household',
-    price: 180,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Curtain',
-    type: 'Standard'
-  },
-  {
-    id: 9,
-    name: 'Silk Saree',
-    description: 'Delicate fabric dry cleaning',
-    category: 'Dry Cleaning',
-    price: 450,
-    turnaround: '2–3 days',
-    status: 'Active',
-    icon: 'Saree',
-    type: 'Premium'
-  },
-  {
-    id: 10,
-    name: 'Winter Jacket',
-    description: 'Heavy wool dry cleaning & sanitization',
-    category: 'Dry Cleaning',
-    price: 550,
-    turnaround: '3–4 days',
-    status: 'Active',
-    icon: 'Suit',
-    type: 'Premium'
-  },
-  {
-    id: 11,
-    name: 'Carpet Cleaning',
-    description: 'Deep steam sanitization & stain removal',
-    category: 'Household',
-    price: 850,
-    turnaround: '3–4 days',
-    status: 'Inactive',
-    icon: 'Blanket',
-    type: 'Premium'
-  },
-  {
-    id: 12,
-    name: 'Cushion Covers',
-    description: 'Gentle wash and steam press',
-    category: 'Wash & Fold',
-    price: 680,
-    turnaround: '1–2 days',
-    status: 'Active',
-    icon: 'Bedsheet',
-    type: 'Standard'
-  }
-];
+/**
+ * Generate complete 69 admin items matching Customer Portal subcategories and configurations
+ */
+export const generateAdminServicesList = () => {
+  return PRICING_ITEMS.map((item, index) => {
+    const subcatName = item.subcategory === 'men' 
+      ? 'Men' 
+      : item.subcategory === 'women' 
+        ? 'Women' 
+        : item.subcategory === 'kids' 
+          ? 'Kids' 
+          : 'Household';
+
+    // Primary Service category matching Customer Portal categorization
+    let category = 'Wash & Fold';
+    const nameLower = (item.name || '').toLowerCase();
+    const itemId = item.id;
+
+    if (item.subcategory === 'household') {
+      category = 'Household';
+    } else if (
+      itemId === 'men-suit-2pc' || 
+      itemId === 'men-blazer' || 
+      itemId === 'men-jacket' ||
+      itemId === 'women-gown' || 
+      itemId === 'women-lehenga' || 
+      itemId === 'women-suit' ||
+      itemId === 'women-saree' ||
+      itemId === 'women-anarkali-dress' ||
+      nameLower.includes('suit') || 
+      nameLower.includes('blazer') ||
+      nameLower.includes('gown') ||
+      nameLower.includes('lehenga') ||
+      nameLower.includes('saree')
+    ) {
+      category = 'Dry Cleaning';
+    } else {
+      category = 'Wash & Fold';
+    }
+
+    // Base price matching Customer Portal (Wash & Fold rate or fallback)
+    const basePrice = item.prices?.['wash-fold'] || item.prices?.['wash-iron'] || 50;
+
+    // Turnaround time: 1–2 days for everyday, 2–3 days for delicate/household
+    const turnaround = (item.subcategory === 'household' || category === 'Dry Cleaning')
+      ? '2–3 days'
+      : '1–2 days';
+
+    // Type: Premium for sets or dry cleaning or >= 100, Standard otherwise
+    const isPremium = item.unit === 'set' || basePrice >= 100 || category === 'Dry Cleaning';
+    const type = isPremium ? 'Premium' : 'Standard';
+
+    // Contextual description matching Customer Portal subcategory
+    let description = `${subcatName} · ${item.name} cleaning and fabric care`;
+    if (category === 'Household') {
+      description = `Household linen care & sanitization`;
+    } else if (category === 'Dry Cleaning') {
+      description = `Special fabric dry cleaning & pressing`;
+    } else if (nameLower.includes('shirt')) {
+      description = `Regular shirt cleaning and pressing`;
+    } else if (nameLower.includes('jeans')) {
+      description = `Denim washing and care`;
+    } else if (nameLower.includes('t-shirt') || nameLower.includes('tshirt')) {
+      description = `Regular wash and fold`;
+    }
+
+    return {
+      id: index + 1,
+      code: item.id,
+      name: item.name,
+      description,
+      category,
+      subcategory: item.subcategory,
+      subcategoryId: item.subcategory,
+      subcatName,
+      price: basePrice,
+      prices: item.prices,
+      unit: item.unit || 'item',
+      turnaround,
+      status: 'Active',
+      icon: item.name,
+      type
+    };
+  });
+};
+
+export const DEFAULT_SERVICES = generateAdminServicesList();
 
 /**
  * Realtime subscription to services in Realtime Database
@@ -648,15 +627,14 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
     const data = snap.val();
     const rawList = data ? Object.keys(data).map(k => ({ ...data[k], id: data[k].id || k })) : [];
 
-    // Detect if RTDB has incomplete dummy data or old "Special Care" / non-Household categories
-    const isOldIncomplete = rawList.length < 12 || rawList.some(s => 
-      !s.category || s.price === undefined || s.price === null || Number(s.price) === 0 ||
-      s.category === 'Special Care' || s.category === 'Special' ||
-      ((String(s.name || '').toLowerCase().includes('bedsheet') || String(s.name || '').toLowerCase().includes('blanket') || String(s.name || '').toLowerCase().includes('curtain')) && s.category !== 'Household')
+    // Detect if RTDB has incomplete dummy data or fewer than 69 items
+    const isOldIncomplete = rawList.length < 69 || rawList.some(s => 
+      !s.category || s.price === undefined || s.price === null ||
+      s.category === 'Special Care' || s.category === 'Special'
     );
 
     if (isOldIncomplete) {
-      // Overwrite RTDB with the full 12 services with clean Household categories
+      // Overwrite RTDB with the full 69 services matching Customer Portal
       seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
       onServicesUpdated(DEFAULT_SERVICES);
       return;
@@ -665,7 +643,7 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
     const list = rawList.map(item => {
       let cat = item.category || item.category_name || 'Wash & Fold';
       const nameLower = String(item.name || '').toLowerCase();
-      if (nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
+      if (item.subcategory === 'household' || nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
         cat = 'Household';
       } else if (cat === 'Special Care' || cat === 'Special') {
         cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
@@ -675,6 +653,9 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
         price: Number(item.price) || 0,
         status: item.status || (item.isActive === false ? 'Inactive' : 'Active'),
         category: cat,
+        subcategory: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
+        subcategoryId: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
+        subcatName: item.subcatName || (item.subcategory ? item.subcategory.charAt(0).toUpperCase() + item.subcategory.slice(1) : (cat === 'Household' ? 'Household' : 'Men')),
         turnaround: item.turnaround || item.turnaround_time || '1–2 days',
         type: item.type || (Number(item.price) > 200 ? 'Premium' : (String(item.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard'))
       };
@@ -690,16 +671,26 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
 };
 
 /**
- * Seed full 12 services into RTDB if not present or incomplete
+ * Seed full 69 services into RTDB if not present or incomplete
  */
 export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICES, forceOverwrite = false) => {
   try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return null;
+
+    let role = null;
+    try {
+      const cached = JSON.parse(localStorage.getItem('fabricare_user') || '{}');
+      role = cached?.role;
+    } catch (_) {}
+
+    if (role !== 'admin') return null;
+
     const servicesRef = ref(rtdb, 'services');
     const snap = await get(servicesRef);
     const existing = snap.val();
-    const isOldIncomplete = !snap.exists() || !existing || Object.keys(existing).length < 12 || Object.values(existing).some(s => 
-      !s.category || !s.price || s.category === 'Special Care' || s.category === 'Special' ||
-      ((String(s.name || '').toLowerCase().includes('bedsheet') || String(s.name || '').toLowerCase().includes('blanket') || String(s.name || '').toLowerCase().includes('curtain')) && s.category !== 'Household')
+    const isOldIncomplete = !snap.exists() || !existing || Object.keys(existing).length < 69 || Object.values(existing).some(s => 
+      !s.category || !s.price || s.category === 'Special Care' || s.category === 'Special'
     );
 
     if (forceOverwrite || isOldIncomplete) {
@@ -714,9 +705,12 @@ export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICE
       await set(servicesRef, seedObj);
       return initialServices;
     }
-    return null;
+    return Object.values(existing);
   } catch (err) {
-    console.warn('Could not seed services in RTDB:', err);
+    const isPermError = err?.code === 'PERMISSION_DENIED' || String(err?.message || '').toLowerCase().includes('permission_denied') || String(err?.message || '').toLowerCase().includes('permission denied');
+    if (!isPermError) {
+      console.warn('Could not seed services in RTDB:', err);
+    }
     return null;
   }
 };
@@ -870,14 +864,15 @@ export const fetchAdminServicesOnce = async () => {
 
 
 
-  if (list.length === 0) {
+  if (list.length < 69) {
     list = DEFAULT_SERVICES;
+    seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
   }
 
   return list.map(item => {
     let cat = item.category || item.category_name || 'Wash & Fold';
     const nameLower = String(item.name || '').toLowerCase();
-    if (nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
+    if (item.subcategory === 'household' || nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
       cat = 'Household';
     } else if (cat === 'Special Care' || cat === 'Special') {
       cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
@@ -887,6 +882,9 @@ export const fetchAdminServicesOnce = async () => {
       price: Number(item.price) || 0,
       status: item.status || (item.isActive === false ? 'Inactive' : 'Active'),
       category: cat,
+      subcategory: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
+      subcategoryId: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
+      subcatName: item.subcatName || (item.subcategory ? item.subcategory.charAt(0).toUpperCase() + item.subcategory.slice(1) : (cat === 'Household' ? 'Household' : 'Men')),
       turnaround: item.turnaround || item.turnaround_time || '1–2 days',
       type: item.type || (Number(item.price) > 200 ? 'Premium' : (String(item.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard'))
     };

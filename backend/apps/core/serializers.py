@@ -200,24 +200,43 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         user = getattr(req, 'user', None) if req else None
         if not user or not getattr(user, 'is_authenticated', False):
             from apps.users.models import User
-            user = User.objects.filter(role=User.Role.CUSTOMER).first() or User.objects.first()
+            cust_email = ''
+            if req and hasattr(req, 'data'):
+                cust_email = (req.data.get('customerEmail') or req.data.get('customer_email') or req.data.get('email') or '').strip().lower()
+            if not cust_email:
+                cust_email = (validated_data.get('customer_email') or '').strip().lower()
+
+            if cust_email:
+                user = User.objects.filter(email__iexact=cust_email).first()
+                if not user:
+                    c_name = (req.data.get('customerName') or req.data.get('pickup_full_name') or 'Customer').strip()
+                    c_phone = (req.data.get('customerPhone') or req.data.get('pickup_phone') or '').strip()
+                    user = User.objects.create(
+                        email=cust_email,
+                        username=cust_email,
+                        full_name=c_name,
+                        phone=c_phone,
+                        role=User.Role.CUSTOMER
+                    )
+            else:
+                user = None
 
         if not validated_data.get('pickup_date'):
             validated_data['pickup_date'] = parse_flexible_date(None)
 
         # Populate defaults from user if missing
         if not validated_data.get('pickup_full_name'):
-            validated_data['pickup_full_name'] = getattr(user, 'full_name', '') or getattr(user, 'username', 'Valued Customer')
+            validated_data['pickup_full_name'] = getattr(user, 'full_name', '') or getattr(user, 'username', '') or 'Valued Customer'
         if not validated_data.get('pickup_phone'):
-            validated_data['pickup_phone'] = getattr(user, 'phone', '') or '+91 98765 43210'
+            validated_data['pickup_phone'] = getattr(user, 'phone', '')
         if not validated_data.get('pickup_address'):
-            validated_data['pickup_address'] = getattr(user, 'address', '') or 'Banaswadi, Bengaluru - 560043'
+            validated_data['pickup_address'] = getattr(user, 'address', '')
         if not validated_data.get('pickup_city'):
             validated_data['pickup_city'] = getattr(user, 'city', '') or 'Bengaluru'
         if not validated_data.get('pickup_pincode'):
             validated_data['pickup_pincode'] = getattr(user, 'pincode', '') or '560043'
         if not validated_data.get('delivery_address'):
-            validated_data['delivery_address'] = validated_data['pickup_address']
+            validated_data['delivery_address'] = validated_data.get('pickup_address', '')
 
         # Calculate total and process items with duplicate wash waiver logic
         calculated_total = 0.0

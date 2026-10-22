@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { ordersApi, notificationsApi } from '../api/apiClient';
-import { subscribeOrders } from '../services/firestoreService';
+import { subscribeCustomerOrders } from '../services/customerDataService';
 import { 
   Package, 
   Clock, 
@@ -27,28 +27,71 @@ import { formatOrderId } from '../utils/helpers';
 export const CustomerDashboard = () => {
   const { currentUser } = useAuth();
   const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+
+  const myUid = currentUser?.uid || currentUser?.id;
+  const myEmail = (currentUser?.email || '').toLowerCase().trim();
+
+  const [orders, setOrders] = useState(() => {
+    try {
+      if (myUid) {
+        const cached = sessionStorage.getItem(`fabricare_customer_orders_${myUid}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+    } catch (_) {}
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    try {
+      if (myUid) {
+        const cached = sessionStorage.getItem(`fabricare_customer_orders_${myUid}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return false;
+        }
+      }
+    } catch (_) {}
+    return true;
+  });
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
   const fetchOrders = useCallback(async (isManual = false) => {
+    const uid = currentUser?.uid || currentUser?.id;
+    const email = (currentUser?.email || '').toLowerCase().trim();
+    if (!uid && !email) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
     if (!isManual) setLoading(true);
     try {
       const res = await ordersApi.getOrders();
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
-      if (list.length > 0) {
-        setOrders(prev => {
-          const ids = new Set(prev.map(p => p.id));
-          return [...prev, ...list.filter(item => !ids.has(item.id || item.order_number))];
-        });
+      const myOrders = list.filter(o => {
+        if (!o) return false;
+        const oUid = String(o.customerId || o.customer_id || o.userId || '').toLowerCase().trim();
+        if (uid && oUid && oUid === String(uid).toLowerCase().trim()) return true;
+        const oEmail = String(o.customerEmail || o.customer_email || o.customer?.email || '').toLowerCase().trim();
+        if (email && oEmail && oEmail === email) return true;
+        return false;
+      });
+      setOrders(myOrders);
+      if (uid) {
+        try {
+          sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(myOrders));
+        } catch (_) {}
       }
     } catch (err) {
       console.warn('Customer dashboard fetch orders notice:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser?.uid, currentUser?.email]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -69,21 +112,66 @@ export const CustomerDashboard = () => {
 
   useEffect(() => {
     let isSubscribed = true;
-    const unsubscribe = subscribeOrders((fireOrders) => {
-      if (!isSubscribed) return;
-      if (fireOrders && fireOrders.length > 0) {
-        setOrders(fireOrders);
-      }
+    const uid = currentUser?.uid || currentUser?.id;
+    const email = currentUser?.email;
+
+    if (!uid && !email) {
+      setOrders([]);
       setLoading(false);
-    });
+      return;
+    }
+
+    // Reset orders immediately when customer ID changes to avoid leaking previous customer's data
+    try {
+      const cached = uid ? sessionStorage.getItem(`fabricare_customer_orders_${uid}`) : null;
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          setOrders(parsed);
+          setLoading(false);
+        } else {
+          setOrders([]);
+          setLoading(true);
+        }
+      } else {
+        setOrders([]);
+        setLoading(true);
+      }
+    } catch (_) {
+      setOrders([]);
+      setLoading(true);
+    }
+
+    const unsubscribe = subscribeCustomerOrders(
+      uid,
+      (liveOrders) => {
+        if (!isSubscribed) return;
+        if (Array.isArray(liveOrders)) {
+          setOrders(liveOrders);
+          if (uid) {
+            try {
+              sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(liveOrders));
+            } catch (_) {}
+          }
+        } else {
+          setOrders([]);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Customer orders subscription notice:', err);
+        fetchOrders();
+      },
+      email
+    );
 
     fetchOrders();
 
     return () => {
       isSubscribed = false;
-      unsubscribe();
+      if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [fetchOrders]);
+  }, [currentUser?.uid, currentUser?.email, fetchOrders]);
 
   const filteredOrders = orders.filter(order => {
     const term = (searchQuery || '').trim().toLowerCase();
@@ -136,6 +224,62 @@ export const CustomerDashboard = () => {
       default:
         return <span className="badge badge-secondary">{status}</span>;
     }
+  };
+
+  const getOrderServices = (order) => {
+    if (!order) return 'Wash & Fold';
+
+    // 1. Direct services array on order
+    if (Array.isArray(order.services) && order.services.length > 0) {
+      const clean = order.services.filter(Boolean);
+      if (clean.length > 0) return clean.join(', ');
+    }
+    if (Array.isArray(order.services_list) && order.services_list.length > 0) {
+      const clean = order.services_list.filter(Boolean);
+      if (clean.length > 0) return clean.join(', ');
+    }
+
+    // 2. Direct service string on order
+    if (typeof order.service === 'string' && order.service.trim()) {
+      return order.service.trim();
+    }
+
+    // 3. Extract service categories from items
+    const rawItems = Array.isArray(order.items)
+      ? order.items
+      : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
+
+    if (rawItems.length > 0) {
+      const extractedServices = new Set();
+      rawItems.forEach(item => {
+        if (!item) return;
+        if (item.service_category && item.service_category !== 'General') {
+          extractedServices.add(item.service_category);
+        } else if (item.categoryName && item.categoryName !== 'General') {
+          extractedServices.add(item.categoryName);
+        } else if (Array.isArray(item.services) && item.services.length > 0) {
+          item.services.forEach(s => s && extractedServices.add(s));
+        } else if (item.category && !['Men', 'Women', 'Household', 'Kids', 'General', 'Clothing'].includes(item.category)) {
+          extractedServices.add(item.category);
+        } else {
+          // Check for service inside parenthesized name, e.g., "Shirt (Wash & Iron)"
+          const match = String(item.name || item.item_name || '').match(/\(([^)]+)\)/);
+          if (match && match[1] && !/^\d+$/.test(match[1])) {
+            extractedServices.add(match[1].trim());
+          }
+        }
+      });
+
+      if (extractedServices.size > 0) {
+        return Array.from(extractedServices).join(', ');
+      }
+    }
+
+    if (order.isExpress) {
+      return 'Express Laundry';
+    }
+
+    return 'Wash & Fold';
   };
 
   return (
@@ -229,9 +373,8 @@ export const CustomerDashboard = () => {
                 <tr>
                   <th>Order #</th>
                   <th>Pickup Slot</th>
-                  <th>Items / Services</th>
+                  <th>Services</th>
                   <th>Total Amount</th>
-                  <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -247,10 +390,8 @@ export const CustomerDashboard = () => {
                       <div className="text-xs text-muted">{order.pickup_time_slot}</div>
                     </td>
                     <td>
-                      <div className="text-sm">
-                        {Array.isArray(order.items) && order.items.length > 0 
-                          ? order.items.map(i => `${i.item_name || i.name || 'Item'} (${i.quantity || 1})`).join(', ')
-                          : 'General Laundry'}
+                      <div className="text-sm font-medium text-navy">
+                        {getOrderServices(order)}
                       </div>
                     </td>
                     <td>
@@ -258,9 +399,6 @@ export const CustomerDashboard = () => {
                       <span className={`text-xs block ${order.payment_status === 'PAID' ? 'text-emerald-600 font-semibold' : 'text-amber-600'}`}>
                         {order.payment_status || 'PENDING'}
                       </span>
-                    </td>
-                    <td>
-                      {getStatusBadge(order.status)}
                     </td>
                     <td>
                       <button

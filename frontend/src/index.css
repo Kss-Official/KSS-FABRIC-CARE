@@ -372,7 +372,8 @@ img {
 .ac-modal-backdrop,
 .modal-backdrop,
 .auth-modal-overlay,
-.drawer-overlay {
+.drawer-overlay,
+.express-modal-overlay {
   overscroll-behavior: contain !important;
   touch-action: pan-y !important;
 }
@@ -387,8 +388,32 @@ img {
 .drawer-panel,
 .drawer-body,
 .ac-form-body,
-.manage-services-list-body {
+.manage-services-list-body,
+.express-modal-card {
   overscroll-behavior: contain !important;
+}
+
+/* Prevent background page from scrolling when modals are open */
+html.modal-open,
+body.modal-open {
+  overflow: hidden !important;
+}
+
+/* Fixed background image utilities */
+.bg-fixed {
+  background-attachment: fixed !important;
+}
+
+.fixed-bg-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background-attachment: fixed;
+  background-position: center top;
+  background-size: cover;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }
 
 /* ============================================================
