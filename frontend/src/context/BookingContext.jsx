@@ -157,6 +157,10 @@ export const BookingProvider = ({ children }) => {
   const [activeTrackingOrderId, setActiveTrackingOrderIdState] = useState(() => {
     try {
       if (typeof window !== 'undefined') {
+        const uid = currentUser?.uid || currentUser?.id;
+        if (uid) {
+          return sessionStorage.getItem(`fabricare_active_tracking_id_${uid}`) || null;
+        }
         return sessionStorage.getItem('fabricare_active_tracking_id') || null;
       }
     } catch (_) {}
@@ -167,14 +171,35 @@ export const BookingProvider = ({ children }) => {
     setActiveTrackingOrderIdState(id);
     try {
       if (typeof window !== 'undefined') {
+        const uid = currentUser?.uid || currentUser?.id;
         if (id) {
           sessionStorage.setItem('fabricare_active_tracking_id', String(id));
+          if (uid) sessionStorage.setItem(`fabricare_active_tracking_id_${uid}`, String(id));
         } else {
           sessionStorage.removeItem('fabricare_active_tracking_id');
+          if (uid) sessionStorage.removeItem(`fabricare_active_tracking_id_${uid}`);
         }
       }
     } catch (_) {}
   };
+
+  // Clear tracking order ID and active tracking session when customer session changes
+  useEffect(() => {
+    setActiveTrackingOrderIdState(null);
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('fabricare_active_tracking_id');
+        const keysToRemove = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith('fabricare_active_tracking_id')) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(k => sessionStorage.removeItem(k));
+      }
+    } catch (_) {}
+  }, [currentUser?.uid]);
 
   // Booking Flow State
   const [currentStep, setCurrentStep] = useState(1);
@@ -362,13 +387,13 @@ export const BookingProvider = ({ children }) => {
   
   // Step 2 Pickup Details
   const [pickupDetails, setPickupDetails] = useState({
-    name: 'Valued Customer',
-    mobile: '+91 98765 43210',
+    name: '',
+    mobile: '',
     whatsappUpdates: true,
-    address: 'Banaswadi, Bengaluru - 560043',
-    landmark: 'House #12, 3rd Cross, HRBR Layout',
+    address: '',
+    landmark: '',
     city: 'Bengaluru',
-    pincode: '560043',
+    pincode: '',
     sameAddressDelivery: true,
     deliveryAddress: ''
   });
@@ -607,11 +632,11 @@ export const BookingProvider = ({ children }) => {
     if (currentUser) {
       setPickupDetails(prev => ({
         ...prev,
-        name: currentUser.displayName || currentUser.full_name || prev.name,
-        mobile: currentUser.phoneNumber || currentUser.phone || prev.mobile,
-        address: currentUser.address || prev.address,
+        name: currentUser.displayName || currentUser.name || currentUser.full_name || prev.name || '',
+        mobile: currentUser.phoneNumber || currentUser.phone || prev.mobile || '',
+        address: currentUser.address || prev.address || '',
         city: currentUser.city || prev.city || 'Bengaluru',
-        pincode: currentUser.pincode || prev.pincode || '560043'
+        pincode: currentUser.pincode || prev.pincode || ''
       }));
 
       // Fetch saved default address safely
@@ -632,6 +657,18 @@ export const BookingProvider = ({ children }) => {
           })
           .catch(err => console.warn('Saved addresses notice:', err?.message));
       }
+    } else {
+      setPickupDetails({
+        name: '',
+        mobile: '',
+        whatsappUpdates: true,
+        address: '',
+        landmark: '',
+        city: 'Bengaluru',
+        pincode: '',
+        sameAddressDelivery: true,
+        deliveryAddress: ''
+      });
     }
   }, [currentUser]);
 
@@ -850,6 +887,7 @@ export const BookingProvider = ({ children }) => {
       const bookingPayload = {
         customerName: pickupDetails.name || currentUser?.name || currentUser?.displayName || 'Valued Customer',
         customerPhone: pickupDetails.mobile || currentUser?.phone || '',
+        customerEmail: currentUser?.email || '',
         address: {
           flatHouse: pickupDetails.address || '',
           areaColony: pickupDetails.landmark || '',

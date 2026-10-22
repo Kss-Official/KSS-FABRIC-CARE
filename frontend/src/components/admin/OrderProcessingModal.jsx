@@ -21,338 +21,150 @@ import {
   UserCheck,
   AlertTriangle,
   Info,
-  Calendar
+  Calendar,
+  ClipboardList,
+  WashingMachine,
+  Home
 } from 'lucide-react';
 import { useAdmin } from '../../context/AdminContext';
 
-// Washer SVG icon
-const WasherIcon = ({ size = 18, color = 'currentColor', className = '' }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke={color} 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    className={className}
-  >
-    <rect x="4" y="2" width="16" height="20" rx="3" />
-    <circle cx="12" cy="13" r="5" />
-    <path d="M12 11a2 2 0 0 1 2 2" />
-    <path d="M8 6h.01" />
-    <path d="M12 6h.01" />
-  </svg>
-);
-
-// Iron SVG icon
-const IronIcon = ({ size = 18, color = 'currentColor', className = '' }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke={color} 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    className={className}
-  >
-    <path d="M4 18h16a1 1 0 0 0 1-1v-4a7 7 0 0 0-7-7H8a4 4 0 0 0-4 4v7a1 1 0 0 0 1 1z" />
-    <path d="M7 14h10" />
-    <circle cx="8" cy="11" r="1" />
-  </svg>
-);
-
-// Hanger / Dry Clean SVG icon
-const HangerIcon = ({ size = 18, color = 'currentColor', className = '' }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke={color} 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    className={className}
-  >
-    <path d="M12 2a3 3 0 0 0-3 3c0 1.5 1 2.5 3 3.5L2 15a2 2 0 0 0 1 3h18a2 2 0 0 0 1-3L12 8.5" />
-    <path d="M2 18v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2" />
-  </svg>
-);
-
-// Helper to determine the dynamic workflow steps according to the customer's selected service & categories
-export const getDynamicWorkflowSteps = (order) => {
-  if (!order) return [];
-
-  const services = Array.isArray(order.services)
-    ? order.services
-    : (Array.isArray(order.services_list)
-      ? order.services_list
-      : (order.service ? [order.service] : ['Wash & Fold']));
-
-  const servicesStr = services.join(' ').toLowerCase();
-
-  // Determine which intermediate steps apply
-  const hasWashAndFold = servicesStr.includes('wash & fold') || servicesStr.includes('wash and fold') || (servicesStr.includes('wash') && servicesStr.includes('fold'));
-  const hasWashAndIron = servicesStr.includes('wash & iron') || servicesStr.includes('wash and iron') || (servicesStr.includes('wash') && servicesStr.includes('iron'));
-  const hasDryClean = servicesStr.includes('dry clean') || servicesStr.includes('dry cleaning');
-  const hasSteamIron = servicesStr.includes('steam iron') || servicesStr.includes('steaming');
-  const hasShoeLaundry = servicesStr.includes('shoe');
-  const hasHomeCare = servicesStr.includes('home care') || servicesStr.includes('household') || servicesStr.includes('curtain') || servicesStr.includes('bedsheet');
-
-  const steps = [];
-
-  // Step 1: Always Received
-  steps.push({
-    id: 'received',
-    key: 'RECEIVED',
-    label: 'Received',
-    desc: 'Garments received at laundry facility',
-    icon: 'Package'
-  });
-
-  // Step 2: Always Inspection
-  steps.push({
-    id: 'inspection',
-    key: 'INSPECTION',
-    label: 'Inspection',
-    desc: 'Fabric intake & hygiene audit',
-    icon: 'ShieldCheck'
-  });
-
-  // Intermediate processing steps based on selected services:
-  // Case 1: Pure Wash & Fold
-  if (hasWashAndFold && !hasWashAndIron && !hasDryClean && !hasSteamIron && !hasShoeLaundry) {
-    steps.push({
-      id: 'washing',
-      key: 'WASHING',
-      label: 'Washing',
-      desc: 'Eco-friendly wash with fabric softener',
-      icon: 'Washer'
-    });
-    steps.push({
-      id: 'folding',
-      key: 'FOLDING',
-      label: 'Folding',
-      desc: 'Tumble drying & neat apparel fold',
-      icon: 'Layers'
-    });
-  } 
-  // Case 2: Pure Wash & Iron
-  else if (hasWashAndIron && !hasWashAndFold && !hasDryClean && !hasSteamIron && !hasShoeLaundry) {
-    steps.push({
-      id: 'washing',
-      key: 'WASHING',
-      label: 'Washing',
-      desc: 'Gentle machine wash & drying',
-      icon: 'Washer'
-    });
-    steps.push({
-      id: 'ironing',
-      key: 'IRONING',
-      label: 'Ironing',
-      desc: 'Crisp hot-steam press & hanger prep',
-      icon: 'Iron'
-    });
-  } 
-  // Case 3: Pure Dry Cleaning
-  else if (hasDryClean && !hasWashAndFold && !hasWashAndIron && !hasSteamIron && !hasShoeLaundry) {
-    steps.push({
-      id: 'dry-cleaning',
-      key: 'DRY_CLEANING',
-      label: 'Dry Cleaning',
-      desc: 'Specialized non-aqueous solvent soak',
-      icon: 'Hanger'
-    });
-    steps.push({
-      id: 'pressing',
-      key: 'PRESSING',
-      label: 'Pressing',
-      desc: 'Form-finishing & precision creasing',
-      icon: 'Iron'
-    });
-  } 
-  // Case 4: Pure Steam Iron
-  else if (hasSteamIron && !hasWashAndFold && !hasWashAndIron && !hasDryClean && !hasShoeLaundry) {
-    steps.push({
-      id: 'steaming',
-      key: 'STEAMING',
-      label: 'Steaming',
-      desc: 'High-temperature wrinkle relaxation',
-      icon: 'Sparkles'
-    });
-    steps.push({
-      id: 'ironing',
-      key: 'IRONING',
-      label: 'Ironing',
-      desc: 'Precision garment pressing',
-      icon: 'Iron'
-    });
-  } 
-  // Case 5: Shoe Laundry
-  else if (hasShoeLaundry && !hasWashAndFold && !hasDryClean) {
-    steps.push({
-      id: 'shoe-cleaning',
-      key: 'SHOE_CLEANING',
-      label: 'Shoe Cleaning',
-      desc: 'Sole scrubbing, deodorization & drying',
-      icon: 'Sparkles'
-    });
-  } 
-  // Case 6: Pure Home Care
-  else if (hasHomeCare && !hasWashAndIron && !hasDryClean && !hasSteamIron) {
-    steps.push({
-      id: 'washing',
-      key: 'WASHING',
-      label: 'Deep Washing',
-      desc: 'Heavy-duty sanitization for linen/drapes',
-      icon: 'Washer'
-    });
-    steps.push({
-      id: 'folding',
-      key: 'FOLDING',
-      label: 'Finishing & Fold',
-      desc: 'Aroma conditioning & protective folding',
-      icon: 'Layers'
-    });
-  } 
-  // Case 7: Combined / Multi-Service Workflow
-  else {
-    const included = new Set();
-    if (hasWashAndFold || hasWashAndIron || hasHomeCare) {
-      if (!included.has('WASHING')) {
-        steps.push({ id: 'washing', key: 'WASHING', label: 'Washing', desc: 'Wash cycle for washable garments', icon: 'Washer' });
-        included.add('WASHING');
+// Parse dates reliably
+export const parseAnyDate = (val) => {
+  if (!val) return null;
+  try {
+    if (typeof val?.toDate === 'function') return val.toDate();
+    if (typeof val === 'number') return new Date(val);
+    if (typeof val === 'string') {
+      const tr = val.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(tr)) {
+        const [y, m, d] = tr.split('-').map(Number);
+        return new Date(y, m - 1, d);
       }
+      if (/^\d+$/.test(tr)) return new Date(Number(tr));
+      const parsed = new Date(tr);
+      if (!isNaN(parsed.getTime())) return parsed;
     }
-    if (hasDryClean) {
-      if (!included.has('DRY_CLEANING')) {
-        steps.push({ id: 'dry-cleaning', key: 'DRY_CLEANING', label: 'Dry Cleaning', desc: 'Solvent care for delicate apparel', icon: 'Hanger' });
-        included.add('DRY_CLEANING');
-      }
-    }
-    if (hasSteamIron || servicesStr.includes('steam')) {
-      if (!included.has('STEAMING')) {
-        steps.push({ id: 'steaming', key: 'STEAMING', label: 'Steaming', desc: 'High-temp vertical steam treatment', icon: 'Sparkles' });
-        included.add('STEAMING');
-      }
-    }
-    if (hasWashAndIron || hasSteamIron || servicesStr.includes('iron')) {
-      if (!included.has('IRONING')) {
-        steps.push({ id: 'ironing', key: 'IRONING', label: 'Ironing', desc: 'Pressing & crease setting', icon: 'Iron' });
-        included.add('IRONING');
-      }
-    } else if (hasDryClean) {
-      if (!included.has('PRESSING')) {
-        steps.push({ id: 'pressing', key: 'PRESSING', label: 'Pressing', desc: 'Precision form pressing', icon: 'Iron' });
-        included.add('PRESSING');
-      }
-    }
-    if (hasWashAndFold || hasHomeCare || servicesStr.includes('fold')) {
-      if (!included.has('FOLDING')) {
-        steps.push({ id: 'folding', key: 'FOLDING', label: 'Folding', desc: 'Standard apparel folding', icon: 'Layers' });
-        included.add('FOLDING');
-      }
-    }
-  }
-
-  // Next: Always Quality Check
-  steps.push({
-    id: 'quality-check',
-    key: 'QUALITY_CHECK',
-    label: 'Quality Check',
-    desc: 'Stain, aroma & finishing audit',
-    icon: 'ShieldCheck'
-  });
-
-  // Next: Always Packing
-  steps.push({
-    id: 'packing',
-    key: 'PACKING',
-    label: 'Packing',
-    desc: 'Bespoke garment sealing & tagging',
-    icon: 'Package'
-  });
-
-  // Final: Ready for Delivery
-  steps.push({
-    id: 'ready-for-delivery',
-    key: 'READY_FOR_DELIVERY',
-    label: 'Ready for Delivery',
-    desc: 'Package staged for courier pickup',
-    icon: 'Truck'
-  });
-
-  return steps.map((s, idx) => ({ ...s, stepNumber: idx + 1 }));
+  } catch (_) {}
+  return null;
 };
 
-// Helper to determine the current step index based on order status string
-export const getCurrentStepIndex = (status, workflowSteps) => {
-  if (!status || !workflowSteps || workflowSteps.length === 0) return 0;
+// Dynamic day & month helper e.g. "19 Oct"
+export const getDayMonth = (dateVal, fallback) => {
+  const parsed = parseAnyDate(dateVal);
+  if (parsed && !isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  }
+  return fallback;
+};
 
-  const s = String(status).toLowerCase().trim();
+// Timestamp formatter matching Customer Portal TrackOrder.jsx
+export const formatStepTimestamp = (timestamp, fallbackDayMonth, fallbackTime) => {
+  if (timestamp) {
+    try {
+      const d = parseAnyDate(timestamp);
+      if (d && !isNaN(d.getTime())) {
+        const dayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        return `${dayMonth}, ${time}`;
+      }
+    } catch {
+      // fallback
+    }
+  }
+  const baseDayMonth = fallbackDayMonth || '19 Oct';
+  return `${baseDayMonth}, ${fallbackTime}`;
+};
 
-  // If already delivered or completed, order is at final step
-  if (s === 'delivered' || s === 'completed') {
-    return workflowSteps.length - 1;
-  }
+// Helper stub for dynamic workflow steps
+export const getDynamicWorkflowSteps = (order) => {
+  return [];
+};
 
-  // Exact matching against step keys or labels
-  const exactIdx = workflowSteps.findIndex(st => 
-    st.label.toLowerCase() === s || 
-    st.key.toLowerCase() === s || 
-    st.id.toLowerCase() === s
-  );
-  if (exactIdx !== -1) return exactIdx;
+// Helper matching Customer Portal's exact 7-step tracker logic
+export const getActiveStepIndex = (status, stage) => {
+  if (!status && !stage) return 0;
+  const clean = String(status || '')
+    .toUpperCase()
+    .replace(/[^A-Z]/g, '');
+  const cleanStage = String(stage || '')
+    .toUpperCase()
+    .replace(/[^A-Z]/g, '');
 
-  // Fuzzy match keywords
-  if (s.includes('ready') || s.includes('dispatch') || s.includes('out for delivery')) {
-    return workflowSteps.length - 1; // Ready for Delivery
-  }
-  if (s.includes('pack')) {
-    const packIdx = workflowSteps.findIndex(st => st.key === 'PACKING');
-    return packIdx !== -1 ? packIdx : workflowSteps.length - 2;
-  }
-  if (s.includes('qualit') || s.includes('qc')) {
-    const qcIdx = workflowSteps.findIndex(st => st.key === 'QUALITY_CHECK');
-    return qcIdx !== -1 ? qcIdx : workflowSteps.length - 3;
-  }
-  if (s.includes('fold')) {
-    const fIdx = workflowSteps.findIndex(st => st.key === 'FOLDING');
-    if (fIdx !== -1) return fIdx;
-  }
-  if (s.includes('iron') || s.includes('press')) {
-    const iIdx = workflowSteps.findIndex(st => st.key === 'IRONING' || st.key === 'PRESSING');
-    if (iIdx !== -1) return iIdx;
-  }
-  if (s.includes('steam')) {
-    const stIdx = workflowSteps.findIndex(st => st.key === 'STEAMING');
-    if (stIdx !== -1) return stIdx;
-  }
-  if (s.includes('dry clean')) {
-    const dcIdx = workflowSteps.findIndex(st => st.key === 'DRY_CLEANING');
-    if (dcIdx !== -1) return dcIdx;
-  }
-  if (s.includes('wash')) {
-    const wIdx = workflowSteps.findIndex(st => st.key === 'WASHING');
-    if (wIdx !== -1) return wIdx;
-  }
-  if (s.includes('clean') || s.includes('process')) {
-    // Return the first intermediate processing step
-    return workflowSteps.length > 2 ? 2 : 1;
-  }
-  if (s.includes('inspect')) {
-    const insIdx = workflowSteps.findIndex(st => st.key === 'INSPECTION');
-    return insIdx !== -1 ? insIdx : 1;
-  }
-  if (s.includes('receive') || s.includes('pick') || s.includes('at laundry') || s.includes('dropped')) {
-    return 0; // Received
-  }
+  // Step 6: Delivered / Completed
+  if (clean.includes('DELIVERED') || clean.includes('COMPLETED') || cleanStage.includes('DELIVERED') || cleanStage.includes('COMPLETED')) return 6;
 
-  // Default to step 0
+  // Step 5: Out for delivery / In transit / Dispatched
+  if (
+    clean.includes('OUTFORDELIVERY') ||
+    clean.includes('INTRANSIT') ||
+    clean.includes('DISPATCHED') ||
+    cleanStage === 'OUTFORDELIVERY' ||
+    cleanStage.includes('INTRANSIT')
+  ) return 5;
+
+  // Step 4: Ready for delivery / Packed / Delivery assigned
+  if (
+    clean.includes('READYFORDELIVERY') ||
+    clean === 'READY' ||
+    clean.includes('DELIVERYASSIGNED') ||
+    clean === 'PACKED' ||
+    cleanStage === 'READY' ||
+    cleanStage === 'PACKED' ||
+    cleanStage.includes('READYFORDELIVERY')
+  ) return 4;
+
+  // Step 3: In cleaning / Washing / Drying / Ironing / Quality check / Processing
+  if (
+    clean.includes('CLEANING') ||
+    clean.includes('PROCESS') ||
+    clean.includes('WASH') ||
+    clean.includes('DRYING') ||
+    (clean.includes('DRY') && !clean.includes('LAUNDRY')) ||
+    clean.includes('IRON') ||
+    clean.includes('FOLD') ||
+    clean.includes('INSPECT') ||
+    clean.includes('QUALITY') ||
+    clean.includes('STEAM') ||
+    clean.includes('PRESS') ||
+    cleanStage === 'WASHING' ||
+    cleanStage === 'DRYING' ||
+    cleanStage === 'IRONING' ||
+    cleanStage === 'STEAMING' ||
+    cleanStage === 'PRESSING' ||
+    cleanStage === 'DRY_CLEANING' ||
+    cleanStage === 'PROCESSING' ||
+    cleanStage.includes('CLEAN')
+  ) return 3;
+
+  // Step 2: At facility / Hub / Received / Dropped off
+  if (
+    clean.includes('ATLAUNDRY') ||
+    clean.includes('ATFACILITY') ||
+    clean.includes('DROPPEDOFF') ||
+    clean.includes('RECEIVED') ||
+    cleanStage === 'ATFACILITY' ||
+    cleanStage === 'RECEIVED' ||
+    cleanStage.includes('LAUNDRY')
+  ) return 2;
+
+  // Step 1: Picked up / Arrived / Pickup in progress
+  if (
+    clean.includes('PICKEDUP') ||
+    clean.includes('PICKUPINPROGRESS') ||
+    clean.includes('ARRIVED') ||
+    cleanStage === 'PICKEDUP'
+  ) return 1;
+
+  // Step 0: Pending Pickup / Scheduled / Order Placed / Accepted
+  if (
+    clean.includes('PENDING') ||
+    clean.includes('SCHEDULED') ||
+    clean.includes('ACCEPTED') ||
+    clean.includes('PLACED') ||
+    clean.includes('INCOMING') ||
+    cleanStage === 'INCOMING'
+  ) return 0;
+
   return 0;
 };
 
@@ -371,18 +183,98 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
     };
   }, []);
 
-  // Compute dynamic workflow steps tailored to this customer's services
-  const workflowSteps = useMemo(() => getDynamicWorkflowSteps(order), [order]);
+  // Tracking dates resolution
+  const rawPickupDate = 
+    (order?.pickup && typeof order.pickup === 'object' && order.pickup.date) ||
+    order?.pickup_date ||
+    order?.pickupDate ||
+    order?.date ||
+    order?.placedAt ||
+    order?.createdAt ||
+    order?.created_at;
 
-  // Compute active step index
-  const currentStepIndex = useMemo(() => getCurrentStepIndex(currentStatus, workflowSteps), [currentStatus, workflowSteps]);
+  let rawDeliveryDate = 
+    (order?.delivery && typeof order.delivery === 'object' && order.delivery.date) ||
+    order?.delivery_date ||
+    order?.deliveryDate ||
+    order?.estimated_delivery ||
+    order?.dueBy;
 
-  const activeStep = workflowSteps[currentStepIndex] || workflowSteps[0];
-  const isFinalStep = currentStepIndex >= workflowSteps.length - 1;
-  const nextStep = !isFinalStep ? workflowSteps[currentStepIndex + 1] : null;
+  if (!rawDeliveryDate) {
+    const pickupParsed = parseAnyDate(rawPickupDate);
+    if (pickupParsed && !isNaN(pickupParsed.getTime())) {
+      const calcDelivery = new Date(pickupParsed);
+      calcDelivery.setDate(calcDelivery.getDate() + (order?.isExpress ? 1 : 2));
+      rawDeliveryDate = calcDelivery;
+    }
+  }
 
-  // Percentage progress
-  const progressPercent = Math.round(((currentStepIndex + 1) / workflowSteps.length) * 100);
+  const placedDayMonth = getDayMonth(order?.placedAt || order?.createdAt || order?.created_at || rawPickupDate, '18 Oct');
+  const pickupDayMonth = getDayMonth(rawPickupDate, '19 Oct');
+  const deliveryDayMonth = getDayMonth(rawDeliveryDate, '21 Oct');
+
+  const isDelivered = Boolean(
+    String(currentStatus || '').toUpperCase().includes('DELIVERED') || 
+    String(currentStatus || '').toUpperCase().includes('COMPLETED')
+  );
+
+  const activeStepIndex = isDelivered ? 6 : getActiveStepIndex(currentStatus, order?.stage);
+
+  // Exact 7 progress steps matching Customer Portal TrackOrder.jsx
+  const trackingSteps = [
+    {
+      id: 'placed',
+      title: 'Order placed',
+      icon: ClipboardList,
+      targetStatus: 'Pending Pickup',
+      time: formatStepTimestamp(order?.created_at || order?.placedAt || order?.date, placedDayMonth, '9:12 AM')
+    },
+    {
+      id: 'picked',
+      title: 'Picked up',
+      icon: Truck,
+      targetStatus: 'Picked Up',
+      time: formatStepTimestamp(order?.pickup_completed_at, pickupDayMonth, '11:05 AM')
+    },
+    {
+      id: 'laundry',
+      title: 'At laundry',
+      icon: WashingMachine,
+      targetStatus: 'At Laundry',
+      time: formatStepTimestamp(order?.facility_received_at, pickupDayMonth, '1:30 PM')
+    },
+    {
+      id: 'processing',
+      title: 'Processing',
+      icon: Sparkles,
+      targetStatus: 'In Cleaning',
+      time: formatStepTimestamp(order?.processing_started_at, pickupDayMonth, '3:45 PM')
+    },
+    {
+      id: 'ready',
+      title: 'Ready',
+      icon: Package,
+      targetStatus: 'Ready for Delivery',
+      time: formatStepTimestamp(order?.ready_at, deliveryDayMonth, '10:00 AM')
+    },
+    {
+      id: 'delivery',
+      title: 'Out for delivery',
+      icon: Truck,
+      targetStatus: 'Out for Delivery',
+      time: formatStepTimestamp(order?.out_for_delivery_at, deliveryDayMonth, '1:15 PM')
+    },
+    {
+      id: 'delivered',
+      title: 'Delivered',
+      icon: Home,
+      targetStatus: 'Delivered',
+      time: formatStepTimestamp(order?.delivered_at, deliveryDayMonth, '3:00 PM')
+    }
+  ];
+
+  const isFinalStep = isDelivered || activeStepIndex >= 6;
+  const nextStep = !isFinalStep ? trackingSteps[activeStepIndex + 1] : null;
 
   // Advance to next step
   const handleProceedNextStep = async () => {
@@ -391,17 +283,17 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
     setIsUpdating(true);
     setFeedbackMsg(null);
     try {
-      const newStatusLabel = nextStep.label;
-      await updateOrderStatus(order.id, newStatusLabel, `Advanced from ${activeStep.label} to ${newStatusLabel}`);
+      const newStatus = nextStep.targetStatus;
+      await updateOrderStatus(order.id, newStatus, `Advanced stage to ${nextStep.title}`);
 
-      setCurrentStatus(newStatusLabel);
+      setCurrentStatus(newStatus);
       if (onOrderUpdated) {
-        onOrderUpdated({ ...order, status: newStatusLabel });
+        onOrderUpdated({ ...order, status: newStatus });
       }
 
       setFeedbackMsg({
         type: 'success',
-        text: `Order successfully advanced to ${newStatusLabel}. Irrelevant processes were skipped.`
+        text: `Order successfully advanced to ${nextStep.title} (${newStatus}).`
       });
 
       setTimeout(() => setFeedbackMsg(null), 4000);
@@ -417,20 +309,20 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
   };
 
   // Jump to specific step
-  const handleJumpToStep = async (step) => {
-    if (isUpdating || step.label === currentStatus) return;
+  const handleJumpToStep = async (targetStatus, stepTitle) => {
+    if (isUpdating || targetStatus === currentStatus) return;
 
     setIsUpdating(true);
     setFeedbackMsg(null);
     try {
-      await updateOrderStatus(order.id, step.label, `Admin moved stage directly to ${step.label}`);
-      setCurrentStatus(step.label);
+      await updateOrderStatus(order.id, targetStatus, `Admin moved stage directly to ${stepTitle}`);
+      setCurrentStatus(targetStatus);
       if (onOrderUpdated) {
-        onOrderUpdated({ ...order, status: step.label });
+        onOrderUpdated({ ...order, status: targetStatus });
       }
       setFeedbackMsg({
         type: 'success',
-        text: `Order stage updated to ${step.label}.`
+        text: `Order stage updated to ${stepTitle} (${targetStatus}).`
       });
       setTimeout(() => setFeedbackMsg(null), 3500);
     } catch (err) {
@@ -444,72 +336,51 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
     }
   };
 
-  // Render Step Icon
-  const renderStepIcon = (iconName, size = 16) => {
-    switch (iconName) {
-      case 'Washer': return <WasherIcon size={size} />;
-      case 'Iron': return <IronIcon size={size} />;
-      case 'Hanger': return <HangerIcon size={size} />;
-      case 'ShieldCheck': return <ShieldCheck size={size} />;
-      case 'Package': return <Package size={size} />;
-      case 'Truck': return <Truck size={size} />;
-      case 'Sparkles': return <Sparkles size={size} />;
-      default: return <CheckCircle2 size={size} />;
-    }
-  };
-
-  // Items breakdown with accurate individual item prices (converting paise to INR where needed)
+  // Resolve items and ensure individual item unit prices are displayed
   const displayItems = useMemo(() => {
-    let rawItems = [];
+    let itemsList = [];
     if (Array.isArray(order?.items) && order.items.length > 0) {
-      rawItems = order.items;
+      itemsList = order.items;
     } else if (order?.items && typeof order.items === 'object') {
-      rawItems = Object.values(order.items);
+      itemsList = Object.values(order.items);
     }
 
-    if (rawItems.length > 0) {
-      return rawItems.map(it => {
-        const name = it.name || it.item_name || 'Garment Item';
-        const qty = Number(it.quantity || it.qty || 1);
-
-        // Normalize raw price (convert paise to rupees if >= 1000 or (>= 500 && raw % 100 === 0))
-        let rawPrice = it.price ?? it.unitPrice ?? it.unit_price ?? it.rate ?? 0;
-        if (typeof rawPrice === 'string') rawPrice = parseFloat(rawPrice) || 0;
-        let actualUnitPrice = (rawPrice >= 1000 || (rawPrice >= 500 && rawPrice % 100 === 0)) ? (rawPrice / 100) : rawPrice;
-
-        let rawTotal = it.lineTotal ?? it.total_price ?? it.total ?? 0;
-        if (typeof rawTotal === 'string') rawTotal = parseFloat(rawTotal) || 0;
-        let actualLineTotal = (rawTotal >= 1000 || (rawTotal >= 500 && rawTotal % 100 === 0)) ? (rawTotal / 100) : 0;
-
-        if (actualUnitPrice <= 0 && actualLineTotal > 0) {
-          actualUnitPrice = actualLineTotal / qty;
+    if (itemsList.length > 0) {
+      return itemsList.map(it => {
+        const qty = Number(it.quantity || it.qty || 1) || 1;
+        let rawUnitPrice = it.unitPrice ?? it.unit_price ?? it.rate ?? it.baseUnitPrice ?? null;
+        if (rawUnitPrice == null && it.price != null) {
+          const rawP = Number(it.price);
+          if (it.lineTotal && Number(it.lineTotal) === rawP && qty > 1) {
+            rawUnitPrice = rawP / qty;
+          } else if (it.total && Number(it.total) === rawP && qty > 1) {
+            rawUnitPrice = rawP / qty;
+          } else if (qty > 1 && rawP > 150 && !it.unitPrice) {
+            rawUnitPrice = rawP / qty;
+          } else {
+            rawUnitPrice = rawP;
+          }
         }
-
-        // If price is missing or zero, fallback to realistic item catalog price
-        if (actualUnitPrice <= 0) {
-          const lowerName = name.toLowerCase();
-          if (lowerName.includes('suit') || lowerName.includes('blazer')) actualUnitPrice = 150;
-          else if (lowerName.includes('saree') || lowerName.includes('kurta')) actualUnitPrice = 65;
-          else if (lowerName.includes('pant') || lowerName.includes('jean') || lowerName.includes('trouser')) actualUnitPrice = 70;
-          else if (lowerName.includes('shirt')) actualUnitPrice = 50;
-          else actualUnitPrice = 60;
+        if (rawUnitPrice == null) {
+          if (it.lineTotal != null) rawUnitPrice = Number(it.lineTotal) / qty;
+          else if (it.total != null) rawUnitPrice = Number(it.total) / qty;
+          else rawUnitPrice = 60;
         }
-
-        if (actualLineTotal <= 0) {
-          actualLineTotal = actualUnitPrice * qty;
+        let unitPrice = Number(rawUnitPrice);
+        if (isNaN(unitPrice) || unitPrice <= 0) unitPrice = 60;
+        if (unitPrice >= 1000 || (unitPrice >= 500 && unitPrice % 100 === 0)) {
+          unitPrice = unitPrice / 100;
         }
-
-        const category = it.category || it.service_category || 'Apparel';
-        const service = it.service || it.service_name || (Array.isArray(it.services) ? it.services[0] : (Array.isArray(order?.services) ? order.services[0] : (order?.service || 'Wash & Fold')));
+        const finalUnitPrice = Number(unitPrice.toFixed(2));
 
         return {
           ...it,
-          name,
-          category,
-          service,
+          name: it.name || it.item_name || it.garment || 'Garment',
+          category: it.category || 'Apparel',
+          service: it.service || it.service_name || 'Wash & Fold',
           quantity: qty,
-          unitPrice: actualUnitPrice,
-          price: actualLineTotal
+          unitPrice: finalUnitPrice,
+          price: finalUnitPrice
         };
       });
     }
@@ -519,35 +390,35 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
 
     if (sStr.includes('dry clean')) {
       return [
-        { name: 'Silk Saree / Blazer', category: 'Formal Wear', quantity: 1, service: 'Dry Cleaning', price: 240 }
+        { name: 'Silk Saree / Blazer', category: 'Formal Wear', quantity: 1, service: 'Dry Cleaning', price: 240, unitPrice: 240 }
       ];
     }
     if (sStr.includes('shoe')) {
       return [
-        { name: 'Sneakers (White Fabric)', category: 'Footwear', quantity: 1, service: 'Shoe Laundry', price: 350 }
+        { name: 'Sneakers (White Fabric)', category: 'Footwear', quantity: 1, service: 'Shoe Laundry', price: 350, unitPrice: 350 }
       ];
     }
     if (sStr.includes('steam')) {
       return [
-        { name: 'Designer Kurta / Suit', category: 'Ethnic Wear', quantity: 2, service: 'Steam Iron', price: 280 }
+        { name: 'Designer Kurta / Suit', category: 'Ethnic Wear', quantity: 2, service: 'Steam Iron', price: 140, unitPrice: 140 }
       ];
     }
     if (sStr.includes('home care')) {
       return [
-        { name: 'Drapes & Bedspread Set', category: 'Household', quantity: 2, service: 'Home Care', price: 780 }
+        { name: 'Drapes & Bedspread Set', category: 'Household', quantity: 2, service: 'Home Care', price: 390, unitPrice: 390 }
       ];
     }
     if (sStr.includes('iron')) {
       return [
-        { name: 'Cotton Shirts', category: "Men's Wear", quantity: 3, service: 'Wash & Iron', price: 240 },
-        { name: 'Formal Trousers', category: "Men's Wear", quantity: 2, service: 'Wash & Iron', price: 180 }
+        { name: 'Cotton Shirts', category: "Men's Wear", quantity: 3, service: 'Wash & Iron', price: 80, unitPrice: 80 },
+        { name: 'Formal Trousers', category: "Men's Wear", quantity: 2, service: 'Wash & Iron', price: 90, unitPrice: 90 }
       ];
     }
     // Default Wash & Fold
     return [
-      { name: 'Cotton Shirts', category: "Men's Wear", quantity: 3, service: 'Wash & Fold', price: 240 },
-      { name: 'Casual T-Shirts', category: 'Casual', quantity: 4, service: 'Wash & Fold', price: 200 },
-      { name: 'Trousers / Chinos', category: 'Bottoms', quantity: 2, service: 'Wash & Fold', price: 120 }
+      { name: 'Cotton Shirts', category: "Men's Wear", quantity: 3, service: 'Wash & Fold', price: 80, unitPrice: 80 },
+      { name: 'Casual T-Shirts', category: 'Casual', quantity: 4, service: 'Wash & Fold', price: 50, unitPrice: 50 },
+      { name: 'Trousers / Chinos', category: 'Bottoms', quantity: 2, service: 'Wash & Fold', price: 60, unitPrice: 60 }
     ];
   }, [order]);
 
@@ -607,112 +478,78 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
 
         {/* MODAL BODY */}
         <div className="order-proc-modal-body">
-          {/* 1. DYNAMIC STEPPER / PROGRESS WORKFLOW */}
-          <div className="proc-section-card stepper-card">
-            <div className="stepper-header-row">
-              <div className="stepper-title-wrap">
-                <span className="stepper-kicker">Order Processing Lifecycle</span>
-                <h3 className="stepper-heading">
-                  Tailored Sequence: <span style={{ color: '#0D7A75' }}>{Array.isArray(order?.services) ? order.services.join(' + ') : (order?.service || 'Wash & Fold')}</span>
-                </h3>
-              </div>
-
-              <div className="stepper-progress-stats">
-                <span className="step-count-pill">
-                  Step {currentStepIndex + 1} of {workflowSteps.length}
+          {/* CUSTOMER PORTAL TRACK ORDER PROGRESS CARD */}
+          <div className="proc-section-card tracking-progress-card">
+            <div className="tracker-card-header">
+              <div className="tracker-header-left">
+                <span className="tracker-title-tag">ORDER PROGRESS</span>
+                <span className="tracker-live-badge">
+                  <span className="tracker-live-dot"></span>
+                  <span>{isDelivered ? 'Completed' : 'Live'}</span>
                 </span>
-                <span className="progress-percent-label">{progressPercent}% Completed</span>
+              </div>
+              <div className="tracker-step-counter">
+                Step {isDelivered ? 7 : Math.min(activeStepIndex + 1, 7)} of 7
               </div>
             </div>
 
-            {/* Progress Fill Line */}
-            <div className="proc-linear-progress-bar">
-              <div 
-                className="proc-linear-progress-fill" 
-                style={{ width: `${progressPercent}%` }} 
-              />
-            </div>
+            <div className="horizontal-stepper-scroll-container">
+              <div className="horizontal-stepper">
+                {trackingSteps.map((step, idx) => {
+                  const isCompleted = isDelivered || idx < activeStepIndex;
+                  const isActive = !isDelivered && idx === activeStepIndex;
+                  const isPending = !isDelivered && idx > activeStepIndex;
+                  const IconComp = step.icon;
 
-            {/* Stepper Pipeline Track */}
-            <div className="proc-stepper-track">
-              {workflowSteps.map((st, idx) => {
-                const isCompleted = idx < currentStepIndex;
-                const isCurrent = idx === currentStepIndex;
-                const isUpcoming = idx > currentStepIndex;
+                  return (
+                    <React.Fragment key={step.id}>
+                      <div 
+                        className={`horizontal-step-item ${isCompleted ? 'completed' : isActive ? 'active' : 'pending'}`}
+                        onClick={() => handleJumpToStep(step.targetStatus, step.title)}
+                        title={`Click to set order status to ${step.title}`}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className={`step-node-bubble ${isCompleted ? 'completed' : isActive ? 'active' : 'pending'}`}>
+                          {isActive && <div className="step-active-outer-halo" />}
+                          <div className="step-node-inner">
+                            {isCompleted ? (
+                              <Check size={18} strokeWidth={2.6} color="#ffffff" />
+                            ) : (
+                              <IconComp size={18} strokeWidth={1.8} />
+                            )}
+                          </div>
+                        </div>
+                        <div className="step-label-group">
+                          <h4 className={`step-label-title ${isActive ? 'active-title' : isPending ? 'pending-title' : ''}`}>
+                            {step.title}
+                          </h4>
+                          <span className={`step-label-subtitle ${isCompleted ? 'time-sub' : isActive ? 'active-sub' : 'pending-sub'}`}>
+                            {isCompleted 
+                              ? step.time 
+                              : isActive 
+                                ? 'In progress' 
+                                : 'Pending'}
+                          </span>
+                        </div>
+                      </div>
 
-                return (
-                  <div 
-                    key={st.id} 
-                    className={`proc-step-node ${isCompleted ? 'completed' : ''} ${isCurrent ? 'active' : ''} ${isUpcoming ? 'upcoming' : ''}`}
-                    onClick={() => handleJumpToStep(st)}
-                    title={`Click to set stage to ${st.label}`}
-                  >
-                    <div className="node-icon-circle">
-                      {isCompleted ? (
-                        <Check size={14} strokeWidth={3} />
-                      ) : (
-                        <span className="node-step-number">{st.stepNumber}</span>
+                      {idx < trackingSteps.length - 1 && (
+                        <div 
+                          className={`stepper-connecting-line ${
+                            isDelivered || idx < activeStepIndex - 1
+                              ? 'completed'
+                              : idx === activeStepIndex - 1
+                                ? 'completed'
+                                : idx === activeStepIndex
+                                  ? 'half-active'
+                                  : 'pending'
+                          }`} 
+                        />
                       )}
-                    </div>
-
-                    <div className="node-text-block">
-                      <span className="node-step-label">{st.label}</span>
-                      <span className="node-step-state">
-                        {isCompleted ? 'Done' : isCurrent ? 'In Progress' : 'Pending'}
-                      </span>
-                    </div>
-
-                    {idx < workflowSteps.length - 1 && (
-                      <div className={`node-connector-line ${idx < currentStepIndex ? 'done' : ''}`} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 2. CURRENT STEP ACTION BANNER */}
-          <div className="proc-section-card action-banner-card">
-            <div className="action-banner-content">
-              <div className="stage-icon-square">
-                {renderStepIcon(activeStep.icon, 24)}
+                    </React.Fragment>
+                  );
+                })}
               </div>
-
-              <div className="stage-info-text">
-                <div className="stage-badge-line">
-                  <span className="stage-pill-label">Current Stage</span>
-                  <strong className="stage-current-name">{activeStep.label}</strong>
-                </div>
-                <p className="stage-desc-text">{activeStep.desc}</p>
-              </div>
-            </div>
-
-            <div className="action-banner-cta">
-              {!isFinalStep ? (
-                <button
-                  type="button"
-                  className="proc-next-step-btn"
-                  onClick={handleProceedNextStep}
-                  disabled={isUpdating}
-                >
-                  {isUpdating ? (
-                    <>
-                      <RefreshCw size={15} className="animate-spin" />
-                      <span>Updating...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Complete {activeStep.label} & Proceed to {nextStep?.label}</span>
-                      <ArrowRight size={15} />
-                    </>
-                  )}
-                </button>
-              ) : (
-                <div className="proc-final-ready-badge">
-                  <CheckCircle2 size={18} color="#16A34A" />
-                  <span>Order Processing Completed • Ready for Customer Delivery</span>
-                </div>
-              )}
             </div>
           </div>
 
@@ -800,7 +637,7 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
                       <th>Garment Item</th>
                       <th>Category</th>
                       <th style={{ textAlign: 'center' }}>Qty</th>
-                      <th style={{ textAlign: 'right' }}>Est. Total</th>
+                      <th style={{ textAlign: 'right' }}>Item Price</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -819,7 +656,7 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
                           <span className="qty-capsule">×{it.quantity || 1}</span>
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <span className="item-price-val">₹{typeof it.price === 'number' ? (Number.isInteger(it.price) ? it.price : it.price.toFixed(2)) : (it.price || (80 * (it.quantity || 1)))}</span>
+                          <span className="item-price-val">₹{it.price ?? it.unitPrice ?? 60}</span>
                         </td>
                       </tr>
                     ))}
@@ -868,29 +705,6 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
             >
               Close
             </button>
-          </div>
-
-          <div className="footer-right">
-            {!isFinalStep && (
-              <button
-                type="button"
-                className="proc-primary-action-btn"
-                onClick={handleProceedNextStep}
-                disabled={isUpdating}
-              >
-                {isUpdating ? (
-                  <>
-                    <RefreshCw size={15} className="animate-spin" />
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Next: {nextStep?.label}</span>
-                    <ArrowRight size={15} />
-                  </>
-                )}
-              </button>
-            )}
           </div>
         </div>
 
@@ -1084,273 +898,223 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
           }
 
-          /* STEPPER CARD */
-          .stepper-header-row {
+          /* CUSTOMER PORTAL TRACKER PROGRESS CARD */
+          .tracking-progress-card {
+            margin-bottom: 20px;
+          }
+
+          .tracker-card-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 14px;
+            margin-bottom: 24px;
           }
 
-          .stepper-kicker {
-            font-size: 0.75rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #64748B;
-          }
-
-          .stepper-heading {
-            font-size: 1.05rem;
-            font-weight: 800;
-            color: #0F172A;
-            margin: 2px 0 0;
-          }
-
-          .stepper-progress-stats {
+          .tracker-header-left {
             display: flex;
             align-items: center;
             gap: 10px;
           }
 
-          .step-count-pill {
-            background: #E6F4F2;
-            color: #0D7A75;
-            font-size: 0.75rem;
+          .tracker-title-tag {
+            font-size: 0.82rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            color: #0E4B56;
+            text-transform: uppercase;
+          }
+
+          .tracker-live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #E6F7F0;
+            color: #0E4B56;
+            font-size: 0.76rem;
             font-weight: 700;
-            padding: 4px 10px;
+            padding: 3px 10px;
             border-radius: 9999px;
           }
 
-          .progress-percent-label {
-            font-size: 0.8125rem;
-            font-weight: 700;
+          .tracker-live-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #10B981;
+            display: inline-block;
+          }
+
+          .tracker-step-counter {
+            font-size: 0.84rem;
+            font-weight: 600;
             color: #475569;
           }
 
-          .proc-linear-progress-bar {
+          .horizontal-stepper-scroll-container {
             width: 100%;
-            height: 6px;
-            background: #F1F5F9;
-            border-radius: 9999px;
-            overflow: hidden;
-            margin-bottom: 22px;
+            overflow-x: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            padding: 6px 0 10px;
+          }
+          .horizontal-stepper-scroll-container::-webkit-scrollbar {
+            display: none;
           }
 
-          .proc-linear-progress-fill {
-            height: 100%;
-            background: #0D7A75;
-            transition: width 0.35s ease;
-          }
-
-          /* STEPPER PIPELINE TRACK */
-          .proc-stepper-track {
+          .horizontal-stepper {
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
             position: relative;
-            overflow-x: auto;
-            padding: 6px 0 10px;
-            gap: 8px;
+            width: 100%;
+            min-width: 680px;
           }
 
-          .proc-step-node {
+          .horizontal-step-item {
             display: flex;
             flex-direction: column;
             align-items: center;
             text-align: center;
-            flex: 1;
-            min-width: 90px;
             position: relative;
-            cursor: pointer;
+            z-index: 2;
+            flex: 0 0 auto;
+            width: 90px;
             transition: transform 0.15s ease;
           }
 
-          .proc-step-node:hover {
+          .horizontal-step-item:hover {
             transform: translateY(-2px);
           }
 
-          .node-icon-circle {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
+          .step-node-bubble {
+            position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 700;
-            font-size: 0.8125rem;
-            z-index: 2;
-            transition: all 0.2s ease;
+            width: 44px;
+            height: 44px;
+            margin-bottom: 12px;
           }
 
-          .proc-step-node.completed .node-icon-circle {
-            background: #16A34A;
-            color: #FFFFFF;
-            box-shadow: 0 0 0 4px #DCFCE7;
-          }
-
-          .proc-step-node.active .node-icon-circle {
-            background: #0D7A75;
-            color: #FFFFFF;
-            box-shadow: 0 0 0 5px rgba(13, 122, 117, 0.2);
-            animation: pulse-ring 2s infinite;
-          }
-
-          .proc-step-node.upcoming .node-icon-circle {
-            background: #FFFFFF;
-            border: 2px solid #CBD5E1;
-            color: #64748B;
-          }
-
-          .node-text-block {
-            margin-top: 8px;
+          .step-node-bubble.completed .step-node-inner {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: #0E4B56;
+            color: #ffffff;
             display: flex;
-            flex-direction: column;
-            gap: 2px;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(14, 75, 86, 0.12);
           }
 
-          .node-step-label {
-            font-size: 0.8125rem;
-            font-weight: 700;
-            color: #1E293B;
-            line-height: 1.2;
+          .step-node-bubble.active {
+            width: 52px;
+            height: 52px;
+            margin-top: -4px;
+            margin-bottom: 8px;
           }
 
-          .proc-step-node.upcoming .node-step-label {
-            color: #64748B;
-            font-weight: 600;
-          }
-
-          .node-step-state {
-            font-size: 0.6875rem;
-            font-weight: 600;
-          }
-
-          .proc-step-node.completed .node-step-state {
-            color: #16A34A;
-          }
-
-          .proc-step-node.active .node-step-state {
-            color: #0D7A75;
-            font-weight: 700;
-          }
-
-          .proc-step-node.upcoming .node-step-state {
-            color: #94A3B8;
-          }
-
-          .node-connector-line {
+          .step-active-outer-halo {
             position: absolute;
-            top: 16px;
-            left: 50%;
-            width: 100%;
-            height: 2.5px;
-            background: #E2E8F0;
+            inset: 0;
+            border-radius: 50%;
+            background: #D8F3ED;
             z-index: 1;
           }
 
-          .node-connector-line.done {
-            background: #16A34A;
-          }
-
-          /* ACTION BANNER */
-          .action-banner-card {
-            background: linear-gradient(135deg, #0D7A75 0%, #065F5A 100%);
-            color: #FFFFFF;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 18px 24px;
-            gap: 20px;
-          }
-
-          .action-banner-content {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-          }
-
-          .stage-icon-square {
-            width: 48px;
-            height: 48px;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 12px;
+          .step-node-bubble.active .step-node-inner {
+            position: relative;
+            z-index: 2;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 2px solid #0E4B56;
+            color: #0E4B56;
             display: flex;
             align-items: center;
             justify-content: center;
-            flex-shrink: 0;
           }
 
-          .stage-info-text {
+          .step-node-bubble.pending .step-node-inner {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: #F0F4F8;
+            border: 1.5px solid #E2E8F0;
+            color: #8EA4B8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .step-label-group {
             display: flex;
             flex-direction: column;
-            gap: 3px;
-          }
-
-          .stage-badge-line {
-            display: flex;
             align-items: center;
-            gap: 8px;
+            width: 100%;
           }
 
-          .stage-pill-label {
-            background: rgba(255, 255, 255, 0.2);
-            font-size: 0.6875rem;
+          .step-label-title {
+            font-size: 0.88rem;
             font-weight: 700;
-            text-transform: uppercase;
-            padding: 2px 8px;
-            border-radius: 9999px;
-            letter-spacing: 0.04em;
-          }
-
-          .stage-current-name {
-            font-size: 1.15rem;
-            font-weight: 800;
-          }
-
-          .stage-desc-text {
-            font-size: 0.8125rem;
-            color: rgba(255, 255, 255, 0.9);
+            color: #0F172A;
             margin: 0;
-          }
-
-          .proc-next-step-btn {
-            background: #FFFFFF;
-            color: #0D7A75;
-            border: none;
-            padding: 10px 22px;
-            border-radius: 9999px;
-            font-size: 0.875rem;
-            font-weight: 700;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            transition: all 0.15s ease;
             white-space: nowrap;
           }
 
-          .proc-next-step-btn:hover:not(:disabled) {
-            background: #F0FDFA;
-            transform: scale(1.02);
+          .step-label-title.active-title {
+            font-weight: 800;
+            color: #0F172A;
           }
 
-          .proc-next-step-btn:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
+          .step-label-title.pending-title {
+            font-weight: 600;
+            color: #8EA4B8;
           }
 
-          .proc-final-ready-badge {
-            background: #FFFFFF;
-            color: #16A34A;
-            padding: 9px 18px;
-            border-radius: 9999px;
-            font-size: 0.8125rem;
+          .step-label-subtitle {
+            font-size: 0.74rem;
+            margin-top: 4px;
+            white-space: nowrap;
+          }
+
+          .step-label-subtitle.time-sub {
+            color: #64748B;
+            font-weight: 500;
+          }
+
+          .step-label-subtitle.active-sub {
+            color: #0E4B56;
             font-weight: 700;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
+          }
+
+          .step-label-subtitle.pending-sub {
+            color: #8EA4B8;
+            font-weight: 500;
+          }
+
+          .stepper-connecting-line {
+            flex: 1;
+            height: 2.5px;
+            margin: 21px 2px 0;
+            position: relative;
+            z-index: 1;
+            min-width: 12px;
+            border-radius: 2px;
+          }
+
+          .stepper-connecting-line.completed {
+            background: #0E4B56;
+          }
+
+          .stepper-connecting-line.half-active {
+            background: linear-gradient(to right, #0E4B56 50%, #E2E8F0 50%);
+          }
+
+          .stepper-connecting-line.pending {
+            background: #E2E8F0;
           }
 
           /* TWO COLUMNS */

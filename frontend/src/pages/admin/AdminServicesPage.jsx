@@ -128,6 +128,27 @@ export const AdminServicesPage = () => {
   // Row Action Dropdown Popover
   const [openActionMenuId, setOpenActionMenuId] = useState(null);
 
+  // Close row action dropdown menu on outside click or Escape key
+  useEffect(() => {
+    if (!openActionMenuId) return;
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest('.action-popover-anchor')) {
+        setOpenActionMenuId(null);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setOpenActionMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openActionMenuId]);
+
   // Edit Service Modal state
   const [editingService, setEditingService] = useState(null);
   const [editImagePreview, setEditImagePreview] = useState(null);

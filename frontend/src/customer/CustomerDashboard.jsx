@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { ordersApi, notificationsApi } from '../api/apiClient';
-import { subscribeOrders } from '../services/firestoreService';
+import { subscribeCustomerOrders } from '../services/customerDataService';
 import { 
   Package, 
   Clock, 
@@ -27,28 +27,71 @@ import { formatOrderId } from '../utils/helpers';
 export const CustomerDashboard = () => {
   const { currentUser } = useAuth();
   const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+
+  const myUid = currentUser?.uid || currentUser?.id;
+  const myEmail = (currentUser?.email || '').toLowerCase().trim();
+
+  const [orders, setOrders] = useState(() => {
+    try {
+      if (myUid) {
+        const cached = sessionStorage.getItem(`fabricare_customer_orders_${myUid}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+    } catch (_) {}
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    try {
+      if (myUid) {
+        const cached = sessionStorage.getItem(`fabricare_customer_orders_${myUid}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return false;
+        }
+      }
+    } catch (_) {}
+    return true;
+  });
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
   const fetchOrders = useCallback(async (isManual = false) => {
+    const uid = currentUser?.uid || currentUser?.id;
+    const email = (currentUser?.email || '').toLowerCase().trim();
+    if (!uid && !email) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
     if (!isManual) setLoading(true);
     try {
       const res = await ordersApi.getOrders();
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
-      if (list.length > 0) {
-        setOrders(prev => {
-          const ids = new Set(prev.map(p => p.id));
-          return [...prev, ...list.filter(item => !ids.has(item.id || item.order_number))];
-        });
+      const myOrders = list.filter(o => {
+        if (!o) return false;
+        const oUid = String(o.customerId || o.customer_id || o.userId || '').toLowerCase().trim();
+        if (uid && oUid && oUid === String(uid).toLowerCase().trim()) return true;
+        const oEmail = String(o.customerEmail || o.customer_email || o.customer?.email || '').toLowerCase().trim();
+        if (email && oEmail && oEmail === email) return true;
+        return false;
+      });
+      setOrders(myOrders);
+      if (uid) {
+        try {
+          sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(myOrders));
+        } catch (_) {}
       }
     } catch (err) {
       console.warn('Customer dashboard fetch orders notice:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser?.uid, currentUser?.email]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -69,21 +112,66 @@ export const CustomerDashboard = () => {
 
   useEffect(() => {
     let isSubscribed = true;
-    const unsubscribe = subscribeOrders((fireOrders) => {
-      if (!isSubscribed) return;
-      if (fireOrders && fireOrders.length > 0) {
-        setOrders(fireOrders);
-      }
+    const uid = currentUser?.uid || currentUser?.id;
+    const email = currentUser?.email;
+
+    if (!uid && !email) {
+      setOrders([]);
       setLoading(false);
-    });
+      return;
+    }
+
+    // Reset orders immediately when customer ID changes to avoid leaking previous customer's data
+    try {
+      const cached = uid ? sessionStorage.getItem(`fabricare_customer_orders_${uid}`) : null;
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          setOrders(parsed);
+          setLoading(false);
+        } else {
+          setOrders([]);
+          setLoading(true);
+        }
+      } else {
+        setOrders([]);
+        setLoading(true);
+      }
+    } catch (_) {
+      setOrders([]);
+      setLoading(true);
+    }
+
+    const unsubscribe = subscribeCustomerOrders(
+      uid,
+      (liveOrders) => {
+        if (!isSubscribed) return;
+        if (Array.isArray(liveOrders)) {
+          setOrders(liveOrders);
+          if (uid) {
+            try {
+              sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(liveOrders));
+            } catch (_) {}
+          }
+        } else {
+          setOrders([]);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Customer orders subscription notice:', err);
+        fetchOrders();
+      },
+      email
+    );
 
     fetchOrders();
 
     return () => {
       isSubscribed = false;
-      unsubscribe();
+      if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [fetchOrders]);
+  }, [currentUser?.uid, currentUser?.email, fetchOrders]);
 
   const filteredOrders = orders.filter(order => {
     const term = (searchQuery || '').trim().toLowerCase();

@@ -164,7 +164,7 @@ const CustomerAccountLayout = ({ children }) => {
 
 const AppContent = () => {
   const { currentPage, navigateTo } = useBooking();
-  const { isAuthenticated, userRole, loading } = useAuth();
+  const { isAuthenticated, userRole, loading, currentUser } = useAuth();
 
   const normalizedRoute = String(currentPage || 'home').replace(/^#\/?/, '').trim().toLowerCase();
   const cleanPageName = (currentPage || '').split('?')[0].replace(/^#\/?/, '').replace(/^\//, '').toLowerCase();
@@ -235,7 +235,7 @@ const AppContent = () => {
       return <LoginPage />;
     }
     if (userRole !== 'admin') {
-      return null;
+      return <LoginPage />;
     }
     return <AdminPortal />;
   }
@@ -245,8 +245,8 @@ const AppContent = () => {
     if (!isAuthenticated) {
       return <LoginPage />;
     }
-    if (userRole !== 'agent' && userRole !== 'delivery_agent' && userRole !== 'admin') {
-      return null;
+    if (userRole !== 'agent' && userRole !== 'delivery_agent' && userRole !== 'delivery' && userRole !== 'delivery_staff' && userRole !== 'admin') {
+      return <LoginPage />;
     }
     return <DeliveryPortal />;
   }
@@ -256,8 +256,8 @@ const AppContent = () => {
     if (!isAuthenticated) {
       return <LoginPage />;
     }
-    if (userRole !== 'staff' && userRole !== 'laundry_staff' && userRole !== 'admin') {
-      return null;
+    if (userRole !== 'staff' && userRole !== 'laundry_staff' && userRole !== 'laundry' && userRole !== 'admin') {
+      return <LoginPage />;
     }
     return <LaundryPortal />;
   }
@@ -272,7 +272,7 @@ const AppContent = () => {
       <div className="app-layout">
         <Navbar />
         <main className="main-content">
-          <CustomerAccountLayout>
+          <CustomerAccountLayout key={currentUser?.uid || 'guest'}>
             {(normalizedRoute === 'customer-dashboard' || normalizedRoute === 'customer-orders') && <CustomerDashboard />}
             {normalizedRoute === 'customer-track' && <TrackOrder />}
             {normalizedRoute === 'customer-reports' && <CustomerReports />}

@@ -675,6 +675,17 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
  */
 export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICES, forceOverwrite = false) => {
   try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return null;
+
+    let role = null;
+    try {
+      const cached = JSON.parse(localStorage.getItem('fabricare_user') || '{}');
+      role = cached?.role;
+    } catch (_) {}
+
+    if (role !== 'admin') return null;
+
     const servicesRef = ref(rtdb, 'services');
     const snap = await get(servicesRef);
     const existing = snap.val();
@@ -696,7 +707,10 @@ export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICE
     }
     return Object.values(existing);
   } catch (err) {
-    console.warn('Could not seed services in RTDB:', err);
+    const isPermError = err?.code === 'PERMISSION_DENIED' || String(err?.message || '').toLowerCase().includes('permission_denied') || String(err?.message || '').toLowerCase().includes('permission denied');
+    if (!isPermError) {
+      console.warn('Could not seed services in RTDB:', err);
+    }
     return null;
   }
 };

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const Profile = () => {
-  const { currentUser, logout, userRole } = useAuth();
+  const { currentUser, logout, userRole, refreshProfile } = useAuth();
   const [addresses, setAddresses] = useState([]);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -124,7 +124,10 @@ export const Profile = () => {
         pincode: '560043',
         is_default: false
       });
-      fetchAddresses();
+      await fetchAddresses();
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile();
+      }
     } catch (err) {
       alert(err.response?.data?.error || `Failed to ${editingAddressId ? 'update' : 'save'} address`);
     } finally {
@@ -136,7 +139,10 @@ export const Profile = () => {
     if (!window.confirm('Delete this saved address?')) return;
     try {
       await addressApi.deleteAddress(id);
-      fetchAddresses();
+      await fetchAddresses();
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile();
+      }
     } catch (err) {
       alert('Failed to delete address');
     }
@@ -207,12 +213,17 @@ export const Profile = () => {
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-xs text-muted block mb-1">City</span>
-                <div className="font-semibold text-navy">{currentUser?.city || 'Bengaluru'}</div>
+                <div className="font-semibold text-navy">{currentUser?.city || (addresses.find(a => a.is_default) || addresses[0])?.city || 'Bengaluru'}</div>
               </div>
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 md:col-span-2">
                 <span className="text-xs text-muted block mb-1">Registered Address</span>
-                <div className="font-semibold text-navy">{currentUser?.address || 'Banaswadi, Bengaluru - 560043'}</div>
+                <div className="font-semibold text-navy">
+                  {currentUser?.address || (() => {
+                    const def = addresses.find(a => a.is_default) || addresses[0];
+                    return def ? `${def.address_line}${def.landmark ? ', ' + def.landmark : ''}, ${def.city} - ${def.pincode}` : 'No address saved yet';
+                  })()}
+                </div>
               </div>
             </div>
           </div>

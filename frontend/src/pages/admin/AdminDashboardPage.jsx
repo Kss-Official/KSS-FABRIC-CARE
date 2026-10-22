@@ -116,10 +116,10 @@ export const AdminDashboardPage = () => {
         setSelectedOrderDetails(null);
       }
     };
-    document.addEventListener('click', handleOutsideClick);
+    document.addEventListener('mousedown', handleOutsideClick);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.removeEventListener('click', handleOutsideClick);
+      document.removeEventListener('mousedown', handleOutsideClick);
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [activeActionMenuId]);
@@ -572,7 +572,9 @@ export const AdminDashboardPage = () => {
   };
 
   const formatPickupOrderId = (rawId) => {
-    return formatOrderId(rawId);
+    if (!rawId) return 'FC-10284';
+    const formatted = formatOrderId(rawId);
+    return formatted ? formatted.replace(/^#/, '') : String(rawId).replace(/^#/, '');
   };
 
   const parsePickupSlot = (slotStr, defaultStart = '09:00', defaultEnd = '11:00 AM') => {
@@ -592,30 +594,27 @@ export const AdminDashboardPage = () => {
     return { start, end };
   };
 
-  // Exact baseline cards matching Pickup & Delivery section
-  // 1. FC-10290 Rohan Mehta Banaswadi, Bengaluru Pickup Assigned
-  // 2. FC-10289 Priya Sharma HRBR Layout, Bengaluru Pickup Pending
-  // 3. FC-10288 Arjun Nair Indiranagar, Bengaluru Delivery Assigned
-  // 4. FC-10287 Sneha Reddy Whitefield, Bengaluru Pickup Pending
+  // Exact baseline cards matching reference image and Pickup & Delivery section without # prefix
   const BASELINE_PICKUPS = [
-    { timeStart: '09:00', timeEnd: '11:00 AM', id: 'FC-10290', name: 'Rohan Mehta', area: 'Banaswadi, Bengaluru', type: 'Pickup', status: 'Assigned' },
-    { timeStart: '10:00', timeEnd: '12:00 PM', id: 'FC-10289', name: 'Priya Sharma', area: 'HRBR Layout, Bengaluru', type: 'Pickup', status: 'Pending' },
-    { timeStart: '11:00', timeEnd: '01:00 PM', id: 'FC-10288', name: 'Arjun Nair', area: 'Indiranagar, Bengaluru', type: 'Delivery', status: 'Assigned' },
-    { timeStart: '02:00', timeEnd: '04:00 PM', id: 'FC-10287', name: 'Sneha Reddy', area: 'Whitefield, Bengaluru', type: 'Pickup', status: 'Pending' }
+    { timeStart: '09:00', timeEnd: '11:00 AM', id: 'FC-10284', name: 'Rohan Mehta', area: 'Banaswadi, Bengaluru', type: 'Pickup', status: 'Assigned' },
+    { timeStart: '11:00', timeEnd: '01:00 PM', id: 'FC-10286', name: 'Arjun Nair', area: 'Indiranagar, Bengaluru', type: 'Delivery', status: 'Assigned' },
+    { timeStart: '02:00', timeEnd: '04:00 PM', id: 'FC-10287', name: 'Sneha Reddy', area: 'Whitefield, Bengaluru', type: 'Pickup', status: 'Pending' },
+    { timeStart: '03:00', timeEnd: '05:00 PM', id: 'FC-10288', name: 'Karan Verma', area: 'Marathahalli, Bengaluru', type: 'Delivery', status: 'Assigned' }
   ];
 
-  // Today's Pickup & Delivery dynamically bound to live order records with exact reference styling
+  // Today's Pickup & Delivery dynamically bound to live order records from the exact same source as Pickup & Delivery section
   const pickupDeliveries = useMemo(() => {
     const list = combinedOrders || [];
     if (!orders || orders.length === 0) {
       return BASELINE_PICKUPS.map(baseItem => ({
         ...baseItem,
+        id: formatPickupOrderId(baseItem.id),
         area: formatConciseAddress(baseItem.area)
       }));
     }
 
-    // Map live orders into today's pickup & delivery cards using identical ID resolution as Pickup & Delivery section
-    return list.slice(0, 10).map((live, idx) => {
+    // Map live orders into today's pickup & delivery cards matching exact IDs from Pickup & Delivery section
+    return list.map((live, idx) => {
       const isDeliv = isOrderReady(live.status) || isOrderCompleted(live.status) || String(live.status).toLowerCase().includes('transit') || String(live.status).toLowerCase().includes('delivery');
       const hasDriver = Boolean(
         (live.driver && live.driver !== 'Not Assigned' && live.driver !== '—' && live.driver !== '') ||
@@ -626,10 +625,10 @@ export const AdminDashboardPage = () => {
       );
       const { start, end } = parsePickupSlot(live.pickup_time_slot || live.pickupTime, '09:00', '11:00 AM');
       const conciseArea = formatConciseAddress(live.pickup_address || live.customer?.address || live.address, live);
-      const orderIdDisplay = formatOrderId(live.order_number || live.order_id || live.code || live.id);
+      const orderId = formatPickupOrderId(live.order_number || live.order_id || live.code || live.id || `FC-1028${idx}`);
 
       return {
-        id: orderIdDisplay,
+        id: orderId,
         name: live.pickup_full_name || live.customer_name || live.customer?.name || 'Customer',
         area: conciseArea || 'Bengaluru',
         timeStart: start,
@@ -664,11 +663,13 @@ export const AdminDashboardPage = () => {
   }, [combinedOrders, orders]);
 
   const filteredPickups = useMemo(() => {
-    return pickupDeliveries.filter(p => {
+    const filtered = pickupDeliveries.filter(p => {
       if (pickupTab === 'pickups') return p.type === 'Pickup';
       if (pickupTab === 'deliveries') return p.type === 'Delivery';
       return true;
     });
+    // Display only 5–6 records (maximum 6) at a time to keep the section clean and organized
+    return filtered.slice(0, 6);
   }, [pickupDeliveries, pickupTab]);
 
   return (

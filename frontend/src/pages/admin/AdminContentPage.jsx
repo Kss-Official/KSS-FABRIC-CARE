@@ -151,16 +151,26 @@ export const AdminContentPage = () => {
 
   const textareaRef = useRef(null);
 
-  // Close more menu when clicking outside
+  // Close more menu when clicking outside or pressing Escape
   useEffect(() => {
+    if (!openMenuId) return;
     const handleOutsideClick = (e) => {
       if (!e.target.closest('.more-menu-wrapper')) {
         setOpenMenuId(null);
       }
     };
-    document.addEventListener('click', handleOutsideClick);
-    return () => document.removeEventListener('click', handleOutsideClick);
-  }, []);
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMenuId]);
 
   // Lock background scroll when FAQ modal is open
   useEffect(() => {

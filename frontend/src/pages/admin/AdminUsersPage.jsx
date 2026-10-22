@@ -476,17 +476,30 @@ export const AdminUsersPage = () => {
   // Ref for detecting clicks outside the action popover
   const popoverRef = useRef(null);
 
-  // Close the action popover when clicking outside it
+  // Close action popover and join date dropdown on outside click or Escape
   useEffect(() => {
-    if (!activeMenuId) return;
+    if (!activeMenuId && !isJoinDateDropdownOpen) return;
     const handleOutsideClick = (e) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
+      if (activeMenuId && !e.target.closest('.action-menu-anchor')) {
         setActiveMenuId(null);
+      }
+      if (isJoinDateDropdownOpen && !e.target.closest('.filter-dropdown-pill-wrapper')) {
+        setIsJoinDateDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setActiveMenuId(null);
+        setIsJoinDateDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [activeMenuId]);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeMenuId, isJoinDateDropdownOpen]);
 
   // View Details Modal State
   const [viewingUser, setViewingUser] = useState(null);

@@ -172,9 +172,9 @@ export const seedDatabase = async () => {
         item_01: { garmentId: 'garm_saree', serviceId: 'svc_dry_clean', name: 'Silk Saree (Dry Clean)', quantity: 1, unitPrice: 24900, lineTotal: 24900 }
       },
       subtotal: 24900,
-      expressCharge: 10000,
+      expressCharge: 0,
       tax: 0,
-      total: 34900,
+      total: 24900,
       createdAt: now - 7200000,
       placedAt: now - 7000000,
       dueBy: now + 43200000,

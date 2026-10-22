@@ -1389,7 +1389,10 @@ export const DeliveryPortal = () => {
   };
 
   const fetchTasks = async () => {
-    setLoading(true);
+    setTasks(prev => {
+      if (!prev || prev.length === 0) setLoading(true);
+      return prev;
+    });
     setError(null);
     try {
       const [res, dashRes] = await Promise.all([

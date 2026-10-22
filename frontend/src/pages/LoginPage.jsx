@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getPortalForRole } from '../utils/roleUtils';
+import { getPortalForRole, normalizeRole } from '../utils/roleUtils';
 import { useBooking } from '../context/BookingContext';
 import { useAdmin } from '../context/AdminContext';
 import {
@@ -30,16 +30,16 @@ export const LoginPage = () => {
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
 
-  // If already authenticated, redirect to destination portal immediately
+  // If already authenticated and not in middle of submit, redirect to destination portal immediately
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !isSubmitting) {
       if (userRole === 'admin') {
         setIsAdminAuthenticated(true);
         setAdminTab('dashboard');
       }
       navigateTo(getPortalForRole(userRole));
     }
-  }, [isAuthenticated, userRole, setIsAdminAuthenticated, setAdminTab, navigateTo]);
+  }, [isAuthenticated, userRole, isSubmitting, setIsAdminAuthenticated, setAdminTab, navigateTo]);
 
   const handleSignIn = async (e) => {
     if (e) e.preventDefault();
@@ -49,15 +49,15 @@ export const LoginPage = () => {
 
     try {
       const result = await login(identifier, password, true);
-      const role = result?.role || 'customer';
+      const role = normalizeRole(result?.role || result?.user?.role || 'customer');
 
       if (role === 'admin') {
         setIsAdminAuthenticated(true);
         setAdminTab('dashboard');
         navigateTo('admin');
-      } else if (role === 'agent' || role === 'delivery' || role === 'delivery_agent') {
+      } else if (role === 'agent') {
         navigateTo('delivery-portal');
-      } else if (role === 'staff' || role === 'laundry_staff' || role === 'laundry') {
+      } else if (role === 'staff') {
         navigateTo('laundry-portal');
       } else {
         const intended = sessionStorage.getItem('fabricare_intended_destination');

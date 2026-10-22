@@ -207,41 +207,50 @@ export const mapAdminOrderRecord = (o) => {
   const totalPaise = o.total || 0;
   const totalInr = totalPaise > 0 ? (totalPaise / 100).toFixed(2) : (Number(o.total_amount || o.amount || 0).toFixed(2));
   const rawItems = o.items;
-  const normItems = Array.isArray(rawItems)
-    ? rawItems.map(it => {
-        let p = Number(it.price ?? it.unitPrice ?? it.unit_price ?? it.rate ?? 0);
-        if (p >= 1000 || (p >= 500 && p % 100 === 0)) p = p / 100;
-        const qty = Number(it.quantity || it.qty || 1);
-        return {
-          ...it,
-          name: it.name || it.item_name || 'Laundry Care',
-          item_name: it.name || it.item_name || 'Laundry Care',
-          quantity: qty,
-          price: p || 60,
-          unitPrice: p || 60,
-          category: it.category || it.service_category || 'Apparel',
-          service: it.service || it.service_name || (Array.isArray(it.services) ? it.services[0] : 'Wash & Fold'),
-          service_name: it.service_name || it.service || (Array.isArray(it.services) ? it.services[0] : 'Wash & Fold')
-        };
-      })
-    : (rawItems && typeof rawItems === 'object'
-      ? Object.values(rawItems).map(it => {
-          let p = Number(it.price ?? it.unitPrice ?? it.unit_price ?? it.rate ?? 0);
-          if (p >= 1000 || (p >= 500 && p % 100 === 0)) p = p / 100;
-          const qty = Number(it.quantity || it.qty || 1);
-          return {
-            ...it,
-            name: it.name || it.item_name || 'Laundry Care',
-            item_name: it.name || it.item_name || 'Laundry Care',
-            quantity: qty,
-            price: p || 60,
-            unitPrice: p || 60,
-            category: it.category || it.service_category || 'Apparel',
-            service: it.service || it.service_name || (Array.isArray(it.services) ? it.services[0] : 'Wash & Fold'),
-            service_name: it.service_name || it.service || (Array.isArray(it.services) ? it.services[0] : 'Wash & Fold')
-          };
-        })
-      : []);
+  let itemsArray = [];
+  if (Array.isArray(rawItems)) {
+    itemsArray = rawItems;
+  } else if (rawItems && typeof rawItems === 'object') {
+    itemsArray = Object.values(rawItems);
+  }
+
+  const normItems = itemsArray.map(it => {
+    const qty = Number(it.quantity || it.qty || 1) || 1;
+    let rawUnitPrice = it.unitPrice ?? it.unit_price ?? it.rate ?? it.baseUnitPrice ?? null;
+    if (rawUnitPrice == null && it.price != null) {
+      const rawP = Number(it.price);
+      if (it.lineTotal && Number(it.lineTotal) === rawP && qty > 1) {
+        rawUnitPrice = rawP / qty;
+      } else if (it.total && Number(it.total) === rawP && qty > 1) {
+        rawUnitPrice = rawP / qty;
+      } else if (qty > 1 && rawP > 150 && !it.unitPrice) {
+        rawUnitPrice = rawP / qty;
+      } else {
+        rawUnitPrice = rawP;
+      }
+    }
+    if (rawUnitPrice == null) {
+      if (it.lineTotal != null) rawUnitPrice = Number(it.lineTotal) / qty;
+      else if (it.total != null) rawUnitPrice = Number(it.total) / qty;
+      else rawUnitPrice = 60;
+    }
+    let unitPrice = Number(rawUnitPrice);
+    if (isNaN(unitPrice) || unitPrice <= 0) unitPrice = 60;
+    if (unitPrice >= 1000 || (unitPrice >= 500 && unitPrice % 100 === 0)) {
+      unitPrice = unitPrice / 100;
+    }
+    const finalUnitPrice = Number(unitPrice.toFixed(2));
+
+    return {
+      ...it,
+      name: it.name || it.item_name || 'Laundry Care',
+      item_name: it.name || it.item_name || 'Laundry Care',
+      quantity: qty,
+      unitPrice: finalUnitPrice,
+      price: finalUnitPrice,
+      service_name: it.service_name || it.service || 'Wash & Fold'
+    };
+  });
   const rawStat = String(o.status || '').toUpperCase();
   const driverName = o.assignedAgentName || o.assignedDeliveryAgentName || o.assignedPickupAgentName || o.assigned_pickup_driver_detail?.full_name || '';
   const driverPhone = o.assignedAgentPhone || o.assignedDeliveryAgentPhone || o.assignedPickupAgentPhone || o.assigned_pickup_driver_detail?.phone || '';
@@ -467,7 +476,10 @@ export const AdminProvider = ({ children }) => {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    setOrders(prev => {
+      if (prev.length === 0) setLoading(true);
+      return prev;
+    });
 
     const unsubOrders = subscribeAdminOrders((rtdbOrders) => {
       const mapped = (rtdbOrders || []).map(mapAdminOrderRecord).filter(Boolean);
@@ -556,7 +568,7 @@ export const AdminProvider = ({ children }) => {
       if (typeof unsubServices === 'function') unsubServices();
       if (typeof unsubSettings === 'function') unsubSettings();
     };
-  }, [currentUser, isAdminAuthenticated]);
+  }, [currentUser?.uid, isAdminAuthenticated]);
 
   // Workflow Handlers
   const assignDriverToOrder = async (orderId, driverParam, taskType = 'pickup') => {

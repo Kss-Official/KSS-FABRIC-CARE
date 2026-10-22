@@ -420,7 +420,10 @@ export const LaundryPortal = () => {
 
   const fetchOrders = useCallback(async () => {
     try {
-      setLoading(true);
+      setOrders(prev => {
+        if (!prev || prev.length === 0) setLoading(true);
+        return prev;
+      });
       const res = await staffApi.getOrders({ page_size: 100 });
       if (res.data && Array.isArray(res.data.items)) {
         const normalizedItems = res.data.items.map(normalizeOrder).filter(isValidLaundryOrder);

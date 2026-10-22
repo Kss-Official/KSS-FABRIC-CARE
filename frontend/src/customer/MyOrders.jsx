@@ -22,8 +22,32 @@ import { formatOrderId } from '../utils/helpers';
 export const MyOrders = () => {
   const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
   const { currentUser } = useAuth();
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState(() => {
+    try {
+      const myUid = currentUser?.uid || currentUser?.id;
+      if (myUid) {
+        const cached = sessionStorage.getItem(`fabricare_customer_orders_${myUid}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+    } catch (_) {}
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    try {
+      const myUid = currentUser?.uid || currentUser?.id;
+      if (myUid) {
+        const cached = sessionStorage.getItem(`fabricare_customer_orders_${myUid}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return false;
+        }
+      }
+    } catch (_) {}
+    return true;
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [cancellingId, setCancellingId] = useState(null);
@@ -108,47 +132,92 @@ export const MyOrders = () => {
   }, []);
 
   const fetchOrdersFromApi = useCallback(async () => {
+    const uid = currentUser?.uid || currentUser?.id;
+    const email = (currentUser?.email || '').toLowerCase().trim();
+    if (!uid && !email) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
     try {
       const res = await ordersApi.getOrders();
       const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
-      if (list.length > 0) {
-        const mapped = normalizeOrders(list);
-        setOrders(prev => {
-          const ids = new Set(prev.map(p => p.id));
-          return [...prev, ...mapped.filter(item => !ids.has(item.id))];
-        });
+      const myOrders = list.filter(o => {
+        if (!o) return false;
+        const oUid = String(o.customerId || o.customer_id || o.userId || '').toLowerCase().trim();
+        if (uid && oUid && oUid === String(uid).toLowerCase().trim()) return true;
+        const oEmail = String(o.customerEmail || o.customer_email || o.customer?.email || '').toLowerCase().trim();
+        if (email && oEmail && oEmail === email) return true;
+        return false;
+      });
+      const mapped = normalizeOrders(myOrders);
+      setOrders(mapped);
+      if (uid) {
+        try {
+          sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(mapped));
+        } catch (_) {}
       }
     } catch (err) {
       console.warn('Orders API fetch notice:', err);
+    } finally {
+      setLoading(false);
     }
-  }, [normalizeOrders]);
+  }, [currentUser?.uid, currentUser?.email, normalizeOrders]);
 
   useEffect(() => {
-    if (!currentUser?.uid) {
+    const uid = currentUser?.uid || currentUser?.id;
+    if (!uid) {
+      setOrders([]);
       setLoading(false);
       fetchOrdersFromApi().finally(() => setLoading(false));
       return;
     }
 
-    setLoading(true);
-    const unsubscribe = subscribeCustomerOrders(
-      currentUser.uid,
-      (liveOrders) => {
-        if (liveOrders && liveOrders.length > 0) {
-          setOrders(normalizeOrders(liveOrders));
+    try {
+      const cached = sessionStorage.getItem(`fabricare_customer_orders_${uid}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          setOrders(parsed);
+          setLoading(false);
         } else {
-          fetchOrdersFromApi();
+          setOrders([]);
+          setLoading(true);
+        }
+      } else {
+        setOrders([]);
+        setLoading(true);
+      }
+    } catch (_) {
+      setOrders([]);
+      setLoading(true);
+    }
+
+    const unsubscribe = subscribeCustomerOrders(
+      uid,
+      (liveOrders) => {
+        if (Array.isArray(liveOrders)) {
+          const norm = normalizeOrders(liveOrders);
+          setOrders(norm);
+          try {
+            sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(norm));
+          } catch (_) {}
+        } else {
+          setOrders([]);
         }
         setLoading(false);
       },
       (err) => {
         console.warn('Orders subscription note:', err);
         fetchOrdersFromApi().finally(() => setLoading(false));
-      }
+      },
+      currentUser?.email
     );
 
-    return () => unsubscribe();
-  }, [currentUser, normalizeOrders, fetchOrdersFromApi]);
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [currentUser?.uid, currentUser?.email, normalizeOrders, fetchOrdersFromApi]);
 
   useEffect(() => {
     if (!cancelModalOrder) return;

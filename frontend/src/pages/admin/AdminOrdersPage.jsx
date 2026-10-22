@@ -394,6 +394,31 @@ export const AdminOrdersPage = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState(null);
 
+  // Close action dropdown menu and date dropdown on outside click or Escape
+  useEffect(() => {
+    if (!activeActionMenuId && !isDateDropdownOpen) return;
+    const handleOutsideClick = (e) => {
+      if (activeActionMenuId && !e.target.closest('.action-button-anchor')) {
+        setActiveActionMenuId(null);
+      }
+      if (isDateDropdownOpen && !e.target.closest('.orders-date-dropdown-wrapper')) {
+        setIsDateDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setActiveActionMenuId(null);
+        setIsDateDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeActionMenuId, isDateDropdownOpen]);
+
   // Synchronize with external navigation targets (e.g. clicking dashboard cards)
   useEffect(() => {
     if (ordersFilterTarget) {

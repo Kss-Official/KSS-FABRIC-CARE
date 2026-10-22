@@ -409,9 +409,9 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     parsedItems = d.items.map((it, idx) => {
       const q = Number(it.quantity || it.qty || 1);
       const rawPrice = Number(it.unitPrice ?? it.rate ?? it.price ?? 60);
-      const price = (rawPrice >= 2000 && rawPrice % 100 === 0) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
+      const price = (rawPrice >= 1000 || (rawPrice >= 500 && rawPrice % 100 === 0)) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
       const rawTotal = Number(it.lineTotal ?? it.total ?? q * price);
-      const total = (rawTotal >= 2000 && rawTotal % 100 === 0) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+      const total = (rawTotal >= 1000 || (rawTotal >= 500 && rawTotal % 100 === 0)) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
       const cat = detectItemCategory(it.category || it.categoryName || it.service_category, it.name || it.item_name || it.garment);
       return {
         id: it.id || `item_${idx + 1}`,
@@ -433,9 +433,9 @@ export const normalizeFirestoreOrder = (docData, docId) => {
       if (typeof val === 'object' && val !== null) {
         const q = Number(val.quantity || val.qty || 1);
         const rawPrice = Number(val.unitPrice ?? val.rate ?? val.price ?? 60);
-        const price = (rawPrice >= 2000 && rawPrice % 100 === 0) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
+        const price = (rawPrice >= 1000 || (rawPrice >= 500 && rawPrice % 100 === 0)) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
         const rawTotal = Number(val.lineTotal ?? val.total ?? q * price);
-        const total = (rawTotal >= 2000 && rawTotal % 100 === 0) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+        const total = (rawTotal >= 1000 || (rawTotal >= 500 && rawTotal % 100 === 0)) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
         const cat = detectItemCategory(val.category || val.categoryName || val.service_category, val.name || val.item_name || val.garment || k);
         return {
           id: k,
@@ -464,31 +464,31 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     : (Array.isArray(d.services) && d.services.length > 0 ? d.services.join(' + ') : (d.service || 'Laundry Bag'));
 
   let totalAmount = 0;
-  if (d.total_paise !== undefined || d.amount_paise !== undefined) {
+  if (itemsCalculatedTotal > 0) {
+    totalAmount = Number(itemsCalculatedTotal.toFixed(2));
+  } else if (d.subtotal !== undefined && d.subtotal !== null && Number(d.subtotal) > 0) {
+    const rawSub = Number(d.subtotal);
+    totalAmount = (rawSub >= 1000 || (rawSub >= 500 && rawSub % 100 === 0)) ? Number((rawSub / 100).toFixed(2)) : Number(rawSub.toFixed(2));
+  } else if (d.total_paise !== undefined || d.amount_paise !== undefined) {
     totalAmount = Number(((d.total_paise || d.amount_paise) / 100).toFixed(2));
   } else if (d.total !== undefined && d.total !== null) {
-    const rawNum = Number(d.total);
-    if (rawNum >= 2000 || (itemsCalculatedTotal > 0 && Math.abs(rawNum - itemsCalculatedTotal * 100) < 50)) {
-      totalAmount = Number((rawNum / 100).toFixed(2));
-    } else {
-      totalAmount = Number(rawNum.toFixed(2));
-    }
+    let rawNum = Number(d.total);
+    if (rawNum >= 1000 || (rawNum >= 500 && rawNum % 100 === 0)) rawNum = rawNum / 100;
+    const expCharge = Number(d.expressCharge || 0);
+    if (expCharge > 0) rawNum -= (expCharge >= 1000 ? expCharge / 100 : expCharge);
+    totalAmount = Number(Math.max(0, rawNum).toFixed(2));
   } else if (d.total_amount !== undefined && d.total_amount !== null) {
-    const rawNum = Number(d.total_amount);
-    if (rawNum >= 2000 && itemsCalculatedTotal > 0 && Math.abs(rawNum - itemsCalculatedTotal * 100) < 50) {
-      totalAmount = Number((rawNum / 100).toFixed(2));
-    } else {
-      totalAmount = Number(rawNum.toFixed(2));
-    }
+    let rawNum = Number(d.total_amount);
+    if (rawNum >= 1000 || (rawNum >= 500 && rawNum % 100 === 0)) rawNum = rawNum / 100;
+    const expCharge = Number(d.expressCharge || 0);
+    if (expCharge > 0) rawNum -= (expCharge >= 1000 ? expCharge / 100 : expCharge);
+    totalAmount = Number(Math.max(0, rawNum).toFixed(2));
   } else if (d.amount !== undefined && d.amount !== null) {
-    const rawNum = Number(d.amount);
-    if (rawNum >= 2000 && itemsCalculatedTotal > 0 && Math.abs(rawNum - itemsCalculatedTotal * 100) < 50) {
-      totalAmount = Number((rawNum / 100).toFixed(2));
-    } else {
-      totalAmount = Number(rawNum.toFixed(2));
-    }
-  } else if (itemsCalculatedTotal > 0) {
-    totalAmount = Number(itemsCalculatedTotal.toFixed(2));
+    let rawNum = Number(d.amount);
+    if (rawNum >= 1000 || (rawNum >= 500 && rawNum % 100 === 0)) rawNum = rawNum / 100;
+    const expCharge = Number(d.expressCharge || 0);
+    if (expCharge > 0) rawNum -= (expCharge >= 1000 ? expCharge / 100 : expCharge);
+    totalAmount = Number(Math.max(0, rawNum).toFixed(2));
   } else {
     totalAmount = Number(d.estimatedTotal ?? 0);
   }
@@ -2029,16 +2029,13 @@ export const updateFirestoreUser = async (userId, updateData) => {
 // ===============================================================
 
 export const getUserAddresses = async (userId) => {
-  if (!isFirebaseConfigured || !db || !userId) return [];
+  if (!isFirebaseConfigured || !rtdb || !userId) return [];
   try {
-    const userDocRef = doc(db, 'users', String(userId));
-    const snap = await getDoc(userDocRef);
-    if (snap.exists() && snap.data().addresses) {
-      return Object.values(snap.data().addresses);
+    const snap = await get(ref(rtdb, `users/${userId}/addresses`));
+    if (snap.exists()) {
+      return Object.values(snap.val());
     }
-    return [
-      { id: 'addr_default', title: 'Home', label: 'Home', line1: '100ft Road, Indiranagar', city: 'Bengaluru', pincode: '560038', is_default: true }
-    ];
+    return [];
   } catch (err) {
     console.error('Error fetching addresses:', err);
     return [];
@@ -2046,23 +2043,22 @@ export const getUserAddresses = async (userId) => {
 };
 
 export const addUserAddress = async (userId, addressData) => {
-  if (!isFirebaseConfigured || !db || !userId) return null;
+  if (!isFirebaseConfigured || !rtdb || !userId) return null;
   try {
-    const userDocRef = doc(db, 'users', String(userId));
-    const snap = await getDoc(userDocRef);
     const addrId = addressData.id || `addr_${Date.now()}`;
     const newAddr = {
       id: addrId,
       title: addressData.label || addressData.title || 'Home',
       label: addressData.label || addressData.title || 'Home',
       line1: addressData.line1 || addressData.address_line || 'Bengaluru',
+      address_line: addressData.address_line || addressData.line1 || 'Bengaluru',
+      landmark: addressData.landmark || '',
       city: addressData.city || 'Bengaluru',
       pincode: addressData.pincode || '560038',
-      is_default: Boolean(addressData.is_default)
+      is_default: Boolean(addressData.is_default),
+      updatedAt: Date.now()
     };
-    const currentAddresses = snap.exists() && snap.data().addresses ? { ...snap.data().addresses } : {};
-    currentAddresses[addrId] = newAddr;
-    await setDoc(userDocRef, { addresses: currentAddresses, updatedAt: serverTimestamp() }, { merge: true });
+    await set(ref(rtdb, `users/${userId}/addresses/${addrId}`), newAddr);
     return newAddr;
   } catch (err) {
     console.error('Error adding address:', err);
@@ -2071,19 +2067,18 @@ export const addUserAddress = async (userId, addressData) => {
 };
 
 export const updateUserAddress = async (userId, addressId, addressData) => {
-  if (!isFirebaseConfigured || !db || !userId) return null;
+  if (!isFirebaseConfigured || !rtdb || !userId) return null;
   try {
-    const userDocRef = doc(db, 'users', String(userId));
-    const snap = await getDoc(userDocRef);
-    if (!snap.exists()) return null;
-    const currentAddresses = snap.data().addresses || {};
-    currentAddresses[addressId] = {
-      ...(currentAddresses[addressId] || {}),
+    const snap = await get(ref(rtdb, `users/${userId}/addresses/${addressId}`));
+    const existing = snap.exists() ? snap.val() : {};
+    const updated = {
+      ...existing,
       ...addressData,
-      id: addressId
+      id: addressId,
+      updatedAt: Date.now()
     };
-    await updateDoc(userDocRef, { addresses: currentAddresses, updatedAt: serverTimestamp() });
-    return currentAddresses[addressId];
+    await set(ref(rtdb, `users/${userId}/addresses/${addressId}`), updated);
+    return updated;
   } catch (err) {
     console.error('Error updating address:', err);
     throw err;
@@ -2091,14 +2086,9 @@ export const updateUserAddress = async (userId, addressId, addressData) => {
 };
 
 export const deleteUserAddress = async (userId, addressId) => {
-  if (!isFirebaseConfigured || !db || !userId) return true;
+  if (!isFirebaseConfigured || !rtdb || !userId) return true;
   try {
-    const userDocRef = doc(db, 'users', String(userId));
-    const snap = await getDoc(userDocRef);
-    if (!snap.exists()) return true;
-    const currentAddresses = snap.data().addresses || {};
-    delete currentAddresses[addressId];
-    await updateDoc(userDocRef, { addresses: currentAddresses, updatedAt: serverTimestamp() });
+    await set(ref(rtdb, `users/${userId}/addresses/${addressId}`), null);
     return true;
   } catch (err) {
     console.error('Error deleting address:', err);

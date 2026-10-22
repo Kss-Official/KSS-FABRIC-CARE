@@ -267,9 +267,27 @@ export const PaymentsInvoices = () => {
   const fetchOrdersAndInvoices = async () => {
     setIsRefreshing(true);
     setLoading(true);
+    const uid = currentUser?.uid || currentUser?.id;
+    const email = (currentUser?.email || '').toLowerCase().trim();
+    if (!uid && !email) {
+      setOrders([]);
+      setSelectedOrder(null);
+      setLoading(false);
+      setIsRefreshing(false);
+      return;
+    }
     try {
       const res = await ordersApi.getOrders();
-      const ordList = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
+      const rawList = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
+      const ordList = rawList.filter(o => {
+        if (!o) return false;
+        const oUid = String(o.customerId || o.customer_id || o.userId || '').toLowerCase().trim();
+        if (uid && oUid && oUid === String(uid).toLowerCase().trim()) return true;
+        const oEmail = String(o.customerEmail || o.customer_email || o.customer?.email || '').toLowerCase().trim();
+        if (email && oEmail && oEmail === email) return true;
+        return false;
+      });
+
       if (ordList.length > 0) {
         const mapped = ordList.map(normalizeInvoiceOrder);
         setOrders(mapped);
@@ -292,41 +310,63 @@ export const PaymentsInvoices = () => {
             return mapped.find(o => o.id === prev.id) || mapped[0];
           });
         }
+      } else {
+        setOrders([]);
+        setSelectedOrder(null);
       }
 
       setRefreshSuccess(true);
       setTimeout(() => setRefreshSuccess(false), 2000);
     } catch (err) {
       console.warn('Orders refresh notice:', err);
+      setOrders([]);
+      setSelectedOrder(null);
     } finally {
-      setTimeout(() => {
-        setIsRefreshing(false);
-        setLoading(false);
-      }, 500);
+      setIsRefreshing(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     const uid = currentUser?.uid || currentUser?.id;
-    if (!uid) {
-      fetchOrdersAndInvoices();
+    const email = currentUser?.email;
+    if (!uid && !email) {
+      setOrders([]);
+      setSelectedOrder(null);
+      setLoading(false);
       return;
     }
 
-    const unsub = subscribeCustomerOrders(uid, (liveOrders) => {
-      if (liveOrders && liveOrders.length > 0) {
-        const mapped = liveOrders.map(normalizeInvoiceOrder);
-        setOrders(mapped);
-        setSelectedOrder(prev => prev ? (mapped.find(m => m.id === prev.id) || mapped[0]) : mapped[0]);
-        setLoading(false);
-      } else {
+    setOrders([]);
+    setSelectedOrder(null);
+    setLoading(true);
+
+    const unsub = subscribeCustomerOrders(
+      uid,
+      (liveOrders) => {
+        if (Array.isArray(liveOrders) && liveOrders.length > 0) {
+          const mapped = liveOrders.map(normalizeInvoiceOrder);
+          setOrders(mapped);
+          setSelectedOrder(prev => prev ? (mapped.find(m => m.id === prev.id) || mapped[0]) : mapped[0]);
+          setLoading(false);
+        } else {
+          setOrders([]);
+          setSelectedOrder(null);
+          setLoading(false);
+        }
+      },
+      (err) => {
+        console.warn('Invoices customer orders subscribe error:', err);
         fetchOrdersAndInvoices();
-      }
-    });
+      },
+      email
+    );
 
     fetchOrdersAndInvoices();
-    return () => unsub();
-  }, [currentUser?.uid, activeTrackingOrderId]);
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [currentUser?.uid, currentUser?.email, activeTrackingOrderId]);
 
   // Synchronously reset modal scroll to top before browser paint
   useLayoutEffect(() => {

@@ -130,3 +130,103 @@ export const formatOrderId = (rawId) => {
   return `FC-${fiveDigitCode}`;
 };
 
+/**
+ * Calculates the exact and true order total consistently across all portals and views.
+ * Matches the accurate calculation from Invoice & Bill:
+ * 1. Accurately sums item line totals / quantities * rates.
+ * 2. Removes any unintended express fee addition (e.g. ₹100 / 10000 paise).
+ * 3. Handles both paise and INR units seamlessly.
+ */
+export const calculateOrderTotal = (order, fixedDecimals = false) => {
+  if (!order || typeof order !== 'object') return fixedDecimals ? '0.00' : '0';
+
+  const formatResult = (num) => {
+    const val = Number(num);
+    if (isNaN(val)) return fixedDecimals ? '0.00' : '0';
+    if (fixedDecimals) return val.toFixed(2);
+    return val % 1 === 0 ? val.toFixed(0) : val.toFixed(2);
+  };
+
+  // 1. Check items (array or object map)
+  let itemsList = [];
+  if (Array.isArray(order.items) && order.items.length > 0) {
+    itemsList = order.items;
+  } else if (order.items && typeof order.items === 'object') {
+    itemsList = Object.entries(order.items).map(([k, val]) => {
+      if (typeof val === 'object' && val !== null) {
+        return { ...val, id: val.id || k };
+      }
+      return { id: k, item_name: k, quantity: Number(val) || 1 };
+    });
+  }
+
+  if (itemsList.length > 0) {
+    let itemsSum = 0;
+    let hasValidAmount = false;
+
+    for (const it of itemsList) {
+      if (!it) continue;
+      const qty = Number(it.quantity || it.qty || 1);
+
+      let lineTotal = it.lineTotal ?? it.total_price ?? it.total;
+      if (lineTotal != null && !isNaN(Number(lineTotal))) {
+        let num = Number(lineTotal);
+        if (num >= 1000 || (num >= 500 && num % 100 === 0)) num /= 100;
+        if (num > 0) {
+          itemsSum += num;
+          hasValidAmount = true;
+          continue;
+        }
+      }
+
+      let price = it.unitPrice ?? it.unit_price ?? it.rate ?? it.price;
+      if (price != null && !isNaN(Number(price))) {
+        let num = Number(price);
+        if (num >= 1000 || (num >= 500 && num % 100 === 0)) num /= 100;
+        if (num > 0) {
+          itemsSum += num * qty;
+          hasValidAmount = true;
+        }
+      }
+    }
+
+    if (hasValidAmount && itemsSum > 0) {
+      return formatResult(itemsSum);
+    }
+  }
+
+  // 2. Fallback to subtotal if available (subtotal does not contain unintended express charge additions)
+  const sub = order.subtotal ?? order.subtotal_amount;
+  if (sub != null && !isNaN(Number(sub)) && Number(sub) > 0) {
+    let numSub = Number(sub);
+    if (numSub >= 1000 || (numSub >= 500 && numSub % 100 === 0)) numSub /= 100;
+    return formatResult(numSub);
+  }
+
+  // 3. Fallback to order total / total_amount / amount, removing any expressCharge addition
+  const rawTot = order.total ?? order.total_amount ?? order.amount ?? order.totalPaise;
+  if (rawTot != null && !isNaN(Number(rawTot)) && Number(rawTot) > 0) {
+    let numTot = Number(rawTot);
+    if (numTot >= 1000 || (numTot >= 500 && numTot % 100 === 0)) numTot /= 100;
+
+    // Deduct expressCharge if explicitly present
+    const expCharge = Number(order.expressCharge || 0);
+    if (expCharge > 0) {
+      numTot -= (expCharge >= 1000 ? expCharge / 100 : expCharge);
+    }
+    return formatResult(Math.max(0, numTot));
+  }
+
+  const est = order.estimatedTotal ?? order.estimated_amount;
+  if (est != null && !isNaN(Number(est)) && Number(est) > 0) {
+    return formatResult(est);
+  }
+
+  return fixedDecimals ? '0.00' : '0';
+};
+
+export const getOrderNumericAmount = (order) => {
+  const str = calculateOrderTotal(order);
+  return parseFloat(str) || 0;
+};
+
