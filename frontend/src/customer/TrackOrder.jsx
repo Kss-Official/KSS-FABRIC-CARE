@@ -34,12 +34,14 @@ export const TrackOrder = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const effectiveTrackingId = activeTrackingOrderId || (typeof window !== 'undefined' ? sessionStorage.getItem('fabricare_active_tracking_id') : null);
+
   const fetchOrderDetails = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      if (activeTrackingOrderId) {
-        const res = await ordersApi.getOrderById(activeTrackingOrderId);
+      if (effectiveTrackingId) {
+        const res = await ordersApi.getOrderById(effectiveTrackingId);
         if (res?.data) {
           setOrder(res.data);
           return;
@@ -48,18 +50,37 @@ export const TrackOrder = () => {
       const res = await ordersApi.getOrders();
       const list = Array.isArray(res?.data) ? res.data : (res?.data?.items || res?.data?.results || []);
       if (list.length > 0) {
-        const myId = currentUser?.uid || currentUser?.id;
-        const myEmail = currentUser?.email;
-        const userList = list.filter(o => 
-          (myId && (o.customer_id === myId || o.customerId === myId || o.userId === myId)) ||
-          (myEmail && (o.customer?.email === myEmail || o.customer_email === myEmail))
-        );
-        const candidates = userList.length > 0 ? userList : list;
-        const act = candidates.find(o => {
-          const s = String(o.status || '').toUpperCase();
-          return s !== 'DELIVERED' && s !== 'COMPLETED' && s !== 'CANCELLED';
-        }) || candidates[0];
-        setOrder(act);
+        // If effectiveTrackingId was requested, match in user orders list first
+        if (effectiveTrackingId) {
+          const cleanTarget = String(effectiveTrackingId).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const targetDigits = cleanTarget.replace(/\D/g, '');
+          const matchedOrder = list.find(o => {
+            const cCode = String(o.code || o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const cId = String(o.id || o.docId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            if (cCode === cleanTarget || cId === cleanTarget) return true;
+            if (targetDigits && (cCode.includes(targetDigits) || cId.includes(targetDigits))) return true;
+            return false;
+          });
+          if (matchedOrder) {
+            setOrder(matchedOrder);
+            return;
+          }
+        }
+
+        if (!effectiveTrackingId) {
+          const myId = currentUser?.uid || currentUser?.id;
+          const myEmail = currentUser?.email;
+          const userList = list.filter(o => 
+            (myId && (o.customer_id === myId || o.customerId === myId || o.userId === myId)) ||
+            (myEmail && (o.customer?.email === myEmail || o.customer_email === myEmail))
+          );
+          const candidates = userList.length > 0 ? userList : list;
+          const act = candidates.find(o => {
+            const s = String(o.status || '').toUpperCase();
+            return s !== 'DELIVERED' && s !== 'COMPLETED' && s !== 'CANCELLED';
+          }) || candidates[0];
+          setOrder(act);
+        }
       }
     } catch (e) {
       console.warn('Fetch order details error:', e);
@@ -67,7 +88,7 @@ export const TrackOrder = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeTrackingOrderId, currentUser]);
+  }, [effectiveTrackingId, currentUser]);
 
   useEffect(() => {
     let isSubscribed = true;
@@ -76,9 +97,9 @@ export const TrackOrder = () => {
 
     let unsubscribe = () => {};
 
-    if (activeTrackingOrderId) {
+    if (effectiveTrackingId) {
       unsubscribe = subscribeOrderById(
-        activeTrackingOrderId,
+        effectiveTrackingId,
         (fireOrder) => {
           if (!isSubscribed) return;
           if (fireOrder) {
@@ -86,9 +107,33 @@ export const TrackOrder = () => {
             setLoading(false);
           } else {
             // Try API fallback
-            ordersApi.getOrderById(activeTrackingOrderId)
+            ordersApi.getOrderById(effectiveTrackingId)
               .then(res => {
-                if (isSubscribed && res?.data) setOrder(res.data);
+                if (isSubscribed && res?.data) {
+                  setOrder(res.data);
+                  setLoading(false);
+                } else {
+                  // Fallback: search in orders list for requested order
+                  ordersApi.getOrders().then(oRes => {
+                    if (!isSubscribed) return;
+                    const oList = Array.isArray(oRes?.data) ? oRes.data : [];
+                    const cleanTarget = String(effectiveTrackingId).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                    const targetDigits = cleanTarget.replace(/\D/g, '');
+                    const matchedOrder = oList.find(o => {
+                      const cCode = String(o.code || o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                      const cId = String(o.id || o.docId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                      if (cCode === cleanTarget || cId === cleanTarget) return true;
+                      if (targetDigits.length >= 4 && (cCode.includes(targetDigits) || cId.includes(targetDigits))) return true;
+                      return false;
+                    });
+                    if (matchedOrder) {
+                      setOrder(matchedOrder);
+                    }
+                    setLoading(false);
+                  }).catch(() => {
+                    if (isSubscribed) setLoading(false);
+                  });
+                }
               })
               .catch(() => {})
               .finally(() => {
@@ -149,7 +194,7 @@ export const TrackOrder = () => {
       isSubscribed = false;
       unsubscribe();
     };
-  }, [activeTrackingOrderId, currentUser]);
+  }, [effectiveTrackingId, currentUser]);
 
   if (loading) {
     return (
@@ -300,7 +345,7 @@ export const TrackOrder = () => {
     '02:00 PM – 05:00 PM'
   );
 
-  const rawOrderNum = order.order_number || order.orderNumber || order.id || 'FC-75668';
+  const rawOrderNum = order.code || order.order_number || order.orderNumber || order.id || 'FC-75668';
   const orderNumberDisplay = formatOrderId(rawOrderNum) || `#${String(rawOrderNum).replace(/^#/, '')}`;
   const orderPlacedTime = `${formattedPickupDate} · 08:45 AM`;
   const pickedUpTime = `${formattedPickupDate} · 10:15 AM`;
