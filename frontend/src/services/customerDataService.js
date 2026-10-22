@@ -35,12 +35,24 @@ export const createCustomerOrder = async (bookingData, user) => {
   const expressCharge = bookingData.isExpress ? 10000 : 0;
   const total = subtotal + expressCharge;
 
+  const staffNames = ['ravi sharma', 'administrator', 'anil verma', 'anita sharma', 'delivery agent'];
+  let cleanCustName = (bookingData.customerName || '').trim();
+  if (!cleanCustName || (staffNames.includes(cleanCustName.toLowerCase()) && user?.role === 'customer')) {
+    cleanCustName = user.name || user.displayName || user.fullName || 'Customer';
+  }
+
+  let cleanCustPhone = (bookingData.customerPhone || '').trim();
+  const staffPhones = ['+919811122233', '+91 98111 22233', '+919822233344', '+919800000000'];
+  if (staffPhones.includes(cleanCustPhone) && user?.role === 'customer') {
+    cleanCustPhone = user.phone || user.phoneNumber || '';
+  }
+
   const orderData = {
     id: orderId,
     code,
     customerId: user.uid,
-    customerName: bookingData.customerName || user.name || user.displayName || 'Valued Customer',
-    customerPhone: bookingData.customerPhone || user.phone || '',
+    customerName: cleanCustName || user.name || user.displayName || 'Customer',
+    customerPhone: cleanCustPhone || user.phone || '',
     address: bookingData.address || {
       flatHouse: '',
       areaColony: '',

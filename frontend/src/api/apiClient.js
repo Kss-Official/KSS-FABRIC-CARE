@@ -583,7 +583,7 @@ export const deliveryApi = {
       } catch (_) {}
     }
 
-    // Also collect all delivery tasks from RTDB tasks node
+    // Collect all tasks from RTDB tasks node (both pickup and delivery, assigned and unassigned)
     try {
       const allTasksSnap = await get(ref(rtdb, 'tasks'));
       if (allTasksSnap.exists()) {
@@ -591,9 +591,22 @@ export const deliveryApi = {
         Object.keys(allTasks).forEach(tid => {
           const t = allTasks[tid];
           if (t) {
-            if (t.agentId === uid || (!t.agentId && t.type === 'delivery') || t.type === 'delivery') {
-              taskIdsSet.add(tid);
-            }
+            taskIdsSet.add(tid);
+          }
+        });
+      }
+    } catch (_) {}
+
+    // Also collect all orders from RTDB orders node to ensure zero real requests are missed
+    try {
+      const allOrdersSnap = await get(ref(rtdb, 'orders'));
+      if (allOrdersSnap.exists()) {
+        const allOrders = allOrdersSnap.val() || {};
+        Object.keys(allOrders).forEach(oid => {
+          const o = allOrders[oid];
+          if (o && (o.code || o.order_number || o.id)) {
+            const code = String(o.code || o.order_number || o.id || oid).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            taskIdsSet.add(`order_${code}`);
           }
         });
       }
@@ -601,34 +614,101 @@ export const deliveryApi = {
 
     const taskIds = Array.from(taskIdsSet);
     const promises = taskIds.map(async id => {
-      const tSnap = await get(ref(rtdb, `tasks/${id}`));
-      if (!tSnap.exists()) return null;
-      const t = tSnap.val();
+      let t = null;
       let orderData = null;
-      if (t.orderId) {
-        try {
-          const oSnap = await get(ref(rtdb, `orders/${t.orderId}`));
-          if (oSnap.exists()) {
-            orderData = oSnap.val();
+
+      if (!id.startsWith('order_')) {
+        const tSnap = await get(ref(rtdb, `tasks/${id}`));
+        if (tSnap.exists()) {
+          t = tSnap.val();
+          if (t.orderId) {
+            try {
+              const oSnap = await get(ref(rtdb, `orders/${t.orderId}`));
+              if (oSnap.exists()) {
+                orderData = oSnap.val();
+              }
+            } catch (_) {}
           }
-        } catch (_) {}
+          if (!orderData && (t.orderCode || t.order_code)) {
+            try {
+              const code = t.orderCode || t.order_code;
+              const allOrdersSnap = await get(ref(rtdb, 'orders'));
+              if (allOrdersSnap.exists()) {
+                const all = allOrdersSnap.val() || {};
+                for (const [k, v] of Object.entries(all)) {
+                  if (v && (v.code === code || v.order_number === code || v.id === code || k === code)) {
+                    orderData = v;
+                    break;
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+          if (orderData) {
+            const rawOrdStatus = String(orderData.status || orderData.raw_status || '').toUpperCase();
+            if (['DELIVERED', 'COMPLETED'].includes(rawOrdStatus)) {
+              t.status = 'completed';
+            } else if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'IN CLEANING', 'IN_CLEANING'].includes(rawOrdStatus) && (t.type || '').toLowerCase() === 'pickup') {
+              t.status = 'completed';
+            }
+
+            const ordCustName = orderData.customerName || orderData.customer?.name;
+            if (ordCustName && ordCustName !== 'Customer') {
+              t.customerName = ordCustName;
+              t.customer = {
+                name: ordCustName,
+                phone: orderData.customerPhone || orderData.customer?.phone || t.customer?.phone || ''
+              };
+            }
+            if (orderData.address) {
+              t.address = orderData.address;
+            }
+          }
+        }
       }
-      if (!orderData && (t.orderCode || t.order_code)) {
+
+      // If id is order_... or task wasn't in tasks node, build task directly from orders node
+      if (!t) {
+        const cleanTarget = String(id).replace(/^order_/, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
         try {
-          const code = t.orderCode || t.order_code;
           const allOrdersSnap = await get(ref(rtdb, 'orders'));
           if (allOrdersSnap.exists()) {
             const all = allOrdersSnap.val() || {};
             for (const [k, v] of Object.entries(all)) {
-              if (v && (v.code === code || v.order_number === code || v.id === code || k === code)) {
+              if (!v) continue;
+              const cK = String(k || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              const cCode = String(v.code || v.order_number || v.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              if (cK === cleanTarget || cCode === cleanTarget) {
                 orderData = v;
+                const isDel = ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'DELIVERED', 'COMPLETED'].includes(String(v.status || '').toUpperCase());
+                const formattedAddr = (typeof v.address === 'object' && v.address !== null)
+                  ? [v.address.flatHouse, v.address.areaColony, v.address.city, v.address.pincode].filter(Boolean).join(', ')
+                  : (typeof v.address === 'string' ? v.address : '');
+
+                t = {
+                  id: v.pickupTaskId || v.id || k,
+                  orderId: k,
+                  orderCode: v.code || v.order_number || k,
+                  type: isDel ? 'delivery' : 'pickup',
+                  status: v.status === 'PLACED' ? 'unassigned' : (v.status || 'unassigned'),
+                  customer: {
+                    name: v.customerName || v.customer?.name || 'Customer',
+                    phone: v.customerPhone || v.customer?.phone || ''
+                  },
+                  customerName: v.customerName || v.customer?.name || 'Customer',
+                  customerPhone: v.customerPhone || v.customer?.phone || '',
+                  address: formattedAddr || v.pickup_address || v.delivery_address || 'Bengaluru',
+                  scheduledAt: v.pickup?.date ? new Date(v.pickup.date).getTime() : (v.createdAt || Date.now())
+                };
                 break;
               }
             }
           }
         } catch (_) {}
       }
-      return { ...t, id, orderData };
+
+      if (!t) return null;
+      return { ...t, id: t.id || id, orderData };
     });
     const list = (await Promise.all(promises)).filter(Boolean);
     return { data: list };

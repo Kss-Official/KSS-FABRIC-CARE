@@ -44,6 +44,7 @@ const WasherIcon = ({ size = 23, color = "#D97706" }) => (
 export const AdminDashboardPage = () => {
   const { 
     orders, 
+    allUsers,
     updateOrderStatus,
     setAdminTab, 
     setIsCreateOrderDrawerOpen, 
@@ -281,9 +282,16 @@ export const AdminDashboardPage = () => {
                idStr !== '#LDX10281';
       })
       .map(o => {
-        const idDisplay = formatOrderId(o.order_number || o.order_id || o.id);
-        const rawCust = o.pickup_full_name || o.customer_name || (typeof o.customer === 'string' ? o.customer : o.customer?.name) || 'Customer';
-        const custName = typeof rawCust === 'string' ? rawCust : 'Customer';
+        const idDisplay = formatOrderId(o.code || o.order_number || o.order_id || o.id);
+        const rawCust = o.customerName || o.customer_name || o.pickup_full_name || (typeof o.customer === 'string' ? o.customer : o.customer?.name) || '';
+        let custName = typeof rawCust === 'string' ? rawCust : '';
+        const userMatch = o.customerId ? (allUsers || []).find(u => u.uid === o.customerId || u.id === o.customerId) : null;
+        if (userMatch && userMatch.name) {
+          if (!custName || custName.toLowerCase() === 'ravi sharma' || custName.toLowerCase() === 'administrator' || custName.toLowerCase() === 'customer' || custName.toLowerCase() === 'valued customer') {
+            custName = userMatch.name;
+          }
+        }
+        if (!custName) custName = 'Customer';
         const custAvatar = (o.customer && typeof o.customer === 'object' && typeof o.customer.avatar === 'string' && o.customer.avatar)
           ? o.customer.avatar
           : (custName.trim() ? custName.trim().split(/\s+/).map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'CU');
@@ -395,15 +403,38 @@ export const AdminDashboardPage = () => {
       };
     });
 
-    return [...dynamicNewOrders, ...liveReferenceOrders].slice(0, 6);
+    return dynamicNewOrders.length > 0 ? dynamicNewOrders.slice(0, 8) : liveReferenceOrders.slice(0, 6);
   }, [orders]);
 
-  const pickupDeliveries = [
+  const dynamicPickupDeliveries = useMemo(() => {
+    if (!orders || orders.length === 0) return [];
+    return orders.slice(0, 8).map(o => {
+      const orderId = formatOrderId(o.code || o.order_number || o.order_id || o.id);
+      const name = o.customerName || o.customer_name || (o.customer && typeof o.customer === 'object' ? o.customer.name : null) || o.pickup_full_name || 'Customer';
+      const area = o.pickup_address || (typeof o.address === 'object' ? `${o.address?.flatHouse || ''}, ${o.address?.areaColony || ''}` : o.address) || o.customer?.address || 'Bengaluru';
+      const isDelivery = o.status === 'Ready for Delivery' || o.status === 'In Transit' || (o.type && String(o.type).toLowerCase() === 'delivery');
+      const timeSlot = o.pickup?.from ? `${o.pickup.from} – ${o.pickup.to || ''}` : (o.pickupTime || '09:00 AM – 11:00 AM');
+      const parts = timeSlot.split('–').map(s => s.trim());
+      return {
+        timeStart: parts[0] || '09:00 AM',
+        timeEnd: parts[1] || '11:00 AM',
+        id: orderId,
+        name,
+        area,
+        type: isDelivery ? 'Delivery' : 'Pickup',
+        status: o.status || 'Pending'
+      };
+    });
+  }, [orders]);
+
+  const fallbackPickupDeliveries = [
     { timeStart: '09:00', timeEnd: '11:00 AM', id: 'FC-10284', name: 'Rohan Mehta', area: 'Banaswadi, Bengaluru', type: 'Pickup', status: 'Assigned' },
     { timeStart: '11:00', timeEnd: '01:00 PM', id: 'FC-10286', name: 'Arjun Nair', area: 'Indiranagar, Bengaluru', type: 'Delivery', status: 'Assigned' },
     { timeStart: '02:00', timeEnd: '04:00 PM', id: 'FC-10287', name: 'Sneha Reddy', area: 'Whitefield, Bengaluru', type: 'Pickup', status: 'Pending' },
     { timeStart: '03:00', timeEnd: '05:00 PM', id: 'FC-10288', name: 'Karan Verma', area: 'Marathahalli, Bengaluru', type: 'Delivery', status: 'Assigned' }
   ];
+
+  const pickupDeliveries = dynamicPickupDeliveries.length > 0 ? dynamicPickupDeliveries : fallbackPickupDeliveries;
 
   const filteredPickups = pickupDeliveries.filter(p => {
     if (pickupTab === 'pickups') return p.type === 'Pickup';

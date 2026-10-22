@@ -81,7 +81,7 @@ export const AssignOrderModal = () => {
     d.phone.includes(driverSearch.trim())
   );
 
-  const handleAssign = () => {
+  const handleAssign = async () => {
     if (!selectedDriverId) {
       setValidationError('Please select a driver to assign.');
       return;
@@ -91,7 +91,11 @@ export const AssignOrderModal = () => {
       const orderIdentifier = assigningOrder?.rawId || assigningOrder?.id || currentOrder.id;
       const taskType = (assigningOrder?.type === 'Delivery' || currentOrder.type === 'Delivery') ? 'delivery' : 'pickup';
 
-      assignDriverToOrder(orderIdentifier, driver, taskType);
+      try {
+        await assignDriverToOrder(orderIdentifier, driver, taskType);
+      } catch (err) {
+        console.warn('assignDriverToOrder note:', err);
+      }
 
       try {
         const stored = JSON.parse(localStorage.getItem('fabricare_pickup_delivery_assignments') || '{}');

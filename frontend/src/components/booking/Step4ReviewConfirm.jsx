@@ -11,7 +11,8 @@ import {
   ChevronLeft, 
   ArrowRight, 
   Loader2, 
-  AlertCircle 
+  AlertCircle,
+  User 
 } from 'lucide-react';
 
 export const Step4ReviewConfirm = () => {
@@ -208,6 +209,12 @@ export const Step4ReviewConfirm = () => {
               </div>
 
               <div className="inner-card-body">
+                <div className="detail-item-row mb-2">
+                  <User size={16} className="detail-icon" />
+                  <span className="detail-text bold" style={{ color: '#0F172A', fontSize: '0.95rem' }}>
+                    {pickupDetails.name || 'Customer'}
+                  </span>
+                </div>
                 <div className="detail-item-row">
                   <Phone size={16} className="detail-icon" />
                   <span className="detail-text bold">{pickupDetails.mobile || '+91 98765 43210'}</span>

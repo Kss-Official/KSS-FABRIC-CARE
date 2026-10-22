@@ -437,6 +437,7 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
 export const AdminPickupDeliveryPage = () => {
   const { 
     orders: contextOrders, 
+    allUsers,
     tasks: contextTasks,
     setIsAssignOrderModalOpen, 
     setAssigningOrder 
@@ -571,11 +572,41 @@ export const AdminPickupDeliveryPage = () => {
       const orderId = String(o?.order_id || '');
       return !baseIdSet.has(o?.id) && !baseIdSet.has(idStr) && !baseIdSet.has(orderNum) && !baseIdSet.has(orderId);
     }).map(o => {
-      const orderIdDisplay = formatOrderId(o.order_number || o.order_id || o.id);
-      const custName = o.customer_name || o.customer?.name || 'Customer';
-      const custPhone = o.customer_phone || o.customer?.phone || '+91 98765 00000';
-      const custAddress = o.pickup_address || o.customer?.address || 'Bengaluru';
-      const custInitials = String(custName || 'CU').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'CU';
+      const orderIdDisplay = formatOrderId(o.code || o.order_number || o.order_id || o.id);
+      
+      let custName = (o.customerName && o.customerName !== 'Customer') 
+        ? o.customerName 
+        : (o.customer_name && o.customer_name !== 'Customer') 
+        ? o.customer_name 
+        : (o.customer?.name && o.customer?.name !== 'Customer') 
+        ? o.customer.name 
+        : (o.pickup_full_name && o.pickup_full_name !== 'Customer') 
+        ? o.pickup_full_name 
+        : (o.customerName || o.customer_name || o.customer?.name || '');
+
+      let custPhone = (o.customerPhone && o.customerPhone !== '-') 
+        ? o.customerPhone 
+        : (o.customer_phone && o.customer_phone !== '-') 
+        ? o.customer_phone 
+        : (o.customer?.phone && o.customer?.phone !== '-') 
+        ? o.customer.phone 
+        : (o.pickup_phone && o.pickup_phone !== '-') 
+        ? o.pickup_phone 
+        : '';
+
+      const userMatch = o.customerId ? (allUsers || []).find(u => u.uid === o.customerId || u.id === o.customerId) : null;
+      if (userMatch && userMatch.name) {
+        if (!custName || custName.toLowerCase() === 'ravi sharma' || custName.toLowerCase() === 'administrator' || custName.toLowerCase() === 'customer' || custName.toLowerCase() === 'valued customer') {
+          custName = userMatch.name;
+          if (userMatch.phone) custPhone = userMatch.phone;
+        }
+      }
+
+      if (!custName) custName = 'Customer';
+      if (!custPhone) custPhone = '+91 98765 00000';
+
+      const custAddress = o.pickup_address || (typeof o.address === 'object' ? `${o.address?.flatHouse || ''}, ${o.address?.areaColony || ''}, ${o.address?.city || ''}` : o.address) || o.customer?.address || 'Bengaluru';
+      const custInitials = String(custName || 'CU').trim().split(/\s+/).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'CU';
 
       const isDelivery = o.status === 'Ready for Delivery' || o.status === 'In Transit' || o.deliveryTaskId || (o.type && String(o.type).toLowerCase() === 'delivery');
       const type = isDelivery ? 'Delivery' : 'Pickup';
@@ -611,6 +642,7 @@ export const AdminPickupDeliveryPage = () => {
 
       const timeSlot = o.pickup?.from ? `${o.pickup.from} – ${o.pickup.to || ''}` : (o.pickupTime || '09:00 AM – 11:00 AM');
       const timeParts = timeSlot.split('–').map(s => s.trim());
+      const timestamp = o.updatedAt || o.placedAt || o.createdAt || 0;
 
       return {
         id: orderIdDisplay,
@@ -618,6 +650,7 @@ export const AdminPickupDeliveryPage = () => {
         date: o.pickup?.date || o.date || 'Today',
         timeStart: timeParts[0] || '09:00 AM',
         timeEnd: timeParts[1] || '11:00 AM',
+        timestamp,
         customer: {
           name: custName,
           phone: custPhone,
@@ -637,7 +670,10 @@ export const AdminPickupDeliveryPage = () => {
       };
     });
 
-    return [...dynamicPickupOrders, ...updatedBaseline];
+    // Sort dynamic real orders latest first
+    dynamicPickupOrders.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    return (dynamicPickupOrders.length > 0) ? dynamicPickupOrders : updatedBaseline;
   }, [contextOrders, updateTick]);
 
   // Tab counts
@@ -706,6 +742,7 @@ export const AdminPickupDeliveryPage = () => {
   const openAssignModalForOrder = (ord) => {
     setAssigningOrder({
       id: ord.id,
+      rawId: ord.rawId || ord.id,
       date: ord.date,
       timeStart: ord.timeStart,
       timeEnd: ord.timeEnd,

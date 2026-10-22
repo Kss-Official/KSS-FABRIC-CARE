@@ -317,6 +317,7 @@ export const BASELINE_ADMIN_ORDERS = [
 export const AdminOrdersPage = () => {
   const { 
     orders, 
+    allUsers,
     refreshOrders,
     setIsCreateOrderDrawerOpen, 
     setIsAssignOrderModalOpen, 
@@ -339,6 +340,37 @@ export const AdminOrdersPage = () => {
 
   // Synchronize orders with dynamic updates while guaranteeing exact reference image data
   const combinedOrders = useMemo(() => {
+    const userMap = new Map();
+    (allUsers || []).forEach(u => {
+      if (!u) return;
+      if (u.uid) userMap.set(u.uid, u);
+      if (u.id) userMap.set(u.id, u);
+    });
+
+    const sanitizeOrder = (ord) => {
+      let custName = ord.customer?.name || ord.customer_name || '';
+      let custPhone = ord.customer?.phone || ord.customer_phone || '';
+
+      const userMatch = ord.customerId ? userMap.get(ord.customerId) : null;
+      if (userMatch && userMatch.name) {
+        if (!custName || custName.toLowerCase() === 'ravi sharma' || custName.toLowerCase() === 'administrator' || custName.toLowerCase() === 'customer' || custName.toLowerCase() === 'valued customer') {
+          custName = userMatch.name;
+          if (userMatch.phone) custPhone = userMatch.phone;
+        }
+      }
+      return {
+        ...ord,
+        customer_name: custName,
+        customer_phone: custPhone,
+        customer: {
+          ...(ord.customer || {}),
+          name: custName,
+          phone: custPhone,
+          avatar: (custName || 'CU').substring(0, 2).toUpperCase()
+        }
+      };
+    };
+
     const contextMap = new Map();
     (orders || []).forEach(o => {
       if (!o) return;
@@ -350,7 +382,7 @@ export const AdminOrdersPage = () => {
     const mergedBaseline = BASELINE_ADMIN_ORDERS.map((baseOrd, idx) => {
       const live = contextMap.get(baseOrd.id);
       if (live) {
-        return {
+        return sanitizeOrder({
           ...baseOrd,
           ...live,
           orderIndex: idx,
@@ -359,9 +391,9 @@ export const AdminOrdersPage = () => {
           status: live.status || baseOrd.status,
           payment: live.payment || baseOrd.payment,
           amount: live.amount || baseOrd.amount
-        };
+        });
       }
-      return { ...baseOrd, orderIndex: idx };
+      return sanitizeOrder({ ...baseOrd, orderIndex: idx });
     });
 
     // Any new orders created by admin dynamically that are not in baseline
@@ -372,10 +404,10 @@ export const AdminOrdersPage = () => {
       // Filter out generic mock seed order 'FC-10452' / 'ord_sample_01'
       if (o.id === 'FC-10452' || o.id === 'ord_sample_01' || o.rawId === 'ord_sample_01') return false;
       return true;
-    });
+    }).map(sanitizeOrder);
 
-    return [...extraOrders, ...mergedBaseline];
-  }, [orders]);
+    return (extraOrders.length > 0) ? extraOrders : mergedBaseline;
+  }, [orders, allUsers]);
 
   // Exact order metrics matching the dataset
   const counts = {
