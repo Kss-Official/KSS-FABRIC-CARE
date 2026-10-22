@@ -41,6 +41,19 @@ export const Profile = () => {
   const [savingProfile, setSavingProfile] = useState(false);
   const editProfileModalRef = useRef(null);
 
+  const fetchAddresses = async () => {
+    setLoadingAddresses(true);
+    try {
+      const data = await addressApi.getAddresses();
+      setAddresses(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('Failed to load addresses:', err);
+      setAddresses([]);
+    } finally {
+      setLoadingAddresses(false);
+    }
+  };
+
   useEffect(() => {
     fetchAddresses();
     if (typeof refreshProfile === 'function') {
