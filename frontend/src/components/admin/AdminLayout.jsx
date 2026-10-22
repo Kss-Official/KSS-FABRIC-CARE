@@ -49,7 +49,9 @@ export const AdminLayout = ({ children }) => {
     isManageServicesModalOpen,
     isAssignOrderModalOpen,
     isRescheduleDrawerOpen,
-    isSupportDrawerOpen
+    isSupportDrawerOpen,
+    newOrdersCount,
+    markOrdersSeen
   } = useAdmin();
   const { navigateTo } = useBooking();
   const { userProfile, currentUser, logout } = useAuth();
@@ -375,11 +377,21 @@ export const AdminLayout = ({ children }) => {
             className={`admin-nav-item sidebar-nav-item ${adminTab === 'orders' ? 'active' : ''}`}
             onClick={() => {
               setAdminTab('orders');
+              if (typeof markOrdersSeen === 'function') {
+                markOrdersSeen();
+              }
               setMobileSidebarOpen(false);
             }}
           >
             <span className="nav-icon nav-item-icon"><Package size={18} /></span>
             <span className="nav-label nav-item-label">Orders</span>
+            {newOrdersCount > 0 && (
+              <span 
+                className="sidebar-order-dot" 
+                title={`${newOrdersCount} new order${newOrdersCount > 1 ? 's' : ''}`}
+                aria-label={`${newOrdersCount} new orders`}
+              />
+            )}
           </button>
 
           {/* Users */}
@@ -595,7 +607,13 @@ export const AdminLayout = ({ children }) => {
                   <button 
                     type="button"
                     className="dropdown-item"
-                    onClick={() => { setAdminTab('orders'); setProfileDropdownOpen(false); }}
+                    onClick={() => {
+                      setAdminTab('orders');
+                      if (typeof markOrdersSeen === 'function') {
+                        markOrdersSeen();
+                      }
+                      setProfileDropdownOpen(false);
+                    }}
                   >
                     <Package size={15} style={{ marginRight: 8 }} />
                     Orders
@@ -853,6 +871,34 @@ export const AdminLayout = ({ children }) => {
           line-height: 1.2;
           flex-shrink: 0;
           margin-left: auto;
+        }
+
+        .sidebar-order-dot {
+          width: 11px;
+          height: 11px;
+          min-width: 11px;
+          min-height: 11px;
+          border-radius: 50%;
+          background-color: #FF5700;
+          margin-left: auto;
+          flex-shrink: 0;
+          display: inline-block;
+          animation: orderDotPop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          box-sizing: border-box;
+        }
+
+        @keyframes orderDotPop {
+          0% {
+            transform: scale(0);
+            opacity: 0;
+          }
+          70% {
+            transform: scale(1.2);
+          }
+          100% {
+            transform: scale(1);
+            opacity: 1;
+          }
         }
 
         /* Submenu Accordion & Subitems */
