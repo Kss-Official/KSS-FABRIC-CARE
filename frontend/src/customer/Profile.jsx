@@ -137,10 +137,10 @@ export const Profile = () => {
   const email = profileUser?.email || userProfile?.email || '';
   const phone = profileUser?.phone || profileUser?.phoneNumber || userProfile?.phone || '';
   const username = profileUser?.username || (email ? email.split('@')[0] : (fullName ? fullName.toLowerCase().replace(/\s+/g, '') : 'customer'));
-  const avatarInitial = profileUser?.avatar || profileUser?.avatarUrl || 
+  const avatarInitial = 
     (fullName ? fullName[0].toUpperCase() : 
       (firstName ? firstName[0].toUpperCase() : 
-        (username ? username.substring(0, 2).toUpperCase() : 'C')));
+        (username ? username[0].toUpperCase() : 'C')));
 
   const handleOpenEditProfileModal = () => {
     setProfileForm({
