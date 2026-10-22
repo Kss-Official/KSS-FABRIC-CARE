@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
-import { ordersApi, notificationsApi } from '../api/apiClient';
+import { ordersApi, notificationsApi, normalizeOrder } from '../api/apiClient';
 import { subscribeCustomerOrders } from '../services/customerDataService';
 import { 
   Package, 
@@ -22,7 +22,7 @@ import {
   X
 } from 'lucide-react';
 import { OrderStatusDropdown } from '../components/common/OrderStatusDropdown';
-import { formatOrderId } from '../utils/helpers';
+import { formatOrderId, calculateOrderTotal } from '../utils/helpers';
 
 export const CustomerDashboard = () => {
   const { currentUser } = useAuth();
@@ -30,6 +30,108 @@ export const CustomerDashboard = () => {
 
   const myUid = currentUser?.uid || currentUser?.id;
   const myEmail = (currentUser?.email || '').toLowerCase().trim();
+
+  const normalizeCustomerDashboardOrder = useCallback((raw) => {
+    if (!raw) return null;
+    const base = typeof normalizeOrder === 'function' ? normalizeOrder(raw) : { ...raw };
+
+    // Format pickup date
+    let pickupDate = base.pickup_date || '';
+    if (!pickupDate && raw.pickup && typeof raw.pickup === 'object' && raw.pickup.date) {
+      pickupDate = raw.pickup.date;
+    }
+    if (!pickupDate && (raw.placedAt || raw.createdAt)) {
+      try {
+        const dt = new Date(raw.placedAt || raw.createdAt);
+        if (!isNaN(dt.getTime())) pickupDate = dt.toISOString().split('T')[0];
+      } catch (_) {}
+    }
+
+    // Format pickup time slot
+    let pickupSlot = base.pickup_time_slot || '';
+    if (!pickupSlot && raw.pickup && typeof raw.pickup === 'object') {
+      if (raw.pickup.time_slot || raw.pickup.timeSlot) {
+        pickupSlot = raw.pickup.time_slot || raw.pickup.timeSlot;
+      } else if (raw.pickup.from && raw.pickup.to) {
+        pickupSlot = `${raw.pickup.from} - ${raw.pickup.to}`;
+      }
+    }
+    if (!pickupSlot) pickupSlot = '09:00 AM - 11:00 AM';
+
+    // Compute total amount accurately
+    let totalAmt = calculateOrderTotal(raw, false);
+    if (!totalAmt || totalAmt === '0' || totalAmt === '0.00') {
+      if (base.total_amount && base.total_amount !== '0' && base.total_amount !== '0.00') {
+        totalAmt = base.total_amount;
+      } else if (raw.total && Number(raw.total) > 0) {
+        let t = Number(raw.total);
+        if (t >= 1000 || (t >= 500 && t % 100 === 0)) t = t / 100;
+        totalAmt = t % 1 === 0 ? t.toFixed(0) : t.toFixed(2);
+      } else if (raw.subtotal && Number(raw.subtotal) > 0) {
+        let s = Number(raw.subtotal);
+        if (s >= 1000 || (s >= 500 && s % 100 === 0)) s = s / 100;
+        totalAmt = s % 1 === 0 ? s.toFixed(0) : s.toFixed(2);
+      } else if (raw.estimatedTotal || raw.estimated_amount) {
+        totalAmt = String(raw.estimatedTotal || raw.estimated_amount);
+      } else {
+        totalAmt = '0.00';
+      }
+    }
+
+    // Separate and accurately determine payment status
+    const rawPayment = String(raw.paymentStatus || raw.payment_status || raw.payment || base.payment_status || '').toUpperCase();
+    const rawStatus = String(raw.status || base.status || '').toUpperCase();
+    const isPaid = rawPayment.includes('PAID') || 
+                   rawPayment.includes('COMPLETED') || 
+                   rawPayment.includes('SUCCESS') || 
+                   Boolean(raw.is_paid) || 
+                   Boolean(base.is_paid) ||
+                   ['PLACED', 'PICKED_UP', 'IN_CLEANING', 'DELIVERED', 'COMPLETED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'QUALITY_CHECK', 'PACKED', 'PENDING PICKUP', 'IN CLEANING', 'READY FOR DELIVERY', 'IN TRANSIT'].includes(rawStatus);
+
+    const isRefunded = rawPayment.includes('REFUND') || rawStatus === 'REFUNDED';
+    const isCancelled = (rawStatus === 'CANCELLED' || rawPayment.includes('CANCEL')) && !isPaid;
+
+    let paymentStatusDisplay = 'PAID';
+    if (isRefunded) {
+      paymentStatusDisplay = 'REFUNDED';
+    } else if (isCancelled) {
+      paymentStatusDisplay = 'CANCELLED';
+    } else if (!isPaid && (rawStatus === 'PAYMENT_PENDING' || rawPayment.includes('PENDING') || rawPayment.includes('UNPAID'))) {
+      paymentStatusDisplay = 'PENDING';
+    }
+
+    return {
+      ...base,
+      id: raw.code || raw.order_number || base.order_number || base.id || raw.id,
+      code: raw.code || raw.order_number || base.order_number || base.id || raw.id,
+      order_number: raw.code || raw.order_number || base.order_number || base.id || raw.id,
+      pickup_date: pickupDate,
+      pickup_time_slot: pickupSlot,
+      total_amount: totalAmt,
+      isPaid: paymentStatusDisplay === 'PAID',
+      payment_status: paymentStatusDisplay
+    };
+  }, []);
+
+  const normalizeAndDedupeOrders = useCallback((list) => {
+    if (!Array.isArray(list)) return [];
+    const seen = new Set();
+    const result = [];
+    list.forEach(item => {
+      const norm = normalizeCustomerDashboardOrder(item);
+      if (!norm) return;
+      const key = String(norm.order_number || norm.code || norm.id || '').trim().toLowerCase();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      result.push(norm);
+    });
+    result.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.created_at || a.placedAt || 0).getTime() || 0;
+      const timeB = new Date(b.createdAt || b.created_at || b.placedAt || 0).getTime() || 0;
+      return timeB - timeA;
+    });
+    return result;
+  }, [normalizeCustomerDashboardOrder]);
 
   const [orders, setOrders] = useState(() => {
     try {
@@ -80,10 +182,11 @@ export const CustomerDashboard = () => {
         if (email && oEmail && oEmail === email) return true;
         return false;
       });
-      setOrders(myOrders);
+      const normalized = normalizeAndDedupeOrders(myOrders);
+      setOrders(normalized);
       if (uid) {
         try {
-          sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(myOrders));
+          sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(normalized));
         } catch (_) {}
       }
     } catch (err) {
@@ -91,7 +194,7 @@ export const CustomerDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.uid, currentUser?.email]);
+  }, [currentUser?.uid, currentUser?.email, normalizeAndDedupeOrders]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -147,10 +250,11 @@ export const CustomerDashboard = () => {
       (liveOrders) => {
         if (!isSubscribed) return;
         if (Array.isArray(liveOrders)) {
-          setOrders(liveOrders);
+          const normalized = normalizeAndDedupeOrders(liveOrders);
+          setOrders(normalized);
           if (uid) {
             try {
-              sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(liveOrders));
+              sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(normalized));
             } catch (_) {}
           }
         } else {
@@ -171,7 +275,7 @@ export const CustomerDashboard = () => {
       isSubscribed = false;
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [currentUser?.uid, currentUser?.email, fetchOrders]);
+  }, [currentUser?.uid, currentUser?.email, fetchOrders, normalizeAndDedupeOrders]);
 
   const filteredOrders = orders.filter(order => {
     const term = (searchQuery || '').trim().toLowerCase();
@@ -380,10 +484,10 @@ export const CustomerDashboard = () => {
               </thead>
               <tbody>
                 {filteredOrders.map(order => (
-                  <tr key={order.id}>
+                  <tr key={order.order_number || order.code || order.id}>
                     <td>
                       <span className="font-mono font-bold text-primary">{formatOrderId(order.order_number || order.code || order.id)}</span>
-                      <span className="text-xs text-muted block">{order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}</span>
+                      <span className="text-xs text-muted block">{order.created_at || order.createdAt ? new Date(order.created_at || order.createdAt).toLocaleDateString() : ''}</span>
                     </td>
                     <td>
                       <div className="text-sm font-medium text-navy">{order.pickup_date}</div>
@@ -396,8 +500,16 @@ export const CustomerDashboard = () => {
                     </td>
                     <td>
                       <span className="font-bold text-navy">₹{order.total_amount || order.estimated_amount || '0.00'}</span>
-                      <span className={`text-xs block ${order.payment_status === 'PAID' ? 'text-emerald-600 font-semibold' : 'text-amber-600'}`}>
-                        {order.payment_status || 'PENDING'}
+                      <span className={`text-xs block ${
+                        order.isPaid || order.payment_status === 'PAID'
+                          ? 'text-emerald-600 font-semibold'
+                          : order.payment_status === 'REFUNDED'
+                          ? 'text-purple-600 font-semibold'
+                          : order.payment_status === 'CANCELLED'
+                          ? 'text-rose-600 font-medium'
+                          : 'text-amber-600 font-medium'
+                      }`}>
+                        {order.payment_status || (order.isPaid ? 'PAID' : 'PENDING')}
                       </span>
                     </td>
                     <td>

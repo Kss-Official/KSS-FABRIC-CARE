@@ -202,6 +202,26 @@ export const normalizeOrder = (o) => {
     ? normItems.map(it => `${it.name} × ${it.quantity}`).join(', ')
     : '1 Item';
 
+  const rawPayment = String(o.paymentStatus || o.payment_status || o.payment || '').toUpperCase();
+  const rawStatus = String(o.status || '').toUpperCase();
+  const isPaid = rawPayment.includes('PAID') || 
+                 rawPayment.includes('COMPLETED') || 
+                 rawPayment.includes('SUCCESS') || 
+                 Boolean(o.is_paid) ||
+                 ['PLACED', 'PICKED_UP', 'IN_CLEANING', 'DELIVERED', 'COMPLETED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'QUALITY_CHECK', 'PACKED', 'PENDING PICKUP', 'IN CLEANING', 'READY FOR DELIVERY', 'IN TRANSIT'].includes(rawStatus);
+
+  const isRefunded = rawPayment.includes('REFUND') || rawStatus === 'REFUNDED';
+  const isCancelled = (rawStatus === 'CANCELLED' || rawPayment.includes('CANCEL')) && !isPaid;
+
+  let paymentStatusDisplay = 'PAID';
+  if (isRefunded) {
+    paymentStatusDisplay = 'REFUNDED';
+  } else if (isCancelled) {
+    paymentStatusDisplay = 'CANCELLED';
+  } else if (!isPaid && (rawStatus === 'PAYMENT_PENDING' || rawPayment.includes('PENDING') || rawPayment.includes('UNPAID'))) {
+    paymentStatusDisplay = 'PENDING';
+  }
+
   return {
     ...o,
     id: o.code || o.id,
@@ -216,6 +236,11 @@ export const normalizeOrder = (o) => {
     total_amount: totalAmount,
     amount: totalAmount,
     total: finalTotal,
+    paymentStatus: paymentStatusDisplay === 'PAID' ? 'Paid' : (paymentStatusDisplay === 'PENDING' ? 'Pending' : paymentStatusDisplay),
+    payment_status: paymentStatusDisplay,
+    payment: paymentStatusDisplay === 'PAID' ? 'Paid' : (paymentStatusDisplay === 'PENDING' ? 'Pending' : paymentStatusDisplay),
+    is_paid: paymentStatusDisplay === 'PAID',
+    isPaid: paymentStatusDisplay === 'PAID',
     items: normItems,
     items_summary: itemsSummary,
     customer_name: o.customerName || o.customer_name || 'Customer',
@@ -259,20 +284,27 @@ export const ordersApi = {
       const collectedOrders = [];
       const seenIds = new Set();
 
+      const addUniqueOrder = (rawItem) => {
+        if (!rawItem) return;
+        const norm = normalizeOrder(rawItem);
+        const codeKey = String(norm.order_number || norm.code || norm.id || '').trim().toLowerCase();
+        const rawKey = String(rawItem.key || rawItem.id || norm.key || norm.id || '').trim().toLowerCase();
+        if (codeKey && seenIds.has(codeKey)) return;
+        if (rawKey && seenIds.has(rawKey)) return;
+        if (codeKey) seenIds.add(codeKey);
+        if (rawKey) seenIds.add(rawKey);
+        collectedOrders.push(norm);
+      };
+
       const uOrdersSnap = await get(ref(rtdb, `userOrders/${currentUid}`));
       if (uOrdersSnap.exists()) {
         const ids = Object.keys(uOrdersSnap.val());
         const promises = ids.map(async id => {
           const s = await get(ref(rtdb, `orders/${id}`));
-          return s.exists() ? normalizeOrder({ ...s.val(), id, docId: id, key: id }) : null;
+          return s.exists() ? { ...s.val(), id, docId: id, key: id } : null;
         });
         const res = (await Promise.all(promises)).filter(Boolean);
-        res.forEach(o => {
-          if (!seenIds.has(o.id)) {
-            seenIds.add(o.id);
-            collectedOrders.push(o);
-          }
-        });
+        res.forEach(rawItem => addUniqueOrder(rawItem));
       }
 
       // Robust scan across orders strictly filtered by customerId / customerEmail / customerPhone
@@ -286,12 +318,7 @@ export const ordersApi = {
           if (userPhone && o.customerPhone && userPhone.length >= 10 && o.customerPhone.replace(/\D/g, '').endsWith(userPhone.replace(/\D/g, '').slice(-10))) return true;
           return false;
         });
-        matched.forEach(m => {
-          if (!seenIds.has(m.id)) {
-            seenIds.add(m.id);
-            collectedOrders.push(normalizeOrder(m));
-          }
-        });
+        matched.forEach(m => addUniqueOrder(m));
       }
 
       collectedOrders.sort((a, b) => (b.createdAt || b.created_at || 0) - (a.createdAt || a.created_at || 0));

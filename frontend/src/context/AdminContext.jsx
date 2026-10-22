@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useNotifications } from '../hooks/useNotifications';
 import {
@@ -1065,6 +1065,184 @@ export const AdminProvider = ({ children }) => {
   const safeNotifications = liveAdminNotifs || [];
   const unreadNotifsCount = liveAdminUnreadCount;
 
+  // ========================================================
+  // REAL-TIME NEW ORDERS TRACKING & SIDEBAR NOTIFICATION BADGE
+  // ========================================================
+  const SEEN_ORDERS_STORAGE_KEY = 'fabricare_admin_seen_orders';
+  const LAST_SEEN_ORDERS_TIME_KEY = 'fabricare_admin_last_seen_orders_time';
+
+  const [seenOrderIds, setSeenOrderIds] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem(SEEN_ORDERS_STORAGE_KEY);
+        return stored ? new Set(JSON.parse(stored)) : new Set();
+      }
+    } catch (_) {}
+    return new Set();
+  });
+
+  const [lastSeenOrdersTime, setLastSeenOrdersTime] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem(LAST_SEEN_ORDERS_TIME_KEY);
+        return stored ? Number(stored) : null;
+      }
+    } catch (_) {}
+    return null;
+  });
+
+  const isInitialOrdersLoadedRef = useRef(false);
+
+  // Initialize baseline/existing orders on first load so we only alert for genuinely new incoming orders
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+
+    if (!isInitialOrdersLoadedRef.current) {
+      isInitialOrdersLoadedRef.current = true;
+      if (lastSeenOrdersTime === null) {
+        let maxTime = 0;
+        const initialSeen = new Set(seenOrderIds);
+        orders.forEach(o => {
+          const t = o.placedAt || o.createdAt || (o.date ? new Date(o.date).getTime() : 0);
+          if (t > maxTime) maxTime = t;
+          if (o.id) initialSeen.add(String(o.id));
+          if (o.rawId) initialSeen.add(String(o.rawId));
+          if (o.order_id) initialSeen.add(String(o.order_id));
+          if (o.code) initialSeen.add(String(o.code));
+        });
+        const initTime = maxTime || Date.now();
+        setLastSeenOrdersTime(initTime);
+        setSeenOrderIds(initialSeen);
+        try {
+          localStorage.setItem(LAST_SEEN_ORDERS_TIME_KEY, String(initTime));
+          localStorage.setItem(SEEN_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(initialSeen)));
+        } catch (_) {}
+      }
+    }
+  }, [orders, lastSeenOrdersTime, seenOrderIds]);
+
+  // Compute unread new orders count dynamically in real time
+  const newOrdersCount = useMemo(() => {
+    if (!orders || orders.length === 0) return 0;
+    const thresholdTime = lastSeenOrdersTime || 0;
+    const unreadIds = new Set();
+
+    // Check all orders in the realtime orders list
+    orders.forEach(o => {
+      const orderId = String(o.id || o.rawId || o.order_id || o.code || '');
+      if (!orderId) return;
+      if (seenOrderIds.has(orderId)) return;
+
+      const orderTime = o.placedAt || o.createdAt || (o.date ? new Date(o.date).getTime() : 0);
+      if (orderTime > thresholdTime) {
+        unreadIds.add(orderId);
+      }
+    });
+
+    // Also check any unread 'new_order' notifications received
+    (safeNotifications || []).forEach(n => {
+      if ((n.type === 'new_order' || n.type === 'order_placed') && !n.isRead && n.orderId) {
+        const oId = String(n.orderId);
+        if (!seenOrderIds.has(oId)) {
+          unreadIds.add(oId);
+        }
+      }
+    });
+
+    return unreadIds.size;
+  }, [orders, lastSeenOrdersTime, seenOrderIds, safeNotifications]);
+
+  // Mark all new orders as seen when admin views Orders
+  const markOrdersSeen = useCallback(() => {
+    const now = Date.now();
+    setLastSeenOrdersTime(now);
+
+    setSeenOrderIds(prev => {
+      const next = new Set(prev);
+      (orders || []).forEach(o => {
+        if (o.id) next.add(String(o.id));
+        if (o.rawId) next.add(String(o.rawId));
+        if (o.order_id) next.add(String(o.order_id));
+        if (o.code) next.add(String(o.code));
+      });
+      (safeNotifications || []).forEach(n => {
+        if ((n.type === 'new_order' || n.type === 'order_placed') && n.orderId) {
+          next.add(String(n.orderId));
+        }
+      });
+      try {
+        localStorage.setItem(LAST_SEEN_ORDERS_TIME_KEY, String(now));
+        localStorage.setItem(SEEN_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(next).slice(-500)));
+      } catch (_) {}
+      return next;
+    });
+
+    // Mark any new_order notifications as read
+    (safeNotifications || []).forEach(n => {
+      if ((n.type === 'new_order' || n.type === 'order_placed') && !n.isRead && n.id) {
+        hookMarkRead(n.id);
+      }
+    });
+  }, [orders, safeNotifications, hookMarkRead]);
+
+  // Automatically clear badge once admin navigates to the 'orders' tab
+  const markOrdersSeenRef = useRef(markOrdersSeen);
+  markOrdersSeenRef.current = markOrdersSeen;
+
+  useEffect(() => {
+    if (adminTab === 'orders') {
+      markOrdersSeenRef.current();
+    }
+  }, [adminTab]);
+
+  // Cross-tab and window event listener for new order broadcasts
+  useEffect(() => {
+    const handleNewOrderEvent = () => {
+      // Re-trigger order check if needed
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('fabricare_new_order_placed', handleNewOrderEvent);
+      window.addEventListener('storage', handleNewOrderEvent);
+      return () => {
+        window.removeEventListener('fabricare_new_order_placed', handleNewOrderEvent);
+        window.removeEventListener('storage', handleNewOrderEvent);
+      };
+    }
+  }, []);
+
+  const createOrder = useCallback(async (orderData) => {
+    const now = Date.now();
+    const newId = `#LDX${Math.floor(1000 + Math.random() * 9000)}`;
+    const newRecord = {
+      id: newId,
+      rawId: `ord_${now}`,
+      order_id: newId,
+      order_number: newId,
+      code: newId,
+      customerName: orderData.customerName || 'Customer',
+      customerPhone: orderData.customerPhone || '+91 98765 43210',
+      address: orderData.address || 'Bengaluru',
+      services: orderData.selectedServices || ['Wash & Fold'],
+      date: orderData.date || new Date().toLocaleDateString(),
+      pickupTime: orderData.time || '09:00 AM – 11:00 AM',
+      amount: orderData.amount || 560,
+      total_amount: orderData.amount || 560,
+      status: 'Pending Pickup',
+      paymentStatus: 'Paid',
+      driver: 'Not Assigned',
+      placedAt: now,
+      createdAt: now
+    };
+    setOrders(prev => [newRecord, ...(prev || [])]);
+    setIsCreateOrderDrawerOpen(false);
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('fabricare_new_order_placed', { detail: newRecord }));
+      }
+    } catch (_) {}
+    return newRecord;
+  }, []);
+
   return (
     <AdminContext.Provider
       value={{
@@ -1161,7 +1339,11 @@ export const AdminProvider = ({ children }) => {
         setIsRescheduleDrawerOpen,
         activeRescheduleComplaint,
         openRescheduleDrawer,
-        closeRescheduleDrawer
+        closeRescheduleDrawer,
+        newOrdersCount,
+        hasNewOrders: newOrdersCount > 0,
+        markOrdersSeen,
+        createOrder
       }}
     >
       {children}
@@ -1229,7 +1411,11 @@ export const useAdmin = () => {
       termsContent: INITIAL_TERMS_CONTENT,
       updateTerms: async () => ({ success: true }),
       faqs: INITIAL_FAQS_ADMIN,
-      setFaqs: () => {}
+      setFaqs: () => {},
+      newOrdersCount: 0,
+      hasNewOrders: false,
+      markOrdersSeen: () => {},
+      createOrder: async () => {}
     };
   }
   return context;

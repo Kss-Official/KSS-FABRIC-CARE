@@ -17,7 +17,7 @@ import {
   X
 } from 'lucide-react';
 import { OrderStatusDropdown } from '../components/common/OrderStatusDropdown';
-import { formatOrderId } from '../utils/helpers';
+import { formatOrderId, calculateOrderTotal } from '../utils/helpers';
 
 export const MyOrders = () => {
   const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
@@ -56,8 +56,29 @@ export const MyOrders = () => {
   const cancelModalRef = useRef(null);
 
   const normalizeOrders = useCallback((rawOrders) => {
-    return (rawOrders || []).map(o => {
-      const totalInr = o.total ? (o.total / 100).toFixed(2) : (o.estimatedTotal || o.total_amount || '0.00');
+    const seen = new Set();
+    const result = [];
+
+    (rawOrders || []).forEach(o => {
+      if (!o) return;
+      let totalInr = calculateOrderTotal(o, false);
+      if (!totalInr || totalInr === '0' || totalInr === '0.00') {
+        if (o.total_amount && o.total_amount !== '0' && o.total_amount !== '0.00') {
+          totalInr = o.total_amount;
+        } else if (o.total && Number(o.total) > 0) {
+          let t = Number(o.total);
+          if (t >= 1000 || (t >= 500 && t % 100 === 0)) t = t / 100;
+          totalInr = t % 1 === 0 ? t.toFixed(0) : t.toFixed(2);
+        } else if (o.subtotal && Number(o.subtotal) > 0) {
+          let s = Number(o.subtotal);
+          if (s >= 1000 || (s >= 500 && s % 100 === 0)) s = s / 100;
+          totalInr = s % 1 === 0 ? s.toFixed(0) : s.toFixed(2);
+        } else if (o.estimatedTotal || o.estimated_amount) {
+          totalInr = String(o.estimatedTotal || o.estimated_amount);
+        } else {
+          totalInr = '0.00';
+        }
+      }
 
       // Normalize items list
       let itemsList = [];
@@ -112,12 +133,33 @@ export const MyOrders = () => {
         deliveryDate = formatPrettyDate(o.delivery.date);
       }
 
-      return {
+      const rawPay = String(o.paymentStatus || o.payment_status || o.payment || '').toUpperCase();
+      const rawStat = String(o.status || '').toUpperCase();
+      const isPaid = rawPay.includes('PAID') || 
+                     rawPay.includes('COMPLETED') || 
+                     rawPay.includes('SUCCESS') || 
+                     Boolean(o.is_paid) ||
+                     ['PLACED', 'PICKED_UP', 'IN_CLEANING', 'DELIVERED', 'COMPLETED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'QUALITY_CHECK', 'PACKED', 'PENDING PICKUP'].includes(rawStat);
+
+      const isRefunded = rawPay.includes('REFUND') || rawStat === 'REFUNDED';
+      const isCancelled = (rawStat === 'CANCELLED' || rawPay.includes('CANCEL')) && !isPaid;
+
+      let paymentStatusDisplay = 'Paid';
+      if (isRefunded) paymentStatusDisplay = 'Refunded';
+      else if (isCancelled) paymentStatusDisplay = 'Cancelled';
+      else if (!isPaid && (rawStat === 'PAYMENT_PENDING' || rawPay.includes('PENDING') || rawPay.includes('UNPAID'))) paymentStatusDisplay = 'Pending';
+
+      const orderCode = o.code || o.order_number || o.id;
+      const dedupeKey = String(orderCode).trim().toLowerCase();
+      if (dedupeKey && seen.has(dedupeKey)) return;
+      if (dedupeKey) seen.add(dedupeKey);
+
+      result.push({
         ...o,
-        id: o.id || o.code,
+        id: orderCode,
         rawId: o.id,
-        order_number: o.order_number || o.code || o.id,
-        code: o.code || o.order_number || o.id,
+        order_number: orderCode,
+        code: orderCode,
         created_at: o.createdAt || o.created_at,
         total_amount: totalInr,
         pickup_address: addrStr,
@@ -126,9 +168,19 @@ export const MyOrders = () => {
         delivery_date: deliveryDate,
         delivery_time_slot: o.delivery_time_slot || '',
         items: itemsList,
-        payment_status: o.paymentStatus || o.payment_status || (o.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid')
-      };
+        isPaid,
+        is_paid: isPaid,
+        payment_status: paymentStatusDisplay
+      });
     });
+
+    result.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.created_at || a.placedAt || 0).getTime() || 0;
+      const timeB = new Date(b.createdAt || b.created_at || b.placedAt || 0).getTime() || 0;
+      return timeB - timeA;
+    });
+
+    return result;
   }, []);
 
   const fetchOrdersFromApi = useCallback(async () => {

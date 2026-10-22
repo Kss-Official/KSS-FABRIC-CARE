@@ -56,10 +56,15 @@ export const createCustomerOrder = async (bookingData, user) => {
       from: '09:00',
       to: '11:00'
     },
+    pickup_date: bookingData.pickup?.date || new Date(now + 86400000).toISOString().split('T')[0],
+    pickup_time_slot: bookingData.pickup?.time_slot || (bookingData.pickup?.from ? `${bookingData.pickup.from} - ${bookingData.pickup.to}` : '09:00 AM - 11:00 AM'),
     status: 'PAYMENT_PENDING',
     stage: 'placed',
     currentLaundryStep: 'inspect',
     paymentStatus: 'Pending',
+    payment_status: 'PENDING',
+    payment: 'Pending',
+    is_paid: false,
     isExpress: Boolean(bookingData.isExpress),
     notes: bookingData.notes || '',
     services: Array.isArray(bookingData.services) && bookingData.services.length > 0 ? bookingData.services : ['Wash & Fold'],
@@ -70,6 +75,8 @@ export const createCustomerOrder = async (bookingData, user) => {
     expressCharge,
     tax: 0,
     total,
+    total_amount: (total / 100).toFixed(2).replace(/\.00$/, ''),
+    amount: (total / 100).toFixed(2).replace(/\.00$/, ''),
     createdAt: now,
     placedAt: null,
     dueBy: now + (bookingData.isExpress ? 86400000 : 172800000),
@@ -134,6 +141,9 @@ export const confirmCustomerPayment = async (orderId, paymentMethod = 'UPI_MOCK'
   // Order updates
   updates[`orders/${orderId}/status`] = 'PLACED';
   updates[`orders/${orderId}/paymentStatus`] = 'Paid';
+  updates[`orders/${orderId}/payment_status`] = 'PAID';
+  updates[`orders/${orderId}/payment`] = 'Paid';
+  updates[`orders/${orderId}/is_paid`] = true;
   updates[`orders/${orderId}/placedAt`] = now;
   updates[`orders/${orderId}/pickupTaskId`] = pickupTaskId;
 
@@ -228,6 +238,11 @@ export const confirmCustomerPayment = async (orderId, paymentMethod = 'UPI_MOCK'
   updates[`stats/daily/${todayKey}/ordersPlaced`] = (orderSnap.val()?.dailyCount || 0) + 1;
 
   await update(ref(rtdb), updates);
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('fabricare_new_order_placed', { detail: { orderId, orderCode: order.code } }));
+    }
+  } catch (_) {}
   return { orderId, invoiceNumber: invNum, pickupTaskId };
 };
 
@@ -247,9 +262,11 @@ export const cancelCustomerOrder = async (orderId, reason = 'Customer requested 
   const histPush = push(ref(rtdb, `orderHistory/${orderId}`));
   const notifPush = push(ref(rtdb, `notifications/${order.customerId}`));
 
-  const updates = {};
+  const isOrderPaid = order.paymentStatus === 'Paid' || String(order.payment_status).toUpperCase() === 'PAID';
   updates[`orders/${orderId}/status`] = 'CANCELLED';
-  updates[`orders/${orderId}/paymentStatus`] = order.paymentStatus === 'Paid' ? 'Refunded' : 'Cancelled';
+  updates[`orders/${orderId}/paymentStatus`] = isOrderPaid ? 'Refunded' : 'Cancelled';
+  updates[`orders/${orderId}/payment_status`] = isOrderPaid ? 'REFUNDED' : 'CANCELLED';
+  updates[`orders/${orderId}/payment`] = isOrderPaid ? 'Refunded' : 'Cancelled';
   updates[`orders/${orderId}/cancelledAt`] = now;
   updates[`orders/${orderId}/cancelReason`] = reason;
 
