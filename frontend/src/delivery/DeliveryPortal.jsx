@@ -3016,64 +3016,7 @@ export const DeliveryPortal = () => {
            ======================================================== */}
         {activeTab === 'dashboard' && (
           <div className="dash-content-container">
-            {/* 1. TOP 3 METRIC CARDS */}
-            <div className="dash-metrics-grid cols-3">
-              {/* Card 1: Pending Pickups */}
-              <div 
-                onClick={() => setActiveTab('pickups')}
-                className="dash-metric-card"
-              >
-                <div className="dash-metric-left">
-                  <div className="dash-metric-icon-box icon-blue">
-                    <Package size={24} />
-                  </div>
-                  <div>
-                    <div className="dash-metric-title">Pending Pickups</div>
-                    <div className="dash-metric-number">{displayPickupCount}</div>
-                    <div className="dash-metric-subtitle">Needs your attention</div>
-                  </div>
-                </div>
-                <ChevronRight size={18} className="dash-metric-chevron" />
-              </div>
-
-              {/* Card 2: Doorstep Deliveries */}
-              <div 
-                onClick={() => setActiveTab('deliveries')}
-                className="dash-metric-card"
-              >
-                <div className="dash-metric-left">
-                  <div className="dash-metric-icon-box icon-orange">
-                    <Truck size={24} />
-                  </div>
-                  <div>
-                    <div className="dash-metric-title">Doorstep Deliveries</div>
-                    <div className="dash-metric-number">{displayDeliveryCount}</div>
-                    <div className="dash-metric-subtitle">Customer deliveries</div>
-                  </div>
-                </div>
-                <ChevronRight size={18} className="dash-metric-chevron" />
-              </div>
-
-              {/* Card 4: Completed Today */}
-              <div 
-                onClick={() => setActiveTab('history')}
-                className="dash-metric-card"
-              >
-                <div className="dash-metric-left">
-                  <div className="dash-metric-icon-box icon-emerald">
-                    <CheckCircle2 size={24} />
-                  </div>
-                  <div>
-                    <div className="dash-metric-title">Completed Today</div>
-                    <div className="dash-metric-number">{displayCompletedCount}</div>
-                    <div className="dash-metric-subtitle">Tasks finished</div>
-                  </div>
-                </div>
-                <ChevronRight size={18} className="dash-metric-chevron" />
-              </div>
-            </div>
-
-            {/* 2. WELCOME HERO BANNER */}
+            {/* 1. WELCOME HERO BANNER (TOP OF DASHBOARD) */}
             <div className="dash-welcome-banner">
               <div className="dash-banner-left">
                 <div>
@@ -3167,6 +3110,63 @@ export const DeliveryPortal = () => {
                   <circle cx="232" cy="108" r="16" fill="#10B981" stroke="#059669" strokeWidth="2.5" />
                   <path d="M236 104 Q248 106 246 115 L236 113 Z" fill="#0F172A" />
                 </svg>
+              </div>
+            </div>
+
+            {/* 2. DASHBOARD BUTTONS / METRIC CARDS (BELOW HERO) */}
+            <div className="dash-metrics-grid cols-3">
+              {/* Card 1: Pending Pickups */}
+              <div 
+                onClick={() => setActiveTab('pickups')}
+                className="dash-metric-card"
+              >
+                <div className="dash-metric-left">
+                  <div className="dash-metric-icon-box icon-blue">
+                    <Package size={24} />
+                  </div>
+                  <div>
+                    <div className="dash-metric-title">Pending Pickups</div>
+                    <div className="dash-metric-number">{displayPickupCount}</div>
+                    <div className="dash-metric-subtitle">Needs your attention</div>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="dash-metric-chevron" />
+              </div>
+
+              {/* Card 2: Doorstep Deliveries */}
+              <div 
+                onClick={() => setActiveTab('deliveries')}
+                className="dash-metric-card"
+              >
+                <div className="dash-metric-left">
+                  <div className="dash-metric-icon-box icon-orange">
+                    <Truck size={24} />
+                  </div>
+                  <div>
+                    <div className="dash-metric-title">Doorstep Deliveries</div>
+                    <div className="dash-metric-number">{displayDeliveryCount}</div>
+                    <div className="dash-metric-subtitle">Customer deliveries</div>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="dash-metric-chevron" />
+              </div>
+
+              {/* Card 4: Completed Today */}
+              <div 
+                onClick={() => setActiveTab('history')}
+                className="dash-metric-card"
+              >
+                <div className="dash-metric-left">
+                  <div className="dash-metric-icon-box icon-emerald">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <div>
+                    <div className="dash-metric-title">Completed Today</div>
+                    <div className="dash-metric-number">{displayCompletedCount}</div>
+                    <div className="dash-metric-subtitle">Tasks finished</div>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="dash-metric-chevron" />
               </div>
             </div>
 
