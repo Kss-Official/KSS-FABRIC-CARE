@@ -98,29 +98,142 @@ export const PaymentsInvoices = () => {
     );
   });
 
+  // Helper to resolve realistic catalog price for laundry items if missing or zero in DB
+  const resolveItemPrice = (itemName = '', categoryName = '') => {
+    const name = String(itemName || '').toLowerCase();
+    const cat = String(categoryName || '').toLowerCase();
+
+    if (name.includes('suit') || name.includes('blazer') || name.includes('coat') || name.includes('tuxedo')) return 250;
+    if (name.includes('saree') || name.includes('silk') || name.includes('lehenga') || name.includes('sherwani')) return 200;
+    if (name.includes('dress') || name.includes('gown') || name.includes('jacket')) return 160;
+    if (name.includes('blanket') || name.includes('quilt') || name.includes('comforter')) return 220;
+    if (name.includes('bedsheet') || name.includes('curtain') || name.includes('linen')) return 120;
+    if (name.includes('dry clean')) return 180;
+
+    if (cat.includes('iron') || name.includes('iron') || name.includes('press')) {
+      if (name.includes('pant') || name.includes('jean') || name.includes('trouser')) return 35;
+      if (name.includes('saree')) return 60;
+      return 25;
+    }
+
+    if (name.includes('jean') || name.includes('pant') || name.includes('trouser')) return 70;
+    if (name.includes('shirt') || name.includes('t-shirt') || name.includes('top') || name.includes('kurta')) return 50;
+    if (name.includes('undergarment') || name.includes('sock') || name.includes('towel')) return 30;
+    if (name.includes('kg')) return 80;
+
+    if (cat.includes('dry')) return 150;
+    if (cat.includes('iron')) return 30;
+    return 60;
+  };
+
   const normalizeInvoiceOrder = (ord) => {
-    const totalInr = ord.total ? (ord.total / 100).toFixed(2) : (ord.total_amount || ord.amount || '0.00');
     const orderNum = formatOrderId(ord.code || ord.order_number || ord.order_id || ord.id || 'FC-75668');
     
     // Parse items
     let parsedItems = [];
-    if (Array.isArray(ord.items)) {
-      parsedItems = ord.items;
+    if (Array.isArray(ord.items) && ord.items.length > 0) {
+      // Array items (Django API format or items list)
+      parsedItems = ord.items.map(it => {
+        const itemName = it.item_name || it.service_name || it.name || 'Laundry Service';
+        const categoryName = it.category_name || it.service_category || '';
+        const qty = Number(it.quantity || it.qty || 1);
+        let rawUnitPrice = Number(it.unit_price ?? it.unitPrice ?? it.rate ?? it.price ?? 0);
+        let rawTotal = Number(it.total_price ?? it.lineTotal ?? it.total ?? 0);
+
+        // Convert paise to INR if value is stored in paise (e.g., 6000 paise = ₹60)
+        if (rawUnitPrice >= 1000 || (rawUnitPrice >= 500 && rawUnitPrice % 100 === 0)) {
+          rawUnitPrice = rawUnitPrice / 100;
+        }
+        if (rawTotal >= 1000 || (rawTotal >= 500 && rawTotal % 100 === 0)) {
+          rawTotal = rawTotal / 100;
+        }
+
+        if (rawUnitPrice <= 0) {
+          rawUnitPrice = resolveItemPrice(itemName, categoryName);
+        }
+        if (rawTotal <= 0) {
+          rawTotal = rawUnitPrice * qty;
+        }
+
+        return {
+          ...it,
+          item_name: itemName,
+          name: itemName,
+          service_name: itemName,
+          category_name: categoryName,
+          quantity: qty,
+          unit_price: rawUnitPrice,
+          total_price: rawTotal
+        };
+      });
     } else if (ord.items && typeof ord.items === 'object') {
+      // Object/map format (RTDB format)
       parsedItems = Object.entries(ord.items).map(([k, val]) => {
         if (typeof val === 'object' && val !== null) {
+          const itemName = val.name || val.item_name || k;
+          const categoryName = val.category || val.service_category || '';
+          const qty = Number(val.quantity || val.qty || 1);
+          let rawUnitPrice = Number(val.unitPrice ?? val.unit_price ?? val.rate ?? val.price ?? 0);
+          let rawLineTotal = Number(val.lineTotal ?? val.total_price ?? val.total ?? 0);
+
+          if (rawUnitPrice >= 1000 || (rawUnitPrice >= 500 && rawUnitPrice % 100 === 0)) {
+            rawUnitPrice = rawUnitPrice / 100;
+          }
+          if (rawLineTotal >= 1000 || (rawLineTotal >= 500 && rawLineTotal % 100 === 0)) {
+            rawLineTotal = rawLineTotal / 100;
+          }
+
+          if (rawUnitPrice <= 0) {
+            rawUnitPrice = resolveItemPrice(itemName, categoryName);
+          }
+          if (rawLineTotal <= 0) {
+            rawLineTotal = rawUnitPrice * qty;
+          }
+
           return {
-            item_name: val.name || val.item_name || k,
-            name: val.name || val.item_name || k,
-            quantity: Number(val.quantity || val.qty || 1),
-            qty: Number(val.quantity || val.qty || 1),
-            rate: Number(val.rate || val.price || val.unitPrice || 60),
-            unitPrice: Number(val.rate || val.price || val.unitPrice || 60),
-            total: Number(val.total || val.lineTotal || (val.quantity || 1) * 60)
+            item_name: itemName,
+            name: itemName,
+            service_name: itemName,
+            category_name: categoryName,
+            quantity: qty,
+            unit_price: rawUnitPrice,
+            total_price: rawLineTotal
           };
         }
-        return { item_name: k, name: k, quantity: Number(val) || 1, qty: Number(val) || 1, rate: 60, total: (Number(val) || 1) * 60 };
+        const qty = Number(val) || 1;
+        const fallbackRate = resolveItemPrice(k, '');
+        return { 
+          item_name: k, 
+          name: k, 
+          service_name: k, 
+          category_name: '', 
+          quantity: qty, 
+          unit_price: fallbackRate, 
+          total_price: fallbackRate * qty 
+        };
       });
+    }
+
+    const sumParsedItems = parsedItems.reduce((acc, it) => acc + (Number(it.total_price) || 0), 0);
+
+    let totalInr = '0.00';
+    if (ord.total != null && Number(ord.total) > 0) {
+      const numTotal = Number(ord.total);
+      totalInr = (numTotal >= 1000 || (numTotal >= 500 && numTotal % 100 === 0)) 
+        ? (numTotal / 100).toFixed(2) 
+        : numTotal.toFixed(2);
+    } else if (ord.total_amount != null && Number(ord.total_amount) > 0) {
+      totalInr = Number(ord.total_amount).toFixed(2);
+    } else if (ord.amount != null && Number(ord.amount) > 0) {
+      totalInr = Number(ord.amount).toFixed(2);
+    } else if (sumParsedItems > 0) {
+      totalInr = sumParsedItems.toFixed(2);
+    } else {
+      totalInr = '300.00';
+    }
+
+    if (parseFloat(totalInr) <= 0) {
+      totalInr = sumParsedItems > 0 ? sumParsedItems.toFixed(2) : '300.00';
     }
 
     let addrStr = ord.pickup_address || '';
@@ -314,24 +427,39 @@ export const PaymentsInvoices = () => {
     let items = [];
     if (ord?.items && Array.isArray(ord.items) && ord.items.length > 0) {
       items = ord.items.map((it, idx) => {
-        const itemName = it.service_name || it.item_name || 'Laundry Service';
+        const itemName = it.service_name || it.item_name || it.name || 'Laundry Service';
         const isKg = itemName.toLowerCase().includes('kg');
-        const qty = it.quantity || 1;
-        const rateVal = parseFloat(it.unit_price || 0);
-        const amountVal = parseFloat(it.total_price || (qty * rateVal));
+        const qty = Number(it.quantity || it.qty || 1);
+
+        let rateVal = parseFloat(it.unit_price ?? it.rate ?? it.unitPrice ?? it.price ?? 0);
+        let amountVal = parseFloat(it.total_price ?? it.total ?? it.lineTotal ?? 0);
+
+        if (rateVal >= 1000 || (rateVal >= 500 && rateVal % 100 === 0)) {
+          rateVal = rateVal / 100;
+        }
+        if (amountVal >= 1000 || (amountVal >= 500 && amountVal % 100 === 0)) {
+          amountVal = amountVal / 100;
+        }
+
+        if (rateVal <= 0) {
+          rateVal = resolveItemPrice(itemName, it.category_name || it.service_category);
+        }
+        if (amountVal <= 0) {
+          amountVal = rateVal * qty;
+        }
 
         let iconType = 'shirt';
         if (itemName.toLowerCase().includes('iron') || itemName.toLowerCase().includes('press')) {
           iconType = 'iron';
-        } else if (itemName.toLowerCase().includes('dry') || itemName.toLowerCase().includes('suit') || itemName.toLowerCase().includes('blazer') || itemName.toLowerCase().includes('coat')) {
+        } else if (itemName.toLowerCase().includes('dry') || itemName.toLowerCase().includes('suit') || itemName.toLowerCase().includes('blazer') || itemName.toLowerCase().includes('coat') || itemName.toLowerCase().includes('saree')) {
           iconType = 'hanger';
         }
 
         let subtitle = it.category_name && it.category_name !== 'General' ? it.category_name : '';
         if (!subtitle) {
           if (itemName.toLowerCase().includes('wash')) subtitle = 'T-Shirts, Shirts, Pants';
-          else if (itemName.toLowerCase().includes('dry')) subtitle = 'Blazer';
-          else if (itemName.toLowerCase().includes('iron')) subtitle = 'Shirts';
+          else if (itemName.toLowerCase().includes('dry')) subtitle = 'Blazer & Premium Wear';
+          else if (itemName.toLowerCase().includes('iron')) subtitle = 'Steam Pressed';
           else subtitle = 'Care & Cleaning';
         }
 
@@ -382,20 +510,20 @@ export const PaymentsInvoices = () => {
       ];
     }
 
-    // Totals for this individual order
-    const totalVal = parseFloat(ord?.total_amount || (ord?.subtotal ? ord.subtotal : 735));
-    let subtotalVal = parseFloat(ord?.subtotal || 0);
-    let discountVal = parseFloat(ord?.discount_amount || 0);
-    let taxVal = parseFloat(ord?.tax_amount || 0);
+    // Totals — compute accurately from actual item amounts, removing inflated subtotals and bogus discounts
+    const sumItems = items.reduce((sum, item) => sum + (item.amountVal || 0), 0);
+    const subtotalVal = sumItems;
 
-    if (subtotalVal <= 0) {
-      const sumItems = items.reduce((sum, item) => sum + (item.amountVal || 0), 0);
-      subtotalVal = sumItems > 0 ? sumItems : totalVal;
-    }
+    // Only show discount if explicitly provided in the order record and it's less than subtotal
+    const rawDiscount = parseFloat(ord?.discount_amount || ord?.discount || 0);
+    const discountVal = (rawDiscount > 0 && rawDiscount < subtotalVal) ? rawDiscount : 0;
 
-    if (discountVal === 0 && taxVal === 0 && subtotalVal > totalVal) {
-      discountVal = subtotalVal - totalVal;
-    }
+    // Minimum applicable charges / GST: only show if explicitly stored
+    const rawTax = parseFloat(ord?.tax_amount || ord?.tax || 0);
+    const taxVal = rawTax >= 1000 ? (rawTax / 100) : rawTax;
+
+    // Final total is exact: subtotal - discount + tax
+    const finalTotal = subtotalVal - discountVal + (taxVal > 0 ? taxVal : 0);
 
     return {
       orderNum,
@@ -410,9 +538,9 @@ export const PaymentsInvoices = () => {
       transactionId: txnId,
       items,
       subtotal: `₹ ${subtotalVal.toFixed(2)}`,
-      discount: discountVal > 0 ? `- ₹ ${discountVal.toFixed(2)}` : `- ₹ 0.00`,
-      tax: taxVal > 0 ? `₹ ${taxVal.toFixed(2)}` : `₹ 0.00`,
-      total: `₹ ${totalVal.toFixed(2)}`
+      discount: discountVal > 0 ? `- ₹ ${discountVal.toFixed(2)}` : null,
+      tax: taxVal > 0 ? `₹ ${taxVal.toFixed(2)}` : null,
+      total: `₹ ${finalTotal.toFixed(2)}`
     };
   };
 
@@ -704,14 +832,18 @@ export const PaymentsInvoices = () => {
               <span className="total-label">Subtotal</span>
               <span className="total-val">{data.subtotal}</span>
             </div>
-            <div className="totals-row">
-              <span className="total-label">Discount</span>
-              <span className="total-val discount-val">{data.discount}</span>
-            </div>
-            <div className="totals-row">
-              <span className="total-label">GST (5%)</span>
-              <span className="total-val">{data.tax}</span>
-            </div>
+            {data.discount && (
+              <div className="totals-row">
+                <span className="total-label">Discount</span>
+                <span className="total-val discount-val">{data.discount}</span>
+              </div>
+            )}
+            {data.tax && (
+              <div className="totals-row">
+                <span className="total-label">GST (5%)</span>
+                <span className="total-val">{data.tax}</span>
+              </div>
+            )}
 
             <div className="total-grand-highlight-box">
               <span className="grand-label">Total Amount</span>
@@ -844,7 +976,7 @@ export const PaymentsInvoices = () => {
                         {cleanTimeSlot}
                       </td>
                       <td className="py-3 px-3 text-sm font-bold text-navy">
-                        ₹{parseFloat(ord.total_amount || 735).toFixed(2)}
+                        {getOrderInvoiceData(ord).total}
                       </td>
                       <td className="py-3 px-3">
                         <span className="order-status-pill paid">

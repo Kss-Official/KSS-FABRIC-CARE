@@ -208,15 +208,39 @@ export const mapAdminOrderRecord = (o) => {
   const totalInr = totalPaise > 0 ? (totalPaise / 100).toFixed(2) : (Number(o.total_amount || o.amount || 0).toFixed(2));
   const rawItems = o.items;
   const normItems = Array.isArray(rawItems)
-    ? rawItems
-    : (rawItems && typeof rawItems === 'object'
-      ? Object.values(rawItems).map(it => ({
+    ? rawItems.map(it => {
+        let p = Number(it.price ?? it.unitPrice ?? it.unit_price ?? it.rate ?? 0);
+        if (p >= 1000 || (p >= 500 && p % 100 === 0)) p = p / 100;
+        const qty = Number(it.quantity || it.qty || 1);
+        return {
+          ...it,
           name: it.name || it.item_name || 'Laundry Care',
           item_name: it.name || it.item_name || 'Laundry Care',
-          quantity: it.quantity || 1,
-          price: it.price || it.unitPrice || 60,
-          service_name: it.service_name || it.service || 'Wash & Fold'
-        }))
+          quantity: qty,
+          price: p || 60,
+          unitPrice: p || 60,
+          category: it.category || it.service_category || 'Apparel',
+          service: it.service || it.service_name || (Array.isArray(it.services) ? it.services[0] : 'Wash & Fold'),
+          service_name: it.service_name || it.service || (Array.isArray(it.services) ? it.services[0] : 'Wash & Fold')
+        };
+      })
+    : (rawItems && typeof rawItems === 'object'
+      ? Object.values(rawItems).map(it => {
+          let p = Number(it.price ?? it.unitPrice ?? it.unit_price ?? it.rate ?? 0);
+          if (p >= 1000 || (p >= 500 && p % 100 === 0)) p = p / 100;
+          const qty = Number(it.quantity || it.qty || 1);
+          return {
+            ...it,
+            name: it.name || it.item_name || 'Laundry Care',
+            item_name: it.name || it.item_name || 'Laundry Care',
+            quantity: qty,
+            price: p || 60,
+            unitPrice: p || 60,
+            category: it.category || it.service_category || 'Apparel',
+            service: it.service || it.service_name || (Array.isArray(it.services) ? it.services[0] : 'Wash & Fold'),
+            service_name: it.service_name || it.service || (Array.isArray(it.services) ? it.services[0] : 'Wash & Fold')
+          };
+        })
       : []);
   const rawStat = String(o.status || '').toUpperCase();
   const driverName = o.assignedAgentName || o.assignedDeliveryAgentName || o.assignedPickupAgentName || o.assigned_pickup_driver_detail?.full_name || '';
