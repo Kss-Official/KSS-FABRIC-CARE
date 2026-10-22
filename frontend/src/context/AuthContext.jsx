@@ -249,10 +249,23 @@ export const AuthProvider = ({ children }) => {
           if (!rtdbProfile) {
             // Auto-create initial profile with detected role
             const name = fbUser.displayName || (role === 'admin' ? 'Administrator' : (role === 'staff' ? (emailLower.includes('anita') ? 'Anita Sharma' : 'Staff Member') : (role === 'agent' ? 'Delivery Agent' : 'Customer')));
+            const nameParts = name.split(' ');
+            const firstName = nameParts[0] || name;
+            const lastName = nameParts.slice(1).join(' ') || '';
+            const username = emailLower ? emailLower.split('@')[0] : name.toLowerCase().replace(/\s+/g, '');
+            const phone = fbUser.phoneNumber || '';
+
             rtdbProfile = {
               name,
+              full_name: name,
+              fullName: name,
+              displayName: name,
+              first_name: firstName,
+              last_name: lastName,
+              username,
               email: fbUser.email,
-              phone: fbUser.phoneNumber || '',
+              phone,
+              phoneNumber: phone,
               role,
               isActive: true,
               avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0D9488&color=fff`,
@@ -279,20 +292,33 @@ export const AuthProvider = ({ children }) => {
             }
             update(ref(rtdb), roleUpdates).catch(() => {});
           }
+
+          const resolvedName = rtdbProfile.full_name || rtdbProfile.name || rtdbProfile.fullName || rtdbProfile.displayName || fbUser.displayName || 'Customer';
+          const nameParts = resolvedName.split(' ');
+          const firstName = rtdbProfile.first_name || nameParts[0] || resolvedName;
+          const lastName = rtdbProfile.last_name || nameParts.slice(1).join(' ') || '';
+          const cleanEmail = (fbUser.email || rtdbProfile.email || '').toLowerCase().trim();
+          const username = rtdbProfile.username || (cleanEmail ? cleanEmail.split('@')[0] : resolvedName.toLowerCase().replace(/\s+/g, ''));
+          const cleanPhone = rtdbProfile.phone || rtdbProfile.phoneNumber || fbUser.phoneNumber || '';
+
           const cleanProfile = {
             uid: fbUser.uid,
             id: fbUser.uid,
-            name: rtdbProfile.name || fbUser.displayName || 'User',
-            displayName: rtdbProfile.name || fbUser.displayName || 'User',
-            fullName: rtdbProfile.name || fbUser.displayName || '',
-            email: fbUser.email,
-            phone: rtdbProfile.phone || '',
-            phoneNumber: rtdbProfile.phone || '',
+            name: resolvedName,
+            displayName: resolvedName,
+            fullName: resolvedName,
+            full_name: resolvedName,
+            first_name: firstName,
+            last_name: lastName,
+            username,
+            email: cleanEmail,
+            phone: cleanPhone,
+            phoneNumber: cleanPhone,
             role,
             rawRole: rtdbProfile.role,
             avatarUrl: rtdbProfile.avatarUrl || null,
             avatar_url: rtdbProfile.avatarUrl || null,
-            initials: getInitials(rtdbProfile.name || fbUser.displayName || 'User'),
+            initials: getInitials(resolvedName),
             address: rtdbProfile.address || '',
             city: rtdbProfile.city || '',
             pincode: rtdbProfile.pincode || ''
@@ -463,20 +489,32 @@ export const AuthProvider = ({ children }) => {
           token = await fbUser.getIdToken();
         } catch (_) {}
 
+        const resolvedName = rtdbData.full_name || rtdbData.name || rtdbData.fullName || rtdbData.displayName || fbUser.displayName || 'Customer';
+        const nameParts = resolvedName.split(' ');
+        const firstName = rtdbData.first_name || nameParts[0] || resolvedName;
+        const lastName = rtdbData.last_name || nameParts.slice(1).join(' ') || '';
+        const cleanEmail = (fbUser.email || cleanEmail || '').toLowerCase().trim();
+        const username = rtdbData.username || (cleanEmail ? cleanEmail.split('@')[0] : resolvedName.toLowerCase().replace(/\s+/g, ''));
+        const cleanPhone = rtdbData.phone || rtdbData.phoneNumber || '';
+
         const profileData = {
           uid: fbUser.uid,
           id: fbUser.uid,
-          name: rtdbData.name || fbUser.displayName || 'User',
-          displayName: rtdbData.name || fbUser.displayName || 'User',
-          fullName: rtdbData.name || fbUser.displayName || '',
-          email: fbUser.email,
-          phone: rtdbData.phone || '',
-          phoneNumber: rtdbData.phone || '',
+          name: resolvedName,
+          displayName: resolvedName,
+          fullName: resolvedName,
+          full_name: resolvedName,
+          first_name: firstName,
+          last_name: lastName,
+          username,
+          email: cleanEmail,
+          phone: cleanPhone,
+          phoneNumber: cleanPhone,
           role,
           rawRole: rtdbData.role,
           avatarUrl: rtdbData.avatarUrl || null,
           avatar_url: rtdbData.avatarUrl || null,
-          initials: getInitials(rtdbData.name || fbUser.displayName || 'User'),
+          initials: getInitials(resolvedName),
           address: rtdbData.address || '',
           city: rtdbData.city || '',
           pincode: rtdbData.pincode || ''
@@ -603,20 +641,31 @@ export const AuthProvider = ({ children }) => {
         phone: (phone || '').trim()
       });
 
+      const registeredName = profileData.full_name || profileData.name || profileData.displayName || profileData.fullName || personName;
+      const nameParts = registeredName.split(' ');
+      const firstName = profileData.first_name || nameParts[0] || registeredName;
+      const lastName = profileData.last_name || nameParts.slice(1).join(' ') || '';
+      const username = profileData.username || (mail ? mail.split('@')[0] : registeredName.toLowerCase().replace(/\s+/g, ''));
+      const cleanPhone = profileData.phone || (phone || '').trim();
+
       const cleanProfile = {
         uid: profileData.uid,
         id: profileData.uid,
-        name: profileData.name,
-        displayName: profileData.name,
-        fullName: profileData.name,
-        email: profileData.email,
-        phone: profileData.phone,
-        phoneNumber: profileData.phone,
+        name: registeredName,
+        displayName: registeredName,
+        fullName: registeredName,
+        full_name: registeredName,
+        first_name: firstName,
+        last_name: lastName,
+        username,
+        email: profileData.email || mail,
+        phone: cleanPhone,
+        phoneNumber: cleanPhone,
         role: 'customer',
         rawRole: 'customer',
         avatarUrl: profileData.avatarUrl,
         avatar_url: profileData.avatarUrl,
-        initials: getInitials(profileData.name)
+        initials: getInitials(registeredName)
       };
 
       setCurrentUser(cleanProfile);
@@ -775,20 +824,35 @@ export const AuthProvider = ({ children }) => {
     try {
       const snap = await get(ref(rtdb, `users/${currentUser.uid}`));
       if (snap.exists()) {
-        const val = snap.val();
+        const val = snap.val() || {};
+        const refreshedName = val.full_name || val.name || val.fullName || val.displayName || currentUser?.name || currentUser?.full_name || '';
+        const nameParts = refreshedName.split(' ');
+        const firstName = val.first_name || nameParts[0] || refreshedName;
+        const lastName = val.last_name || nameParts.slice(1).join(' ') || '';
+        const cleanEmail = (val.email || currentUser?.email || '').toLowerCase().trim();
+        const username = val.username || (cleanEmail ? cleanEmail.split('@')[0] : refreshedName.toLowerCase().replace(/\s+/g, ''));
+        const cleanPhone = val.phone !== undefined ? val.phone : (currentUser?.phone || '');
+
         const updated = {
           ...currentUser,
-          name: val.name,
-          displayName: val.name,
-          fullName: val.name,
-          phone: val.phone,
-          phoneNumber: val.phone,
-          role: normalizeRole(val.role || 'customer'),
-          rawRole: val.role,
-          avatarUrl: val.avatarUrl,
-          address: val.address !== undefined ? val.address : (currentUser.address || ''),
-          city: val.city !== undefined ? val.city : (currentUser.city || ''),
-          pincode: val.pincode !== undefined ? val.pincode : (currentUser.pincode || '')
+          name: refreshedName,
+          displayName: refreshedName,
+          fullName: refreshedName,
+          full_name: refreshedName,
+          first_name: firstName,
+          last_name: lastName,
+          username,
+          email: cleanEmail,
+          phone: cleanPhone,
+          phoneNumber: cleanPhone,
+          role: normalizeRole(val.role || currentUser?.role || 'customer'),
+          rawRole: val.role || currentUser?.rawRole,
+          avatarUrl: val.avatarUrl || currentUser?.avatarUrl,
+          avatar_url: val.avatarUrl || currentUser?.avatarUrl,
+          initials: getInitials(refreshedName),
+          address: val.address !== undefined ? val.address : (currentUser?.address || ''),
+          city: val.city !== undefined ? val.city : (currentUser?.city || ''),
+          pincode: val.pincode !== undefined ? val.pincode : (currentUser?.pincode || '')
         };
         setCurrentUser(updated);
         setUserProfile(updated);
@@ -807,6 +871,23 @@ export const AuthProvider = ({ children }) => {
   const updateCurrentUserProfile = async (updates) => {
     if (!currentUser?.uid) return;
     const { role, createdAt, ...safeUpdates } = updates;
+    if (safeUpdates.name || safeUpdates.full_name || safeUpdates.fullName) {
+      const resolvedName = (safeUpdates.name || safeUpdates.full_name || safeUpdates.fullName || '').trim();
+      const parts = resolvedName.split(' ');
+      const firstName = parts[0] || '';
+      const lastName = parts.slice(1).join(' ') || '';
+      safeUpdates.name = resolvedName;
+      safeUpdates.full_name = resolvedName;
+      safeUpdates.fullName = resolvedName;
+      safeUpdates.displayName = resolvedName;
+      safeUpdates.first_name = firstName;
+      safeUpdates.last_name = lastName;
+    }
+    if (safeUpdates.phone || safeUpdates.phoneNumber) {
+      const p = safeUpdates.phone || safeUpdates.phoneNumber;
+      safeUpdates.phone = p;
+      safeUpdates.phoneNumber = p;
+    }
     await update(ref(rtdb, `users/${currentUser.uid}`), safeUpdates);
     return refreshProfile();
   };

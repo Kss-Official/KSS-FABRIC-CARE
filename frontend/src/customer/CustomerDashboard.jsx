@@ -392,7 +392,7 @@ export const CustomerDashboard = () => {
       <div className="dashboard-welcome-card">
         <div className="welcome-text">
           <div className="badge-pill mb-2">Customer Hub</div>
-          <h1 className="text-2xl font-bold text-navy">Welcome back, {currentUser?.full_name || currentUser?.first_name || 'Valued Customer'}!</h1>
+          <h1 className="text-2xl font-bold text-navy">Welcome back, {currentUser?.full_name || currentUser?.name || currentUser?.displayName || currentUser?.fullName || currentUser?.first_name || 'Valued Customer'}!</h1>
           <p className="text-muted text-sm mt-1">
             Track your laundry progress, manage orders, and schedule fresh pickups effortlessly.
           </p>

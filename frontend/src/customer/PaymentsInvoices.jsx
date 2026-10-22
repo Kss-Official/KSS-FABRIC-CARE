@@ -20,7 +20,8 @@ import {
   X,
   Loader2
 } from 'lucide-react';
-import { formatOrderId } from '../utils/helpers';
+import { formatOrderId, calculateOrderTotal } from '../utils/helpers';
+import { PRICING_ITEMS, getItemBasePrice, getExpressItemPrice } from '../data/pricingData';
 
 export const PaymentsInvoices = () => {
   const { currentUser } = useAuth();
@@ -76,8 +77,9 @@ export const PaymentsInvoices = () => {
     const ordDate = formatOrderDate(ord.date || ord.created_at || ord.pickup_date).toLowerCase();
     const cleanSlot = getCleanPickupSlot(ord).toLowerCase();
     const status = (ord.status || 'paid').toLowerCase();
-    const amount = `${parseFloat(ord.total_amount || 735).toFixed(2)}`.toLowerCase();
-    const amountWithRupee = `₹${parseFloat(ord.total_amount || 735).toFixed(2)}`.toLowerCase();
+    const ordTotVal = calculateOrderTotal(ord, true) || (ord.total_amount ? parseFloat(ord.total_amount).toFixed(2) : '0.00');
+    const amount = `${ordTotVal}`.toLowerCase();
+    const amountWithRupee = `₹${ordTotVal}`.toLowerCase();
     const customerName = (ord.customer_name || ord.user_name || '').toLowerCase();
     const address = (ord.address || ord.pickup_address || '').toLowerCase();
     const serviceName = Array.isArray(ord.services)
@@ -98,143 +100,155 @@ export const PaymentsInvoices = () => {
     );
   });
 
+  // Helper to extract first strictly positive numerical value from arguments
+  const extractPositiveNum = (...vals) => {
+    for (const v of vals) {
+      if (v !== null && v !== undefined && v !== '') {
+        const n = Number(v);
+        if (!isNaN(n) && n > 0) return n;
+      }
+    }
+    return 0;
+  };
+
   // Helper to resolve realistic catalog price for laundry items if missing or zero in DB
-  const resolveItemPrice = (itemName = '', categoryName = '') => {
-    const name = String(itemName || '').toLowerCase();
-    const cat = String(categoryName || '').toLowerCase();
+  const resolveItemPrice = (itemName = '', categoryName = '', isExpress = false) => {
+    const name = String(itemName || '').toLowerCase().trim();
+    const cat = String(categoryName || '').toLowerCase().trim();
+    const expressActive = Boolean(isExpress) || cat.includes('express') || name.includes('express');
 
-    if (name.includes('suit') || name.includes('blazer') || name.includes('coat') || name.includes('tuxedo')) return 250;
-    if (name.includes('saree') || name.includes('silk') || name.includes('lehenga') || name.includes('sherwani')) return 200;
-    if (name.includes('dress') || name.includes('gown') || name.includes('jacket')) return 160;
-    if (name.includes('blanket') || name.includes('quilt') || name.includes('comforter')) return 220;
-    if (name.includes('bedsheet') || name.includes('curtain') || name.includes('linen')) return 120;
-    if (name.includes('dry clean')) return 180;
+    // 1. Match against official PRICING_ITEMS catalog
+    const found = PRICING_ITEMS.find(it => {
+      const itName = it.name.toLowerCase();
+      return name === itName || name.includes(itName) || itName.includes(name);
+    });
 
-    if (cat.includes('iron') || name.includes('iron') || name.includes('press')) {
-      if (name.includes('pant') || name.includes('jean') || name.includes('trouser')) return 35;
-      if (name.includes('saree')) return 60;
-      return 25;
+    let serviceId = 'wash-fold';
+    if (cat.includes('iron') || cat.includes('press') || name.includes('iron') || name.includes('press')) {
+      serviceId = (cat.includes('wash') || name.includes('wash')) ? 'wash-iron' : 'steam-iron';
+    } else if (cat.includes('dry') || name.includes('dry')) {
+      serviceId = 'dry-cleaning';
+    } else if (cat.includes('wash-iron') || (cat.includes('wash') && cat.includes('iron'))) {
+      serviceId = 'wash-iron';
+    } else if (cat.includes('wash') || name.includes('wash')) {
+      serviceId = 'wash-fold';
     }
 
-    if (name.includes('jean') || name.includes('pant') || name.includes('trouser')) return 70;
-    if (name.includes('shirt') || name.includes('t-shirt') || name.includes('top') || name.includes('kurta')) return 50;
-    if (name.includes('undergarment') || name.includes('sock') || name.includes('towel')) return 30;
-    if (name.includes('kg')) return 80;
+    if (found) {
+      if (expressActive) {
+        return getExpressItemPrice(found, serviceId);
+      }
+      const price = getItemBasePrice(found, serviceId);
+      if (price > 0) return price;
+    }
 
-    if (cat.includes('dry')) return 150;
-    if (cat.includes('iron')) return 30;
-    return 60;
+    // 2. Garment heuristics based on standard pricing
+    if (name.includes('suit') || name.includes('tuxedo')) return expressActive ? 350 : 250;
+    if (name.includes('blazer') || name.includes('coat')) return expressActive ? 300 : 200;
+    if (name.includes('saree') || name.includes('lehenga') || name.includes('sherwani')) return expressActive ? 280 : 180;
+    if (name.includes('blanket') || name.includes('quilt') || name.includes('comforter')) return expressActive ? 300 : 220;
+    if (name.includes('bedsheet') || name.includes('curtain') || name.includes('linen')) return expressActive ? 160 : 120;
+    if (name.includes('dress') || name.includes('gown') || name.includes('jacket')) return expressActive ? 220 : 160;
+    if (name.includes('jean') || name.includes('pant') || name.includes('trouser')) return expressActive ? 100 : 60;
+    if (name.includes('shirt') || name.includes('t-shirt') || name.includes('top') || name.includes('kurta')) return expressActive ? 80 : 50;
+
+    if (serviceId === 'steam-iron') return 30;
+    if (serviceId === 'dry-cleaning') return 150;
+    if (serviceId === 'wash-iron') return 70;
+    return expressActive ? 80 : 50;
   };
 
   const normalizeInvoiceOrder = (ord) => {
+    if (!ord) return ord;
     const orderNum = formatOrderId(ord.code || ord.order_number || ord.order_id || ord.id || 'FC-75668');
-    
-    // Parse items
-    let parsedItems = [];
-    if (Array.isArray(ord.items) && ord.items.length > 0) {
-      // Array items (Django API format or items list)
-      parsedItems = ord.items.map(it => {
-        const itemName = it.item_name || it.service_name || it.name || 'Laundry Service';
-        const categoryName = it.category_name || it.service_category || '';
-        const qty = Number(it.quantity || it.qty || 1);
-        let rawUnitPrice = Number(it.unit_price ?? it.unitPrice ?? it.rate ?? it.price ?? 0);
-        let rawTotal = Number(it.total_price ?? it.lineTotal ?? it.total ?? 0);
+    const orderVerifiedTotal = parseFloat(calculateOrderTotal(ord, true)) || 0;
+    const isExpress = Boolean(ord.isExpress) || 
+      String(ord.service || '').toLowerCase().includes('express') ||
+      (Array.isArray(ord.services) && ord.services.some(s => String(s).toLowerCase().includes('express')));
 
-        // Convert paise to INR if value is stored in paise (e.g., 6000 paise = ₹60)
+    // Parse items (supports both array and object map format from RTDB / Django)
+    let rawItems = [];
+    if (Array.isArray(ord.items) && ord.items.length > 0) {
+      rawItems = ord.items;
+    } else if (ord.items && typeof ord.items === 'object' && Object.keys(ord.items).length > 0) {
+      rawItems = Object.entries(ord.items).map(([k, val]) => {
+        if (typeof val === 'object' && val !== null) {
+          return { ...val, id: val.id || k, name: val.name || val.item_name || k };
+        }
+        return { name: k, item_name: k, quantity: Number(val) || 1 };
+      });
+    } else if (Array.isArray(ord.items_list) && ord.items_list.length > 0) {
+      rawItems = ord.items_list;
+    }
+
+    // If order has no granular items list, create a legitimate service line item from order service & total
+    if (rawItems.length === 0) {
+      const svcName = ord.service || (Array.isArray(ord.services) && ord.services[0]) || 'Wash & Fold';
+      const singlePrice = orderVerifiedTotal > 0 ? orderVerifiedTotal : 80;
+      rawItems = [{
+        name: svcName,
+        item_name: svcName,
+        service_name: svcName,
+        category_name: svcName,
+        quantity: 1,
+        unit_price: singlePrice,
+        total_price: singlePrice,
+        _isRupees: true
+      }];
+    }
+
+    const parsedItems = rawItems.map(it => {
+      const itemName = it.service_name || it.item_name || it.name || 'Laundry Service';
+      const categoryName = it.category_name || it.service_category || it.category || ord.service || (Array.isArray(ord.services) ? ord.services[0] : '') || '';
+      const qty = Math.max(1, Number(it.quantity || it.qty || 1));
+
+      let rawUnitPrice = it._isRupees 
+        ? Number(it.unit_price || it.price || 0)
+        : extractPositiveNum(it.unit_price, it.unitPrice, it.price, it.rate, it.effectiveUnitPrice, it.baseUnitPrice);
+
+      let rawTotal = it._isRupees
+        ? Number(it.total_price || it.lineTotal || 0)
+        : extractPositiveNum(it.total_price, it.lineTotal, it.total);
+
+      // Handle paise conversion cleanly without double-dividing
+      if (!it._isRupees) {
         if (rawUnitPrice >= 1000 || (rawUnitPrice >= 500 && rawUnitPrice % 100 === 0)) {
           rawUnitPrice = rawUnitPrice / 100;
         }
         if (rawTotal >= 1000 || (rawTotal >= 500 && rawTotal % 100 === 0)) {
           rawTotal = rawTotal / 100;
         }
+      }
 
-        if (rawUnitPrice <= 0) {
-          rawUnitPrice = resolveItemPrice(itemName, categoryName);
-        }
-        if (rawTotal <= 0) {
-          rawTotal = rawUnitPrice * qty;
-        }
+      if (rawUnitPrice <= 0 && rawTotal > 0) {
+        rawUnitPrice = rawTotal / qty;
+      }
+      if (rawUnitPrice <= 0) {
+        rawUnitPrice = resolveItemPrice(itemName, categoryName, isExpress);
+      }
+      if ((rawUnitPrice <= 0 || (rawItems.length === 1 && orderVerifiedTotal > 0)) && orderVerifiedTotal > 0) {
+        rawUnitPrice = orderVerifiedTotal / qty;
+      }
+      if (rawTotal <= 0) {
+        rawTotal = rawUnitPrice * qty;
+      }
 
-        return {
-          ...it,
-          item_name: itemName,
-          name: itemName,
-          service_name: itemName,
-          category_name: categoryName,
-          quantity: qty,
-          unit_price: rawUnitPrice,
-          total_price: rawTotal
-        };
-      });
-    } else if (ord.items && typeof ord.items === 'object') {
-      // Object/map format (RTDB format)
-      parsedItems = Object.entries(ord.items).map(([k, val]) => {
-        if (typeof val === 'object' && val !== null) {
-          const itemName = val.name || val.item_name || k;
-          const categoryName = val.category || val.service_category || '';
-          const qty = Number(val.quantity || val.qty || 1);
-          let rawUnitPrice = Number(val.unitPrice ?? val.unit_price ?? val.rate ?? val.price ?? 0);
-          let rawLineTotal = Number(val.lineTotal ?? val.total_price ?? val.total ?? 0);
-
-          if (rawUnitPrice >= 1000 || (rawUnitPrice >= 500 && rawUnitPrice % 100 === 0)) {
-            rawUnitPrice = rawUnitPrice / 100;
-          }
-          if (rawLineTotal >= 1000 || (rawLineTotal >= 500 && rawLineTotal % 100 === 0)) {
-            rawLineTotal = rawLineTotal / 100;
-          }
-
-          if (rawUnitPrice <= 0) {
-            rawUnitPrice = resolveItemPrice(itemName, categoryName);
-          }
-          if (rawLineTotal <= 0) {
-            rawLineTotal = rawUnitPrice * qty;
-          }
-
-          return {
-            item_name: itemName,
-            name: itemName,
-            service_name: itemName,
-            category_name: categoryName,
-            quantity: qty,
-            unit_price: rawUnitPrice,
-            total_price: rawLineTotal
-          };
-        }
-        const qty = Number(val) || 1;
-        const fallbackRate = resolveItemPrice(k, '');
-        return { 
-          item_name: k, 
-          name: k, 
-          service_name: k, 
-          category_name: '', 
-          quantity: qty, 
-          unit_price: fallbackRate, 
-          total_price: fallbackRate * qty 
-        };
-      });
-    }
+      return {
+        ...it,
+        item_name: itemName,
+        name: itemName,
+        service_name: itemName,
+        category_name: categoryName,
+        quantity: qty,
+        unit_price: rawUnitPrice,
+        total_price: rawTotal,
+        _isRupees: true
+      };
+    });
 
     const sumParsedItems = parsedItems.reduce((acc, it) => acc + (Number(it.total_price) || 0), 0);
-
-    let totalInr = '0.00';
-    if (ord.total != null && Number(ord.total) > 0) {
-      const numTotal = Number(ord.total);
-      totalInr = (numTotal >= 1000 || (numTotal >= 500 && numTotal % 100 === 0)) 
-        ? (numTotal / 100).toFixed(2) 
-        : numTotal.toFixed(2);
-    } else if (ord.total_amount != null && Number(ord.total_amount) > 0) {
-      totalInr = Number(ord.total_amount).toFixed(2);
-    } else if (ord.amount != null && Number(ord.amount) > 0) {
-      totalInr = Number(ord.amount).toFixed(2);
-    } else if (sumParsedItems > 0) {
-      totalInr = sumParsedItems.toFixed(2);
-    } else {
-      totalInr = '300.00';
-    }
-
-    if (parseFloat(totalInr) <= 0) {
-      totalInr = sumParsedItems > 0 ? sumParsedItems.toFixed(2) : '300.00';
-    }
+    const effectiveTotal = orderVerifiedTotal > 0 ? orderVerifiedTotal : (sumParsedItems > 0 ? sumParsedItems : 80);
+    const totalInr = effectiveTotal.toFixed(2);
 
     let addrStr = ord.pickup_address || '';
     if (!addrStr && ord.address) {
@@ -259,6 +273,7 @@ export const PaymentsInvoices = () => {
       pickup_address: addrStr,
       total_amount: totalInr,
       amount: totalInr,
+      total: effectiveTotal,
       items: parsedItems,
       status: ord.paymentStatus || ord.payment_status || (ord.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid')
     };
@@ -432,138 +447,157 @@ export const PaymentsInvoices = () => {
 
   // Helper to dynamically extract complete individual order invoice details
   const getOrderInvoiceData = (ord = selectedOrder) => {
-    const orderNum = getActiveOrderNumber(ord);
+    const effectiveOrd = ord || selectedOrder || (orders && orders.length > 0 ? orders[0] : null);
+    const orderNum = getActiveOrderNumber(effectiveOrd);
 
-    // Customer info (Rohan Mehta as explicitly required)
-    const name = 'Rohan Mehta';
-    const phone = ord?.pickup_phone || '+91 98765 43210';
-    const email = 'rohan.mehta@gmail.com';
-    const address = ord?.pickup_address || '123, Shree Nagar, Ujjain';
-    const cityState = (ord?.pickup_city && ord?.pickup_pincode) 
-      ? `${ord.pickup_city} - ${ord.pickup_pincode}` 
+    // Customer info
+    const name = effectiveOrd?.customer_name || effectiveOrd?.customerName || currentUser?.full_name || currentUser?.name || currentUser?.displayName || currentUser?.fullName || 'Rohan Mehta';
+    const phone = effectiveOrd?.customer_phone || effectiveOrd?.customerPhone || effectiveOrd?.pickup_phone || currentUser?.phone || currentUser?.phoneNumber || '+91 98765 43210';
+    const email = effectiveOrd?.customer_email || effectiveOrd?.customerEmail || currentUser?.email || 'rohan.mehta@gmail.com';
+    const address = effectiveOrd?.pickup_address || '123, Shree Nagar, Ujjain';
+    const cityState = (effectiveOrd?.pickup_city && effectiveOrd?.pickup_pincode) 
+      ? `${effectiveOrd.pickup_city} - ${effectiveOrd.pickup_pincode}` 
       : 'Madhya Pradesh - 456001';
 
     // Dates
-    const invDate = formatInvoiceDate(ord?.invoice?.created_at || ord?.created_at || ord?.pickup_date);
-    const pickupSlot = getCleanPickupSlot(ord);
-    const pickupDateStr = ord?.pickup_date ? formatOrderDate(ord.pickup_date) : '12 Oct 2026';
+    const invDate = formatInvoiceDate(effectiveOrd?.invoice?.created_at || effectiveOrd?.created_at || effectiveOrd?.createdAt || effectiveOrd?.pickup_date);
+    const pickupSlot = getCleanPickupSlot(effectiveOrd);
+    const pickupDateStr = effectiveOrd?.pickup_date ? formatOrderDate(effectiveOrd.pickup_date) : '12 Oct 2026';
     const pickupDisplay = `${pickupDateStr}, ${pickupSlot}`;
 
     // Payment details
-    const paymentMethod = ord?.payment_method === 'UPI' 
+    const paymentMethod = effectiveOrd?.payment_method === 'UPI' 
       ? 'UPI (Paid)' 
-      : ord?.payment_method === 'CARD' 
+      : effectiveOrd?.payment_method === 'CARD' 
         ? 'Card (Paid)' 
-        : ord?.payment_method === 'NET_BANKING' 
+        : effectiveOrd?.payment_method === 'NET_BANKING' 
           ? 'Net Banking (Paid)' 
-          : ord?.payment_method === 'CASH_ON_DELIVERY' 
-            ? (ord?.payment_status === 'PAID' ? 'Cash on Delivery (Paid)' : 'Cash on Delivery') 
+          : effectiveOrd?.payment_method === 'CASH_ON_DELIVERY' 
+            ? (effectiveOrd?.payment_status === 'PAID' ? 'Cash on Delivery (Paid)' : 'Cash on Delivery') 
             : 'UPI (Paid)';
 
-    const txnId = ord?.invoice?.transaction_id || 
+    const txnId = effectiveOrd?.invoice?.transaction_id || 
       `UPI${orderNum.replace(/[^0-9A-Z]/g, '')}1234567890`.slice(0, 14);
 
+    const isExpress = Boolean(effectiveOrd?.isExpress) || 
+      String(effectiveOrd?.service || '').toLowerCase().includes('express') ||
+      (Array.isArray(effectiveOrd?.services) && effectiveOrd.services.some(s => String(s).toLowerCase().includes('express')));
+
+    const verifiedOrderTotal = effectiveOrd ? (parseFloat(calculateOrderTotal(effectiveOrd, true)) || 0) : 0;
+
+    // Extract raw items
+    let rawItems = [];
+    if (Array.isArray(effectiveOrd?.items) && effectiveOrd.items.length > 0) {
+      rawItems = effectiveOrd.items;
+    } else if (effectiveOrd?.items && typeof effectiveOrd.items === 'object' && Object.keys(effectiveOrd.items).length > 0) {
+      rawItems = Object.entries(effectiveOrd.items).map(([k, val]) => {
+        if (typeof val === 'object' && val !== null) {
+          return { ...val, id: val.id || k, name: val.name || val.item_name || k };
+        }
+        return { name: k, item_name: k, quantity: Number(val) || 1 };
+      });
+    } else if (Array.isArray(effectiveOrd?.items_list) && effectiveOrd.items_list.length > 0) {
+      rawItems = effectiveOrd.items_list;
+    }
+
+    if (rawItems.length === 0) {
+      const svcName = effectiveOrd?.service || (Array.isArray(effectiveOrd?.services) && effectiveOrd.services[0]) || 'Wash & Fold';
+      const singleAmount = verifiedOrderTotal > 0 ? verifiedOrderTotal : 80;
+      rawItems = [{
+        name: svcName,
+        item_name: svcName,
+        service_name: svcName,
+        category_name: svcName,
+        quantity: 1,
+        unit_price: singleAmount,
+        total_price: singleAmount,
+        _isRupees: true
+      }];
+    }
+
     // Dynamic Items for this individual order
-    let items = [];
-    if (ord?.items && Array.isArray(ord.items) && ord.items.length > 0) {
-      items = ord.items.map((it, idx) => {
-        const itemName = it.service_name || it.item_name || it.name || 'Laundry Service';
-        const isKg = itemName.toLowerCase().includes('kg');
-        const qty = Number(it.quantity || it.qty || 1);
+    const items = rawItems.map((it, idx) => {
+      const itemName = it.service_name || it.item_name || it.name || 'Laundry Service';
+      const isKg = itemName.toLowerCase().includes('kg');
+      const qty = Math.max(1, Number(it.quantity || it.qty || 1));
+      const categoryName = it.category_name || it.service_category || it.category || effectiveOrd?.service || (Array.isArray(effectiveOrd?.services) ? effectiveOrd.services[0] : '') || '';
 
-        let rateVal = parseFloat(it.unit_price ?? it.rate ?? it.unitPrice ?? it.price ?? 0);
-        let amountVal = parseFloat(it.total_price ?? it.total ?? it.lineTotal ?? 0);
+      let rateVal = it._isRupees 
+        ? Number(it.unit_price || it.price || 0)
+        : extractPositiveNum(it.unit_price, it.unitPrice, it.price, it.rate, it.effectiveUnitPrice, it.baseUnitPrice);
 
+      let amountVal = it._isRupees
+        ? Number(it.total_price || it.lineTotal || 0)
+        : extractPositiveNum(it.total_price, it.lineTotal, it.total);
+
+      if (!it._isRupees) {
         if (rateVal >= 1000 || (rateVal >= 500 && rateVal % 100 === 0)) {
           rateVal = rateVal / 100;
         }
         if (amountVal >= 1000 || (amountVal >= 500 && amountVal % 100 === 0)) {
           amountVal = amountVal / 100;
         }
+      }
 
-        if (rateVal <= 0) {
-          rateVal = resolveItemPrice(itemName, it.category_name || it.service_category);
-        }
-        if (amountVal <= 0) {
-          amountVal = rateVal * qty;
-        }
+      if (rateVal <= 0 && amountVal > 0) {
+        rateVal = amountVal / qty;
+      }
+      if (rateVal <= 0) {
+        rateVal = resolveItemPrice(itemName, categoryName, isExpress);
+      }
+      if ((rateVal <= 0 || (rawItems.length === 1 && verifiedOrderTotal > 0)) && verifiedOrderTotal > 0) {
+        rateVal = verifiedOrderTotal / qty;
+      }
+      if (amountVal <= 0) {
+        amountVal = rateVal * qty;
+      }
 
-        let iconType = 'shirt';
-        if (itemName.toLowerCase().includes('iron') || itemName.toLowerCase().includes('press')) {
-          iconType = 'iron';
-        } else if (itemName.toLowerCase().includes('dry') || itemName.toLowerCase().includes('suit') || itemName.toLowerCase().includes('blazer') || itemName.toLowerCase().includes('coat') || itemName.toLowerCase().includes('saree')) {
-          iconType = 'hanger';
-        }
+      let iconType = 'shirt';
+      if (itemName.toLowerCase().includes('iron') || itemName.toLowerCase().includes('press')) {
+        iconType = 'iron';
+      } else if (itemName.toLowerCase().includes('dry') || itemName.toLowerCase().includes('suit') || itemName.toLowerCase().includes('blazer') || itemName.toLowerCase().includes('coat') || itemName.toLowerCase().includes('saree')) {
+        iconType = 'hanger';
+      }
 
-        let subtitle = it.category_name && it.category_name !== 'General' ? it.category_name : '';
-        if (!subtitle) {
-          if (itemName.toLowerCase().includes('wash')) subtitle = 'T-Shirts, Shirts, Pants';
-          else if (itemName.toLowerCase().includes('dry')) subtitle = 'Blazer & Premium Wear';
-          else if (itemName.toLowerCase().includes('iron')) subtitle = 'Steam Pressed';
-          else subtitle = 'Care & Cleaning';
-        }
+      let subtitle = categoryName && categoryName !== 'General' ? categoryName : '';
+      if (!subtitle) {
+        if (itemName.toLowerCase().includes('wash')) subtitle = 'T-Shirts, Shirts, Pants';
+        else if (itemName.toLowerCase().includes('dry')) subtitle = 'Blazer & Premium Wear';
+        else if (itemName.toLowerCase().includes('iron')) subtitle = 'Steam Pressed';
+        else subtitle = 'Care & Cleaning';
+      }
 
-        return {
-          index: `${idx + 1}.`,
-          iconType,
-          name: itemName,
-          subtitle,
-          quantity: isKg ? `${qty} kg` : `${qty}`,
-          rate: isKg ? `₹ ${rateVal.toFixed(2)} / kg` : `₹ ${rateVal.toFixed(2)}`,
-          amount: `₹ ${amountVal.toFixed(2)}`,
-          amountVal
-        };
-      });
-    } else {
-      // Default reference items fallback if order has no item records
-      items = [
-        {
-          index: '1.',
-          iconType: 'shirt',
-          name: 'Wash & Fold (Regular)',
-          subtitle: 'T-Shirts, Shirts, Pants',
-          quantity: '5 kg',
-          rate: '₹ 80.00 / kg',
-          amount: '₹ 400.00',
-          amountVal: 400.00
-        },
-        {
-          index: '2.',
-          iconType: 'hanger',
-          name: 'Dry Cleaning',
-          subtitle: 'Blazer',
-          quantity: '1',
-          rate: '₹ 250.00',
-          amount: '₹ 250.00',
-          amountVal: 250.00
-        },
-        {
-          index: '3.',
-          iconType: 'iron',
-          name: 'Steam Ironing',
-          subtitle: 'Shirts',
-          quantity: '3',
-          rate: '₹ 40.00',
-          amount: '₹ 120.00',
-          amountVal: 120.00
-        }
-      ];
-    }
+      return {
+        index: `${idx + 1}.`,
+        iconType,
+        name: itemName,
+        subtitle,
+        quantity: isKg ? `${qty} kg` : `${qty}`,
+        rate: isKg ? `₹ ${rateVal.toFixed(2)} / kg` : `₹ ${rateVal.toFixed(2)}`,
+        amount: `₹ ${amountVal.toFixed(2)}`,
+        amountVal
+      };
+    });
 
-    // Totals — compute accurately from actual item amounts, removing inflated subtotals and bogus discounts
+    // Subtotal: exact sum of actual line items (NO inflated fallbacks)
     const sumItems = items.reduce((sum, item) => sum + (item.amountVal || 0), 0);
     const subtotalVal = sumItems;
 
-    // Only show discount if explicitly provided in the order record and it's less than subtotal
-    const rawDiscount = parseFloat(ord?.discount_amount || ord?.discount || 0);
+    // Genuine discount only: only if explicitly present in order and strictly less than subtotal
+    const rawDiscount = parseFloat(effectiveOrd?.discount_amount || effectiveOrd?.discount || 0);
     const discountVal = (rawDiscount > 0 && rawDiscount < subtotalVal) ? rawDiscount : 0;
 
-    // Minimum applicable charges / GST: only show if explicitly stored
-    const rawTax = parseFloat(ord?.tax_amount || ord?.tax || 0);
-    const taxVal = rawTax >= 1000 ? (rawTax / 100) : rawTax;
+    // Minimum applicable charges: only if explicitly stored on order (NO bogus tax)
+    const rawTax = parseFloat(effectiveOrd?.tax_amount || effectiveOrd?.tax || 0);
+    const taxVal = (rawTax > 0 && rawTax < subtotalVal) ? (rawTax >= 1000 ? rawTax / 100 : rawTax) : 0;
 
-    // Final total is exact: subtotal - discount + tax
-    const finalTotal = subtotalVal - discountVal + (taxVal > 0 ? taxVal : 0);
+    // Final total is exact: subtotal - discount + tax (reflects real cost)
+    let finalTotal = subtotalVal - discountVal + taxVal;
+
+    // If verified order total matches or differs due to single item rounding, align cleanly
+    if (verifiedOrderTotal > 0 && Math.abs(finalTotal - verifiedOrderTotal) <= 0.05) {
+      finalTotal = verifiedOrderTotal;
+    }
 
     return {
       orderNum,

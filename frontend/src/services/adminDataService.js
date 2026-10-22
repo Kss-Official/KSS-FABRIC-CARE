@@ -11,7 +11,7 @@ import {
   equalTo,
   limitToLast
 } from 'firebase/database';
-import { rtdb } from '../config/firebase.js';
+import { rtdb, auth } from '../config/firebase.js';
 import { addNotificationToUpdates, addRoleNotificationsToUpdates, getRoleUserIds } from './notificationService.js';
 import { PRICING_ITEMS, PRICING_SUBCATEGORIES } from '../data/pricingData.js';
 

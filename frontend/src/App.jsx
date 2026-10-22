@@ -83,7 +83,7 @@ const CustomerAccountLayout = ({ children }) => {
     { id: 'customer-support', label: 'Help & Support', icon: '💬' },
   ];
 
-  const displayName = userProfile?.displayName || currentUser?.displayName || currentUser?.full_name || currentUser?.first_name || 'Customer';
+  const displayName = userProfile?.displayName || userProfile?.name || userProfile?.full_name || currentUser?.displayName || currentUser?.name || currentUser?.full_name || currentUser?.fullName || currentUser?.first_name || 'Customer';
 
   return (
     <div className="customer-account-wrapper" style={{ background: '#F8FAFC', flex: 1, display: 'flex', flexDirection: 'column', margin: 0, paddingBottom: '24px' }}>
