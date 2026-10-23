@@ -527,12 +527,7 @@ export const AdminDeliveryReportsPage = () => {
                     {selectedComplaint.formatted_report_date || selectedComplaint.report_date_only || selectedComplaint.report_date}
                   </span>
                 </div>
-                <div className="detail-item">
-                  <span className="detail-label">Reschedule Date &amp; Slot</span>
-                  <span className="detail-value font-semibold text-teal-700">
-                    {selectedComplaint.formatted_reschedule_date || selectedComplaint.rescheduled_date || 'Not yet rescheduled'}
-                  </span>
-                </div>
+
               </div>
 
               {selectedComplaint.notes && (

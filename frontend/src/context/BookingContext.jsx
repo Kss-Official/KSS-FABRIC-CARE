@@ -633,7 +633,7 @@ export const BookingProvider = ({ children }) => {
       setPickupDetails(prev => ({
         ...prev,
         name: currentUser.displayName || currentUser.name || currentUser.full_name || prev.name || '',
-        mobile: currentUser.phoneNumber || currentUser.phone || prev.mobile || '',
+        mobile: (() => { const raw = String(currentUser.phoneNumber || currentUser.phone || prev.mobile || ''); return raw.replace(/^\+?91/, '').replace(/\D/g, '').slice(0, 10); })(),
         address: currentUser.address || prev.address || '',
         city: currentUser.city || prev.city || 'Bengaluru',
         pincode: currentUser.pincode || prev.pincode || ''
@@ -929,7 +929,15 @@ export const BookingProvider = ({ children }) => {
         addressTitle: pickupDetails.address,
         addressDetail: pickupDetails.landmark || '',
         services: serviceNames,
-        items: selectedItemsList,
+        items: selectedItemsList.map(it => {
+          const pricing = getItemPricing(it, selectedItemsList);
+          return {
+            ...it,
+            unit_price: pricing.effectiveUnitPrice,
+            total_price: pricing.lineTotal,
+            lineTotal: pricing.lineTotal
+          };
+        }),
         estimatedTotal: total,
         total_amount: (total || 0).toFixed(2).replace(/\.00$/, ''),
         total: total,
