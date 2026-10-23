@@ -72,7 +72,7 @@ export const createCustomerOrder = async (bookingData, user) => {
     pickup_time_slot: bookingData.pickup?.time_slot || (bookingData.pickup?.from ? `${bookingData.pickup.from} - ${bookingData.pickup.to}` : '09:00 AM - 11:00 AM'),
     status: 'PAYMENT_PENDING',
     stage: 'placed',
-    currentLaundryStep: 'inspect',
+    currentLaundryStep: null,
     paymentStatus: 'Pending',
     payment_status: 'PENDING',
     payment: 'Pending',

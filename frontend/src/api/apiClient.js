@@ -23,7 +23,8 @@ import {
   verifyAndCompletePickup,
   recordHubDropoff,
   startDeliveryTask,
-  verifyAndCompleteDelivery
+  verifyAndCompleteDelivery,
+  recordDeliveryFailureAndReschedule
 } from '../services/deliveryDataService.js';
 import { calculateOrderTotal } from '../utils/helpers.js';
 
@@ -846,6 +847,12 @@ export const deliveryApi = {
     if (uid) {
       await update(ref(rtdb, `agents/${uid}`), { lastLat: lat, lastLng: lng, lastActiveAt: Date.now() });
     }
+    return { data: { success: true } };
+  },
+
+  failDelivery: async (taskId, { failed_reason, reason, comment, notes, rescheduled_date } = {}) => {
+    const agentUser = { uid: auth.currentUser?.uid || 'usr_agent_001', name: auth.currentUser?.displayName || 'Driver' };
+    await recordDeliveryFailureAndReschedule(taskId, { failed_reason, reason, comment, notes, rescheduled_date }, agentUser);
     return { data: { success: true } };
   }
 };
