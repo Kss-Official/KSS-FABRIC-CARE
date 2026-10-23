@@ -323,10 +323,13 @@ class SupportTicket(models.Model):
             self.customer_name = self.customer.full_name or self.customer.username
         if not self.customer_email and self.customer:
             self.customer_email = self.customer.email
-        super().save(*args, **kwargs)
         if not self.ticket_number:
-            self.ticket_number = f"#SUP-{1040 + self.id}"
-            super().save(update_fields=['ticket_number'])
+            import random
+            candidate = f"#SUP-{random.randint(1050, 9999)}"
+            while SupportTicket.objects.filter(ticket_number=candidate).exists():
+                candidate = f"#SUP-{random.randint(10000, 99999)}"
+            self.ticket_number = candidate
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.ticket_number or f'Ticket #{self.id}'}: {self.subject} ({self.get_status_display()})"

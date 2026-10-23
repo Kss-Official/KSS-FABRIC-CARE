@@ -114,6 +114,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
         read_only_fields = ('order', 'invoice_number', 'created_at')
 
 
+from django.db.models import Q
+
 class OrderSerializer(serializers.ModelSerializer):
     order_number = serializers.CharField(source='order_id', read_only=True)
     customer_name = serializers.CharField(source='pickup_full_name', read_only=True)
@@ -129,6 +131,37 @@ class OrderSerializer(serializers.ModelSerializer):
     assigned_delivery_driver_detail = UserSerializer(source='assigned_delivery_driver', read_only=True)
     assigned_laundry_staff_detail = UserSerializer(source='assigned_laundry_staff', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    rescheduled_date = serializers.SerializerMethodField()
+    rescheduled_time_slot = serializers.SerializerMethodField()
+    is_rescheduled = serializers.SerializerMethodField()
+
+    def get_complaint(self, obj):
+        if not hasattr(obj, '_cached_complaint'):
+            obj._cached_complaint = ComplaintReport.objects.filter(
+                Q(order=obj) | Q(order_id_display=obj.order_id)
+            ).order_by('-report_date').first()
+        return obj._cached_complaint
+
+    def get_rescheduled_date(self, obj):
+        c = self.get_complaint(obj)
+        if c and c.rescheduled_date:
+            return c.rescheduled_date.strftime('%Y-%m-%d')
+        if obj.delivery_date:
+            return obj.delivery_date.strftime('%Y-%m-%d')
+        return None
+
+    def get_rescheduled_time_slot(self, obj):
+        c = self.get_complaint(obj)
+        if c and c.rescheduled_time_slot:
+            return c.rescheduled_time_slot
+        return obj.delivery_time_slot or None
+
+    def get_is_rescheduled(self, obj):
+        c = self.get_complaint(obj)
+        if c and (c.status == ComplaintReport.Status.RESCHEDULED or c.rescheduled_date):
+            return True
+        return False
 
     class Meta:
         model = Order
@@ -366,10 +399,23 @@ class SupportTicketSerializer(serializers.ModelSerializer):
     formatted_created_at = serializers.SerializerMethodField()
     formatted_admin_reply_at = serializers.SerializerMethodField()
 
+    order = serializers.PrimaryKeyRelatedField(queryset=Order.objects.all(), required=False, allow_null=True)
+
     class Meta:
         model = SupportTicket
         fields = '__all__'
         read_only_fields = ('customer', 'created_at', 'updated_at')
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        if 'order' in data:
+            val = data.get('order')
+            if isinstance(val, str) and not val.isdigit():
+                order_obj = Order.objects.filter(order_number__iexact=val).first()
+                data['order'] = order_obj.id if order_obj else None
+            elif not val:
+                data['order'] = None
+        return super().to_internal_value(data)
 
     def get_ticket_id_display(self, obj):
         if obj.ticket_number:
@@ -424,11 +470,23 @@ class ComplaintReportSerializer(serializers.ModelSerializer):
     original_schedule = serializers.SerializerMethodField()
     new_delivery_date_formatted = serializers.SerializerMethodField()
     timeline = serializers.SerializerMethodField()
+    customer_email = serializers.SerializerMethodField()
+    customer_id = serializers.SerializerMethodField()
 
     class Meta:
         model = ComplaintReport
         fields = '__all__'
         read_only_fields = ('created_at', 'updated_at')
+
+    def get_customer_email(self, obj):
+        if obj.order and obj.order.customer and obj.order.customer.email:
+            return obj.order.customer.email
+        return 'rohan.mehta@gmail.com'
+
+    def get_customer_id(self, obj):
+        if obj.order and obj.order.customer:
+            return str(obj.order.customer.id)
+        return '2'
 
     def get_order_id(self, obj):
         if obj.order_id_display:

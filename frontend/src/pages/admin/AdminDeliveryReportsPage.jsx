@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useAdmin } from '../../context/AdminContext';
+import { useAdmin, getComplaintSortTime } from '../../context/AdminContext';
 import { 
   FileText, 
   Clock, 
@@ -31,7 +31,8 @@ export const AdminDeliveryReportsPage = () => {
     complaintsSummary = { total_complaints: 28, pending_reschedule: 7, rescheduled: 13, resolved: 5 }, 
     complaintsLoading = false, 
     fetchComplaints = () => {},
-    openRescheduleDrawer = () => {} 
+    openRescheduleDrawer = () => {},
+    rescheduleDelivery = async () => ({ success: true })
   } = useAdmin() || {};
 
   // Filters state with search support
@@ -110,7 +111,7 @@ export const AdminDeliveryReportsPage = () => {
       }
 
       return true;
-    });
+    }).sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
   }, [complaints, searchQuery, statusFilter, dateRangeFilter]);
 
   // Pagination calculation
@@ -477,7 +478,7 @@ export const AdminDeliveryReportsPage = () => {
                 <div>
                   <h3 className="modal-heading">Complaint Details</h3>
                   <p className="modal-sub">
-                    {formatOrderId(selectedComplaint.order_id_display || selectedComplaint.order_id || selectedComplaint.id)} &bull; Review failure reason and reschedule delivery.
+                    {formatOrderId(selectedComplaint.order_id_display || selectedComplaint.order_id || selectedComplaint.id)} &bull; Review failure reason and complaint details.
                   </p>
                 </div>
               </div>
@@ -527,7 +528,14 @@ export const AdminDeliveryReportsPage = () => {
                     {selectedComplaint.formatted_report_date || selectedComplaint.report_date_only || selectedComplaint.report_date}
                   </span>
                 </div>
-
+                {selectedComplaint.rescheduled_date && (
+                  <div className="detail-item">
+                    <span className="detail-label">Rescheduled Date</span>
+                    <span className="detail-value text-emerald-700 font-semibold">
+                      {selectedComplaint.formatted_reschedule_date || selectedComplaint.rescheduled_date} {selectedComplaint.rescheduled_time_slot ? `(${selectedComplaint.rescheduled_time_slot})` : ''}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {selectedComplaint.notes && (
@@ -550,16 +558,17 @@ export const AdminDeliveryReportsPage = () => {
               >
                 Close
               </button>
-              {String(selectedComplaint.status || '').toUpperCase().includes('PENDING') && (
+              {selectedComplaint.status === 'PENDING_RESCHEDULE' && (
                 <button
                   type="button"
-                  className="modal-btn-action"
+                  className="modal-btn-action flex items-center gap-1.5"
                   onClick={() => {
                     setDetailsModalOpen(false);
-                    openRescheduleDrawer(selectedComplaint);
+                    handleRescheduleClick(selectedComplaint);
                   }}
                 >
-                  Reschedule Delivery
+                  <CalendarCheck size={15} />
+                  <span>Reschedule Delivery</span>
                 </button>
               )}
             </div>
@@ -1132,6 +1141,133 @@ export const AdminDeliveryReportsPage = () => {
           background: #F8FAFC;
           border-top: 1px solid #F1F5F9;
           flex-shrink: 0;
+        }
+
+        .modal-reschedule-form-card {
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 18px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+        }
+
+        .reschedule-form-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding-bottom: 10px;
+          border-bottom: 1px solid #F1F5F9;
+        }
+
+        .modal-feedback-alert {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          border-radius: 8px;
+        }
+
+        .alert-success {
+          background: #F0FDF4;
+          border: 1px solid #BBF7D0;
+        }
+
+        .alert-error {
+          background: #FEF2F2;
+          border: 1px solid #FECACA;
+        }
+
+        .reschedule-fields-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .reschedule-field-item {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .reschedule-field-item.full-width {
+          grid-column: span 2;
+        }
+
+        .reschedule-field-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #334155;
+          margin-bottom: 6px;
+        }
+
+        .reschedule-date-picker {
+          height: 38px;
+          padding: 6px 12px;
+          border: 1px solid #CBD5E1;
+          border-radius: 8px;
+          font-size: 13px;
+          color: #0F172A;
+          background: #FFFFFF;
+          outline: none;
+          transition: border-color 0.15s;
+        }
+
+        .reschedule-date-picker:focus {
+          border-color: #0D7A75;
+          box-shadow: 0 0 0 2px rgba(13, 122, 117, 0.12);
+        }
+
+        .reschedule-slots-flex {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 6px;
+        }
+
+        .reschedule-slot-pill {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 7px 10px;
+          font-size: 11.5px;
+          font-weight: 500;
+          color: #475569;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .reschedule-slot-pill:hover {
+          border-color: #CBD5E1;
+          background: #F1F5F9;
+        }
+
+        .reschedule-slot-pill.active {
+          background: #E6F4F2;
+          border-color: #0D7A75;
+          color: #0D7A75;
+          font-weight: 700;
+        }
+
+        .reschedule-textarea {
+          padding: 8px 12px;
+          border: 1px solid #CBD5E1;
+          border-radius: 8px;
+          font-size: 13px;
+          color: #0F172A;
+          background: #FFFFFF;
+          outline: none;
+          resize: vertical;
+          font-family: inherit;
+        }
+
+        .reschedule-textarea:focus {
+          border-color: #0D7A75;
+          box-shadow: 0 0 0 2px rgba(13, 122, 117, 0.12);
         }
 
         .modal-btn-cancel {

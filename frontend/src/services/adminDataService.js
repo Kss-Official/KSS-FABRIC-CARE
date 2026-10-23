@@ -541,11 +541,48 @@ export const subscribeAdminComplaints = (onComplaintsUpdated, onError) => {
       return;
     }
     const data = snap.val();
-    const list = Object.keys(data).map(k => ({ ...data[k], id: k })).reverse();
+    const list = Object.keys(data).map(k => ({ ...data[k], id: k })).sort((a, b) => {
+      const getT = (item) => {
+        if (!item) return 0;
+        const ts = [item.createdAt, item.updatedAt, item.created_at, item.updated_at, item.report_date, item.formatted_report_date, item.date];
+        for (const t of ts) {
+          if (typeof t === 'number' && t > 0) return t;
+          if (typeof t === 'string' && t.trim()) {
+            const p = new Date(t).getTime();
+            if (!isNaN(p) && p > 0) return p;
+          }
+        }
+        const idStr = String(item.id || item.order_id || '');
+        const m = idStr.match(/\b(17\d{11,13})\b/);
+        if (m) return Number(m[1]);
+        const d = idStr.replace(/\D/g, '');
+        return d ? parseInt(d, 10) : 0;
+      };
+      return getT(b) - getT(a);
+    });
     onComplaintsUpdated(list);
   }, onError);
 
   return () => off(complaintsRef, 'value', unsub);
+};
+
+export const subscribeAdminSupportTickets = (onTicketsUpdated, onError) => {
+  const ticketsRef = ref(rtdb, 'support_tickets');
+  const unsub = onValue(ticketsRef, (snap) => {
+    if (!snap.exists()) {
+      onTicketsUpdated([]);
+      return;
+    }
+    const data = snap.val();
+    const list = Object.keys(data).map(k => ({ ...data[k], id: data[k].id || k })).sort((a, b) => {
+      const timeA = new Date(b.created_at || b.createdAt || 0).getTime();
+      const timeB = new Date(a.created_at || a.createdAt || 0).getTime();
+      return timeA - timeB;
+    });
+    onTicketsUpdated(list);
+  }, onError);
+
+  return () => off(ticketsRef, 'value', unsub);
 };
 
 export const subscribeAdminNotifications = (onNotifsUpdated, onError) => {

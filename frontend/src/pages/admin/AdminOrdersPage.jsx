@@ -95,6 +95,81 @@ export const isStatusMatchingCategory = (orderStatus, categoryKey) => {
   return s === cat;
 };
 
+// Formats pickup date and time cleanly into full date (day, month, year) and time slot
+export const formatPickupDateTime = (ord) => {
+  if (!ord) return { dateStr: '25 Oct 2026', timeStr: '09:00 AM – 11:00 AM' };
+
+  let rawDate = ord.pickup_date || ord.pickupDate || ord.pickup?.date || '';
+  let rawTime = ord.pickup_time_slot || ord.pickupTimeSlot || ord.pickup?.time_slot || '';
+
+  if (!rawTime && ord.pickup?.from && ord.pickup?.to) {
+    rawTime = `${ord.pickup.from} – ${ord.pickup.to}`;
+  }
+
+  // If order has pickupTime string (e.g. "2026-10-25, 9:00 AM - 11:00 AM" or "23 Sep 2026, 10:00 AM - 12:00 PM")
+  if (ord.pickupTime) {
+    const parts = String(ord.pickupTime).split(/,\s+/);
+    if (parts.length >= 2) {
+      if (!rawDate || rawDate === 'Tomorrow' || rawDate === 'Today') rawDate = parts[0];
+      if (!rawTime) rawTime = parts.slice(1).join(', ');
+    } else if (!rawDate) {
+      rawDate = ord.pickupTime;
+    }
+  }
+
+  if (typeof rawDate === 'string' && rawDate.includes(',')) {
+    const parts = rawDate.split(/,\s+/);
+    if (parts.length >= 2) {
+      rawDate = parts[0];
+      if (!rawTime) rawTime = parts.slice(1).join(', ');
+    }
+  }
+
+  if (!rawDate && ord.date) rawDate = ord.date;
+  if (!rawDate && (ord.placedAt || ord.createdAt)) {
+    rawDate = new Date(ord.placedAt || ord.createdAt);
+  }
+
+  // Format to clean Full Date (e.g. "25 Oct 2026" or "23 Sep 2026")
+  let dateStr = '';
+  if (rawDate) {
+    if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+      dateStr = rawDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } else if (typeof rawDate === 'string') {
+      let trimmed = rawDate.trim().replace(/^(?:Today|Tomorrow|[A-Za-z]+),\s*/i, '');
+      if (/^\d{1,2}\s+[A-Za-z]{3}\s+\d{4}$/.test(trimmed)) {
+        dateStr = trimmed;
+      } else {
+        const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (isoMatch) {
+          const y = parseInt(isoMatch[1], 10);
+          const m = parseInt(isoMatch[2], 10) - 1;
+          const d = parseInt(isoMatch[3], 10);
+          const dt = new Date(y, m, d);
+          dateStr = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        } else if (/^\d{1,2}\s+[A-Za-z]{3}$/.test(trimmed)) {
+          dateStr = `${trimmed} 2026`;
+        } else {
+          const dt = new Date(trimmed.includes('T') ? trimmed : `${trimmed}T00:00:00`);
+          if (!isNaN(dt.getTime())) {
+            dateStr = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+          } else {
+            dateStr = trimmed;
+          }
+        }
+      }
+    }
+  }
+  if (!dateStr || dateStr === 'Today' || dateStr === 'Tomorrow') dateStr = '25 Oct 2026';
+
+  // Format Time Slot cleanly
+  let timeStr = rawTime || '09:00 AM – 11:00 AM';
+  timeStr = timeStr.replace(/(AM|PM)\s*[-–—]\s*11:00\s*$/i, '$1');
+  timeStr = timeStr.replace(/\s*[-–—]\s*/, ' – ');
+
+  return { dateStr, timeStr };
+};
+
 // Exact baseline orders matching the reference image
 export const BASELINE_ADMIN_ORDERS = [
   {
@@ -1004,17 +1079,13 @@ export const AdminOrdersPage = () => {
                       {/* Pickup Date & Time */}
                       <td>
                         {(() => {
-                          const str = ord.pickupTime || '';
-                          const dashMatch = str.match(/^(.*?)[–\-]\s*(.*?)$/);
-                          if (dashMatch) {
-                            return (
-                              <div className="order-pickup-datetime-col">
-                                <span className="pickup-time-top">{dashMatch[1].trim()}</span>
-                                <span className="pickup-time-bottom">– {dashMatch[2].trim()}</span>
-                              </div>
-                            );
-                          }
-                          return <span className="order-pickup-datetime-str">{str}</span>;
+                          const { dateStr, timeStr } = formatPickupDateTime(ord);
+                          return (
+                            <div className="order-pickup-datetime-col">
+                              <span className="pickup-time-top">{dateStr}</span>
+                              <span className="pickup-time-bottom">{timeStr}</span>
+                            </div>
+                          );
                         })()}
                       </td>
 

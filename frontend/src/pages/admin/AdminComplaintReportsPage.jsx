@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useAdmin } from '../../context/AdminContext';
+import { useAdmin, getComplaintSortTime } from '../../context/AdminContext';
 import { 
   FileText, 
   Clock, 
@@ -92,7 +92,7 @@ export const AdminComplaintReportsPage = () => {
       }
 
       return true;
-    });
+    }).sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
   }, [complaints, searchQuery, statusFilter, dateRangeFilter]);
 
   // Pagination calculation

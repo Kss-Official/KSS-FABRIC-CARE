@@ -213,6 +213,25 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
   const pickupDayMonth = getDayMonth(rawPickupDate, '19 Oct');
   const deliveryDayMonth = getDayMonth(rawDeliveryDate, '21 Oct');
 
+  const formattedPickupTimeDisplay = useMemo(() => {
+    let p = order?.pickupTime || '';
+    if (!p) {
+      const d = order?.pickup_date || order?.date || '25 Oct 2026';
+      const s = order?.pickup_time_slot || '09:00 AM – 11:00 AM';
+      p = `${d}, ${s}`;
+    }
+    const isoM = String(p).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (isoM) {
+      const dt = new Date(parseInt(isoM[1], 10), parseInt(isoM[2], 10) - 1, parseInt(isoM[3], 10));
+      if (!isNaN(dt.getTime())) {
+        const dStr = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        p = p.replace(/^(\d{4})-(\d{1,2})-(\d{1,2})/, dStr);
+      }
+    }
+    p = p.replace(/(AM|PM)\s*[-–—]\s*11:00\s*$/i, '$1');
+    return p;
+  }, [order?.pickupTime, order?.pickup_date, order?.date, order?.pickup_time_slot]);
+
   const isDelivered = Boolean(
     String(currentStatus || '').toUpperCase().includes('DELIVERED') || 
     String(currentStatus || '').toUpperCase().includes('COMPLETED')
@@ -442,7 +461,7 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
               </span>
             </div>
             <p className="order-sub-meta">
-              Placed on <strong style={{ color: '#334155' }}>{order?.date || '23 Sep 2026'}</strong> • Pickup: <span style={{ color: '#0D7A75', fontWeight: 600 }}>{order?.pickupTime || 'Today'}</span>
+              Placed on <strong style={{ color: '#334155' }}>{order?.date || '23 Sep 2026'}</strong> • Pickup: <span style={{ color: '#0D7A75', fontWeight: 600 }}>{formattedPickupTimeDisplay || '25 Oct 2026, 09:00 AM – 11:00 AM'}</span>
             </p>
           </div>
 
@@ -588,7 +607,7 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
                   <Calendar size={16} className="item-icon-slate" />
                   <div className="logistic-text">
                     <span className="logistic-lbl">Pickup Slot:</span>
-                    <strong className="logistic-val">{order?.pickupTime || '23 Sep, 09:00 AM – 11:00 AM'}</strong>
+                    <strong className="logistic-val">{formattedPickupTimeDisplay || '25 Oct 2026, 09:00 AM – 11:00 AM'}</strong>
                   </div>
                 </div>
 

@@ -45,7 +45,8 @@ export const Profile = () => {
     setLoadingAddresses(true);
     try {
       const data = await addressApi.getAddresses();
-      setAddresses(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      setAddresses(list);
     } catch (err) {
       console.warn('Failed to load addresses:', err);
       setAddresses([]);

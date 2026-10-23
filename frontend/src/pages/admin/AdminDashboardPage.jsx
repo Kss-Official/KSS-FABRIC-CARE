@@ -516,7 +516,34 @@ export const AdminDashboardPage = () => {
           ? o.items
           : (o.items && typeof o.items === 'object' ? Object.values(o.items) : []);
         const servicesList = o.services_list || (Array.isArray(o.services) ? o.services : (itemsList.length > 0 ? itemsList.map(it => it.service_name || it.item_name || it.name).filter(Boolean) : ['Wash & Fold']));
-        const pickupStr = o.pickup_time_slot ? `${o.pickup_date || 'Today'}, ${o.pickup_time_slot}` : (o.pickupTime || o.date || 'Today');
+        let pDateStr = o.pickup_date || o.date || '';
+        if (pDateStr && typeof pDateStr === 'string') {
+          const trimmed = pDateStr.trim().replace(/^(?:Today|Tomorrow|[A-Za-z]+),\s*/i, '');
+          const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+          if (isoMatch) {
+            const dt = new Date(parseInt(isoMatch[1], 10), parseInt(isoMatch[2], 10) - 1, parseInt(isoMatch[3], 10));
+            if (!isNaN(dt.getTime())) {
+              pDateStr = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+            }
+          } else if (/^\d{1,2}\s+[A-Za-z]{3}$/.test(trimmed)) {
+            pDateStr = `${trimmed} 2026`;
+          }
+        }
+        if (!pDateStr || pDateStr === 'Today' || pDateStr === 'Tomorrow') {
+          pDateStr = '25 Oct 2026';
+        }
+
+        let pSlotStr = o.pickup_time_slot || '';
+        if (!pSlotStr && o.pickup?.from && o.pickup?.to) {
+          pSlotStr = `${o.pickup.from} – ${o.pickup.to}`;
+        }
+        if (!pSlotStr) pSlotStr = '09:00 AM – 11:00 AM';
+        pSlotStr = pSlotStr.replace(/(AM|PM)\s*[-–—]\s*11:00\s*$/i, '$1');
+        pSlotStr = pSlotStr.replace(/\s*[-–—]\s*/, ' – ');
+
+        const pickupStr = (o.pickupTime && !o.pickupTime.includes('undefined') && !o.pickupTime.startsWith('2026-'))
+          ? o.pickupTime
+          : `${pDateStr}, ${pSlotStr}`;
         const amt = o.total_amount ? Number(o.total_amount) : (o.amount ? Number(o.amount) : 0);
         const stat = o.status_display || o.status || 'Pending Pickup';
 

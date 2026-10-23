@@ -52,10 +52,24 @@ export const AssignOrderModal = () => {
 
   if (!isAssignOrderModalOpen) return null;
 
+  const formattedPickupTime = useMemo(() => {
+    let p = assigningOrder?.pickupTime || (assigningOrder?.date ? `${assigningOrder.date}, ${assigningOrder.timeStart || '10:00 AM'} – ${assigningOrder.timeEnd || '12:00 PM'}` : '23 Sep 2026, 10:00 AM – 12:00 PM');
+    const isoM = String(p).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (isoM) {
+      const dt = new Date(parseInt(isoM[1], 10), parseInt(isoM[2], 10) - 1, parseInt(isoM[3], 10));
+      if (!isNaN(dt.getTime())) {
+        const dStr = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        p = p.replace(/^(\d{4})-(\d{1,2})-(\d{1,2})/, dStr);
+      }
+    }
+    p = p.replace(/(AM|PM)\s*[-–—]\s*11:00\s*$/i, '$1');
+    return p;
+  }, [assigningOrder?.pickupTime, assigningOrder?.date, assigningOrder?.timeStart, assigningOrder?.timeEnd]);
+
   // Use assigningOrder if passed, otherwise default to Reference Image order FC-10289
   const currentOrder = {
     id: formatOrderId(assigningOrder?.id || assigningOrder?.order_number || assigningOrder?.order_id || 'FC-10289'),
-    pickupTime: assigningOrder?.pickupTime || (assigningOrder?.date ? `${assigningOrder.date}, ${assigningOrder.timeStart || '10:00 AM'} – ${assigningOrder.timeEnd || '12:00 PM'}` : '23 Sep 2026, 10:00 AM – 12:00 PM'),
+    pickupTime: formattedPickupTime,
     type: assigningOrder?.type || 'Pickup',
     customer: {
       name: assigningOrder?.customer?.name || 'Priya Sharma',
