@@ -93,7 +93,6 @@ import {
   buildPlanString,
   normalizeOrderItem,
   normalizeOrder,
-  MOCK_LAUNDRY_ORDERS,
   computeDashboardTaskCounts
 } from './taskConfig';
 import { filterMatchesDate } from '../utils/dateFilterUtils';
@@ -177,8 +176,9 @@ export const isOrderDroppedAtHub = (o) => {
     return true;
   }
   
-  // Progression into laundry workflow
+  // Progression into laundry workflow or cleaning
   if (
+    s.includes('IN_CLEANING') ||
     s.includes('INSPECT') ||
     s.includes('WASH') ||
     s.includes('DRY') ||
@@ -194,29 +194,45 @@ export const isOrderDroppedAtHub = (o) => {
     s.includes('DELIVERED') ||
     s.includes('COMPLET')
   ) {
-    // If it mentions pickup/collected without explicit drop flag, it hasn't reached hub yet
-    if ((s.includes('PICKUP') || s.includes('COLLECT') || s.includes('ASSIGNED')) && !s.includes('READY')) {
+    // If it's still in customer pickup assignment phase without drop flag, it hasn't reached hub yet
+    if ((s.includes('ASSIGNED') || s.includes('PENDING_PICKUP') || s.includes('SCHEDULED') || s.includes('PLACED')) && !s.includes('READY')) {
       return Boolean(o.droppedAtHub || o.droppedOffAt || s.includes('DROPPED') || s.includes('RECEIVED'));
     }
     return true;
   }
   
+  // Accept if picked up / collected and heading into facility incoming stage
+  if ((s.includes('PICKED_UP') || s.includes('COLLECTED')) && (o.stage === 'incoming' || o.stage === 'inspection' || o.currentLaundryStep || Boolean(o.droppedAtHub || o.droppedOffAt))) {
+    return true;
+  }
+
   // Customer booking or pickup stage (BOOKED, PLACED, PENDING_PICKUP, etc.)
   return false;
 };
 
 // Filter out invalid or orphan order stubs
 export const isValidLaundryOrder = (o) => {
-  if (!o) return false;
+  if (!o || typeof o !== 'object') return false;
   const idStr = String(o.id || o.key || o.order_number || o.code || '');
   if (idStr.includes('P4CbA4_8YTw7XnFWZiV')) return false;
-  const hasCode = Boolean(o.code && String(o.code).trim());
-  const hasValidNum = Boolean(o.order_number && !String(o.order_number).startsWith('-') && !String(o.order_number).startsWith('#-'));
-  const hasItems = (Array.isArray(o.items) && o.items.length > 0) || (o.items && typeof o.items === 'object' && Object.keys(o.items).length > 0) || (o.items_summary && o.items_summary !== '1 item');
-  const hasCustomer = Boolean(o.customerName || (typeof o.customer === 'string' && o.customer !== 'Customer') || (o.customer && typeof o.customer === 'object' && o.customer.name));
-  
-  if (!hasCode && !hasValidNum && !hasItems && !hasCustomer) return false;
-  
+
+  // Real items check (must have real garment items)
+  const hasRealItems = (Array.isArray(o.items) && o.items.length > 0) || 
+                       (o.items && typeof o.items === 'object' && Object.keys(o.items).length > 0);
+
+  const hasCode = Boolean(o.code && String(o.code).trim() && !String(o.code).startsWith('-') && !String(o.code).startsWith('#-'));
+  const hasValidNum = Boolean(o.order_number && String(o.order_number).trim() && !String(o.order_number).startsWith('-') && !String(o.order_number).startsWith('#-'));
+  const hasCustomer = Boolean(
+    (o.customerName && o.customerName !== 'Customer') ||
+    (o.customer_name && o.customer_name !== 'Customer') ||
+    (typeof o.customer === 'string' && o.customer.trim() && o.customer.trim() !== 'Customer') ||
+    (o.customer && typeof o.customer === 'object' && o.customer.name && o.customer.name !== 'Customer')
+  );
+
+  // Exclude empty shells without genuine order code/number or valid customer
+  if (!hasCode && !hasValidNum && !hasCustomer) return false;
+  if (!hasRealItems && !hasCode && !hasValidNum) return false;
+
   // Only display orders that have reached/dropped off at the laundry hub
   if (!isOrderDroppedAtHub(o)) return false;
 
@@ -1029,7 +1045,7 @@ export const LaundryPortal = () => {
 
   const getOrderTimestamp = (o) => {
     if (!o) return 0;
-    const t = o.updatedAt || o.placedAt || o.createdAt || o.created_at || o.date || 0;
+    const t = o.droppedAtHub || o.droppedOffAt || o.dropped_at_hub || o.receivedAt || o.intakeAt || o.updatedAt || o.placedAt || o.createdAt || o.created_at || o.date || 0;
     if (typeof t === 'number') return t;
     const parsed = new Date(t).getTime();
     return isNaN(parsed) ? 0 : parsed;
@@ -1327,8 +1343,7 @@ export const LaundryPortal = () => {
         localStorage.removeItem('fabricare_staff_orders');
       }
     } catch (e) {}
-    const fresh = MOCK_LAUNDRY_ORDERS.map(normalizeOrder);
-    setOrders(fresh);
+    fetchOrders();
   };
 
   const sortExpressFirst = (arr = []) => {
@@ -1763,23 +1778,32 @@ export const LaundryPortal = () => {
 
   // Filter queues based on status
   const incomingOrders = orders.filter(o => {
-    const s = String(o.status || o.raw_status || '').toUpperCase();
-    return ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'IN_TRANSIT_TO_HUB'].includes(s) ||
-           (s === 'IN CLEANING' && (o.stage === 'incoming' || o.stage === 'inspection')) ||
-           o.stage === 'incoming';
+    const s = String(o.status || o.raw_status || o.orderStatus || '').toUpperCase();
+    const stg = String(o.stage || '').toLowerCase();
+    const isReadyOrDelivered = ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'NEARBY', 'DELIVERED', 'COMPLETED'].includes(s) || ['ready', 'out_for_delivery', 'delivered'].includes(stg);
+    if (isReadyOrDelivered) return false;
+    const isAdvancedLaundry = ['WASHING', 'DRYING', 'IRONING', 'QC', 'QUALITY_CHECK', 'PACKING', 'PACKED'].includes(s) || ['washing', 'drying', 'ironing', 'qc', 'packing'].includes(stg);
+    if (isAdvancedLaundry) return false;
+
+    return ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'IN_TRANSIT_TO_HUB', 'COLLECTED', 'AT_HUB'].includes(s) ||
+           ['incoming', 'picked', 'inspection'].includes(stg) ||
+           Boolean(o.droppedAtHub || o.droppedOffAt) ||
+           (s === 'IN CLEANING' && (['incoming', 'inspection', 'picked'].includes(stg) || !stg));
   });
   const receivedOrders = orders.filter(o => {
-    const s = String(o.status || o.raw_status || '').toUpperCase();
-    return ['RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED'].includes(s);
+    const s = String(o.status || o.raw_status || o.orderStatus || '').toUpperCase();
+    return ['RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'AT_HUB'].includes(s);
   });
   const inspectionOrders = orders.filter(o => {
-    const s = String(o.status || o.raw_status || '').toUpperCase();
-    return s === 'INSPECTION' || o.stage === 'inspection';
+    const s = String(o.status || o.raw_status || o.orderStatus || '').toUpperCase();
+    const stg = String(o.stage || '').toLowerCase();
+    return s === 'INSPECTION' || stg === 'inspection' || (o.currentLaundryStep === 'inspect' && !['READY_FOR_DELIVERY', 'DELIVERED'].includes(s));
   });
   const processingOrders = orders.filter(o => {
-    const s = String(o.status || o.raw_status || '').toUpperCase();
+    const s = String(o.status || o.raw_status || o.orderStatus || '').toUpperCase();
+    const stg = String(o.stage || '').toLowerCase();
     return ['PROCESSING', 'WASHING', 'DRYING', 'IRONING', 'IN_PROCESS', 'IN_CLEANING'].includes(s) ||
-           (s === 'IN CLEANING' && o.stage !== 'incoming' && o.stage !== 'inspection');
+           (['washing', 'drying', 'ironing', 'steaming', 'cleaning'].includes(stg) && !['incoming', 'inspection', 'ready'].includes(stg));
   });
   const qcOrders = orders.filter(o => {
     const s = String(o.status || o.raw_status || '').toUpperCase();
@@ -2430,8 +2454,8 @@ export const LaundryPortal = () => {
           const maxServiceCount = Math.max(1, ...serviceStats.map(s => s.count));
           const totalServiceOrders = targetServiceOrders.length;
 
-          // 4. Recent Requests (4 newest real orders from validOrders)
-          const sourceOrdersForRecent = (validOrders.length > 0 ? validOrders : MOCK_LAUNDRY_ORDERS);
+          // 4. Recent Requests (4 newest real orders dynamically loaded from database)
+          const sourceOrdersForRecent = validOrders;
           const recentRequestsList = sourceOrdersForRecent
             .slice()
             .sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a))
@@ -2451,9 +2475,23 @@ export const LaundryPortal = () => {
               }
               const badges = getServiceBadges(o);
               const mainService = badges[0]?.label || o.service || 'Wash & Fold';
-              const num = o.order_number || o.order_id || (o.code ? `FC-${o.code}` : `#${o.id}`);
-              const custName = o.customer_name || (typeof o.customer === 'object' ? o.customer?.name : o.customer) || o.customerName || 'Customer';
-              const itemsText = o.items_summary || (Array.isArray(o.items) && o.items.length > 0 ? `${o.items[0].name || 'Garment'} × ${o.items[0].quantity || 1}` : 'Garments');
+              const rawNum = o.code || o.order_number || o.order_id || o.id;
+              const num = formatOrderId(rawNum);
+              let custName = o.customer_name || o.customerName || (typeof o.customer === 'object' ? o.customer?.name : o.customer);
+              if (!custName || custName === 'Customer') {
+                custName = o.pickup_full_name || o.recipient_name || 'Customer';
+              }
+              let itemsText = 'Garments';
+              if (Array.isArray(o.items) && o.items.length > 0) {
+                itemsText = o.items.map(it => `${it.name || it.item_name || 'Garment'} × ${it.quantity || 1}`).join(', ');
+              } else if (o.items_summary && o.items_summary !== '1 item' && o.items_summary !== '1 Item' && o.items_summary !== 'Laundry Bag') {
+                itemsText = o.items_summary;
+              } else if (o.items && typeof o.items === 'object') {
+                const vals = Object.values(o.items);
+                if (vals.length > 0) {
+                  itemsText = vals.map(it => `${it.name || it.item_name || 'Garment'} × ${it.quantity || 1}`).join(', ');
+                }
+              }
               return {
                 id: o.id || num,
                 code: num,
@@ -2476,9 +2514,7 @@ export const LaundryPortal = () => {
               };
             });
 
-          const displayRecentRequests = (dashboardData?.recent_requests && dashboardData.recent_requests.length > 0)
-            ? dashboardData.recent_requests
-            : recentRequestsList;
+          const displayRecentRequests = recentRequestsList;
 
           const goToOrdersWithFilter = (chipKey = 'all', searchVal = '', serviceFilterVal = 'all') => {
             setOrdersActiveChip(chipKey);
@@ -2789,12 +2825,12 @@ export const LaundryPortal = () => {
                     {/* Table Rows */}
                     <div className="recent-table-body">
                       {displayRecentRequests.length === 0 ? (
-                        <div className="py-6 text-center text-xs text-slate-400">
+                        <div className="py-8 text-center text-xs text-slate-400">
                           No incoming requests at the moment.
                         </div>
                       ) : (
                         displayRecentRequests.map((req, idx) => {
-                          const orderIdStr = req.code || req.orderId || req.id;
+                          const orderIdStr = formatOrderId(req.code || req.orderId || req.id);
                           const custName = req.customer_name || req.customer || 'Customer';
                           const serviceBadges = req.badges || (req.rawOrder ? getServiceBadges(req.rawOrder) : getServiceBadges({ service: req.service, services: req.services }));
                           const isExp = req.isExpress || (req.tags || []).includes('express');
@@ -2805,7 +2841,7 @@ export const LaundryPortal = () => {
                               key={orderIdStr || idx}
                               className={`recent-table-row recent-table-data-row ${idx % 2 === 1 ? 'row-alt' : ''}`}
                             >
-                              <div className="col-order-id">{orderIdStr}</div>
+                              <div className="col-order-id" title={orderIdStr}>{orderIdStr}</div>
                               <div className="col-customer" title={custName}>{custName}</div>
                               <div className="col-items" title={req.items}>{req.items}</div>
                               <div className="col-service">
@@ -6765,8 +6801,8 @@ export const LaundryPortal = () => {
         /* RECENT REQUESTS TABLE */
         .recent-table-row {
           display: grid;
-          grid-template-columns: 96px minmax(115px, 1.2fr) minmax(130px, 1.4fr) minmax(150px, 1.5fr) 85px 68px;
-          column-gap: 12px;
+          grid-template-columns: 105px minmax(110px, 1.2fr) minmax(130px, 1.4fr) minmax(140px, 1.5fr) 90px 68px;
+          column-gap: 14px;
           align-items: center;
         }
 
@@ -6806,6 +6842,9 @@ export const LaundryPortal = () => {
           color: #0F172A;
           font-size: 13px;
           white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          min-width: 0;
         }
 
         .recent-table-row .col-customer {

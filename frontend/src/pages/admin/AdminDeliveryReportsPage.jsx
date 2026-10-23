@@ -77,9 +77,15 @@ export const AdminDeliveryReportsPage = () => {
     }
   };
 
-  // Filter complaints based on search query, status, and date range
+  // Filter complaints based on search query, status, and date range, ensuring newest appear first
   const filteredComplaints = useMemo(() => {
-    return (complaints || []).filter((item) => {
+    const list = (complaints || []).filter((item) => {
+      // Exclude FC-57606 as requested
+      const orderIdStr = String(item.order_id_display || item.order_id || item.id || '').toUpperCase();
+      if (orderIdStr.includes('FC-57606') || orderIdStr.includes('57606')) {
+        return false;
+      }
+
       // Search Query filter (matches Order ID, Customer Name, Failure Reason, Phone, Address, Executive)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -110,6 +116,32 @@ export const AdminDeliveryReportsPage = () => {
       }
 
       return true;
+    });
+
+    // Sort so new requests always come on top (descending by timestamp)
+    return list.sort((a, b) => {
+      const getTimestamp = (x) => {
+        if (x.createdAt && !isNaN(Number(x.createdAt))) return Number(x.createdAt);
+        if (x.created_at && !isNaN(Number(x.created_at))) return Number(x.created_at);
+        if (x.updatedAt && !isNaN(Number(x.updatedAt))) return Number(x.updatedAt);
+        if (x.report_date) {
+          const t = new Date(x.report_date).getTime();
+          if (!isNaN(t)) return t;
+        }
+        if (x.formatted_report_date) {
+          const t = new Date(x.formatted_report_date).getTime();
+          if (!isNaN(t)) return t;
+        }
+        return 0;
+      };
+
+      const timeA = getTimestamp(a);
+      const timeB = getTimestamp(b);
+
+      if (timeB !== timeA) {
+        return timeB - timeA;
+      }
+      return String(b.id || '').localeCompare(String(a.id || ''));
     });
   }, [complaints, searchQuery, statusFilter, dateRangeFilter]);
 
