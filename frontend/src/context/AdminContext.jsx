@@ -687,13 +687,18 @@ export const AdminProvider = ({ children }) => {
     });
 
     const unsubComplaints = subscribeAdminComplaints((rtdbComplaints) => {
-      if (rtdbComplaints && rtdbComplaints.length > 0) {
-        const sorted = [...rtdbComplaints].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
-        setComplaints(sorted);
-      } else {
-        const sorted = [...DEFAULT_COMPLAINTS].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
-        setComplaints(sorted);
-      }
+      const source = (rtdbComplaints && rtdbComplaints.length > 0) ? rtdbComplaints : DEFAULT_COMPLAINTS;
+      const cleanList = source.filter(c => {
+        const str = String(c?.order_id_display || c?.order_id || c?.id || '').toUpperCase();
+        return !str.includes('FC-57606') && !str.includes('57606');
+      });
+      cleanList.sort((a, b) => {
+        const timeA = Number(a.createdAt || a.created_at || a.updatedAt) || (a.report_date ? new Date(a.report_date).getTime() : 0);
+        const timeB = Number(b.createdAt || b.created_at || b.updatedAt) || (b.report_date ? new Date(b.report_date).getTime() : 0);
+        if (timeB !== timeA) return timeB - timeA;
+        return String(b.id || '').localeCompare(String(a.id || ''));
+      });
+      setComplaints(cleanList);
     });
 
     const unsubServices = subscribeAdminServices((rtdbServices) => {
@@ -1259,9 +1264,11 @@ export const AdminProvider = ({ children }) => {
       const cleanTarget = String(targetOrderId).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
       try {
-        const { ref: rtdbRef, update: rtdbUpdate, get: rtdbGet } = await import('firebase/database');
+        const { ref: rtdbRef, update: rtdbUpdate, get: rtdbGet, push: rtdbPush } = await import('firebase/database');
         const { rtdb } = await import('../config/firebase');
         const updates = {};
+
+        // 1. Update complaint record
         updates[`complaints/${complaintId}/status`] = 'RESCHEDULED';
         updates[`complaints/${complaintId}/rescheduled_date`] = newDate;
         updates[`complaints/${complaintId}/formatted_reschedule_date`] = newDate;
@@ -1269,33 +1276,141 @@ export const AdminProvider = ({ children }) => {
         if (notes) updates[`complaints/${complaintId}/notes`] = notes;
         updates[`complaints/${complaintId}/updatedAt`] = now;
 
-        // Synchronize into RTDB orders
+        // 2. Fetch complaint to identify target order
+        let orderCodeOrKey = null;
+        let directOrderKey = null;
+        let directTaskId = null;
         try {
-          const ordersSnap = await rtdbGet(rtdbRef(rtdb, 'orders'));
-          if (ordersSnap.exists()) {
-            const allOrders = ordersSnap.val() || {};
-            for (const [k, ord] of Object.entries(allOrders)) {
-              if (!ord) continue;
-              const cK = String(k).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-              const cCode = String(ord.code || ord.order_number || ord.order_id || ord.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-              if (cK === cleanTarget || cCode === cleanTarget || (cCode && cleanTarget.includes(cCode)) || (cleanTarget && cCode.includes(cleanTarget))) {
-                updates[`orders/${k}/delivery_date`] = newDate;
-                updates[`orders/${k}/delivery_time_slot`] = newSlot;
-                updates[`orders/${k}/rescheduled_date`] = newDate;
-                updates[`orders/${k}/rescheduled_time_slot`] = newSlot;
-                updates[`orders/${k}/formatted_reschedule_date`] = newDate;
-                updates[`orders/${k}/isRescheduled`] = true;
-                updates[`orders/${k}/status`] = 'READY_FOR_DELIVERY';
-                updates[`orders/${k}/stage`] = 'ready';
-                updates[`orders/${k}/type`] = 'delivery';
-                updates[`orders/${k}/updatedAt`] = now;
-              }
-            }
+          const cSnap = await rtdbGet(rtdbRef(rtdb, `complaints/${complaintId}`));
+          if (cSnap.exists()) {
+            const cVal = cSnap.val() || {};
+            orderCodeOrKey = cVal.order_id || cVal.order_id_display;
+            directOrderKey = cVal.order_key;
+            directTaskId = cVal.task_id;
           }
         } catch (_) {}
 
-        // Synchronize into RTDB tasks
+        if (!orderCodeOrKey) {
+          const localC = (complaints || []).find(c => c.id === complaintId || c.order_id === complaintId);
+          if (localC) {
+            orderCodeOrKey = localC.order_id || localC.order_id_display;
+            directOrderKey = localC.order_key;
+            directTaskId = localC.task_id;
+          }
+        }
+
+        // 3. Find and update the corresponding order in orders/
+        let resolvedOrderKey = directOrderKey;
+        let orderObj = null;
+
+        if (!resolvedOrderKey && orderCodeOrKey) {
+          const cleanTarget = String(orderCodeOrKey).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          try {
+            const allOrdersSnap = await rtdbGet(rtdbRef(rtdb, 'orders'));
+            if (allOrdersSnap.exists()) {
+              const allOrders = allOrdersSnap.val() || {};
+              for (const [k, v] of Object.entries(allOrders)) {
+                if (!v) continue;
+                const cleanK = String(k || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cleanCode = String(v.code || v.order_number || v.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                if (cleanK === cleanTarget || cleanCode === cleanTarget) {
+                  resolvedOrderKey = k;
+                  orderObj = v;
+                  break;
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (resolvedOrderKey) {
+          if (!orderObj) {
+            try {
+              const oSnap = await rtdbGet(rtdbRef(rtdb, `orders/${resolvedOrderKey}`));
+              if (oSnap.exists()) orderObj = oSnap.val() || {};
+            } catch (_) {}
+          }
+
+          // Update order in RTDB so Delivery Portal instantly receives the reschedule information
+          updates[`orders/${resolvedOrderKey}/status`] = 'READY_FOR_DELIVERY';
+          updates[`orders/${resolvedOrderKey}/stage`] = 'ready';
+          updates[`orders/${resolvedOrderKey}/currentLaundryStep`] = 'ready';
+          updates[`orders/${resolvedOrderKey}/raw_status`] = 'READY_FOR_DELIVERY';
+          updates[`orders/${resolvedOrderKey}/orderStatus`] = 'Rescheduled';
+          updates[`orders/${resolvedOrderKey}/status_display`] = 'Rescheduled';
+          updates[`orders/${resolvedOrderKey}/isRescheduled`] = true;
+          updates[`orders/${resolvedOrderKey}/rescheduled_date`] = newDate;
+          updates[`orders/${resolvedOrderKey}/rescheduled_time_slot`] = newSlot;
+          updates[`orders/${resolvedOrderKey}/delivery_date`] = newDate;
+          updates[`orders/${resolvedOrderKey}/delivery_time_slot`] = newSlot;
+          updates[`orders/${resolvedOrderKey}/formatted_reschedule_date`] = newDate;
+          updates[`orders/${resolvedOrderKey}/rescheduleNotes`] = notes;
+          updates[`orders/${resolvedOrderKey}/adminNotes`] = notes;
+          updates[`orders/${resolvedOrderKey}/rescheduledAt`] = now;
+          updates[`orders/${resolvedOrderKey}/delivery_reported`] = false;
+          updates[`orders/${resolvedOrderKey}/isDeliveryReported`] = false;
+          updates[`orders/${resolvedOrderKey}/updatedAt`] = now;
+
+          // Update associated delivery task in tasks/
+          const taskIdToUpdate = directTaskId || orderObj?.deliveryTaskId;
+          if (taskIdToUpdate) {
+            updates[`tasks/${taskIdToUpdate}/status`] = 'assigned';
+            updates[`tasks/${taskIdToUpdate}/isRescheduled`] = true;
+            updates[`tasks/${taskIdToUpdate}/rescheduled_date`] = newDate;
+            updates[`tasks/${taskIdToUpdate}/rescheduled_time_slot`] = newSlot;
+            updates[`tasks/${taskIdToUpdate}/delivery_date`] = newDate;
+            updates[`tasks/${taskIdToUpdate}/delivery_time_slot`] = newSlot;
+            updates[`tasks/${taskIdToUpdate}/rescheduledDate`] = newDate;
+            updates[`tasks/${taskIdToUpdate}/delivery_reported`] = false;
+            updates[`tasks/${taskIdToUpdate}/isDeliveryReported`] = false;
+            updates[`tasks/${taskIdToUpdate}/updatedAt`] = now;
+          }
+
+          // Order History record
+          const histPush = rtdbPush(rtdbRef(rtdb, `orderHistory/${resolvedOrderKey}`));
+          updates[`orderHistory/${resolvedOrderKey}/${histPush.key}`] = {
+            from: 'RESCHEDULED',
+            to: 'READY_FOR_DELIVERY',
+            byName: 'Admin',
+            note: `Delivery rescheduled by Admin for ${newDate} (${newSlot})${notes ? `. Note: "${notes}"` : ''}`,
+            at: now
+          };
+
+          // Notification to delivery agent
+          const agentUid = orderObj?.agentId || orderObj?.assignedAgentId;
+          const orderCode = orderObj?.code || orderObj?.order_number || orderCodeOrKey || resolvedOrderKey;
+          if (agentUid) {
+            const notifPush = rtdbPush(rtdbRef(rtdb, `notifications/${agentUid}`));
+            updates[`notifications/${agentUid}/${notifPush.key}`] = {
+              type: 'delivery_rescheduled',
+              title: `Delivery Rescheduled: ${orderCode}`,
+              body: `Order ${orderCode} delivery has been rescheduled to ${newDate} (${newSlot}). ${notes ? `Note: "${notes}"` : ''}`,
+              orderId: orderCode,
+              orderCode: orderCode,
+              createdAt: now,
+              read: false
+            };
+          }
+
+          // Notification to customer
+          const customerUid = orderObj?.customerId || orderObj?.customer_id || orderObj?.userId;
+          if (customerUid) {
+            const cNotifPush = rtdbPush(rtdbRef(rtdb, `notifications/${customerUid}`));
+            updates[`notifications/${customerUid}/${cNotifPush.key}`] = {
+              type: 'delivery_rescheduled',
+              title: 'Delivery Rescheduled',
+              body: `Your delivery for order ${orderCode} has been rescheduled to ${newDate} during ${newSlot}.`,
+              orderId: orderCode,
+              orderCode: orderCode,
+              createdAt: now,
+              read: false
+            };
+          }
+        }
+
+        // Fallback: Also synchronize any tasks in tasks/ matching the target order
         try {
+          const cleanTarget = String(orderCodeOrKey || complaintId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
           const tasksSnap = await rtdbGet(rtdbRef(rtdb, 'tasks'));
           if (tasksSnap.exists()) {
             const allTasks = tasksSnap.val() || {};
@@ -1319,7 +1434,7 @@ export const AdminProvider = ({ children }) => {
 
         await rtdbUpdate(rtdbRef(rtdb), updates);
       } catch (dbErr) {
-        console.warn('RTDB update complaint notice:', dbErr);
+        console.warn('RTDB update complaint & order notice:', dbErr);
       }
 
       // 3. Optimistically update local complaints state & localStorage

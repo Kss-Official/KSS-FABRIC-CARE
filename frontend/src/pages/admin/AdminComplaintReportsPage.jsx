@@ -62,13 +62,19 @@ export const AdminComplaintReportsPage = () => {
     }
   };
 
-  // Filter complaints based on search and filters
+  // Filter complaints based on search and filters, ensuring newest appear first
   const filteredComplaints = useMemo(() => {
-    return (complaints || []).filter((item) => {
+    const list = (complaints || []).filter((item) => {
+      // Exclude FC-57606 as requested
+      const orderIdStr = String(item.order_id_display || item.order_id || item.id || '').toUpperCase();
+      if (orderIdStr.includes('FC-57606') || orderIdStr.includes('57606')) {
+        return false;
+      }
+
       // Search
       const query = searchQuery.trim().toLowerCase();
       if (query) {
-        const orderIdMatch = (item.order_id || '').toLowerCase().includes(query);
+        const orderIdMatch = (item.order_id || item.order_id_display || item.id || '').toLowerCase().includes(query);
         const nameMatch = (item.customer_name || '').toLowerCase().includes(query);
         const reasonMatch = (item.failure_reason || '').toLowerCase().includes(query);
         const staffMatch = (item.reported_by_name || '').toLowerCase().includes(query);
@@ -92,7 +98,33 @@ export const AdminComplaintReportsPage = () => {
       }
 
       return true;
-    }).sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
+    });
+
+    // Sort so new requests always come on top (descending by timestamp)
+    return list.sort((a, b) => {
+      const getTimestamp = (x) => {
+        if (x.createdAt && !isNaN(Number(x.createdAt))) return Number(x.createdAt);
+        if (x.created_at && !isNaN(Number(x.created_at))) return Number(x.created_at);
+        if (x.updatedAt && !isNaN(Number(x.updatedAt))) return Number(x.updatedAt);
+        if (x.report_date) {
+          const t = new Date(x.report_date).getTime();
+          if (!isNaN(t)) return t;
+        }
+        if (x.formatted_report_date) {
+          const t = new Date(x.formatted_report_date).getTime();
+          if (!isNaN(t)) return t;
+        }
+        return 0;
+      };
+
+      const timeA = getTimestamp(a);
+      const timeB = getTimestamp(b);
+
+      if (timeB !== timeA) {
+        return timeB - timeA;
+      }
+      return String(b.id || '').localeCompare(String(a.id || ''));
+    });
   }, [complaints, searchQuery, statusFilter, dateRangeFilter]);
 
   // Pagination calculation

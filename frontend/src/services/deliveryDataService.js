@@ -11,6 +11,7 @@ import {
 } from 'firebase/database';
 import { rtdb, auth } from '../config/firebase.js';
 import { addNotificationToUpdates, addRoleNotificationsToUpdates } from './notificationService.js';
+import { updateFirestoreOrderStatus } from './firestoreService.js';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 
@@ -578,17 +579,33 @@ export const recordDeliveryFailureAndReschedule = async (taskId, { failed_reason
 
   // 3. Update task in RTDB
   updates[`tasks/${taskId}/status`] = 'rescheduled';
+  updates[`tasks/${taskId}/type`] = 'Delivery';
+  updates[`tasks/${taskId}/raw_type`] = 'delivery';
+  updates[`tasks/${taskId}/delivery_reported`] = true;
+  updates[`tasks/${taskId}/isDeliveryReported`] = true;
   updates[`tasks/${taskId}/failedReason`] = actualReason;
+  updates[`tasks/${taskId}/isRescheduled`] = false;
+  updates[`tasks/${taskId}/rescheduled_date`] = null;
+  updates[`tasks/${taskId}/rescheduled_time_slot`] = null;
+  updates[`tasks/${taskId}/rescheduledDate`] = null;
   if (actualComment) updates[`tasks/${taskId}/comment`] = actualComment;
-  if (rescheduled_date) updates[`tasks/${taskId}/rescheduledDate`] = rescheduled_date;
   updates[`tasks/${taskId}/updatedAt`] = now;
 
   // 4. Update order stage and status in RTDB
   updates[`orders/${orderKey}/status`] = 'RESCHEDULED';
   updates[`orders/${orderKey}/stage`] = 'rescheduled';
+  updates[`orders/${orderKey}/raw_status`] = 'RESCHEDULED';
+  updates[`orders/${orderKey}/orderStatus`] = 'Pending Reschedule';
+  updates[`orders/${orderKey}/status_display`] = 'Pending Reschedule';
+  updates[`orders/${orderKey}/delivery_reported`] = true;
+  updates[`orders/${orderKey}/isDeliveryReported`] = true;
   updates[`orders/${orderKey}/failedReason`] = actualReason;
+  updates[`orders/${orderKey}/isRescheduled`] = false;
+  updates[`orders/${orderKey}/rescheduled_date`] = null;
+  updates[`orders/${orderKey}/rescheduled_time_slot`] = null;
+  updates[`orders/${orderKey}/formatted_reschedule_date`] = null;
+  updates[`orders/${orderKey}/rescheduledDate`] = null;
   if (actualComment) updates[`orders/${orderKey}/failureComment`] = actualComment;
-  if (rescheduled_date) updates[`orders/${orderKey}/rescheduledDate`] = rescheduled_date;
   updates[`orders/${orderKey}/updatedAt`] = now;
 
   // 5. Order History
@@ -610,14 +627,13 @@ export const recordDeliveryFailureAndReschedule = async (taskId, { failed_reason
   const complaintId = complaintPush.key;
   const formattedDate = new Date(now).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   const formattedTime = new Date(now).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-  const formattedReschedule = rescheduled_date
-    ? new Date(rescheduled_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    : '—';
 
   updates[`complaints/${complaintId}`] = {
     id: complaintId,
     order_id: orderDisplayCode,
     order_id_display: orderDisplayCode,
+    order_key: orderKey,
+    task_id: taskId,
     customer_name: customerName,
     customer_phone: customerPhone,
     customer_address: customerAddress,
@@ -625,8 +641,10 @@ export const recordDeliveryFailureAndReschedule = async (taskId, { failed_reason
     comment: actualComment || '',
     report_date: new Date(now).toISOString().split('T')[0],
     formatted_report_date: `${formattedDate}, ${formattedTime}`,
-    rescheduled_date: rescheduled_date || null,
-    formatted_reschedule_date: formattedReschedule,
+    createdAt: now,
+    updatedAt: now,
+    rescheduled_date: null,
+    formatted_reschedule_date: '—',
     rescheduled_time_slot: '',
     status: 'PENDING_RESCHEDULE',
     priority: 'HIGH',
@@ -659,7 +677,41 @@ export const recordDeliveryFailureAndReschedule = async (taskId, { failed_reason
     });
   }
 
+  // 9. Delivery Agent Notification (recorded in Agent's Notification Bell & History)
+  if (agent && agent.uid) {
+    const isReschedule = actualReason === 'Customer requested later delivery slot' || 
+                         String(actualReason).toLowerCase().includes('reschedule') || 
+                         String(actualReason).toLowerCase().includes('later');
+    addNotificationToUpdates(updates, agent.uid, {
+      type: isReschedule ? 'reschedule_success' : 'issue_reported',
+      title: isReschedule ? 'Request Rescheduled' : 'Issue Reported',
+      body: isReschedule
+        ? `The request for order ${orderDisplayCode} has been rescheduled successfully.`
+        : `The issue for order ${orderDisplayCode} (${actualReason}) has been reported successfully.`,
+      orderId: orderDisplayCode,
+      orderCode: orderDisplayCode,
+      createdAt: now
+    });
+  }
+
   await update(ref(targetDb), updates);
+
+  // 10. Sync with Firestore so both real-time DB and Firestore remain in perfect harmony
+  try {
+    await updateFirestoreOrderStatus(orderKey, 'Rescheduled', {
+      stage: 'rescheduled',
+      raw_status: 'RESCHEDULED',
+      status_display: 'Rescheduled',
+      failedReason: actualReason,
+      failureComment: actualComment || '',
+      delivery_reported: true,
+      isDeliveryReported: true,
+      type: 'Delivery'
+    });
+  } catch (fsErr) {
+    console.warn('Sync delivery failure to Firestore skipped or non-critical:', fsErr);
+  }
+
   return { success: true };
 };
 

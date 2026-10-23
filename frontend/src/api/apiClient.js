@@ -733,7 +733,12 @@ export const deliveryApi = {
           const o = allOrders[oid];
           if (o && (o.code || o.order_number || o.id)) {
             const code = String(o.code || o.order_number || o.id || oid).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-            taskIdsSet.add(`order_${code}`);
+            taskIdsSet.add(`order_pk_${code}`);
+            const vStatus = String(o.status || o.raw_status || '').toUpperCase();
+            const isDel = ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'NEARBY', 'DELIVERED', 'COMPLETED'].includes(vStatus) || o.delivery_reported === true;
+            if (isDel) {
+              taskIdsSet.add(`order_dl_${code}`);
+            }
           }
         });
       }
@@ -773,11 +778,37 @@ export const deliveryApi = {
           }
           if (orderData) {
             const rawOrdStatus = String(orderData.status || orderData.raw_status || '').toUpperCase();
-            if (['DELIVERED', 'COMPLETED'].includes(rawOrdStatus)) {
-              t.status = 'completed';
-            } else if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'IN CLEANING', 'IN_CLEANING'].includes(rawOrdStatus) && (t.type || '').toLowerCase() === 'pickup') {
-              t.status = 'completed';
+            const isPickup = (t.type || '').toLowerCase() === 'pickup';
+            if (!isPickup && (t.delivery_reported || t.isDeliveryReported || orderData.delivery_reported || orderData.isDeliveryReported)) {
+              t.type = 'delivery';
+              t.delivery_reported = true;
             }
+            if (!isPickup && (rawOrdStatus === 'RESCHEDULED' || orderData.stage === 'rescheduled')) {
+              t.status = 'rescheduled';
+              t.failedReason = orderData.failedReason || t.failedReason;
+              t.comment = orderData.failureComment || orderData.comment || t.comment;
+            } else if (['DELIVERED'].includes(rawOrdStatus) && !isPickup) {
+              t.status = 'completed';
+            } else if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'IN CLEANING', 'IN_CLEANING', 'AT_HUB', 'COMPLETED', 'DELIVERED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'RESCHEDULED'].includes(rawOrdStatus) && isPickup) {
+              t.status = 'completed';
+              t.stage = 'inspection';
+              t.tracker_stage = 'AT_HUB';
+              t.droppedAtHub = orderData.droppedAtHub || orderData.droppedOffAt || orderData.collectedAt || Date.now();
+            } else if (['PICKED_UP', 'COLLECTED'].includes(rawOrdStatus) && isPickup) {
+              if (t.status === 'completed' || t.tracker_stage === 'AT_HUB' || Boolean(t.droppedAtHub || t.droppedOffAt)) {
+                t.status = 'completed';
+                t.stage = 'inspection';
+                t.tracker_stage = 'AT_HUB';
+                t.droppedAtHub = orderData.droppedAtHub || orderData.droppedOffAt || t.droppedAtHub || Date.now();
+              } else {
+                t.status = 'picked_up';
+                t.stage = 'picked';
+              }
+            }
+
+            t.orderStatus = orderData.status;
+            t.order_status = orderData.status;
+            t.orderData = orderData;
 
             if (orderData.isRescheduled || orderData.rescheduled_date || rawOrdStatus === 'RESCHEDULED') {
               t.type = 'delivery';
@@ -809,7 +840,8 @@ export const deliveryApi = {
 
       // If id is order_... or task wasn't in tasks node, build task directly from orders node
       if (!t) {
-        const cleanTarget = String(id).replace(/^order_/, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        const cleanTarget = String(id).replace(/^order_(pk_|dl_)?/, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        const forceType = String(id).startsWith('order_pk_') ? 'pickup' : (String(id).startsWith('order_dl_') ? 'delivery' : null);
         try {
           const allOrdersSnap = await get(ref(rtdb, 'orders'));
           if (allOrdersSnap.exists()) {
@@ -820,8 +852,14 @@ export const deliveryApi = {
               const cCode = String(v.code || v.order_number || v.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
               if (cK === cleanTarget || cCode === cleanTarget) {
                 orderData = v;
-                const isResched = Boolean(v.isRescheduled || v.rescheduled_date || String(v.status || '').toUpperCase() === 'RESCHEDULED');
-                const isDel = isResched || ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'DELIVERED', 'COMPLETED'].includes(String(v.status || '').toUpperCase());
+                const vStatus = String(v.status || '').toUpperCase();
+                const vStage = String(v.stage || '').toLowerCase();
+                const isResched = Boolean(v.isRescheduled || v.rescheduled_date || vStatus === 'RESCHEDULED' || vStage === 'rescheduled');
+                const isDel = forceType === 'pickup' ? false : (forceType === 'delivery' ? true : (
+                  isResched || ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'DELIVERED', 'COMPLETED'].includes(vStatus) ||
+                  v.delivery_reported === true || v.isDeliveryReported === true ||
+                  ((vStatus === 'RESCHEDULED' || vStage === 'rescheduled') && (Boolean(v.droppedAtHub || v.droppedOffAt) || Boolean(v.delivery_reported)))
+                ));
                 const formattedAddr = (typeof v.address === 'object' && v.address !== null)
                   ? [v.address.flatHouse, v.address.areaColony, v.address.city, v.address.pincode].filter(Boolean).join(', ')
                   : (typeof v.address === 'string' ? v.address : '');
@@ -829,13 +867,53 @@ export const deliveryApi = {
                 const schedDateVal = v.rescheduled_date || v.delivery_date || v.pickup?.date || v.pickup_date;
                 const schedSlotVal = v.rescheduled_time_slot || v.delivery_time_slot || v.pickup_time_slot || v.time_slot;
 
+                let fallbackTaskStatus = 'unassigned';
+                if (!isDel) {
+                  const isPickupCompleted = Boolean(v.droppedAtHub || v.droppedOffAt) ||
+                    ['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'IN CLEANING', 'IN_CLEANING', 'AT_HUB', 'COMPLETED', 'DELIVERED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'RESCHEDULED'].includes(vStatus);
+                  if (isPickupCompleted) {
+                    fallbackTaskStatus = 'completed';
+                  } else if (['PICKED_UP', 'COLLECTED'].includes(vStatus)) {
+                    fallbackTaskStatus = 'picked_up';
+                  } else if (v.status === 'PLACED') {
+                    fallbackTaskStatus = 'unassigned';
+                  } else {
+                    fallbackTaskStatus = v.status || 'unassigned';
+                  }
+                } else {
+                  const isOrderAdminRescheduled = Boolean(
+                    (v.isRescheduled || v.rescheduled_date || v.rescheduled_time_slot || Boolean(v.deliveryTaskId)) &&
+                    (vStatus === 'READY_FOR_DELIVERY' || vStage === 'ready' || v.currentLaundryStep === 'ready')
+                  );
+                  if (isOrderAdminRescheduled) {
+                    fallbackTaskStatus = 'pending';
+                  } else if (vStatus === 'RESCHEDULED' || vStage === 'rescheduled') {
+                    fallbackTaskStatus = 'rescheduled';
+                  } else if (['DELIVERED', 'COMPLETED'].includes(vStatus)) {
+                    fallbackTaskStatus = 'completed';
+                  } else if (['OUT_FOR_DELIVERY', 'NEARBY'].includes(vStatus)) {
+                    fallbackTaskStatus = 'in_transit';
+                  } else {
+                    fallbackTaskStatus = 'pending';
+                  }
+                }
+
+                const isOrderAdminRescheduled = isDel && Boolean(
+                  (v.isRescheduled || v.rescheduled_date || v.rescheduled_time_slot || Boolean(v.deliveryTaskId)) &&
+                  (vStatus === 'READY_FOR_DELIVERY' || vStage === 'ready' || v.currentLaundryStep === 'ready')
+                );
+
                 t = {
-                  id: v.pickupTaskId || v.id || k,
+                  id: (isDel ? 'task_dl_' : 'task_pk_') + (v.code || v.order_number || k),
                   orderId: k,
                   orderCode: v.code || v.order_number || k,
                   type: isDel ? 'delivery' : 'pickup',
                   raw_type: isDel ? 'delivery' : 'pickup',
-                  status: isResched ? 'READY_FOR_DELIVERY' : (v.status === 'PLACED' ? 'unassigned' : (v.status || 'unassigned')),
+                  delivery_reported: isOrderAdminRescheduled ? false : Boolean(v.delivery_reported || v.isDeliveryReported),
+                  isDeliveryReported: isOrderAdminRescheduled ? false : Boolean(v.delivery_reported || v.isDeliveryReported),
+                  failedReason: isOrderAdminRescheduled ? null : (v.failedReason || null),
+                  comment: isOrderAdminRescheduled ? '' : (v.failureComment || v.comment || ''),
+                  status: fallbackTaskStatus,
                   isRescheduled: isResched,
                   rescheduled_date: v.rescheduled_date || null,
                   rescheduled_time_slot: v.rescheduled_time_slot || null,
@@ -843,6 +921,11 @@ export const deliveryApi = {
                   delivery_time_slot: v.rescheduled_time_slot || v.delivery_time_slot || null,
                   time_slot: schedSlotVal || '09:00 AM – 11:00 AM',
                   pickup_date: v.pickup?.date || v.pickup_date || 'Today',
+                  droppedAtHub: v.droppedAtHub || v.droppedOffAt || (!isDel && fallbackTaskStatus === 'completed' ? (v.completedAt || v.updatedAt || Date.now()) : undefined),
+                  deliveredAt: isDel && fallbackTaskStatus === 'completed' ? (v.deliveredAt || v.completedAt || v.updatedAt || Date.now()) : undefined,
+                  orderStatus: v.status,
+                  order_status: v.status,
+                  orderData: v,
                   customer: {
                     name: v.customerName || v.customer?.name || 'Customer',
                     phone: v.customerPhone || v.customer?.phone || ''
@@ -852,7 +935,7 @@ export const deliveryApi = {
                   address: formattedAddr || v.delivery_address || v.pickup_address || 'Bengaluru',
                   delivery_address: v.delivery_address || formattedAddr || 'Bengaluru',
                   pickup_address: v.pickup_address || formattedAddr || 'Bengaluru',
-                  scheduledAt: schedDateVal ? new Date(schedDateVal).getTime() : (v.createdAt || Date.now())
+                  scheduledAt: (isDel && (v.rescheduled_date || v.delivery_date)) ? new Date(v.rescheduled_date || v.delivery_date).getTime() : (schedDateVal ? new Date(schedDateVal).getTime() : (v.createdAt || Date.now()))
                 };
                 break;
               }
