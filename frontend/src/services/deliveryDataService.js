@@ -9,7 +9,7 @@ import {
   query,
   limitToLast
 } from 'firebase/database';
-import { rtdb } from '../config/firebase.js';
+import { rtdb, auth } from '../config/firebase.js';
 import { addNotificationToUpdates, addRoleNotificationsToUpdates } from './notificationService.js';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
@@ -510,3 +510,156 @@ export const subscribeAgentNotifications = (agentUid, onNotifsUpdated, onError) 
 
   return () => off(notifsQuery, 'value', unsub);
 };
+
+/**
+ * 6. Record delivery exception / fail attempt and log complaint report for Admin
+ */
+export const recordDeliveryFailureAndReschedule = async (taskId, { failed_reason, reason, comment, notes, rescheduled_date } = {}, agentUser = null) => {
+  const actualReason = failed_reason || reason || 'Customer unavailable / Door locked';
+  const actualComment = (comment || notes || '').trim();
+  const now = Date.now();
+  const targetDb = rtdb;
+  const agent = agentUser || {
+    uid: auth.currentUser?.uid || 'usr_agent_001',
+    name: auth.currentUser?.displayName || 'Delivery Partner'
+  };
+
+  // 1. Resolve taskId and orderKey
+  let orderKey = null;
+  let cleanTaskSnap = null;
+
+  try {
+    const tSnap = await get(ref(targetDb, `tasks/${taskId}`));
+    if (tSnap.exists()) {
+      cleanTaskSnap = tSnap.val();
+      orderKey = cleanTaskSnap.orderId;
+    }
+  } catch (_) {}
+
+  // If orderKey is not found yet, check all orders
+  if (!orderKey) {
+    const cleanId = String(taskId).replace(/^order_/, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    try {
+      const allOrdersSnap = await get(ref(targetDb, 'orders'));
+      if (allOrdersSnap.exists()) {
+        const all = allOrdersSnap.val() || {};
+        for (const [k, v] of Object.entries(all)) {
+          if (!v) continue;
+          const cK = String(k || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cCode = String(v.code || v.order_number || v.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          if (cK === cleanId || cCode === cleanId) {
+            orderKey = k;
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (!orderKey) orderKey = taskId;
+
+  // 2. Fetch order data
+  let orderData = {};
+  try {
+    const oSnap = await get(ref(targetDb, `orders/${orderKey}`));
+    if (oSnap.exists()) {
+      orderData = oSnap.val() || {};
+    }
+  } catch (_) {}
+
+  const orderDisplayCode = orderData.code || orderData.order_number || orderData.id || orderKey;
+  const customerName = orderData.customerName || orderData.customer?.name || orderData.pickup_full_name || 'Customer';
+  const customerPhone = orderData.customerPhone || orderData.customer?.phone || orderData.pickup_phone || '';
+  const customerAddress = (typeof orderData.address === 'object' && orderData.address !== null)
+    ? [orderData.address.flatHouse, orderData.address.areaColony, orderData.address.city, orderData.address.pincode].filter(Boolean).join(', ')
+    : (orderData.pickup_address || orderData.delivery_address || (typeof orderData.address === 'string' ? orderData.address : 'Bengaluru'));
+
+  const updates = {};
+
+  // 3. Update task in RTDB
+  updates[`tasks/${taskId}/status`] = 'rescheduled';
+  updates[`tasks/${taskId}/failedReason`] = actualReason;
+  if (actualComment) updates[`tasks/${taskId}/comment`] = actualComment;
+  if (rescheduled_date) updates[`tasks/${taskId}/rescheduledDate`] = rescheduled_date;
+  updates[`tasks/${taskId}/updatedAt`] = now;
+
+  // 4. Update order stage and status in RTDB
+  updates[`orders/${orderKey}/status`] = 'RESCHEDULED';
+  updates[`orders/${orderKey}/stage`] = 'rescheduled';
+  updates[`orders/${orderKey}/failedReason`] = actualReason;
+  if (actualComment) updates[`orders/${orderKey}/failureComment`] = actualComment;
+  if (rescheduled_date) updates[`orders/${orderKey}/rescheduledDate`] = rescheduled_date;
+  updates[`orders/${orderKey}/updatedAt`] = now;
+
+  // 5. Order History
+  const histPush = push(ref(targetDb, `orderHistory/${orderKey}`));
+  const historyNote = actualComment
+    ? `Delivery attempt unsuccessful: ${actualReason}. Comment: "${actualComment}"`
+    : `Delivery attempt unsuccessful: ${actualReason}`;
+  updates[`orderHistory/${orderKey}/${histPush.key}`] = {
+    from: orderData.status || 'OUT_FOR_DELIVERY',
+    to: 'RESCHEDULED',
+    byUid: agent.uid,
+    byName: agent.name || 'Delivery Partner',
+    note: historyNote,
+    at: now
+  };
+
+  // 6. Record Complaint / Exception for Admin (shows on Admin Complaint Reports page)
+  const complaintPush = push(ref(targetDb, 'complaints'));
+  const complaintId = complaintPush.key;
+  const formattedDate = new Date(now).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const formattedTime = new Date(now).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const formattedReschedule = rescheduled_date
+    ? new Date(rescheduled_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    : '—';
+
+  updates[`complaints/${complaintId}`] = {
+    id: complaintId,
+    order_id: orderDisplayCode,
+    order_id_display: orderDisplayCode,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    customer_address: customerAddress,
+    failure_reason: actualReason,
+    comment: actualComment || '',
+    report_date: new Date(now).toISOString().split('T')[0],
+    formatted_report_date: `${formattedDate}, ${formattedTime}`,
+    rescheduled_date: rescheduled_date || null,
+    formatted_reschedule_date: formattedReschedule,
+    rescheduled_time_slot: '',
+    status: 'PENDING_RESCHEDULE',
+    priority: 'HIGH',
+    reported_by_name: `${agent.name || 'Delivery Partner'} (Delivery Staff)`,
+    notes: actualComment ? `Issue: ${actualReason}. Comment: ${actualComment}` : `Issue reported: ${actualReason}.`
+  };
+
+  // 7. Admin Notification (so Admin receives real-time alert)
+  const notifBody = actualComment
+    ? `${agent.name || 'Delivery Partner'} reported an issue for order ${orderDisplayCode}: "${actualReason}" - "${actualComment}". Please review and reschedule.`
+    : `${agent.name || 'Delivery Partner'} reported an issue for order ${orderDisplayCode}: "${actualReason}". Please review and reschedule.`;
+  await addRoleNotificationsToUpdates(updates, 'admin', {
+    type: 'delivery_exception',
+    title: `Delivery Exception: ${orderDisplayCode}`,
+    body: notifBody,
+    orderId: orderDisplayCode,
+    orderCode: orderDisplayCode,
+    createdAt: now
+  });
+
+  // 8. Customer Notification
+  if (orderData.customerId) {
+    addNotificationToUpdates(updates, orderData.customerId, {
+      type: 'delivery_exception',
+      title: 'Delivery Attempt Update',
+      body: `We were unable to complete your attempt for order ${orderDisplayCode} (${actualReason}). Our team will reschedule shortly.`,
+      orderId: orderDisplayCode,
+      orderCode: orderDisplayCode,
+      createdAt: now
+    });
+  }
+
+  await update(ref(targetDb), updates);
+  return { success: true };
+};
+

@@ -35,6 +35,18 @@ export const createCustomerOrder = async (bookingData, user) => {
   const expressCharge = 0;
   const total = subtotal;
 
+  const staffNames = ['ravi sharma', 'administrator', 'anil verma', 'anita sharma', 'delivery agent'];
+  let cleanCustName = (bookingData.customerName || '').trim();
+  if (!cleanCustName || (staffNames.includes(cleanCustName.toLowerCase()) && user?.role === 'customer')) {
+    cleanCustName = user.name || user.displayName || user.fullName || 'Customer';
+  }
+
+  let cleanCustPhone = (bookingData.customerPhone || '').trim();
+  const staffPhones = ['+919811122233', '+91 98111 22233', '+919822233344', '+919800000000'];
+  if (staffPhones.includes(cleanCustPhone) && user?.role === 'customer') {
+    cleanCustPhone = user.phone || user.phoneNumber || '';
+  }
+
   const orderData = {
     id: orderId,
     code,
@@ -43,8 +55,8 @@ export const createCustomerOrder = async (bookingData, user) => {
     userId: user.uid,
     customerEmail: (user.email || bookingData.customerEmail || '').toLowerCase().trim(),
     customer_email: (user.email || bookingData.customerEmail || '').toLowerCase().trim(),
-    customerName: bookingData.customerName || user.name || user.displayName || 'Valued Customer',
-    customerPhone: bookingData.customerPhone || user.phone || '',
+    customerName: cleanCustName || user.name || user.displayName || 'Customer',
+    customerPhone: cleanCustPhone || user.phone || '',
     address: bookingData.address || {
       flatHouse: '',
       areaColony: '',
@@ -60,7 +72,7 @@ export const createCustomerOrder = async (bookingData, user) => {
     pickup_time_slot: bookingData.pickup?.time_slot || (bookingData.pickup?.from ? `${bookingData.pickup.from} - ${bookingData.pickup.to}` : '09:00 AM - 11:00 AM'),
     status: 'PAYMENT_PENDING',
     stage: 'placed',
-    currentLaundryStep: 'inspect',
+    currentLaundryStep: null,
     paymentStatus: 'Pending',
     payment_status: 'PENDING',
     payment: 'Pending',

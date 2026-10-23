@@ -1136,81 +1136,97 @@ export const updateFirestoreOrderStatus = async (orderId, status, extraFields = 
 
       // If order was dropped off at laundry or updated pickup/delivery stage, synchronize associated tasks
       try {
-        const tasksSnap = await get(ref(rtdb, 'tasks'));
-        if (tasksSnap.exists()) {
-          const tasks = tasksSnap.val();
-          for (const [tId, tVal] of Object.entries(tasks)) {
-            if (tVal && (tVal.orderId === key || tVal.orderId === cleanId)) {
-              if (rawStatus === 'DROPPED_OFF' || rawStatus === 'DROPPED_OFF_AT_LAUNDRY') {
-                if (tVal.type === 'pickup') {
-                  await update(ref(rtdb, `tasks/${tId}`), {
-                    status: 'completed',
-                    tracker_stage: 'AT_HUB',
-                    droppedOffAt: now,
-                    updatedAt: now
-                  });
-                }
-              } else if (rawStatus === 'PICKED_UP' || rawStatus === 'COLLECTED' || status === 'Picked Up') {
-                if (tVal.type === 'pickup') {
-                  await update(ref(rtdb, `tasks/${tId}`), {
-                    status: 'picked_up',
-                    tracker_stage: 'COLLECTED',
-                    completedAt: now,
-                    updatedAt: now
-                  });
-                }
-              } else if (rawStatus === 'ARRIVED') {
-                if (tVal.type === 'pickup') {
-                  await update(ref(rtdb, `tasks/${tId}`), {
-                    status: 'arrived',
-                    tracker_stage: 'ARRIVED',
-                    arrivedAt: now,
-                    updatedAt: now
-                  });
-                }
-              } else if (rawStatus === 'PICKUP_IN_PROGRESS' || rawStatus === 'ON_THE_WAY') {
-                if (tVal.type === 'pickup') {
-                  await update(ref(rtdb, `tasks/${tId}`), {
-                    status: 'on_the_way',
-                    tracker_stage: 'ON_THE_WAY',
-                    startedAt: now,
-                    updatedAt: now
-                  });
-                }
-              } else if (rawStatus === 'PICKUP_ASSIGNED' || rawStatus === 'ASSIGNED') {
-                if (tVal.type === 'pickup') {
-                  await update(ref(rtdb, `tasks/${tId}`), {
-                    status: 'assigned',
-                    tracker_stage: 'ASSIGNED',
-                    updatedAt: now
-                  });
-                }
-              } else if (rawStatus === 'DELIVERED' || status === 'Delivered') {
-                if (tVal.type === 'delivery') {
-                  await update(ref(rtdb, `tasks/${tId}`), {
-                    status: 'completed',
-                    completedAt: now,
-                    updatedAt: now
-                  });
-                }
-              } else if (rawStatus === 'OUT_FOR_DELIVERY' || status === 'Out for Delivery') {
-                if (tVal.type === 'delivery') {
-                  await update(ref(rtdb, `tasks/${tId}`), {
-                    status: 'on_the_way',
-                    startedAt: now,
-                    updatedAt: now
-                  });
-                }
-              } else if (rawStatus === 'READY_FOR_DELIVERY' || status === 'Ready for Delivery') {
-                if (tVal.type === 'delivery') {
-                  await update(ref(rtdb, `tasks/${tId}`), {
-                    status: 'assigned',
-                    updatedAt: now
-                  });
+        const taskCollections = ['tasks', 'delivery_tasks'];
+        for (const taskCol of taskCollections) {
+          try {
+            const tasksSnap = await get(ref(rtdb, taskCol));
+            if (tasksSnap.exists()) {
+              const tasks = tasksSnap.val();
+              for (const [tId, tVal] of Object.entries(tasks)) {
+                if (!tVal) continue;
+                const cValOid = String(tVal.orderId || tVal.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cValNum = String(tVal.order_number || tVal.code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cKey = String(key || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cCleanId = String(cleanId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cNum = String(extraFields.order_number || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+                const isMatch = (cValOid && (cValOid === cKey || cValOid === cCleanId || (cNum && cValOid === cNum))) ||
+                                (cValNum && (cValNum === cKey || cValNum === cCleanId || (cNum && cValNum === cNum))) ||
+                                (tVal.orderId === key || tVal.orderId === cleanId);
+
+                if (isMatch) {
+                  if (rawStatus === 'DROPPED_OFF' || rawStatus === 'DROPPED_OFF_AT_LAUNDRY') {
+                    if (tVal.type === 'pickup') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'completed',
+                        tracker_stage: 'AT_HUB',
+                        droppedOffAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'PICKED_UP' || rawStatus === 'COLLECTED' || status === 'Picked Up') {
+                    if (tVal.type === 'pickup') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'picked_up',
+                        tracker_stage: 'COLLECTED',
+                        completedAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'ARRIVED') {
+                    if (tVal.type === 'pickup') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'arrived',
+                        tracker_stage: 'ARRIVED',
+                        arrivedAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'PICKUP_IN_PROGRESS' || rawStatus === 'ON_THE_WAY') {
+                    if (tVal.type === 'pickup') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'on_the_way',
+                        tracker_stage: 'ON_THE_WAY',
+                        startedAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'PICKUP_ASSIGNED' || rawStatus === 'ASSIGNED') {
+                    if (tVal.type === 'pickup') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'assigned',
+                        tracker_stage: 'ASSIGNED',
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'DELIVERED' || status === 'Delivered') {
+                    if (tVal.type === 'delivery') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'completed',
+                        completedAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'OUT_FOR_DELIVERY' || status === 'Out for Delivery') {
+                    if (tVal.type === 'delivery') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'on_the_way',
+                        startedAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'READY_FOR_DELIVERY' || status === 'Ready for Delivery') {
+                    if (tVal.type === 'delivery') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'assigned',
+                        updatedAt: now
+                      });
+                    }
+                  }
                 }
               }
             }
-          }
+          } catch (_) {}
         }
       } catch (_) {}
     }

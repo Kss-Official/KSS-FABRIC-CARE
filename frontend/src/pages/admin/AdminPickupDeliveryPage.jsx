@@ -490,6 +490,7 @@ const getPickupDeliveryStatus = (order, hasDriver) => {
 export const AdminPickupDeliveryPage = () => {
   const { 
     orders: contextOrders, 
+    allUsers,
     tasks: contextTasks,
     setIsAssignOrderModalOpen, 
     setAssigningOrder 
@@ -551,8 +552,18 @@ export const AdminPickupDeliveryPage = () => {
       }
 
       const orderIdDisplay = formatOrderId(o.order_number || o.order_id || o.code || o.id);
-      const custName = o.customer_name || o.customer?.name || o.pickup_full_name || 'Customer';
-      const custPhone = o.customer_phone || o.customer?.phone || o.pickup_phone || '+91 98765 00000';
+      let custName = o.customer_name || o.customer?.name || o.pickup_full_name || o.customerName || '';
+      let custPhone = o.customer_phone || o.customer?.phone || o.pickup_phone || o.customerPhone || '+91 98765 00000';
+
+      const userMatch = o.customerId ? (allUsers || []).find(u => u.uid === o.customerId || u.id === o.customerId) : null;
+      if (userMatch && userMatch.name) {
+        if (!custName || custName.toLowerCase() === 'ravi sharma' || custName.toLowerCase() === 'administrator' || custName.toLowerCase() === 'customer' || custName.toLowerCase() === 'valued customer') {
+          custName = userMatch.name;
+          if (userMatch.phone) custPhone = userMatch.phone;
+        }
+      }
+      if (!custName) custName = 'Customer';
+
       const custAddress = o.pickup_address || o.customer?.address || (typeof o.address === 'object' ? `${o.address?.areaColony || ''}, ${o.address?.city || ''}` : o.address) || 'Bengaluru';
       const custInitials = String(custName || 'CU').split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'CU';
 
@@ -613,6 +624,7 @@ export const AdminPickupDeliveryPage = () => {
         ? `${o.pickup.from} – ${o.pickup.to || ''}` 
         : (o.pickup_time_slot || o.pickupTime || '09:00 AM – 11:00 AM');
       const timeParts = timeSlot.split(/[–—-]| to /).map(s => s.trim());
+      const timestamp = o.updatedAt || o.placedAt || o.createdAt || 0;
 
       return {
         id: orderIdDisplay,
@@ -622,6 +634,7 @@ export const AdminPickupDeliveryPage = () => {
         rawDate: rawDate,
         timeStart: timeParts[0] || '09:00 AM',
         timeEnd: timeParts[1] || '11:00 AM',
+        timestamp,
         customer: {
           name: custName,
           phone: custPhone,
@@ -640,7 +653,7 @@ export const AdminPickupDeliveryPage = () => {
         }
       };
     });
-  }, [contextOrders, updateTick]);
+  }, [contextOrders, updateTick, allUsers]);
 
   // Exact real-time metrics calculated from live database orders
   const metrics = useMemo(() => {
@@ -739,6 +752,7 @@ export const AdminPickupDeliveryPage = () => {
   const openAssignModalForOrder = (ord) => {
     setAssigningOrder({
       id: ord.id,
+      rawId: ord.rawId || ord.id,
       date: ord.date,
       timeStart: ord.timeStart,
       timeEnd: ord.timeEnd,

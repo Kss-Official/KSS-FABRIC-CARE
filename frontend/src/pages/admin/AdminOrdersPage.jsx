@@ -373,6 +373,7 @@ export const BASELINE_ADMIN_ORDERS = [
 export const AdminOrdersPage = () => {
   const { 
     orders, 
+    allUsers,
     refreshOrders,
     setIsCreateOrderDrawerOpen, 
     setIsAssignOrderModalOpen, 
@@ -429,13 +430,44 @@ export const AdminOrdersPage = () => {
     }
   }, [ordersFilterTarget]);
 
-  // Synchronize orders with dynamic updates from real-time database
+  // Synchronize orders with dynamic updates while guaranteeing exact reference image data & sanitized customer names
   const combinedOrders = useMemo(() => {
+    const userMap = new Map();
+    (allUsers || []).forEach(u => {
+      if (!u) return;
+      if (u.uid) userMap.set(u.uid, u);
+      if (u.id) userMap.set(u.id, u);
+    });
+
+    const sanitizeOrder = (ord) => {
+      let custName = ord.customer?.name || ord.customer_name || '';
+      let custPhone = ord.customer?.phone || ord.customer_phone || '';
+
+      const userMatch = ord.customerId ? userMap.get(ord.customerId) : null;
+      if (userMatch && userMatch.name) {
+        if (!custName || custName.toLowerCase() === 'ravi sharma' || custName.toLowerCase() === 'administrator' || custName.toLowerCase() === 'customer' || custName.toLowerCase() === 'valued customer') {
+          custName = userMatch.name;
+          if (userMatch.phone) custPhone = userMatch.phone;
+        }
+      }
+      return {
+        ...ord,
+        customer_name: custName,
+        customer_phone: custPhone,
+        customer: {
+          ...(ord.customer || {}),
+          name: custName,
+          phone: custPhone,
+          avatar: (custName || 'CU').substring(0, 2).toUpperCase()
+        }
+      };
+    };
+
     if (orders && orders.length > 0) {
-      return orders;
+      return orders.map(sanitizeOrder);
     }
-    return BASELINE_ADMIN_ORDERS;
-  }, [orders]);
+    return BASELINE_ADMIN_ORDERS.map(sanitizeOrder);
+  }, [orders, allUsers]);
 
   // Exact order metrics dynamically updated and guaranteed 1:1 with filtered lists
   const counts = useMemo(() => {

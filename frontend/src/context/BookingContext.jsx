@@ -627,48 +627,71 @@ export const BookingProvider = ({ children }) => {
   // Confirmed Order Info
   const [lastOrder, setLastOrder] = useState(null);
 
+  // Track previous user to know when user session changes
+  const lastUserUidRef = React.useRef(currentUser?.uid || null);
+
   // Sync authenticated user info and default saved address into pickupDetails
   useEffect(() => {
-    if (currentUser) {
-      setPickupDetails(prev => ({
-        ...prev,
-        name: currentUser.displayName || currentUser.name || currentUser.full_name || prev.name || '',
-        mobile: (() => { const raw = String(currentUser.phoneNumber || currentUser.phone || prev.mobile || ''); return raw.replace(/^\+?91/, '').replace(/\D/g, '').slice(0, 10); })(),
-        address: currentUser.address || prev.address || '',
-        city: currentUser.city || prev.city || 'Bengaluru',
-        pincode: currentUser.pincode || prev.pincode || ''
-      }));
+    const isInternalStaff = currentUser?.role === 'agent' || currentUser?.role === 'staff' || currentUser?.role === 'admin' || 
+                            String(currentUser?.email || '').includes('delivery@') || String(currentUser?.email || '').includes('admin@') || String(currentUser?.email || '').includes('staff@');
+    
+    const userSwitched = lastUserUidRef.current !== (currentUser?.uid || null);
+    lastUserUidRef.current = currentUser?.uid || null;
 
-      // Fetch saved default address safely
-      if (addressApi && typeof addressApi.getAddresses === 'function') {
-        addressApi.getAddresses()
-          .then(res => {
-            const addrs = Array.isArray(res?.data) ? res.data : (res?.data?.results || []);
-            if (addrs.length > 0) {
-              const def = addrs.find(a => a.is_default) || addrs[0];
-              setPickupDetails(prev => ({
-                ...prev,
-                address: def.address_line || def.address_line1 || prev.address,
-                landmark: def.landmark || def.address_line2 || prev.landmark,
-                city: def.city || prev.city,
-                pincode: def.pincode || prev.pincode
-              }));
-            }
-          })
-          .catch(err => console.warn('Saved addresses notice:', err?.message));
-      }
-    } else {
-      setPickupDetails({
-        name: '',
-        mobile: '',
-        whatsappUpdates: true,
-        address: '',
-        landmark: '',
-        city: 'Bengaluru',
-        pincode: '',
-        sameAddressDelivery: true,
-        deliveryAddress: ''
+    if (!currentUser || isInternalStaff) {
+      // Clear any staff names or reset details
+      setPickupDetails(prev => {
+        const isStaleStaff = ['ravi sharma', 'administrator', 'anil verma', 'anita sharma', 'delivery agent'].includes((prev.name || '').trim().toLowerCase());
+        const isStaleStaffPhone = ['+919811122233', '+91 98111 22233', '+919822233344', '+919800000000'].includes((prev.mobile || '').trim());
+        return {
+          ...prev,
+          name: isStaleStaff ? '' : prev.name,
+          mobile: isStaleStaffPhone ? '' : prev.mobile
+        };
       });
+      return;
+    }
+
+    // Current user is a real customer
+    const custName = currentUser.displayName || currentUser.name || currentUser.fullName || currentUser.full_name || '';
+    const rawCustPhone = currentUser.phoneNumber || currentUser.phone || '';
+    const custPhone = String(rawCustPhone).replace(/^\+?91/, '').replace(/\D/g, '').slice(0, 10);
+
+    setPickupDetails(prev => {
+      const isStaleStaffName = ['ravi sharma', 'administrator', 'anil verma', 'anita sharma', 'delivery agent', 'customer', 'valued customer'].includes((prev.name || '').trim().toLowerCase());
+      const isStaleStaffPhone = ['+919811122233', '+91 98111 22233', '+919822233344', '+919800000000'].includes((prev.mobile || '').trim());
+
+      const nextName = (userSwitched || isStaleStaffName || !prev.name) ? (custName || '') : prev.name;
+      const rawNextPhone = (userSwitched || isStaleStaffPhone || !prev.mobile) ? (custPhone || '') : prev.mobile;
+      const nextPhone = String(rawNextPhone || '').replace(/^\+?91/, '').replace(/\D/g, '').slice(0, 10);
+
+      return {
+        ...prev,
+        name: nextName,
+        mobile: nextPhone,
+        address: prev.address && prev.address !== 'Banaswadi, Bengaluru - 560043' ? prev.address : (currentUser.address || prev.address),
+        city: currentUser.city || prev.city || 'Bengaluru',
+        pincode: currentUser.pincode || prev.pincode || '560043'
+      };
+    });
+
+    // Fetch saved default address safely
+    if (addressApi && typeof addressApi.getAddresses === 'function') {
+      addressApi.getAddresses()
+        .then(res => {
+          const addrs = Array.isArray(res?.data) ? res.data : (res?.data?.results || []);
+          if (addrs.length > 0) {
+            const def = addrs.find(a => a.is_default) || addrs[0];
+            setPickupDetails(prev => ({
+              ...prev,
+              address: def.address_line || def.address_line1 || prev.address,
+              landmark: def.landmark || def.address_line2 || prev.landmark,
+              city: def.city || prev.city,
+              pincode: def.pincode || prev.pincode
+            }));
+          }
+        })
+        .catch(err => console.warn('Saved addresses notice:', err?.message));
     }
   }, [currentUser]);
 
@@ -790,8 +813,8 @@ export const BookingProvider = ({ children }) => {
       return;
     }
 
-    if (!pickupDetails.mobile || !pickupDetails.address) {
-      alert('Please provide your mobile number and pickup address.');
+    if (!pickupDetails.name || !pickupDetails.name.trim() || !pickupDetails.mobile || !pickupDetails.address) {
+      alert('Please provide your full name, mobile number, and pickup address.');
       setCurrentStep(2);
       return;
     }
@@ -884,10 +907,23 @@ export const BookingProvider = ({ children }) => {
         }
       }
 
+      // Sanitize customer name to never permit delivery agent or administrator name when booked by a customer
+      let finalCustName = (pickupDetails.name || '').trim();
+      const staffNames = ['ravi sharma', 'administrator', 'anil verma', 'anita sharma', 'delivery agent'];
+      if (!finalCustName || staffNames.includes(finalCustName.toLowerCase())) {
+        finalCustName = (currentUser?.displayName || currentUser?.name || currentUser?.fullName || 'Customer').trim();
+      }
+
+      let finalCustPhone = (pickupDetails.mobile || '').trim();
+      const staffPhones = ['+919811122233', '+91 98111 22233', '+919822233344', '+919800000000'];
+      if (staffPhones.includes(finalCustPhone) || !finalCustPhone) {
+        finalCustPhone = (currentUser?.phoneNumber || currentUser?.phone || '').trim();
+      }
+
       const bookingPayload = {
-        customerName: pickupDetails.name || currentUser?.name || currentUser?.displayName || 'Valued Customer',
-        customerPhone: pickupDetails.mobile || currentUser?.phone || '',
-        customerEmail: currentUser?.email || '',
+        customerName: finalCustName || 'Customer',
+        customerPhone: finalCustPhone || '',
+        customerEmail: (currentUser?.email || '').toLowerCase().trim(),
         address: {
           flatHouse: pickupDetails.address || '',
           areaColony: pickupDetails.landmark || '',
@@ -953,11 +989,23 @@ export const BookingProvider = ({ children }) => {
       setLastOrder(confirmedOrderData);
       setActiveTrackingOrderId(orderId);
 
-      // Clear selected items upon successful booking
+      // Clear selected items and reset pickupDetails so next booking starts fresh
       setSelectedItems({});
       try {
         sessionStorage.removeItem('fabricare_selected_clothing_items');
       } catch (e) {}
+
+      setPickupDetails({
+        name: (currentUser?.displayName || currentUser?.name || currentUser?.fullName || ''),
+        mobile: (currentUser?.phoneNumber || currentUser?.phone || ''),
+        whatsappUpdates: true,
+        address: 'Banaswadi, Bengaluru - 560043',
+        landmark: 'House #12, 3rd Cross, HRBR Layout',
+        city: 'Bengaluru',
+        pincode: '560043',
+        sameAddressDelivery: true,
+        deliveryAddress: ''
+      });
 
       setCurrentPage('confirmed');
       window.scrollTo({ top: 0, behavior: 'smooth' });

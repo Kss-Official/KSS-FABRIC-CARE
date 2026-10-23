@@ -10,7 +10,8 @@ import {
   Clock, 
   ChevronLeft, 
   ChevronRight, 
-  ArrowRight 
+  ArrowRight,
+  User 
 } from 'lucide-react';
 
 export const Step2PickupDetails = () => {
@@ -77,8 +78,26 @@ export const Step2PickupDetails = () => {
           </div>
 
           <div className="form-fields-container">
-            {/* Mobile Number Field */}
+            {/* Full Name Field */}
             <div className="form-group">
+              <label className="form-label">Full Name</label>
+              <div className="input-with-icon">
+                <span className="input-icon left-icon">
+                  <User size={18} strokeWidth={1.8} />
+                </span>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={pickupDetails.name || ''}
+                  onChange={(e) => setPickupDetails(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Enter full name"
+                />
+              </div>
+              <p className="input-helper-text">Name for order contact and delivery</p>
+            </div>
+
+            {/* Mobile Number Field */}
+            <div className="form-group mt-3">
               <label className="form-label">Mobile Number</label>
               <div className="phone-input-wrapper" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 {/* Phone icon */}
@@ -117,7 +136,7 @@ export const Step2PickupDetails = () => {
                   type="text"
                   className="form-input with-right-action"
                   value={pickupDetails.address || ''}
-                  onChange={(e) => setPickupDetails({ ...pickupDetails, address: e.target.value })}
+                  onChange={(e) => setPickupDetails(prev => ({ ...prev, address: e.target.value }))}
                   placeholder="Banaswadi, Bengaluru - 560043"
                 />
                 <button

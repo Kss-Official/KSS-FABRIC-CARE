@@ -67,6 +67,7 @@ const WasherIcon = ({ size = 23, color = "#D97706" }) => (
 export const AdminDashboardPage = () => {
   const { 
     orders, 
+    allUsers,
     tasks,
     updateOrderStatus,
     setAdminTab, 
@@ -498,9 +499,16 @@ export const AdminDashboardPage = () => {
       })
       .slice(0, 8)
       .map(o => {
-        const idDisplay = formatOrderId(o.order_number || o.order_id || o.code || o.id);
-        const rawCust = o.pickup_full_name || o.customer_name || (typeof o.customer === 'string' ? o.customer : o.customer?.name) || 'Customer';
-        const custName = typeof rawCust === 'string' ? rawCust : 'Customer';
+        const idDisplay = formatOrderId(o.code || o.order_number || o.order_id || o.id);
+        const rawCust = o.customerName || o.customer_name || o.pickup_full_name || (typeof o.customer === 'string' ? o.customer : o.customer?.name) || '';
+        let custName = typeof rawCust === 'string' ? rawCust : '';
+        const userMatch = o.customerId ? (allUsers || []).find(u => u.uid === o.customerId || u.id === o.customerId) : null;
+        if (userMatch && userMatch.name) {
+          if (!custName || custName.toLowerCase() === 'ravi sharma' || custName.toLowerCase() === 'administrator' || custName.toLowerCase() === 'customer' || custName.toLowerCase() === 'valued customer') {
+            custName = userMatch.name;
+          }
+        }
+        if (!custName) custName = 'Customer';
         const custAvatar = (o.customer && typeof o.customer === 'object' && typeof o.customer.avatar === 'string' && o.customer.avatar)
           ? o.customer.avatar
           : (custName.trim() ? custName.trim().split(/\s+/).map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'CU');
@@ -627,9 +635,18 @@ export const AdminDashboardPage = () => {
       const conciseArea = formatConciseAddress(live.pickup_address || live.customer?.address || live.address, live);
       const orderId = formatPickupOrderId(live.order_number || live.order_id || live.code || live.id || `FC-1028${idx}`);
 
+      let custName = live.pickup_full_name || live.customer_name || live.customer?.name || live.customerName || '';
+      const userMatch = live.customerId ? (allUsers || []).find(u => u.uid === live.customerId || u.id === live.customerId) : null;
+      if (userMatch && userMatch.name) {
+        if (!custName || custName.toLowerCase() === 'ravi sharma' || custName.toLowerCase() === 'administrator' || custName.toLowerCase() === 'customer' || custName.toLowerCase() === 'valued customer') {
+          custName = userMatch.name;
+        }
+      }
+      if (!custName) custName = 'Customer';
+
       return {
         id: orderId,
-        name: live.pickup_full_name || live.customer_name || live.customer?.name || 'Customer',
+        name: custName,
         area: conciseArea || 'Bengaluru',
         timeStart: start,
         timeEnd: end,
@@ -638,7 +655,7 @@ export const AdminDashboardPage = () => {
         rawOrder: live
       };
     });
-  }, [combinedOrders, orders]);
+  }, [combinedOrders, orders, allUsers]);
 
   const pickupCounts = useMemo(() => {
     const list = combinedOrders || [];
