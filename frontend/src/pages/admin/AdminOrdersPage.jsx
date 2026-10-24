@@ -469,6 +469,22 @@ export const AdminOrdersPage = () => {
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState(null);
+  const [updateTick, setUpdateTick] = useState(0);
+
+  // Real-time synchronization across events (assignment, updates, storage)
+  useEffect(() => {
+    const handleSync = () => setUpdateTick(t => t + 1);
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('fabricare_order_assigned', handleSync);
+    window.addEventListener('fabricare_order_updated', handleSync);
+    window.addEventListener('fabricare_pickup_delivery_updated', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('fabricare_order_assigned', handleSync);
+      window.removeEventListener('fabricare_order_updated', handleSync);
+      window.removeEventListener('fabricare_pickup_delivery_updated', handleSync);
+    };
+  }, []);
 
   // Close action dropdown menu and date dropdown on outside click or Escape
   useEffect(() => {
@@ -514,6 +530,14 @@ export const AdminOrdersPage = () => {
       if (u.id) userMap.set(u.id, u);
     });
 
+    const persistedAssignments = (() => {
+      try {
+        return JSON.parse(localStorage.getItem('fabricare_pickup_delivery_assignments') || '{}');
+      } catch (_) {
+        return {};
+      }
+    })();
+
     const sanitizeOrder = (ord) => {
       let custName = ord.customer?.name || ord.customer_name || '';
       let custPhone = ord.customer?.phone || ord.customer_phone || '';
@@ -525,8 +549,43 @@ export const AdminOrdersPage = () => {
           if (userMatch.phone) custPhone = userMatch.phone;
         }
       }
+
+      const cId = String(ord.id || '').trim();
+      const cRaw = String(ord.rawId || '').trim();
+      const cNum = String(ord.order_number || '').trim();
+      const cOrdId = String(ord.order_id || '').trim();
+      const cleanId = cId.replace(/^#/, '');
+
+      const persisted = 
+        persistedAssignments[cId] ||
+        persistedAssignments[cleanId] ||
+        persistedAssignments[`#${cleanId}`] ||
+        persistedAssignments[cRaw] ||
+        persistedAssignments[cNum] ||
+        persistedAssignments[cOrdId];
+
+      let driver = ord.driver;
+      let driverName = ord.assignedAgentName || ord.assigned_pickup_driver_detail?.full_name || '';
+      let driverPhone = ord.assignedAgentPhone || ord.assigned_pickup_driver_detail?.phone || '';
+      let status = ord.status;
+
+      if (persisted && persisted.driverName) {
+        driverName = persisted.driverName;
+        driverPhone = persisted.driverPhone || '';
+        driver = driverPhone ? `${driverName} (${driverPhone})` : driverName;
+        if (status === 'Pending' || status === 'Pending Pickup' || !status) {
+          status = 'Pickup Scheduled';
+        }
+      } else if (driverName) {
+        driver = driverPhone ? `${driverName} (${driverPhone})` : driverName;
+      }
+
       return {
         ...ord,
+        driver,
+        driverName,
+        driverPhone,
+        status,
         customer_name: custName,
         customer_phone: custPhone,
         customer: {
@@ -542,7 +601,7 @@ export const AdminOrdersPage = () => {
       return orders.map(sanitizeOrder);
     }
     return BASELINE_ADMIN_ORDERS.map(sanitizeOrder);
-  }, [orders, allUsers]);
+  }, [orders, allUsers, updateTick]);
 
   // Exact order metrics dynamically updated and guaranteed 1:1 with filtered lists
   const counts = useMemo(() => {
@@ -1025,9 +1084,34 @@ export const AdminOrdersPage = () => {
               ) : (
                 paginatedOrders.map(ord => {
                   const isChecked = selectedOrderIds.includes(ord.id);
+                  const isAssigned = Boolean(
+                    (ord.driver && ord.driver !== 'Not Assigned' && ord.driver !== '—') ||
+                    (ord.driverName && ord.driverName !== 'Not Assigned') ||
+                    (ord.assigned_pickup_driver_detail) ||
+                    (ord.assignedAgentName) ||
+                    (ord.status && (
+                      ord.status.toLowerCase().includes('assigned') || 
+                      ord.status.toLowerCase().includes('scheduled') || 
+                      ord.status.toLowerCase().includes('cleaning') || 
+                      ord.status.toLowerCase().includes('transit') || 
+                      ord.status.toLowerCase().includes('ready') || 
+                      ord.status.toLowerCase().includes('delivered') || 
+                      ord.status.toLowerCase().includes('completed')
+                    ))
+                  );
+
                   return (
-                    <tr key={ord.id} className={isChecked ? 'row-selected' : ''}>
-                      <td className="chk-col">
+                    <tr 
+                      key={ord.id} 
+                      className={isChecked ? 'row-selected' : ''}
+                      onClick={(e) => {
+                        if (!e.target.closest('input') && !e.target.closest('.action-button-anchor')) {
+                          setSelectedOrderDetails(ord);
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <td className="chk-col" onClick={(e) => e.stopPropagation()}>
                         <input 
                           type="checkbox" 
                           className="orders-custom-checkbox"
@@ -1037,7 +1121,7 @@ export const AdminOrdersPage = () => {
                       </td>
 
                       {/* Order ID */}
-                      <td>
+                      <td onClick={() => setSelectedOrderDetails(ord)}>
                         <div className="order-id-meta-cell">
                           <strong className="order-id-num">
                             {(() => {
@@ -1133,18 +1217,20 @@ export const AdminOrdersPage = () => {
                                 <Eye size={14} />
                                 <span>View Details</span>
                               </button>
-                              <button 
-                                type="button" 
-                                className="popover-action-item"
-                                onClick={() => {
-                                  setAssigningOrder(ord);
-                                  setIsAssignOrderModalOpen(true);
-                                  setActiveActionMenuId(null);
-                                }}
-                              >
-                                <UserCheck size={14} />
-                                <span>Assign Driver</span>
-                              </button>
+                              {!isAssigned && (
+                                <button 
+                                  type="button" 
+                                  className="popover-action-item"
+                                  onClick={() => {
+                                    setAssigningOrder(ord);
+                                    setIsAssignOrderModalOpen(true);
+                                    setActiveActionMenuId(null);
+                                  }}
+                                >
+                                  <UserCheck size={14} />
+                                  <span>Assign Rider</span>
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1209,7 +1295,14 @@ export const AdminOrdersPage = () => {
       {/* Dynamic Order Processing & Details Modal matching Reference Images */}
       {selectedOrderDetails && (
         <OrderProcessingModal
-          order={selectedOrderDetails}
+          order={(() => {
+            const cleanTargetId = String(selectedOrderDetails.id || selectedOrderDetails.order_number || selectedOrderDetails.order_id || '').replace(/^#/, '');
+            const found = combinedOrders.find(o => {
+              const oClean = String(o.id || o.order_number || o.order_id || '').replace(/^#/, '');
+              return oClean === cleanTargetId || o.rawId === selectedOrderDetails.rawId;
+            });
+            return found || selectedOrderDetails;
+          })()}
           onClose={() => setSelectedOrderDetails(null)}
           onOrderUpdated={(updated) => {
             setSelectedOrderDetails(updated);

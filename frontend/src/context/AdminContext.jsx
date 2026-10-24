@@ -259,6 +259,38 @@ export const getComplaintSortTime = (item) => {
   return 0;
 };
 
+export const mergeComplaintsLists = (listA = [], listB = []) => {
+  const map = new Map();
+  const cleanId = (c) => String(c.order_id_display || c.order_id || c.orderId || c.id || '').replace(/^#/, '').trim().toUpperCase();
+
+  const addComplaint = (item) => {
+    if (!item) return;
+    const key = cleanId(item) || String(item.id || '');
+    if (!key) return;
+
+    if (map.has(key)) {
+      const existing = map.get(key);
+      let custName = item.customer_name || item.customerName;
+      if ((!custName || custName === 'Customer') && (existing.customer_name || existing.customerName) && existing.customer_name !== 'Customer') {
+        custName = existing.customer_name || existing.customerName;
+      }
+      map.set(key, { ...existing, ...item, customer_name: custName || item.customer_name || 'Customer' });
+    } else {
+      map.set(key, item);
+    }
+  };
+
+  (listB || []).forEach(addComplaint);
+  (listA || []).forEach(addComplaint);
+
+  const cleanList = Array.from(map.values()).filter(c => {
+    const str = String(c?.order_id_display || c?.order_id || c?.id || '').toUpperCase();
+    return !str.includes('FC-57606') && !str.includes('57606');
+  });
+
+  return cleanList.sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
+};
+
 const AdminContext = createContext();
 
 export const mapAdminOrderRecord = (o) => {
@@ -581,11 +613,13 @@ export const AdminProvider = ({ children }) => {
         } catch (_) {}
       }
       if (backendComplaints && backendComplaints.length > 0) {
-        const sorted = [...backendComplaints].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
-        setComplaints(sorted);
-        try {
-          localStorage.setItem('fabricare_admin_complaints', JSON.stringify(sorted));
-        } catch (_) {}
+        setComplaints(prev => {
+          const merged = mergeComplaintsLists(backendComplaints, prev);
+          try {
+            localStorage.setItem('fabricare_admin_complaints', JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
+        });
       }
     } catch (err) {
       console.error('Error fetching admin complaints:', err);
@@ -681,17 +715,13 @@ export const AdminProvider = ({ children }) => {
 
     const unsubComplaints = subscribeAdminComplaints((rtdbComplaints) => {
       const source = (rtdbComplaints && rtdbComplaints.length > 0) ? rtdbComplaints : DEFAULT_COMPLAINTS;
-      const cleanList = source.filter(c => {
-        const str = String(c?.order_id_display || c?.order_id || c?.id || '').toUpperCase();
-        return !str.includes('FC-57606') && !str.includes('57606');
+      setComplaints(prev => {
+        const merged = mergeComplaintsLists(source, prev);
+        try {
+          localStorage.setItem('fabricare_admin_complaints', JSON.stringify(merged));
+        } catch (_) {}
+        return merged;
       });
-      cleanList.sort((a, b) => {
-        const timeA = Number(a.createdAt || a.created_at || a.updatedAt) || (a.report_date ? new Date(a.report_date).getTime() : 0);
-        const timeB = Number(b.createdAt || b.created_at || b.updatedAt) || (b.report_date ? new Date(b.report_date).getTime() : 0);
-        if (timeB !== timeA) return timeB - timeA;
-        return String(b.id || '').localeCompare(String(a.id || ''));
-      });
-      setComplaints(cleanList);
     });
 
     const unsubServices = subscribeAdminServices((rtdbServices) => {

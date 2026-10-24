@@ -336,7 +336,7 @@ export const extractEntityDate = (entity, customFields = []) => {
   if (!entity) return null;
 
   // Primary candidate fields in order of scheduling priority
-  const candidateFields = customFields.length > 0
+  const candidateFields = (Array.isArray(customFields) && customFields.length > 0)
     ? customFields
     : [
         'pickup_date',

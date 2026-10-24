@@ -104,15 +104,25 @@ export const AdminDeliveryReportsPage = () => {
 
       // Status filter
       if (statusFilter !== 'ALL') {
-        const itemStatus = String(item.status || '').toUpperCase().replace(/\s+/g, '_');
-        const filterKey = statusFilter.toUpperCase().replace(/\s+/g, '_');
-        if (itemStatus !== filterKey) {
+        const itemStatus = String(item.status || '').toUpperCase().replace(/[\s_-]+/g, '');
+        const filterKey = statusFilter.toUpperCase().replace(/[\s_-]+/g, '');
+        
+        let matchesStatus = false;
+        if (filterKey === 'PENDINGRESCHEDULE') {
+          matchesStatus = itemStatus === 'PENDINGRESCHEDULE' || itemStatus === 'PENDING' || itemStatus === 'OPEN';
+        } else if (filterKey === 'RESCHEDULED') {
+          matchesStatus = itemStatus === 'RESCHEDULED' || itemStatus === 'RESCHEDULE';
+        } else {
+          matchesStatus = itemStatus === filterKey;
+        }
+
+        if (!matchesStatus) {
           return false;
         }
       }
 
       // Date Range Filter
-      if (!filterMatchesDate(item, dateRangeFilter, ['report_date', 'created_at', 'createdAt', 'updatedAt', 'date'])) {
+      if (!filterMatchesDate(item, dateRangeFilter, ['report_date', 'report_date_only', 'formatted_report_date', 'created_at', 'createdAt', 'updatedAt', 'date'])) {
         return false;
       }
 
@@ -177,7 +187,7 @@ export const AdminDeliveryReportsPage = () => {
         </p>
       </div>
 
-      {/* 2. Four Summary Stat Cards matching Reference Image 3 */}
+      {/* 2. Three Summary Stat Cards */}
       <div className="cr-summary-grid">
         {/* Card 1: Total Complaints */}
         <div className="cr-stat-card">
@@ -232,24 +242,6 @@ export const AdminDeliveryReportsPage = () => {
             </div>
           </div>
         </div>
-
-        {/* Card 4: Resolved */}
-        <div className="cr-stat-card">
-          <div className="stat-card-left">
-            <div className="stat-icon-circle icon-purple">
-              <CheckCircle2 size={22} className="text-[#7C3AED]" />
-            </div>
-            <div className="stat-text-stack">
-              <span className="stat-label">Resolved</span>
-              <span className="stat-number">{complaintsSummary?.resolved ?? 5}</span>
-              <div className="stat-trend trend-up">
-                <span className="trend-arrow">&uarr;</span>
-                <span>20%</span>
-                <span className="trend-context">vs. last 7 days</span>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* 3. Filter Bar with Search on Left and Filter Controls on Right */}
@@ -297,9 +289,6 @@ export const AdminDeliveryReportsPage = () => {
                 <option value="ALL">All Status</option>
                 <option value="PENDING_RESCHEDULE">Pending Reschedule</option>
                 <option value="RESCHEDULED">Rescheduled</option>
-                <option value="UNDER_REVIEW">Under Review</option>
-                <option value="DELIVERED">Delivered</option>
-                <option value="RESOLVED">Resolved</option>
               </select>
               <ChevronDown size={14} className="cr-select-chevron" />
             </div>
@@ -651,10 +640,10 @@ export const AdminDeliveryReportsPage = () => {
           margin: 0 0 24px;
         }
 
-        /* 4 SUMMARY STAT CARDS */
+        /* 3 SUMMARY STAT CARDS */
         .cr-summary-grid {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(3, 1fr);
           gap: 20px;
           margin-bottom: 24px;
         }

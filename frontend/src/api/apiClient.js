@@ -1019,17 +1019,41 @@ export const deliveryApi = {
     const agentUser = { uid: auth.currentUser?.uid || 'usr_agent_001', name: auth.currentUser?.displayName || 'Driver' };
     await recordDeliveryFailureAndReschedule(taskId, { failed_reason, reason, comment, notes, rescheduled_date }, agentUser);
 
-    // Synchronize delivery failure & complaint to Django backend SQLite
+    // Synchronize delivery failure & complaint to Django backend SQLite with real customer details
     try {
       const cleanReason = failed_reason || reason || 'Customer unavailable';
       const cleanComment = comment || notes || '';
+
+      let resolvedCustomerName = 'Customer';
+      let resolvedCustomerPhone = '';
+      let resolvedOrderId = String(taskId).startsWith('#') ? taskId : `#${taskId}`;
+
+      try {
+        const tSnap = await get(ref(rtdb, `tasks/${taskId}`));
+        const tData = tSnap.exists() ? tSnap.val() : null;
+        const ordKey = tData?.orderId || taskId;
+        const oSnap = await get(ref(rtdb, `orders/${ordKey}`));
+        const oData = oSnap.exists() ? oSnap.val() : null;
+
+        if (oData) {
+          resolvedCustomerName = oData.customerName || oData.customer?.name || oData.pickup_full_name || 'Customer';
+          resolvedCustomerPhone = oData.customerPhone || oData.customer?.phone || oData.pickup_phone || '';
+          const rawId = oData.code || oData.order_number || oData.id;
+          if (rawId) {
+            resolvedOrderId = String(rawId).startsWith('#') ? rawId : `#${rawId}`;
+          }
+        }
+      } catch (_) {}
+
       await fetchBackend('/api/admin/complaints/', {
         method: 'POST',
         body: JSON.stringify({
-          order_id_display: String(taskId).startsWith('#') ? taskId : `#${taskId}`,
-          customer_name: 'Customer',
+          order_id_display: resolvedOrderId,
+          customer_name: resolvedCustomerName,
+          customer_phone: resolvedCustomerPhone,
           failure_reason: cleanReason,
           notes: cleanComment,
+          reported_by_name: agentUser.name,
           requested_reschedule_date: rescheduled_date || null,
           status: 'PENDING_RESCHEDULE'
         })
