@@ -133,7 +133,7 @@ export const AdminHelpSupportPage = () => {
       }
 
       // Date Range Filter
-      if (!filterMatchesDate(item, dateRangeFilter, ['created_at', 'createdAt', 'updated_at'])) {
+      if (!filterMatchesDate(item, dateRangeFilter, ['created_at', 'createdAt', 'formatted_created_at', 'updated_at', 'submitted_at', 'date'])) {
         return false;
       }
 

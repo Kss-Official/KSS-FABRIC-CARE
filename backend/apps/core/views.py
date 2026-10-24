@@ -508,6 +508,30 @@ class AdminComplaintReportsView(APIView):
             )
 
         # Date range filter
+        date_filter = (request.query_params.get('date_range') or request.query_params.get('date_filter') or '').strip().upper()
+        if date_filter and date_filter not in ['ALL', 'SELECT DATE RANGE', 'ALL_TIME']:
+            now = timezone.localtime(timezone.now()) if timezone.is_aware(timezone.now()) else timezone.now()
+            today = now.date()
+            if date_filter == 'TODAY':
+                queryset = queryset.filter(report_date__date=today)
+            elif date_filter == 'YESTERDAY':
+                yesterday = today - datetime.timedelta(days=1)
+                queryset = queryset.filter(report_date__date=yesterday)
+            elif date_filter in ['LAST_WEEK', 'LASTWEEK', 'PREVIOUS_WEEK', 'PREV_WEEK']:
+                days_since_monday = today.weekday()
+                start_this_week = today - datetime.timedelta(days=days_since_monday)
+                end_prev_week = start_this_week - datetime.timedelta(days=1)
+                start_prev_week = end_prev_week - datetime.timedelta(days=6)
+                inclusive_start = min(start_prev_week, start_this_week - datetime.timedelta(days=7))
+                queryset = queryset.filter(report_date__date__gte=inclusive_start, report_date__date__lte=end_prev_week)
+            elif date_filter in ['THIS_WEEK', 'THISWEEK']:
+                days_since_monday = today.weekday()
+                start_this_week = today - datetime.timedelta(days=days_since_monday)
+                queryset = queryset.filter(report_date__date__gte=start_this_week, report_date__date__lte=today)
+            elif date_filter in ['LAST_30', 'LAST_30_DAYS', 'LAST30DAYS']:
+                start_30 = today - datetime.timedelta(days=30)
+                queryset = queryset.filter(report_date__date__gte=start_30, report_date__date__lte=today)
+
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         if start_date:
@@ -1408,6 +1432,30 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
             )
 
         # Date range filter
+        date_filter = (self.request.query_params.get('date_range') or self.request.query_params.get('date_filter') or '').strip().upper()
+        if date_filter and date_filter not in ['ALL', 'SELECT DATE RANGE', 'ALL_TIME']:
+            now = timezone.localtime(timezone.now()) if timezone.is_aware(timezone.now()) else timezone.now()
+            today = now.date()
+            if date_filter == 'TODAY':
+                queryset = queryset.filter(created_at__date=today)
+            elif date_filter == 'YESTERDAY':
+                yesterday = today - datetime.timedelta(days=1)
+                queryset = queryset.filter(created_at__date=yesterday)
+            elif date_filter in ['LAST_WEEK', 'LASTWEEK', 'PREVIOUS_WEEK', 'PREV_WEEK']:
+                days_since_monday = today.weekday()
+                start_this_week = today - datetime.timedelta(days=days_since_monday)
+                end_prev_week = start_this_week - datetime.timedelta(days=1)
+                start_prev_week = end_prev_week - datetime.timedelta(days=6)
+                inclusive_start = min(start_prev_week, start_this_week - datetime.timedelta(days=7))
+                queryset = queryset.filter(created_at__date__gte=inclusive_start, created_at__date__lte=end_prev_week)
+            elif date_filter in ['THIS_WEEK', 'THISWEEK']:
+                days_since_monday = today.weekday()
+                start_this_week = today - datetime.timedelta(days=days_since_monday)
+                queryset = queryset.filter(created_at__date__gte=start_this_week, created_at__date__lte=today)
+            elif date_filter in ['LAST_30', 'LAST_30_DAYS', 'LAST30DAYS']:
+                start_30 = today - datetime.timedelta(days=30)
+                queryset = queryset.filter(created_at__date__gte=start_30, created_at__date__lte=today)
+
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
         if start_date:

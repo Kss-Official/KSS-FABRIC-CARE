@@ -127,16 +127,49 @@ export const getActiveDateRanges = (ref = new Date()) => {
   const yesterdayStart = getStartOfDay(yesterdayRef);
   const yesterdayEnd = getEndOfDay(yesterdayRef);
 
-  const thisWeekStart = new Date(now);
-  thisWeekStart.setDate(thisWeekStart.getDate() - thisWeekStart.getDay());
-  thisWeekStart.setHours(0, 0, 0, 0);
+  // Current calendar week calculations
+  const dayOfWeek = now.getDay(); // 0 is Sunday, 1 is Monday ... 6 is Saturday
+  const daysSinceMonday = (dayOfWeek + 6) % 7;
+
+  // Monday 00:00:00 of this week
+  const thisWeekMon = new Date(now);
+  thisWeekMon.setDate(thisWeekMon.getDate() - daysSinceMonday);
+  thisWeekMon.setHours(0, 0, 0, 0);
+
+  // Sunday 00:00:00 of this week
+  const thisWeekSun = new Date(now);
+  thisWeekSun.setDate(thisWeekSun.getDate() - dayOfWeek);
+  thisWeekSun.setHours(0, 0, 0, 0);
+
+  const thisWeekStart = thisWeekSun < thisWeekMon ? thisWeekSun : thisWeekMon;
   const thisWeekEnd = new Date(thisWeekStart);
   thisWeekEnd.setDate(thisWeekEnd.getDate() + 6);
   thisWeekEnd.setHours(23, 59, 59, 999);
 
-  const lastWeekStart = new Date(now);
-  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-  lastWeekStart.setHours(0, 0, 0, 0);
+  // PREVIOUS WEEK ("Last Week"):
+  // Spans the previous calendar week prior to the start of this week.
+  // End of previous week is the end of Sunday (23:59:59.999) before this week's Monday:
+  const prevWeekSunEnd = new Date(thisWeekMon);
+  prevWeekSunEnd.setMilliseconds(-1);
+
+  // Start of previous week Monday (7 days before this week's Monday):
+  const prevWeekMon = new Date(thisWeekMon);
+  prevWeekMon.setDate(prevWeekMon.getDate() - 7);
+  prevWeekMon.setHours(0, 0, 0, 0);
+
+  // To also support Sunday-starting weeks (where Sunday is the 1st day of the week),
+  // start from Sunday of previous week:
+  const prevWeekSunStart = new Date(prevWeekMon);
+  prevWeekSunStart.setDate(prevWeekSunStart.getDate() - 1);
+  prevWeekSunStart.setHours(0, 0, 0, 0);
+
+  const lastWeekStart = prevWeekSunStart;
+  const lastWeekEnd = prevWeekSunEnd;
+
+  // Rolling 7 days for '7days' / 'last7days'
+  const rolling7DaysStart = new Date(now);
+  rolling7DaysStart.setDate(rolling7DaysStart.getDate() - 7);
+  rolling7DaysStart.setHours(0, 0, 0, 0);
 
   const last30DaysStart = new Date(now);
   last30DaysStart.setDate(last30DaysStart.getDate() - 30);
@@ -147,7 +180,8 @@ export const getActiveDateRanges = (ref = new Date()) => {
     tomorrow: { start: tomorrowStart, end: tomorrowEnd },
     yesterday: { start: yesterdayStart, end: yesterdayEnd },
     thisWeek: { start: thisWeekStart, end: thisWeekEnd },
-    lastWeek: { start: lastWeekStart, end: todayEnd },
+    lastWeek: { start: lastWeekStart, end: lastWeekEnd },
+    last7Days: { start: rolling7DaysStart, end: todayEnd },
     last30Days: { start: last30DaysStart, end: todayEnd }
   };
 };
@@ -310,8 +344,12 @@ export const filterMatchesPickupDate = (order, rangeKey) => {
     return time >= ranges.thisWeek.start.getTime() && time <= ranges.thisWeek.end.getTime();
   }
 
-  if (normKey === 'lastweek' || normKey === '7days' || normKey === 'last7days') {
+  if (normKey === 'lastweek' || normKey === 'previousweek' || normKey === 'prevweek') {
     return time >= ranges.lastWeek.start.getTime() && time <= ranges.lastWeek.end.getTime();
+  }
+
+  if (normKey === '7days' || normKey === 'last7days' || normKey === 'last7' || normKey === '7day') {
+    return time >= ranges.last7Days.start.getTime() && time <= ranges.last7Days.end.getTime();
   }
 
   if (normKey === 'last30' || normKey === 'last30days' || normKey === 'thismonth') {
@@ -479,8 +517,12 @@ export const filterMatchesDate = (entity, rangeKey, customFields = []) => {
     return time >= ranges.thisWeek.start.getTime() && time <= ranges.thisWeek.end.getTime();
   }
 
-  if (normKey === 'lastweek' || normKey === '7days' || normKey === 'last7days') {
+  if (normKey === 'lastweek' || normKey === 'previousweek' || normKey === 'prevweek') {
     return time >= ranges.lastWeek.start.getTime() && time <= ranges.lastWeek.end.getTime();
+  }
+
+  if (normKey === '7days' || normKey === 'last7days' || normKey === 'last7' || normKey === '7day') {
+    return time >= ranges.last7Days.start.getTime() && time <= ranges.last7Days.end.getTime();
   }
 
   if (normKey === 'last30' || normKey === 'last30days' || normKey === 'thismonth') {
