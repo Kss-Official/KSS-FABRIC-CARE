@@ -84,17 +84,25 @@ class Command(BaseCommand):
             name='Wash & Fold',
             defaults={'slug': 'wash-fold', 'description': 'Everyday laundry washed, dried and folded.', 'display_order': 1}
         )
+        cat_wash_iron, _ = ServiceCategory.objects.get_or_create(
+            name='Wash & Iron',
+            defaults={'slug': 'wash-iron', 'description': 'Clean clothes washed, dried, and crisply pressed.', 'display_order': 2}
+        )
         cat_dry, _ = ServiceCategory.objects.get_or_create(
             name='Dry Cleaning',
-            defaults={'slug': 'dry-cleaning', 'description': 'Gentle eco-solvent cleaning for premium and delicate fabrics.', 'display_order': 2}
+            defaults={'slug': 'dry-cleaning', 'description': 'Gentle eco-solvent cleaning for premium and delicate fabrics.', 'display_order': 3}
         )
         cat_iron, _ = ServiceCategory.objects.get_or_create(
             name='Steam Ironing',
-            defaults={'slug': 'steam-ironing', 'description': 'Crisp steam press and hanger packaging.', 'display_order': 3}
+            defaults={'slug': 'steam-ironing', 'description': 'Crisp steam press and hanger packaging.', 'display_order': 4}
         )
         cat_household, _ = ServiceCategory.objects.get_or_create(
             name='Household',
-            defaults={'slug': 'household', 'description': 'Bedsheets, blankets, curtains, and linens.', 'display_order': 4}
+            defaults={'slug': 'household', 'description': 'Bedsheets, blankets, curtains, and linens.', 'display_order': 5}
+        )
+        cat_express, _ = ServiceCategory.objects.get_or_create(
+            name='Express Laundry',
+            defaults={'slug': 'express-laundry', 'description': 'Superfast 24-hour priority laundry across all services.', 'display_order': 6}
         )
 
         # 3. Create Services

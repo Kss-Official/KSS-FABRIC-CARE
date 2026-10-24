@@ -13,7 +13,13 @@ import {
 } from 'firebase/database';
 import { rtdb, auth } from '../config/firebase.js';
 import { addNotificationToUpdates, addRoleNotificationsToUpdates, getRoleUserIds } from './notificationService.js';
-import { PRICING_ITEMS, PRICING_SUBCATEGORIES } from '../data/pricingData.js';
+import { 
+  PRICING_ITEMS, 
+  PRICING_SUBCATEGORIES,
+  isItemApplicableToService,
+  getExpressItemPrice,
+  getItemBasePrice 
+} from '../data/pricingData.js';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 
@@ -670,6 +676,22 @@ export const generateAdminServicesList = () => {
       description = `Regular wash and fold`;
     }
 
+    // Determine all applicable services from the 4 existing core services
+    const applicableServices = [];
+    if (isItemApplicableToService(item, 'wash-fold')) applicableServices.push('Wash & Fold');
+    if (isItemApplicableToService(item, 'wash-iron')) applicableServices.push('Wash & Iron');
+    if (isItemApplicableToService(item, 'dry-cleaning')) applicableServices.push('Dry Cleaning');
+    if (isItemApplicableToService(item, 'steam-iron')) applicableServices.push('Steam Ironing');
+
+    // Calculate Express rates for the item across services (2x base rate or configured express price)
+    const expressPrice = item.prices?.['express-laundry'] || getExpressItemPrice(item, 'wash-fold');
+    const expressPrices = {
+      'wash-fold': getExpressItemPrice(item, 'wash-fold'),
+      'wash-iron': getExpressItemPrice(item, 'wash-iron'),
+      'dry-cleaning': getExpressItemPrice(item, 'dry-cleaning'),
+      'steam-iron': getExpressItemPrice(item, 'steam-iron'),
+    };
+
     return {
       id: index + 1,
       code: item.id,
@@ -681,6 +703,12 @@ export const generateAdminServicesList = () => {
       subcatName,
       price: basePrice,
       prices: item.prices,
+      services: applicableServices,
+      applicableServices,
+      isExpressAvailable: true,
+      expressPrice,
+      expressPrices,
+      expressTurnaround: '24 hours',
       unit: item.unit || 'item',
       turnaround,
       status: 'Active',
@@ -727,6 +755,11 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
       } else if (cat === 'Special Care' || cat === 'Special') {
         cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
       }
+      const defMatch = DEFAULT_SERVICES.find(d => (d.code && d.code === item.code) || d.name === item.name || String(d.id) === String(item.id));
+      const applicableServices = item.applicableServices || item.services || defMatch?.applicableServices || ['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing'];
+      const expressPrice = item.expressPrice || defMatch?.expressPrice || (Number(item.price) * 2);
+      const expressPrices = item.expressPrices || defMatch?.expressPrices || {};
+
       return {
         ...item,
         price: Number(item.price) || 0,
@@ -736,7 +769,13 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
         subcategoryId: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
         subcatName: item.subcatName || (item.subcategory ? item.subcategory.charAt(0).toUpperCase() + item.subcategory.slice(1) : (cat === 'Household' ? 'Household' : 'Men')),
         turnaround: item.turnaround || item.turnaround_time || '1–2 days',
-        type: item.type || (Number(item.price) > 200 ? 'Premium' : (String(item.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard'))
+        type: item.type || (Number(item.price) > 200 ? 'Premium' : 'Standard'),
+        services: applicableServices,
+        applicableServices,
+        isExpressAvailable: true,
+        expressPrice,
+        expressPrices,
+        expressTurnaround: '24 hours'
       };
     });
 
@@ -956,6 +995,11 @@ export const fetchAdminServicesOnce = async () => {
     } else if (cat === 'Special Care' || cat === 'Special') {
       cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
     }
+    const defMatch = DEFAULT_SERVICES.find(d => (d.code && d.code === item.code) || d.name === item.name || String(d.id) === String(item.id));
+    const applicableServices = item.applicableServices || item.services || defMatch?.applicableServices || ['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing'];
+    const expressPrice = item.expressPrice || defMatch?.expressPrice || (Number(item.price) * 2);
+    const expressPrices = item.expressPrices || defMatch?.expressPrices || {};
+
     return {
       ...item,
       price: Number(item.price) || 0,
@@ -965,7 +1009,13 @@ export const fetchAdminServicesOnce = async () => {
       subcategoryId: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
       subcatName: item.subcatName || (item.subcategory ? item.subcategory.charAt(0).toUpperCase() + item.subcategory.slice(1) : (cat === 'Household' ? 'Household' : 'Men')),
       turnaround: item.turnaround || item.turnaround_time || '1–2 days',
-      type: item.type || (Number(item.price) > 200 ? 'Premium' : (String(item.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard'))
+      type: item.type || (Number(item.price) > 200 ? 'Premium' : 'Standard'),
+      services: applicableServices,
+      applicableServices,
+      isExpressAvailable: true,
+      expressPrice,
+      expressPrices,
+      expressTurnaround: '24 hours'
     };
   });
 };
