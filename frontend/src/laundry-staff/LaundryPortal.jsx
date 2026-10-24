@@ -213,8 +213,19 @@ export const isOrderDroppedAtHub = (o) => {
 // Filter out invalid or orphan order stubs
 export const isValidLaundryOrder = (o) => {
   if (!o || typeof o !== 'object') return false;
-  const idStr = String(o.id || o.key || o.order_number || o.code || '');
+  const idStr = String(o.id || o.key || o.order_number || o.code || o.order_id || o.orderId || '');
   if (idStr.includes('P4CbA4_8YTw7XnFWZiV')) return false;
+
+  // Carefully exclude order FC-75668 from laundry staff portal
+  if (idStr.includes('75668') || idStr.includes('FC-75668')) return false;
+  if (typeof formatOrderId === 'function') {
+    if (formatOrderId(idStr) === 'FC-75668') return false;
+    if (o.id && formatOrderId(o.id) === 'FC-75668') return false;
+    if (o.order_number && formatOrderId(o.order_number) === 'FC-75668') return false;
+    if (o.order_id && formatOrderId(o.order_id) === 'FC-75668') return false;
+    if (o.code && formatOrderId(o.code) === 'FC-75668') return false;
+    if (o.key && formatOrderId(o.key) === 'FC-75668') return false;
+  }
 
   // Real items check (must have real garment items)
   const hasRealItems = (Array.isArray(o.items) && o.items.length > 0) || 
@@ -3370,6 +3381,16 @@ export const LaundryPortal = () => {
                       const orderIdStr = rawId
                         ? (rawId.startsWith('FC-') || rawId.startsWith('#') ? rawId : `FC-${rawId}`)
                         : (idx === 5 ? 'FC-88307' : `FC-104${idx + 20}`);
+
+                      // Carefully filter out request FC-75668
+                      if (
+                        orderIdStr === 'FC-75668' ||
+                        orderIdStr === '#FC-75668' ||
+                        String(rawId).includes('75668') ||
+                        (typeof formatOrderId === 'function' && formatOrderId(rawId) === 'FC-75668')
+                      ) {
+                        return null;
+                      }
 
                       const customerName = (typeof order.customer_name === 'string' && order.customer_name && order.customer_name !== 'Customer')
                         ? order.customer_name

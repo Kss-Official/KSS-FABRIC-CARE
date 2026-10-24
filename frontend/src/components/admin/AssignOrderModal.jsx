@@ -85,7 +85,6 @@ export const AssignOrderModal = () => {
       setValidationError('');
     }
   }, [assigningOrder]);
-
   const formattedPickupTime = useMemo(() => {
     let datePart = pickupDate;
     if (pickupDate && /^\d{4}-\d{2}-\d{2}$/.test(pickupDate)) {

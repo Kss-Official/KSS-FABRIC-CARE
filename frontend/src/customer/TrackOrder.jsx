@@ -392,24 +392,29 @@ export const TrackOrder = () => {
     // Step 6: Delivered / Completed
     if (clean.includes('DELIVERED') || clean.includes('COMPLETED') || cleanStage.includes('DELIVERED') || cleanStage.includes('COMPLETED')) return 6;
 
-    // Step 5: Out for delivery / In transit / Dispatched
+    // Step 5: Out for delivery / Ready for delivery (dispatched to delivery portal) / In transit / Dispatched / Driver assigned
     if (
       clean.includes('OUTFORDELIVERY') ||
       clean.includes('INTRANSIT') ||
       clean.includes('DISPATCHED') ||
-      cleanStage === 'OUTFORDELIVERY' ||
-      cleanStage.includes('INTRANSIT')
-    ) return 5;
-
-    // Step 4: Ready for delivery / Packed / Delivery assigned
-    if (
+      clean.includes('NEARBY') ||
+      clean.includes('ONTHEWAY') ||
       clean.includes('READYFORDELIVERY') ||
-      clean === 'READY' ||
       clean.includes('DELIVERYASSIGNED') ||
+      clean === 'READY' ||
       clean === 'PACKED' ||
+      cleanStage === 'OUTFORDELIVERY' ||
+      cleanStage.includes('INTRANSIT') ||
+      cleanStage === 'DELIVERY' ||
       cleanStage === 'READY' ||
       cleanStage === 'PACKED' ||
       cleanStage.includes('READYFORDELIVERY')
+    ) return 5;
+
+    // Step 4: Ready (Final preparation / Packing clothes)
+    if (
+      clean.includes('PACKING') ||
+      cleanStage === 'PACKING'
     ) return 4;
 
     // Step 3: In cleaning / Washing / Drying / Ironing / Quality check / Processing
@@ -468,7 +473,10 @@ export const TrackOrder = () => {
   };
 
   const isDelivered = String(order.status || '').toUpperCase().includes('DELIVERED') || String(order.status || '').toUpperCase().includes('COMPLETED');
-  const activeStepIndex = isDelivered ? 6 : getActiveStepIndex(order.status_display || order.status, order.stage);
+  const activeStepIndex = isDelivered ? 6 : getActiveStepIndex(
+    order.raw_status || order.orderStatus || order.status || order.status_display,
+    order.stage || order.processing_stage || order.currentLaundryStep
+  );
 
   const verticalMilestones = [
     {
@@ -523,44 +531,37 @@ export const TrackOrder = () => {
     {
       id: 'placed',
       title: 'Order placed',
-      icon: ClipboardList,
-      time: formatStepTimestamp(order.created_at || order.placedAt, placedDayMonth, '9:12 AM')
+      icon: ClipboardList
     },
     {
       id: 'picked',
       title: 'Picked up',
-      icon: Truck,
-      time: formatStepTimestamp(order.pickup_completed_at, pickupDayMonth, '11:05 AM')
+      icon: Truck
     },
     {
       id: 'laundry',
       title: 'At laundry',
-      icon: WashingMachine,
-      time: formatStepTimestamp(order.facility_received_at, pickupDayMonth, '1:30 PM')
+      icon: WashingMachine
     },
     {
       id: 'processing',
       title: 'Processing',
-      icon: Sparkles,
-      time: formatStepTimestamp(order.processing_started_at, pickupDayMonth, '3:45 PM')
+      icon: Sparkles
     },
     {
       id: 'ready',
       title: 'Ready',
-      icon: Package,
-      time: formatStepTimestamp(order.ready_at, deliveryDayMonth, '10:00 AM')
+      icon: Package
     },
     {
       id: 'delivery',
       title: 'Out for delivery',
-      icon: Truck,
-      time: formatStepTimestamp(order.out_for_delivery_at, deliveryDayMonth, '1:15 PM')
+      icon: Truck
     },
     {
       id: 'delivered',
       title: 'Delivered',
-      icon: Home,
-      time: formatStepTimestamp(order.delivered_at, deliveryDayMonth, '3:00 PM')
+      icon: Home
     }
   ];
 
@@ -718,13 +719,6 @@ export const TrackOrder = () => {
                       <h4 className={`step-label-title ${isActive ? 'active-title' : isPending ? 'pending-title' : ''}`}>
                         {step.title}
                       </h4>
-                      <span className={`step-label-subtitle ${isCompleted ? 'time-sub' : isActive ? 'active-sub' : 'pending-sub'}`}>
-                        {isCompleted 
-                          ? step.time 
-                          : isActive 
-                            ? 'In progress' 
-                            : 'Pending'}
-                      </span>
                     </div>
                   </div>
 

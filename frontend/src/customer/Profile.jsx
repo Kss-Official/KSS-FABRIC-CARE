@@ -44,8 +44,9 @@ export const Profile = () => {
   const fetchAddresses = async () => {
     setLoadingAddresses(true);
     try {
-      const data = await addressApi.getAddresses();
-      const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      const res = await addressApi.getAddresses();
+      const raw = res?.data ?? res;
+      const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.results) ? raw.results : (Array.isArray(raw?.data) ? raw.data : []));
       setAddresses(list);
     } catch (err) {
       console.warn('Failed to load addresses:', err);

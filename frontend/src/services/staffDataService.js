@@ -396,6 +396,24 @@ export const updateLaundryStaffOrderStatus = async (orderId, targetStep, staffUs
       orderId: order.code || order.order_number || orderKey,
       createdAt: now
     });
+
+    // Notify Delivery Agent
+    const deliveryOrderCode = order.code || order.order_number || orderKey;
+    const addressArea = address?.areaColony || address?.flatHouse || (typeof address === 'string' ? address : 'Customer Address');
+    const deliveryNotifPayload = {
+      type: 'new_delivery',
+      title: 'New Delivery Task',
+      body: `Delivery assigned for order ${deliveryOrderCode} at ${addressArea}.`,
+      orderId: deliveryOrderCode,
+      orderCode: deliveryOrderCode,
+      createdAt: now
+    };
+    if (defaultAgentUid) {
+      addNotificationToUpdates(updates, defaultAgentUid, deliveryNotifPayload);
+    }
+    await addRoleNotificationsToUpdates(updates, 'agent', deliveryNotifPayload);
+    await addRoleNotificationsToUpdates(updates, 'delivery', deliveryNotifPayload);
+    await addRoleNotificationsToUpdates(updates, 'driver', deliveryNotifPayload);
   } else if (order.customerId && !['PAYMENT_PENDING', 'PLACED', 'CANCELLED', 'DELIVERED'].includes(canonicalKey)) {
     addNotificationToUpdates(updates, order.customerId, {
       type: 'laundry_step_changed',

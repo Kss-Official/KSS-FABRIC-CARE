@@ -31,8 +31,8 @@ export const normalizeNotification = (notif) => {
   } else if (text.includes('pickup') || text.includes('pick-up') || text.includes('pick up')) {
     category = 'Pickup Task';
     type = 'pickup';
-  } else if (text.includes('out for delivery') || text.includes('delivery update') || text.includes('assigned to deliver')) {
-    category = 'Out for Delivery';
+  } else if (notif.type === 'new_delivery' || notif.type === 'delivery' || text.includes('delivery task') || text.includes('new delivery') || text.includes('out for delivery') || text.includes('delivery update') || text.includes('assigned to deliver') || text.includes('delivery assigned')) {
+    category = 'Delivery Task';
     type = 'delivery';
   } else if (text.includes('deliver') || text.includes('completed')) {
     category = 'Delivered';
