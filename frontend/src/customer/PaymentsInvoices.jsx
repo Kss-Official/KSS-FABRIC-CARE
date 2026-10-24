@@ -18,7 +18,8 @@ import {
   RefreshCw, 
   Search, 
   X,
-  Loader2
+  Loader2,
+  IndianRupee
 } from 'lucide-react';
 import { formatOrderId, calculateOrderTotal } from '../utils/helpers';
 import { PRICING_ITEMS, getItemBasePrice, getExpressItemPrice } from '../data/pricingData';
@@ -1085,7 +1086,7 @@ export const PaymentsInvoices = () => {
           <div className="invoice-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="invoice-modal-top-bar no-print">
               <div className="modal-header-title-wrap">
-                <Receipt size={18} className="text-teal" />
+                <IndianRupee size={18} className="text-teal" />
                 <span className="modal-header-title">
                   Official Tax Invoice &bull; {getOrderInvoiceData(selectedOrder).orderNum}
                 </span>

@@ -22,6 +22,35 @@ export const Step2PickupDetails = () => {
   } = useBooking();
 
   const [showLandmark, setShowLandmark] = useState(Boolean(pickupDetails.landmark));
+  const [phoneError, setPhoneError] = useState('');
+
+  // Validate Indian mobile: exactly 10 digits, starts with 6-9
+  const validatePhone = (digits) => {
+    if (!digits) return 'Mobile number is required.';
+    if (!/^[6-9]/.test(digits)) return 'Number must start with 6, 7, 8, or 9.';
+    if (digits.length < 10) return `Enter ${10 - digits.length} more digit${10 - digits.length > 1 ? 's' : ''}.`;
+    return '';
+  };
+
+  // Strip +91 prefix and non-digits, keep max 10 digits
+  const handleMobileChange = (e) => {
+    let raw = e.target.value;
+    // Remove leading +91 or 91 if user typed them
+    raw = raw.replace(/^\+?91/, '');
+    // Keep only digits, max 10
+    const digits = raw.replace(/\D/g, '').slice(0, 10);
+    setPickupDetails({ ...pickupDetails, mobile: digits });
+    setPhoneError(validatePhone(digits));
+  };
+
+  const handleMobileBlur = () => {
+    const digits = (pickupDetails.mobile || '').replace(/\D/g, '');
+    setPhoneError(validatePhone(digits));
+  };
+
+  const phoneDigits = (pickupDetails.mobile || '').replace(/\D/g, '');
+  const isPhoneValid = phoneDigits.length === 10 && /^[6-9]/.test(phoneDigits);
+  const canProceed = isPhoneValid && !!pickupDetails.address;
 
   const handleToggleDeliveryAddress = () => {
     setPickupDetails(prev => ({
@@ -70,19 +99,30 @@ export const Step2PickupDetails = () => {
             {/* Mobile Number Field */}
             <div className="form-group mt-3">
               <label className="form-label">Mobile Number</label>
-              <div className="input-with-icon">
-                <span className="input-icon left-icon">
+              <div className="phone-input-wrapper" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                {/* Phone icon */}
+                <span className="input-icon left-icon" style={{ left: '14px', zIndex: 2 }}>
                   <Phone size={18} strokeWidth={1.8} />
                 </span>
+                {/* +91 prefix badge */}
+                <span className="phone-prefix-badge">+91</span>
                 <input
+                  id="mobile-input"
                   type="tel"
-                  className="form-input"
-                  value={pickupDetails.mobile || ''}
-                  onChange={(e) => setPickupDetails(prev => ({ ...prev, mobile: e.target.value }))}
-                  placeholder="+91 98765 43210"
+                  inputMode="numeric"
+                  className={`form-input phone-input${phoneError ? ' input-error' : ''}`}
+                  value={phoneDigits}
+                  onChange={handleMobileChange}
+                  onBlur={handleMobileBlur}
+                  placeholder="98765 43210"
+                  maxLength={10}
+                  autoComplete="tel-national"
                 />
               </div>
-              <p className="input-helper-text">We'll use this to share pickup updates</p>
+              {phoneError
+                ? <p className="input-error-text">⚠ {phoneError}</p>
+                : <p className="input-helper-text">We'll use this to share pickup updates</p>
+              }
             </div>
 
             {/* Pickup Address Field */}
@@ -183,7 +223,7 @@ export const Step2PickupDetails = () => {
               className="pagination-circle-btn"
               onClick={() => setCurrentStep(3)}
               aria-label="Next step"
-              disabled={!pickupDetails.mobile || !pickupDetails.address}
+              disabled={!canProceed}
             >
               <ChevronRight size={18} />
             </button>
@@ -225,7 +265,7 @@ export const Step2PickupDetails = () => {
         <button
           className="btn-next-action"
           onClick={() => setCurrentStep(3)}
-          disabled={!pickupDetails.mobile || !pickupDetails.address}
+          disabled={!canProceed}
         >
           <span>Next</span>
           <ArrowRight size={17} />
@@ -334,6 +374,39 @@ export const Step2PickupDetails = () => {
           box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.1);
         }
 
+        /* Phone number field */
+        .phone-input {
+          padding-left: 96px !important;
+          letter-spacing: 0.03em;
+        }
+
+        .phone-prefix-badge {
+          position: absolute;
+          left: 42px;
+          font-size: 0.9375rem;
+          font-weight: 600;
+          color: #0D7A75;
+          pointer-events: none;
+          user-select: none;
+          z-index: 2;
+          background: transparent;
+          border-right: 1.5px solid #E2E8F0;
+          padding-right: 10px;
+          line-height: 1;
+        }
+
+        .form-input.input-error {
+          border-color: #EF4444;
+          box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        }
+
+        .input-error-text {
+          font-size: 0.775rem;
+          color: #EF4444;
+          font-weight: 500;
+          margin-top: 4px;
+        }
+
         .gps-target-btn {
           position: absolute;
           right: 12px;
@@ -356,6 +429,7 @@ export const Step2PickupDetails = () => {
           font-size: 0.775rem;
           color: #64748B;
           margin-top: 4px;
+          min-height: 1.2em;
         }
 
         .landmark-toggle-row {

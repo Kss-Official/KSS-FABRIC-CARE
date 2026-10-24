@@ -4,8 +4,7 @@ import {
   createCustomerOrder,
   confirmCustomerPayment,
   cancelCustomerOrder,
-  markNotificationRead,
-  submitCustomerComplaint
+  markNotificationRead
 } from '../services/customerDataService.js';
 import {
   assignPickupAgent,
@@ -37,6 +36,40 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
+
+const BACKEND_BASES = ['http://127.0.0.1:8001', 'http://127.0.0.1:8000'];
+
+export const fetchBackend = async (path, options = {}) => {
+  const token = (typeof localStorage !== 'undefined' ? localStorage.getItem('fabricare_token') : null) || 
+                (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('fabricare_token') : null);
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token && token !== 'demo-token' ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(options.headers || {})
+  };
+
+  for (const base of BACKEND_BASES) {
+    try {
+      const url = `${base}${path.startsWith('/') ? path : '/' + path}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(url, { ...options, headers, signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const json = await res.json().catch(() => ({ success: true }));
+        return { data: json, status: res.status, ok: true };
+      }
+    } catch (_) {}
+  }
+  try {
+    const res = await fetch(path, { ...options, headers });
+    if (res.ok) {
+      const json = await res.json().catch(() => ({ success: true }));
+      return { data: json, status: res.status, ok: true };
+    }
+  } catch (_) {}
+  return null;
+};
 
 // -------------------------------------------------------------
 // NORMALIZER FOR ORDER OBJECTS
@@ -223,15 +256,37 @@ export const normalizeOrder = (o) => {
     paymentStatusDisplay = 'PENDING';
   }
 
+  let cleanPickupDateStr = pickupDate;
+  if (cleanPickupDateStr && typeof cleanPickupDateStr === 'string') {
+    const trimmed = cleanPickupDateStr.trim().replace(/^(?:Today|Tomorrow|[A-Za-z]+),\s*/i, '');
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (isoMatch) {
+      const dt = new Date(parseInt(isoMatch[1], 10), parseInt(isoMatch[2], 10) - 1, parseInt(isoMatch[3], 10));
+      if (!isNaN(dt.getTime())) {
+        cleanPickupDateStr = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+    } else if (/^\d{1,2}\s+[A-Za-z]{3}$/.test(trimmed)) {
+      cleanPickupDateStr = `${trimmed} 2026`;
+    }
+  }
+  if (!cleanPickupDateStr || cleanPickupDateStr === 'Today' || cleanPickupDateStr === 'Tomorrow') {
+    cleanPickupDateStr = '25 Oct 2026';
+  }
+
+  let cleanPickupSlot = pickupSlot || '09:00 AM – 11:00 AM';
+  cleanPickupSlot = cleanPickupSlot.replace(/(AM|PM)\s*[-–—]\s*11:00\s*$/i, '$1');
+  cleanPickupSlot = cleanPickupSlot.replace(/\s*[-–—]\s*/, ' – ');
+
   return {
     ...o,
     id: o.code || o.id,
     order_id: o.code || o.id,
     order_number: o.code || o.id,
     pickup_address: addressStr,
-    pickup_date: pickupDate,
-    pickup_time_slot: pickupSlot,
-    pickupTime: `${pickupDate}, ${pickupSlot}`,
+    pickup_date: cleanPickupDateStr,
+    pickup_date_raw: pickupDate,
+    pickup_time_slot: cleanPickupSlot,
+    pickupTime: `${cleanPickupDateStr}, ${cleanPickupSlot}`,
     delivery_date: deliveryDate,
     delivery_time_slot: deliverySlot,
     total_amount: totalAmount,
@@ -755,6 +810,19 @@ export const deliveryApi = {
             t.order_status = orderData.status;
             t.orderData = orderData;
 
+            if (orderData.isRescheduled || orderData.rescheduled_date || rawOrdStatus === 'RESCHEDULED') {
+              t.type = 'delivery';
+              t.raw_type = 'delivery';
+              t.isRescheduled = true;
+              t.rescheduled_date = orderData.rescheduled_date || orderData.delivery_date;
+              t.rescheduled_time_slot = orderData.rescheduled_time_slot || orderData.delivery_time_slot;
+              t.delivery_date = orderData.rescheduled_date || orderData.delivery_date;
+              t.delivery_time_slot = orderData.rescheduled_time_slot || orderData.delivery_time_slot;
+              if (t.status !== 'completed' && rawOrdStatus !== 'DELIVERED') {
+                t.status = 'READY_FOR_DELIVERY';
+              }
+            }
+
             const ordCustName = orderData.customerName || orderData.customer?.name;
             if (ordCustName && ordCustName !== 'Customer') {
               t.customerName = ordCustName;
@@ -786,14 +854,18 @@ export const deliveryApi = {
                 orderData = v;
                 const vStatus = String(v.status || '').toUpperCase();
                 const vStage = String(v.stage || '').toLowerCase();
+                const isResched = Boolean(v.isRescheduled || v.rescheduled_date || vStatus === 'RESCHEDULED' || vStage === 'rescheduled');
                 const isDel = forceType === 'pickup' ? false : (forceType === 'delivery' ? true : (
-                  ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'DELIVERED'].includes(vStatus) ||
+                  isResched || ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'DELIVERED', 'COMPLETED'].includes(vStatus) ||
                   v.delivery_reported === true || v.isDeliveryReported === true ||
                   ((vStatus === 'RESCHEDULED' || vStage === 'rescheduled') && (Boolean(v.droppedAtHub || v.droppedOffAt) || Boolean(v.delivery_reported)))
                 ));
                 const formattedAddr = (typeof v.address === 'object' && v.address !== null)
                   ? [v.address.flatHouse, v.address.areaColony, v.address.city, v.address.pincode].filter(Boolean).join(', ')
                   : (typeof v.address === 'string' ? v.address : '');
+
+                const schedDateVal = v.rescheduled_date || v.delivery_date || v.pickup?.date || v.pickup_date;
+                const schedSlotVal = v.rescheduled_time_slot || v.delivery_time_slot || v.pickup_time_slot || v.time_slot;
 
                 let fallbackTaskStatus = 'unassigned';
                 if (!isDel) {
@@ -836,16 +908,19 @@ export const deliveryApi = {
                   orderId: k,
                   orderCode: v.code || v.order_number || k,
                   type: isDel ? 'delivery' : 'pickup',
+                  raw_type: isDel ? 'delivery' : 'pickup',
                   delivery_reported: isOrderAdminRescheduled ? false : Boolean(v.delivery_reported || v.isDeliveryReported),
                   isDeliveryReported: isOrderAdminRescheduled ? false : Boolean(v.delivery_reported || v.isDeliveryReported),
                   failedReason: isOrderAdminRescheduled ? null : (v.failedReason || null),
                   comment: isOrderAdminRescheduled ? '' : (v.failureComment || v.comment || ''),
                   status: fallbackTaskStatus,
-                  isRescheduled: Boolean(v.isRescheduled || v.rescheduled_date),
+                  isRescheduled: isResched,
                   rescheduled_date: v.rescheduled_date || null,
                   rescheduled_time_slot: v.rescheduled_time_slot || null,
                   delivery_date: v.rescheduled_date || v.delivery_date || null,
                   delivery_time_slot: v.rescheduled_time_slot || v.delivery_time_slot || null,
+                  time_slot: schedSlotVal || '09:00 AM – 11:00 AM',
+                  pickup_date: v.pickup?.date || v.pickup_date || 'Today',
                   droppedAtHub: v.droppedAtHub || v.droppedOffAt || (!isDel && fallbackTaskStatus === 'completed' ? (v.completedAt || v.updatedAt || Date.now()) : undefined),
                   deliveredAt: isDel && fallbackTaskStatus === 'completed' ? (v.deliveredAt || v.completedAt || v.updatedAt || Date.now()) : undefined,
                   orderStatus: v.status,
@@ -857,8 +932,10 @@ export const deliveryApi = {
                   },
                   customerName: v.customerName || v.customer?.name || 'Customer',
                   customerPhone: v.customerPhone || v.customer?.phone || '',
-                  address: formattedAddr || v.pickup_address || v.delivery_address || 'Bengaluru',
-                  scheduledAt: (isDel && (v.rescheduled_date || v.delivery_date)) ? new Date(v.rescheduled_date || v.delivery_date).getTime() : (v.pickup?.date ? new Date(v.pickup.date).getTime() : (v.createdAt || Date.now()))
+                  address: formattedAddr || v.delivery_address || v.pickup_address || 'Bengaluru',
+                  delivery_address: v.delivery_address || formattedAddr || 'Bengaluru',
+                  pickup_address: v.pickup_address || formattedAddr || 'Bengaluru',
+                  scheduledAt: (isDel && (v.rescheduled_date || v.delivery_date)) ? new Date(v.rescheduled_date || v.delivery_date).getTime() : (schedDateVal ? new Date(schedDateVal).getTime() : (v.createdAt || Date.now()))
                 };
                 break;
               }
@@ -941,6 +1018,24 @@ export const deliveryApi = {
   failDelivery: async (taskId, { failed_reason, reason, comment, notes, rescheduled_date } = {}) => {
     const agentUser = { uid: auth.currentUser?.uid || 'usr_agent_001', name: auth.currentUser?.displayName || 'Driver' };
     await recordDeliveryFailureAndReschedule(taskId, { failed_reason, reason, comment, notes, rescheduled_date }, agentUser);
+
+    // Synchronize delivery failure & complaint to Django backend SQLite
+    try {
+      const cleanReason = failed_reason || reason || 'Customer unavailable';
+      const cleanComment = comment || notes || '';
+      await fetchBackend('/api/admin/complaints/', {
+        method: 'POST',
+        body: JSON.stringify({
+          order_id_display: String(taskId).startsWith('#') ? taskId : `#${taskId}`,
+          customer_name: 'Customer',
+          failure_reason: cleanReason,
+          notes: cleanComment,
+          requested_reschedule_date: rescheduled_date || null,
+          status: 'PENDING_RESCHEDULE'
+        })
+      });
+    } catch (_) {}
+
     return { data: { success: true } };
   }
 };
@@ -979,18 +1074,64 @@ export const notificationsApi = {
 };
 
 export const supportApi = {
-  getTickets: async () => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return { data: [] };
-    const snap = await get(ref(rtdb, `userComplaints/${uid}`));
-    if (!snap.exists()) return { data: [] };
-    const ids = Object.keys(snap.val());
-    const promises = ids.map(async id => {
-      const c = await get(ref(rtdb, `complaints/${id}`));
-      return c.exists() ? { ...c.val(), id } : null;
-    });
-    const list = (await Promise.all(promises)).filter(Boolean).reverse();
-    return { data: list };
+  getTickets: async (params = {}) => {
+    try {
+      const qs = new URLSearchParams(params).toString();
+      const res = await fetchBackend(`/api/admin/support/tickets/${qs ? '?' + qs : ''}`);
+      if (res && res.data && (res.data.results || res.data.items)) return res;
+    } catch (_) {}
+
+    // Fallback: Check Firebase Realtime Database support_tickets node
+    try {
+      if (rtdb) {
+        const snap = await get(ref(rtdb, 'support_tickets'));
+        if (snap.exists()) {
+          const list = Object.entries(snap.val()).map(([k, v]) => ({ ...v, id: v.id || k }));
+          list.sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
+          if (list.length > 0) {
+            return { data: { results: list, items: list, count: list.length } };
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Fallback: Check localStorage
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem('fabricare_support_tickets');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return { data: { results: parsed, items: parsed, count: parsed.length } };
+          }
+        }
+      }
+    } catch (_) {}
+
+    return { data: { results: [], items: [], summary: {} } };
+  },
+
+  getCustomerTickets: async (params = {}) => {
+    try {
+      const qs = new URLSearchParams(params).toString();
+      const res = await fetchBackend(`/api/admin/support/tickets/${qs ? '?' + qs : ''}`);
+      if (res && res.data && (res.data.results || res.data.items)) return res;
+    } catch (_) {}
+
+    // Fallback: Check localStorage
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem('fabricare_support_tickets');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return { data: { results: parsed, items: parsed } };
+          }
+        }
+      }
+    } catch (_) {}
+
+    return { data: { results: [], items: [] } };
   },
 
   getReports: async (params = {}) => {
@@ -1057,16 +1198,129 @@ export const supportApi = {
     }
   },
 
-  createTicket: async (payload) => {
-    const user = { uid: auth.currentUser?.uid, name: auth.currentUser?.displayName || 'Customer' };
-    const res = await submitCustomerComplaint(payload, user);
-    return { data: res };
+  createTicket: async (ticketData) => {
+    let res = null;
+    try {
+      res = await fetchBackend('/api/admin/support/tickets/', {
+        method: 'POST',
+        body: JSON.stringify(ticketData)
+      });
+    } catch (_) {}
+
+    const now = Date.now();
+    const createdTicket = (res && res.data) ? res.data : {
+      id: `sup_${now}`,
+      ticket_number: `#SUP-${Math.floor(1000 + Math.random() * 9000)}`,
+      ...ticketData,
+      status: 'OPEN',
+      created_at: new Date(now).toISOString()
+    };
+
+    // 1. Persist to Firebase RTDB support_tickets node (realtime sync for Admin)
+    try {
+      if (rtdb) {
+        const tKey = String(createdTicket.id || `ticket_${now}`);
+        await set(ref(rtdb, `support_tickets/${tKey}`), {
+          ...createdTicket,
+          updatedAt: now
+        }).catch(() => {});
+      }
+    } catch (_) {}
+
+    // 2. Synchronize immediately into localStorage
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem('fabricare_support_tickets');
+        const list = raw ? JSON.parse(raw) : [];
+        const filtered = Array.isArray(list) ? list.filter(t => String(t.id) !== String(createdTicket.id) && String(t.ticket_number) !== String(createdTicket.ticket_number)) : [];
+        localStorage.setItem('fabricare_support_tickets', JSON.stringify([createdTicket, ...filtered]));
+        localStorage.setItem('fabricare_support_ticket_sync_time', String(now));
+      }
+    } catch (_) {}
+
+    // 3. Dispatch cross-tab and in-window events
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('fabricare_support_ticket_created', { detail: createdTicket }));
+        window.dispatchEvent(new Event('storage'));
+        if ('BroadcastChannel' in window) {
+          const bc = new BroadcastChannel('fabricare_support_channel');
+          bc.postMessage({ type: 'TICKET_CREATED', ticket: createdTicket });
+          bc.close();
+        }
+      } catch (_) {}
+    }
+
+    return res || { data: createdTicket };
   },
 
-  replyTicket: async (ticketId, replyMessage) => {
-    const user = { uid: auth.currentUser?.uid, name: auth.currentUser?.displayName || 'Admin' };
-    await replyToSupportComplaint(ticketId, replyMessage, user);
-    return { data: { success: true } };
+  replyTicket: async (ticketId, data) => {
+    let res = null;
+    const replyMessage = typeof data === 'string' ? data : (data?.admin_reply || data?.response || data?.message || '');
+    const newStatus = typeof data === 'object' ? data?.status : 'IN_PROGRESS';
+
+    try {
+      res = await fetchBackend(`/api/admin/support/tickets/${ticketId}/reply/`, {
+        method: 'POST',
+        body: JSON.stringify(typeof data === 'object' ? data : { admin_reply: replyMessage, status: newStatus })
+      });
+    } catch (_) {}
+
+    try {
+      const user = { uid: auth.currentUser?.uid, name: auth.currentUser?.displayName || 'Admin' };
+      await replyToSupportComplaint(ticketId, replyMessage, user);
+    } catch (_) {}
+
+    if (typeof window !== 'undefined') {
+      try {
+        const updatedTicket = (res && res.data && res.data.ticket) ? res.data.ticket : { id: ticketId, admin_reply: replyMessage, status: newStatus };
+        window.dispatchEvent(new CustomEvent('fabricare_support_ticket_updated', { detail: updatedTicket }));
+      } catch (_) {}
+    }
+    return res || { data: { success: true } };
+  },
+
+  resolveTicket: async (ticketId, data = {}) => {
+    let res = null;
+    const replyMessage = typeof data === 'string' ? data : (data?.admin_reply || data?.response || '');
+
+    try {
+      res = await fetchBackend(`/api/admin/support/tickets/${ticketId}/resolve/`, {
+        method: 'POST',
+        body: JSON.stringify(typeof data === 'object' ? data : { admin_reply: replyMessage })
+      });
+    } catch (_) {}
+
+    try {
+      const user = { uid: auth.currentUser?.uid, name: auth.currentUser?.displayName || 'Admin' };
+      await replyToSupportComplaint(ticketId, replyMessage || 'Marked as resolved', user);
+    } catch (_) {}
+
+    if (typeof window !== 'undefined') {
+      try {
+        const updatedTicket = (res && res.data && res.data.ticket) ? res.data.ticket : { id: ticketId, status: 'RESOLVED', admin_reply: replyMessage };
+        window.dispatchEvent(new CustomEvent('fabricare_support_ticket_updated', { detail: updatedTicket }));
+      } catch (_) {}
+    }
+    return res || { data: { success: true } };
+  },
+
+  updateStatus: async (ticketId, status) => {
+    let res = null;
+    try {
+      res = await fetchBackend(`/api/admin/support/tickets/${ticketId}/status/`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status })
+      });
+    } catch (_) {}
+
+    if (typeof window !== 'undefined') {
+      try {
+        const updatedTicket = (res && res.data) ? res.data : { id: ticketId, status };
+        window.dispatchEvent(new CustomEvent('fabricare_support_ticket_updated', { detail: updatedTicket }));
+      } catch (_) {}
+    }
+    return res || { data: { success: true } };
   }
 };
 
@@ -1134,172 +1388,278 @@ export const adminApi = {
 
 export const addressApi = {
   getAddresses: async () => {
-    const uid = auth.currentUser?.uid || (() => {
-      try {
-        const saved = localStorage.getItem('fabricare_user');
-        return saved ? JSON.parse(saved)?.uid : null;
-      } catch {
-        return null;
-      }
-    })();
-    if (!uid) return { data: [] };
+    const savedUserStr = typeof localStorage !== 'undefined' ? localStorage.getItem('fabricare_user') : null;
+    let savedUser = null;
+    try { savedUser = savedUserStr ? JSON.parse(savedUserStr) : null; } catch (_) {}
+    const uid = auth?.currentUser?.uid || savedUser?.uid || savedUser?.id || '';
+    const userEmail = auth?.currentUser?.email || savedUser?.email || '';
+
+    // 1. First, fetch from Django backend
     try {
-      const snap = await get(ref(rtdb, `users/${uid}/addresses`));
-      if (!snap.exists()) {
-        const userSnap = await get(ref(rtdb, `users/${uid}`));
-        const uData = userSnap.exists() ? userSnap.val() : {};
-        if (uData.address) {
-          return {
-            data: [{
-              id: 'addr_default',
-              title: 'Home',
-              address_line: uData.address,
-              landmark: '',
-              city: uData.city || 'Bengaluru',
-              pincode: uData.pincode || '560043',
-              is_default: true
-            }]
-          };
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      const res = await fetchBackend('/api/customer/addresses/', { headers });
+      if (res && res.ok && Array.isArray(res.data) && res.data.length > 0) {
+        const formatted = res.data.map(item => ({
+          id: item.id,
+          title: item.title || 'Home',
+          address_line: item.address_line || item.address_line1 || '',
+          landmark: item.landmark || item.address_line2 || '',
+          city: item.city || 'Bengaluru',
+          pincode: item.pincode || '560043',
+          is_default: Boolean(item.is_default),
+          full_name: item.full_name || '',
+          phone: item.phone || ''
+        }));
+
+        if (uid) {
+          try {
+            localStorage.setItem(`fabricare_addresses_${uid}`, JSON.stringify(formatted));
+          } catch (_) {}
         }
-        return { data: [] };
+        return { data: formatted };
       }
-      const raw = snap.val();
-      const list = Object.entries(raw).map(([key, val]) => ({
-        id: key,
-        title: val.title || val.label || 'Home',
-        address_line: val.address_line || val.line1 || val.address || '',
-        landmark: val.landmark || val.address_line2 || '',
-        city: val.city || 'Bengaluru',
-        pincode: val.pincode || '560043',
-        is_default: Boolean(val.is_default)
-      }));
-      return { data: list };
-    } catch (err) {
-      console.error('addressApi.getAddresses error:', err);
-      return { data: [] };
+    } catch (backendErr) {
+      console.warn('Backend getAddresses warning:', backendErr);
     }
-  },
-  createAddress: async (addr) => {
-    const uid = auth.currentUser?.uid || (() => {
-      try {
-        const saved = localStorage.getItem('fabricare_user');
-        return saved ? JSON.parse(saved)?.uid : null;
-      } catch {
-        return null;
-      }
-    })();
-    if (!uid) throw new Error('User not authenticated');
-    const addrId = addr.id || `addr_${Date.now()}`;
-    const newAddressObj = {
-      id: addrId,
-      title: addr.title || 'Home',
-      address_line: addr.address_line || addr.line1 || '',
-      landmark: addr.landmark || '',
-      city: addr.city || 'Bengaluru',
-      pincode: addr.pincode || '560043',
-      is_default: Boolean(addr.is_default),
-      updatedAt: Date.now()
-    };
 
-    const updates = {};
-    updates[`users/${uid}/addresses/${addrId}`] = newAddressObj;
-
-    if (newAddressObj.is_default) {
-      const formatted = `${newAddressObj.address_line}${newAddressObj.landmark ? ', ' + newAddressObj.landmark : ''}, ${newAddressObj.city} - ${newAddressObj.pincode}`;
-      updates[`users/${uid}/address`] = formatted;
-      updates[`users/${uid}/city`] = newAddressObj.city;
-      updates[`users/${uid}/pincode`] = newAddressObj.pincode;
-
+    // 2. Secondary: Check Firebase Realtime Database
+    if (uid && rtdb) {
       try {
         const snap = await get(ref(rtdb, `users/${uid}/addresses`));
         if (snap.exists()) {
-          const current = snap.val();
-          Object.keys(current).forEach(k => {
-            if (k !== addrId && current[k].is_default) {
-              updates[`users/${uid}/addresses/${k}/is_default`] = false;
-            }
-          });
+          const raw = snap.val();
+          const list = Object.entries(raw).map(([key, val]) => ({
+            id: key,
+            title: val.title || val.label || 'Home',
+            address_line: val.address_line || val.line1 || val.address || '',
+            landmark: val.landmark || val.address_line2 || '',
+            city: val.city || 'Bengaluru',
+            pincode: val.pincode || '560043',
+            is_default: Boolean(val.is_default)
+          }));
+          if (list.length > 0) {
+            try {
+              localStorage.setItem(`fabricare_addresses_${uid}`, JSON.stringify(list));
+            } catch (_) {}
+            return { data: list };
+          }
         }
-      } catch (e) {
-        console.warn('Could not reset previous defaults:', e);
+      } catch (fbErr) {
+        console.warn('Firebase RTDB getAddresses warning:', fbErr);
       }
-    } else {
+    }
+
+    // 3. Fallback: Local Storage cache for this user
+    if (uid) {
       try {
-        const userSnap = await get(ref(rtdb, `users/${uid}/address`));
-        if (!userSnap.exists() || !userSnap.val()) {
+        const localCached = localStorage.getItem(`fabricare_addresses_${uid}`);
+        if (localCached) {
+          const parsed = JSON.parse(localCached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return { data: parsed };
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 4. Default user address fallback from profile
+    if (savedUser?.address) {
+      const fallbackList = [{
+        id: 'addr_default',
+        title: 'Home',
+        address_line: savedUser.address,
+        landmark: '',
+        city: savedUser.city || 'Bengaluru',
+        pincode: savedUser.pincode || '560043',
+        is_default: true
+      }];
+      return { data: fallbackList };
+    }
+
+    return { data: [] };
+  },
+
+  createAddress: async (addr) => {
+    const savedUserStr = typeof localStorage !== 'undefined' ? localStorage.getItem('fabricare_user') : null;
+    let savedUser = null;
+    try { savedUser = savedUserStr ? JSON.parse(savedUserStr) : null; } catch (_) {}
+    const uid = auth?.currentUser?.uid || savedUser?.uid || savedUser?.id || `user_${Date.now()}`;
+    const userEmail = auth?.currentUser?.email || savedUser?.email || '';
+
+    const payload = {
+      title: addr.title || 'Home',
+      address_line1: addr.address_line || addr.address_line1 || addr.line1 || '',
+      address_line: addr.address_line || addr.address_line1 || addr.line1 || '',
+      address_line2: addr.landmark || '',
+      landmark: addr.landmark || '',
+      city: addr.city || 'Bengaluru',
+      state: 'Karnataka',
+      pincode: addr.pincode || '560043',
+      is_default: Boolean(addr.is_default),
+      email: userEmail
+    };
+
+    let backendItem = null;
+
+    // 1. Persist to Django Database
+    try {
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      const res = await fetchBackend('/api/customer/addresses/', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+      if (res && res.ok && res.data) {
+        backendItem = res.data;
+      }
+    } catch (err) {
+      console.warn('Backend createAddress notice:', err);
+    }
+
+    const addrId = backendItem?.id || addr.id || `addr_${Date.now()}`;
+    const newAddressObj = {
+      id: addrId,
+      title: payload.title,
+      address_line: payload.address_line,
+      landmark: payload.landmark,
+      city: payload.city,
+      pincode: payload.pincode,
+      is_default: payload.is_default,
+      updatedAt: Date.now()
+    };
+
+    // 2. Persist to Firebase RTDB (best effort)
+    try {
+      if (uid && rtdb) {
+        const updates = {};
+        updates[`users/${uid}/addresses/${addrId}`] = newAddressObj;
+        if (newAddressObj.is_default) {
           const formatted = `${newAddressObj.address_line}${newAddressObj.landmark ? ', ' + newAddressObj.landmark : ''}, ${newAddressObj.city} - ${newAddressObj.pincode}`;
           updates[`users/${uid}/address`] = formatted;
           updates[`users/${uid}/city`] = newAddressObj.city;
           updates[`users/${uid}/pincode`] = newAddressObj.pincode;
         }
-      } catch (e) {
-        // ignore
+        await update(ref(rtdb), updates).catch(() => {});
       }
+    } catch (fbErr) {
+      console.warn('RTDB createAddress notice:', fbErr);
     }
 
-    await update(ref(rtdb), updates);
+    // 3. Persist to Local Storage
+    try {
+      const localKey = `fabricare_addresses_${uid}`;
+      const existing = JSON.parse(localStorage.getItem(localKey) || '[]');
+      const filtered = existing.filter(a => String(a.id) !== String(addrId));
+      if (newAddressObj.is_default) {
+        filtered.forEach(a => { a.is_default = false; });
+      }
+      localStorage.setItem(localKey, JSON.stringify([newAddressObj, ...filtered]));
+    } catch (_) {}
+
     return { data: newAddressObj };
   },
-  updateAddress: async (id, addr) => {
-    const uid = auth.currentUser?.uid || (() => {
-      try {
-        const saved = localStorage.getItem('fabricare_user');
-        return saved ? JSON.parse(saved)?.uid : null;
-      } catch {
-        return null;
-      }
-    })();
-    if (!uid) throw new Error('User not authenticated');
 
-    const updatedObj = {
-      id,
+  updateAddress: async (id, addr) => {
+    const savedUserStr = typeof localStorage !== 'undefined' ? localStorage.getItem('fabricare_user') : null;
+    let savedUser = null;
+    try { savedUser = savedUserStr ? JSON.parse(savedUserStr) : null; } catch (_) {}
+    const uid = auth?.currentUser?.uid || savedUser?.uid || savedUser?.id || 'user_default';
+    const userEmail = auth?.currentUser?.email || savedUser?.email || '';
+
+    const payload = {
       title: addr.title || 'Home',
-      address_line: addr.address_line || addr.line1 || '',
+      address_line1: addr.address_line || addr.address_line1 || '',
+      address_line: addr.address_line || addr.address_line1 || '',
+      address_line2: addr.landmark || '',
       landmark: addr.landmark || '',
       city: addr.city || 'Bengaluru',
       pincode: addr.pincode || '560043',
       is_default: Boolean(addr.is_default),
+      email: userEmail
+    };
+
+    // 1. Django Backend
+    try {
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      await fetchBackend(`/api/customer/addresses/${id}/`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload)
+      });
+    } catch (err) {
+      console.warn('Backend updateAddress notice:', err);
+    }
+
+    const updatedObj = {
+      id,
+      title: payload.title,
+      address_line: payload.address_line,
+      landmark: payload.landmark,
+      city: payload.city,
+      pincode: payload.pincode,
+      is_default: payload.is_default,
       updatedAt: Date.now()
     };
 
-    const updates = {};
-    updates[`users/${uid}/addresses/${id}`] = updatedObj;
-
-    if (updatedObj.is_default) {
-      const formatted = `${updatedObj.address_line}${updatedObj.landmark ? ', ' + updatedObj.landmark : ''}, ${updatedObj.city} - ${updatedObj.pincode}`;
-      updates[`users/${uid}/address`] = formatted;
-      updates[`users/${uid}/city`] = updatedObj.city;
-      updates[`users/${uid}/pincode`] = updatedObj.pincode;
-
-      try {
-        const snap = await get(ref(rtdb, `users/${uid}/addresses`));
-        if (snap.exists()) {
-          const current = snap.val();
-          Object.keys(current).forEach(k => {
-            if (k !== id && current[k].is_default) {
-              updates[`users/${uid}/addresses/${k}/is_default`] = false;
-            }
-          });
+    // 2. Firebase RTDB
+    try {
+      if (uid && rtdb) {
+        const updates = {};
+        updates[`users/${uid}/addresses/${id}`] = updatedObj;
+        if (updatedObj.is_default) {
+          const formatted = `${updatedObj.address_line}${updatedObj.landmark ? ', ' + updatedObj.landmark : ''}, ${updatedObj.city} - ${updatedObj.pincode}`;
+          updates[`users/${uid}/address`] = formatted;
+          updates[`users/${uid}/city`] = updatedObj.city;
+          updates[`users/${uid}/pincode`] = updatedObj.pincode;
         }
-      } catch (e) {
-        console.warn('Could not reset previous defaults:', e);
+        await update(ref(rtdb), updates).catch(() => {});
       }
-    }
+    } catch (_) {}
 
-    await update(ref(rtdb), updates);
+    // 3. Local Storage
+    try {
+      const localKey = `fabricare_addresses_${uid}`;
+      const existing = JSON.parse(localStorage.getItem(localKey) || '[]');
+      const updatedList = existing.map(a => String(a.id) === String(id) ? updatedObj : (updatedObj.is_default ? { ...a, is_default: false } : a));
+      localStorage.setItem(localKey, JSON.stringify(updatedList));
+    } catch (_) {}
+
     return { data: updatedObj };
   },
+
   deleteAddress: async (id) => {
-    const uid = auth.currentUser?.uid || (() => {
-      try {
-        const saved = localStorage.getItem('fabricare_user');
-        return saved ? JSON.parse(saved)?.uid : null;
-      } catch {
-        return null;
+    const savedUserStr = typeof localStorage !== 'undefined' ? localStorage.getItem('fabricare_user') : null;
+    let savedUser = null;
+    try { savedUser = savedUserStr ? JSON.parse(savedUserStr) : null; } catch (_) {}
+    const uid = auth?.currentUser?.uid || savedUser?.uid || savedUser?.id || 'user_default';
+    const userEmail = auth?.currentUser?.email || savedUser?.email || '';
+
+    // 1. Django Backend
+    try {
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      await fetchBackend(`/api/customer/addresses/${id}/`, {
+        method: 'DELETE',
+        headers
+      });
+    } catch (err) {
+      console.warn('Backend deleteAddress notice:', err);
+    }
+
+    // 2. Firebase RTDB
+    try {
+      if (uid && rtdb) {
+        await set(ref(rtdb, `users/${uid}/addresses/${id}`), null).catch(() => {});
       }
-    })();
-    if (!uid) throw new Error('User not authenticated');
-    await set(ref(rtdb, `users/${uid}/addresses/${id}`), null);
+    } catch (_) {}
+
+    // 3. Local Storage
+    try {
+      const localKey = `fabricare_addresses_${uid}`;
+      const existing = JSON.parse(localStorage.getItem(localKey) || '[]');
+      const filtered = existing.filter(a => String(a.id) !== String(id));
+      localStorage.setItem(localKey, JSON.stringify(filtered));
+    } catch (_) {}
+
     return { data: { success: true } };
   }
 };
@@ -1315,10 +1675,35 @@ export const authApi = {
     const snap = await get(ref(rtdb, `users/${uid}`));
     return { data: snap.exists() ? snap.val() : null };
   },
-  updateProfile: async (data) => ({ data: { success: true } })
 };
 
-export const complaintsApi = supportApi;
+export const complaintsApi = {
+  getReports: async (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    const res = await fetchBackend(`/api/customer/reports/${qs ? '?' + qs : ''}`);
+    if (res && res.data) {
+      return res;
+    }
+    return { data: { results: [] } };
+  },
+  getReportDetail: async (id) => {
+    const res = await fetchBackend(`/api/customer/reports/${id}/`);
+    return res ? res : { data: null };
+  },
+  getAdminComplaints: async (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    const res = await fetchBackend(`/api/admin/complaints/${qs ? '?' + qs : ''}`);
+    return res ? res : { data: { results: [], summary: {} } };
+  },
+  rescheduleComplaint: async (id, data) => {
+    const res = await fetchBackend(`/api/admin/complaints/${id}/reschedule/`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+    return res ? res : { data: { success: false } };
+  }
+};
+
 export const laundryApi = staffApi;
 export const servicesApi = adminApi;
 export const contentApi = {
@@ -1333,5 +1718,6 @@ export default {
   adminApi,
   notificationsApi,
   supportApi,
+  complaintsApi,
   authApi
 };

@@ -23,6 +23,7 @@ export const RescheduleDeliveryDrawer = () => {
   const { 
     isRescheduleDrawerOpen, 
     closeRescheduleDrawer, 
+    setIsRescheduleDrawerOpen,
     activeRescheduleComplaint,
     rescheduleDelivery 
   } = useAdmin();
@@ -33,6 +34,26 @@ export const RescheduleDeliveryDrawer = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  const handleClose = () => {
+    if (typeof closeRescheduleDrawer === 'function') {
+      closeRescheduleDrawer();
+    }
+    if (typeof setIsRescheduleDrawerOpen === 'function') {
+      setIsRescheduleDrawerOpen(false);
+    }
+  };
+
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isRescheduleDrawerOpen) {
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isRescheduleDrawerOpen, closeRescheduleDrawer, setIsRescheduleDrawerOpen]);
 
   // Lock background scroll when Reschedule Drawer is open (matching Services & Pricing edit modal behavior)
   useEffect(() => {
@@ -96,16 +117,28 @@ export const RescheduleDeliveryDrawer = () => {
       const payload = {
         delivery_date: deliveryDate,
         new_delivery_date: deliveryDate,
+        rescheduled_date: deliveryDate,
         delivery_time_slot: timeSlot,
         time_slot: timeSlot,
-        notes: adminNotes
+        rescheduled_time_slot: timeSlot,
+        notes: adminNotes,
+        admin_notes: adminNotes,
+        order_id: activeRescheduleComplaint?.order_id || activeRescheduleComplaint?.order_id_display || activeRescheduleComplaint?.id,
+        order_id_display: activeRescheduleComplaint?.order_id_display || activeRescheduleComplaint?.order_id || activeRescheduleComplaint?.id,
+        customer_name: activeRescheduleComplaint?.customer_name || 'Customer',
+        customer_phone: activeRescheduleComplaint?.customer_phone || '',
+        customer_email: activeRescheduleComplaint?.customer_email || activeRescheduleComplaint?.customerEmail || '',
+        failure_reason: activeRescheduleComplaint?.failure_reason || 'Customer unavailable'
       };
 
-      const res = await rescheduleDelivery(activeRescheduleComplaint.id, payload);
+      const res = await rescheduleDelivery(
+        activeRescheduleComplaint.id || activeRescheduleComplaint.order_id_display || activeRescheduleComplaint.order_id,
+        payload
+      );
       if (res && (res.success || res.status === 200 || res.data)) {
         setSuccessMsg('Delivery rescheduled successfully!');
         setTimeout(() => {
-          closeRescheduleDrawer();
+          handleClose();
         }, 1200);
       } else {
         setError(res?.detail || 'Failed to reschedule delivery.');
@@ -131,15 +164,15 @@ export const RescheduleDeliveryDrawer = () => {
   if (typeof document === 'undefined') return null;
 
   return createPortal(
-    <>
-      {/* Backdrop for mobile/tablet */}
-      <div 
-        className="reschedule-backdrop animate-fade-in"
-        onClick={closeRescheduleDrawer}
-      />
-
+    <div 
+      className="reschedule-backdrop animate-fade-in"
+      onClick={handleClose}
+    >
       {/* Right-Side Reschedule Panel */}
-      <aside className="reschedule-panel-drawer animate-slide-in-right">
+      <aside 
+        className="reschedule-panel-drawer animate-slide-in-right"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Panel Header */}
         <div className="reschedule-panel-header">
           <div className="header-title-wrap">
@@ -151,7 +184,7 @@ export const RescheduleDeliveryDrawer = () => {
           <button 
             type="button" 
             className="panel-close-btn"
-            onClick={closeRescheduleDrawer}
+            onClick={handleClose}
             aria-label="Close reschedule panel"
           >
             <X size={18} />
@@ -276,7 +309,7 @@ export const RescheduleDeliveryDrawer = () => {
               <button
                 type="button"
                 className="reschedule-cancel-btn"
-                onClick={closeRescheduleDrawer}
+                onClick={handleClose}
                 disabled={submitting}
               >
                 Cancel
@@ -310,11 +343,15 @@ export const RescheduleDeliveryDrawer = () => {
           backdrop-filter: blur(2px) !important;
           -webkit-backdrop-filter: blur(2px) !important;
           z-index: 99999 !important;
+          display: flex !important;
+          justify-content: flex-end !important;
           overflow: hidden !important;
           overscroll-behavior: none !important;
+          cursor: pointer;
         }
 
         .reschedule-panel-drawer {
+          cursor: default;
           position: fixed !important;
           top: 24px !important;
           right: 24px !important;
@@ -629,7 +666,7 @@ export const RescheduleDeliveryDrawer = () => {
           cursor: not-allowed;
         }
       `}</style>
-    </>,
+    </div>,
     document.body
   );
 };

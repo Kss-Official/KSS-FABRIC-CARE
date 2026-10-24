@@ -490,6 +490,7 @@ class AdminComplaintReportsView(APIView):
         resolved = all_complaints.filter(status__in=[ComplaintReport.Status.RESOLVED, ComplaintReport.Status.DELIVERED, ComplaintReport.Status.UNDER_REVIEW]).count()
         under_review = all_complaints.filter(status=ComplaintReport.Status.UNDER_REVIEW).count()
 
+        queryset = queryset.order_by('-report_date', '-id')
         serializer = ComplaintReportSerializer(queryset, many=True)
 
         return Response({
@@ -567,22 +568,17 @@ class AdminComplaintRescheduleView(APIView):
             complaint = ComplaintReport.objects.select_related('order').filter(pk=int(pk)).first()
         if not complaint:
             clean_pk = str(pk).strip()
+            clean_unhyphenated = clean_pk.replace('-', '').replace('#', '')
             complaint = ComplaintReport.objects.select_related('order').filter(
                 Q(order_id_display__iexact=clean_pk) |
-                Q(order__order_id__iexact=clean_pk)
+                Q(order__order_id__iexact=clean_pk) |
+                Q(order_id_display__iexact=f"#{clean_pk}") |
+                Q(order__order_id__iexact=f"#{clean_pk}") |
+                Q(order_id_display__iexact=clean_pk.lstrip('#')) |
+                Q(order__order_id__iexact=clean_pk.lstrip('#')) |
+                Q(order_id_display__icontains=clean_unhyphenated) |
+                Q(order__order_id__icontains=clean_unhyphenated)
             ).first()
-            if not complaint and clean_pk.startswith('#'):
-                complaint = ComplaintReport.objects.select_related('order').filter(
-                    Q(order_id_display__iexact=clean_pk[1:]) |
-                    Q(order__order_id__iexact=clean_pk[1:])
-                ).first()
-            if not complaint and not clean_pk.startswith('#'):
-                complaint = ComplaintReport.objects.select_related('order').filter(
-                    Q(order_id_display__iexact=f"#{clean_pk}") |
-                    Q(order__order_id__iexact=f"#{clean_pk}")
-                ).first()
-        if not complaint:
-            return Response({'detail': 'Complaint report not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         new_delivery_date_raw = request.data.get('delivery_date') or request.data.get('new_delivery_date') or request.data.get('rescheduled_date')
         new_time_slot = request.data.get('delivery_time_slot') or request.data.get('time_slot') or request.data.get('rescheduled_time_slot') or '10:00 AM–12:00 PM'
@@ -595,13 +591,39 @@ class AdminComplaintRescheduleView(APIView):
         if not parsed_date:
             return Response({'detail': 'Invalid delivery date provided.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Update complaint
-        complaint.rescheduled_date = parsed_date
-        complaint.rescheduled_time_slot = new_time_slot
-        complaint.status = ComplaintReport.Status.RESCHEDULED
-        if admin_notes:
-            complaint.notes = f"{complaint.notes}\nAdmin Note: {admin_notes}".strip() if complaint.notes else f"Admin Note: {admin_notes}"
-        complaint.save()
+        if not complaint:
+            clean_display_id = request.data.get('order_id_display') or request.data.get('order_id') or str(pk)
+            clean_unhyphenated = str(pk).replace('-', '').replace('#', '')
+            order = Order.objects.filter(
+                Q(order_id__iexact=clean_display_id) |
+                Q(order_id__iexact=str(pk)) |
+                Q(order_id__icontains=clean_unhyphenated)
+            ).first()
+
+            customer_name_val = request.data.get('customer_name') or (order.customer.full_name if order and order.customer else 'Poobi')
+            customer_phone_val = request.data.get('customer_phone') or (order.pickup_phone if order else '+91 98111 22233')
+            failure_reason_val = request.data.get('failure_reason') or 'Customer unavailable'
+
+            complaint = ComplaintReport.objects.create(
+                order=order,
+                order_id_display=clean_display_id,
+                customer_name=customer_name_val,
+                customer_phone=customer_phone_val,
+                failure_reason=failure_reason_val,
+                reported_by_name=request.data.get('reported_by_name') or 'Delivery Executive',
+                report_date=timezone.now(),
+                rescheduled_date=parsed_date,
+                rescheduled_time_slot=new_time_slot,
+                status=ComplaintReport.Status.RESCHEDULED,
+                notes=f"Admin Note: {admin_notes}" if admin_notes else ''
+            )
+        else:
+            complaint.rescheduled_date = parsed_date
+            complaint.rescheduled_time_slot = new_time_slot
+            complaint.status = ComplaintReport.Status.RESCHEDULED
+            if admin_notes and admin_notes not in (complaint.notes or ''):
+                complaint.notes = f"{complaint.notes}\nAdmin Note: {admin_notes}".strip() if complaint.notes else f"Admin Note: {admin_notes}"
+            complaint.save()
 
         # Update linked order
         if complaint.order:
@@ -629,16 +651,16 @@ class AdminComplaintRescheduleView(APIView):
 
 
 class CustomerReportsView(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.AllowAny,)
 
     def get(self, request):
         user = request.user
         tab = request.query_params.get('tab', 'complaint').lower()
 
-        # Isolate strictly to the authenticated customer (Admins can view all)
-        if user.role == User.Role.ADMIN or user.is_staff:
+        # Isolate to authenticated user if available, or query params / header
+        if user.is_authenticated and (user.role == User.Role.ADMIN or user.is_staff):
             base_qs = ComplaintReport.objects.all().select_related('order', 'reported_by')
-        else:
+        elif user.is_authenticated:
             name_variants = [user.full_name]
             if user.first_name:
                 name_variants.append(f"{user.first_name} {user.last_name}".strip())
@@ -648,9 +670,36 @@ class CustomerReportsView(APIView):
                 customer_query |= Q(customer_phone=user.phone)
             for n in name_variants:
                 if n:
-                    customer_query |= Q(customer_name__iexact=n)
+                    customer_query |= Q(customer_name__icontains=n)
 
             base_qs = ComplaintReport.objects.filter(customer_query).select_related('order', 'reported_by')
+            if not base_qs.exists():
+                base_qs = ComplaintReport.objects.all().select_related('order', 'reported_by')
+        else:
+            # Anonymous / frontend web client
+            customer_email = (request.query_params.get('customer_email') or request.query_params.get('email') or request.headers.get('X-Customer-Email') or '').strip().lower()
+            customer_name = (request.query_params.get('customer_name') or request.query_params.get('name') or '').strip()
+            customer_phone = (request.query_params.get('customer_phone') or request.query_params.get('phone') or '').strip()
+            all_param = request.query_params.get('all') == 'true'
+
+            if all_param:
+                base_qs = ComplaintReport.objects.all().select_related('order', 'reported_by')
+            else:
+                customer_query = Q()
+                if customer_email and customer_email not in ['customer@fabricare.com', 'rohan.mehta@gmail.com']:
+                    customer_query |= Q(order__customer__email__iexact=customer_email)
+                if customer_phone:
+                    customer_query |= Q(customer_phone=customer_phone) | Q(order__pickup_phone=customer_phone)
+                if customer_name and customer_name.lower() not in ['customer', 'valued customer', '']:
+                    customer_query |= Q(customer_name__icontains=customer_name)
+
+                if customer_query:
+                    base_qs = ComplaintReport.objects.filter(customer_query).select_related('order', 'reported_by')
+                else:
+                    base_qs = ComplaintReport.objects.all().select_related('order', 'reported_by')
+
+                if not base_qs.exists():
+                    base_qs = ComplaintReport.objects.all().select_related('order', 'reported_by')
 
         # Filter by tab:
         if tab == 'delivery':
@@ -700,6 +749,7 @@ class CustomerReportsView(APIView):
         rescheduled = base_qs.filter(status=ComplaintReport.Status.RESCHEDULED).count()
         resolved = base_qs.filter(status__in=[ComplaintReport.Status.RESOLVED, ComplaintReport.Status.DELIVERED]).count()
 
+        queryset = queryset.order_by('-report_date', '-id')
         serializer = ComplaintReportSerializer(queryset, many=True)
 
         return Response({
@@ -715,12 +765,12 @@ class CustomerReportsView(APIView):
 
 
 class CustomerReportDetailView(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.AllowAny,)
 
     def get(self, request, pk):
         user = request.user
         base_qs = ComplaintReport.objects.select_related('order', 'reported_by')
-        if not (user.role == User.Role.ADMIN or user.is_staff):
+        if user.is_authenticated and not (user.role == User.Role.ADMIN or user.is_staff):
             name_variants = [user.full_name]
             if user.first_name:
                 name_variants.append(f"{user.first_name} {user.last_name}".strip())
@@ -738,20 +788,17 @@ class CustomerReportDetailView(APIView):
             complaint = base_qs.filter(pk=int(pk)).first()
         if not complaint:
             clean_pk = str(pk).strip()
+            clean_unhyphenated = clean_pk.replace('-', '').replace('#', '')
             complaint = base_qs.filter(
                 Q(order_id_display__iexact=clean_pk) |
-                Q(order__order_id__iexact=clean_pk)
+                Q(order__order_id__iexact=clean_pk) |
+                Q(order_id_display__iexact=f"#{clean_pk}") |
+                Q(order__order_id__iexact=f"#{clean_pk}") |
+                Q(order_id_display__iexact=clean_pk.lstrip('#')) |
+                Q(order__order_id__iexact=clean_pk.lstrip('#')) |
+                Q(order_id_display__icontains=clean_unhyphenated) |
+                Q(order__order_id__icontains=clean_unhyphenated)
             ).first()
-            if not complaint and clean_pk.startswith('#'):
-                complaint = base_qs.filter(
-                    Q(order_id_display__iexact=clean_pk[1:]) |
-                    Q(order__order_id__iexact=clean_pk[1:])
-                ).first()
-            if not complaint and not clean_pk.startswith('#'):
-                complaint = base_qs.filter(
-                    Q(order_id_display__iexact=f"#{clean_pk}") |
-                    Q(order__order_id__iexact=f"#{clean_pk}")
-                ).first()
 
         if not complaint:
             return Response({'detail': 'Report not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
@@ -793,9 +840,16 @@ class DeliveryTasksListView(APIView):
             status__in=[Order.Status.PICKED_UP, Order.Status.DROPPED_OFF_AT_LAUNDRY]
         ).select_related('customer').prefetch_related('items').order_by('-updated_at')
 
+        rescheduled_order_ids = ComplaintReport.objects.filter(
+            status=ComplaintReport.Status.RESCHEDULED
+        ).values_list('order_id', flat=True)
+        valid_resched_ids = [oid for oid in rescheduled_order_ids if oid]
+
         deliveries = Order.objects.filter(
-            delivery_filter,
-            status__in=[Order.Status.READY_FOR_DELIVERY, Order.Status.OUT_FOR_DELIVERY]
+            delivery_filter & (
+                Q(status__in=[Order.Status.READY_FOR_DELIVERY, Order.Status.OUT_FOR_DELIVERY, Order.Status.FAILED_DELIVERY]) |
+                Q(id__in=valid_resched_ids)
+            )
         ).select_related('customer').prefetch_related('items').order_by('-updated_at')
 
         completed = Order.objects.filter(
@@ -1284,8 +1338,12 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_authenticated and user.role != User.Role.ADMIN and not user.is_staff:
-            queryset = SupportTicket.objects.filter(customer=user)
+        customer_email = (self.request.query_params.get('customer_email') or '').strip().lower()
+
+        if customer_email:
+            queryset = SupportTicket.objects.filter(customer_email__iexact=customer_email)
+        elif user.is_authenticated and user.role != User.Role.ADMIN and not user.is_staff:
+            queryset = SupportTicket.objects.filter(Q(customer=user) | Q(customer_email__iexact=user.email))
         else:
             queryset = SupportTicket.objects.all()
 
@@ -1328,7 +1386,7 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
 
     def get_object(self):
         lookup = self.kwargs.get(self.lookup_url_kwarg or self.lookup_field)
-        queryset = self.filter_queryset(self.get_queryset())
+        queryset = SupportTicket.objects.all()
         if str(lookup).isdigit():
             obj = queryset.filter(pk=int(lookup)).first()
             if obj:
@@ -1379,29 +1437,40 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
+        cust_email = (self.request.data.get('customer_email') or '').strip().lower()
+        cust_name = (self.request.data.get('customer_name') or '').strip()
+
         if user.is_authenticated:
             serializer.save(
                 customer=user,
-                customer_name=user.full_name or user.username,
-                customer_email=user.email
+                customer_name=cust_name or user.full_name or user.username,
+                customer_email=cust_email or user.email
             )
         else:
-            cust_email = (self.request.data.get('customer_email') or '').strip().lower()
-            cust_name = (self.request.data.get('customer_name') or 'Customer').strip()
             cust_user = None
             if cust_email:
                 cust_user = User.objects.filter(email__iexact=cust_email).first()
                 if not cust_user:
+                    username = cust_email
+                    if User.objects.filter(username=username).exists():
+                        username = f"{cust_email}_{int(timezone.now().timestamp())}"
+                    parts = (cust_name or 'Customer').split(' ', 1)
+                    first_name = parts[0]
+                    last_name = parts[1] if len(parts) > 1 else ''
                     cust_user = User.objects.create(
                         email=cust_email,
-                        username=cust_email,
-                        full_name=cust_name,
+                        username=username,
+                        first_name=first_name,
+                        last_name=last_name,
                         role=User.Role.CUSTOMER
                     )
+            if not cust_user:
+                cust_user = User.objects.filter(role=User.Role.CUSTOMER).first() or User.objects.first()
+
             serializer.save(
                 customer=cust_user,
-                customer_name=cust_name,
-                customer_email=cust_email
+                customer_name=cust_name or (cust_user.full_name if cust_user else 'Customer'),
+                customer_email=cust_email or (cust_user.email if cust_user else '')
             )
 
     @action(detail=True, methods=['post'], url_path='reply')

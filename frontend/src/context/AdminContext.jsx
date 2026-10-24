@@ -12,6 +12,7 @@ import {
   deleteAdminUser,
   subscribeAdminDashboardStats,
   subscribeAdminComplaints,
+  subscribeAdminSupportTickets,
   subscribeAdminNotifications,
   subscribeAdminServices,
   subscribeAdminSettings,
@@ -30,6 +31,7 @@ import {
   replyToSupportComplaint
 } from '../services/adminDataService';
 import { createStaffOrAgentByAdmin } from '../services/authService';
+import { supportApi } from '../api/apiClient';
 
 export const INITIAL_FAQS_ADMIN = [
   {
@@ -200,6 +202,62 @@ export const DEFAULT_COMPLAINTS = [
   }
 ];
 
+export const getComplaintSortTime = (item) => {
+  if (!item) return 0;
+
+  // 1. Prioritize explicit creation / update timestamps
+  const timestamps = [
+    item.createdAt,
+    item.updatedAt,
+    item.created_at,
+    item.updated_at
+  ];
+  for (const t of timestamps) {
+    if (typeof t === 'number' && t > 0) return t;
+    if (typeof t === 'string' && t.trim()) {
+      const p = new Date(t).getTime();
+      if (!isNaN(p) && p > 0) return p;
+    }
+  }
+
+  // 2. Parse report_date or formatted_report_date
+  const dateCandidates = [
+    item.report_date,
+    item.formatted_report_date,
+    item.report_date_only,
+    item.date
+  ];
+  for (const d of dateCandidates) {
+    if (!d) continue;
+    if (typeof d === 'number' && d > 0) return d;
+    if (typeof d === 'string' && d.trim()) {
+      const p = new Date(d).getTime();
+      if (!isNaN(p) && p > 0) return p;
+
+      const clean = d.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+      const pClean = new Date(clean).getTime();
+      if (!isNaN(pClean) && pClean > 0) return pClean;
+    }
+  }
+
+  // 3. Fallback: Parse ID if it has epoch timestamp (e.g. comp_1792742375403)
+  const idStr = String(item.id || item.order_id_display || item.order_id || '');
+  const epochMatch = idStr.match(/\b(17\d{11,13})\b/);
+  if (epochMatch) {
+    const ep = Number(epochMatch[1]);
+    if (ep > 0) return ep;
+  }
+
+  // 4. Fallback numeric order id (e.g. FC-10245 -> 10245)
+  const digits = idStr.replace(/\D/g, '');
+  if (digits) {
+    const num = parseInt(digits, 10);
+    if (!isNaN(num) && num > 0) return num;
+  }
+
+  return 0;
+};
+
 const AdminContext = createContext();
 
 export const mapAdminOrderRecord = (o) => {
@@ -293,6 +351,40 @@ export const mapAdminOrderRecord = (o) => {
         ? normItems.map(it => it.service_name || it.item_name || it.name).filter(Boolean)
         : ['Wash & Fold']));
 
+  // Resolve and format clean pickup date & time slot
+  let cleanPickupDate = o.pickup?.date || o.pickup_date || o.date || '';
+  if (cleanPickupDate && typeof cleanPickupDate === 'string') {
+    const trimmed = cleanPickupDate.trim().replace(/^(?:Today|Tomorrow|[A-Za-z]+),\s*/i, '');
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (isoMatch) {
+      const dt = new Date(parseInt(isoMatch[1], 10), parseInt(isoMatch[2], 10) - 1, parseInt(isoMatch[3], 10));
+      if (!isNaN(dt.getTime())) {
+        cleanPickupDate = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+    } else if (/^\d{1,2}\s+[A-Za-z]{3}$/.test(trimmed)) {
+      cleanPickupDate = `${trimmed} 2026`;
+    }
+  }
+  if (!cleanPickupDate || cleanPickupDate === 'Today' || cleanPickupDate === 'Tomorrow') {
+    cleanPickupDate = '25 Oct 2026';
+  }
+
+  let cleanTimeSlot = o.pickup_time_slot || '';
+  if (!cleanTimeSlot && o.pickup?.from && o.pickup?.to) {
+    cleanTimeSlot = `${o.pickup.from} – ${o.pickup.to}`;
+  } else if (!cleanTimeSlot && (o.pickup?.from || o.pickup?.to)) {
+    cleanTimeSlot = `${o.pickup?.from || '09:00 AM'} – ${o.pickup?.to || '11:00 AM'}`;
+  }
+  if (!cleanTimeSlot) {
+    cleanTimeSlot = '09:00 AM – 11:00 AM';
+  }
+  cleanTimeSlot = cleanTimeSlot.replace(/(AM|PM)\s*[-–—]\s*11:00\s*$/i, '$1');
+  cleanTimeSlot = cleanTimeSlot.replace(/\s*[-–—]\s*/, ' – ');
+
+  const finalPickupTime = o.pickupTime && !o.pickupTime.includes('undefined') && !o.pickupTime.startsWith('2026-')
+    ? o.pickupTime
+    : `${cleanPickupDate}, ${cleanTimeSlot}`;
+
   return {
     ...o,
     rawId: o.id || o.rawId,
@@ -312,7 +404,9 @@ export const mapAdminOrderRecord = (o) => {
       address: custAddress,
       avatar: (custName || 'CU').substring(0, 2).toUpperCase()
     },
-    pickupTime: `${o.pickup?.date || o.pickup_date || 'Tomorrow'}, ${o.pickup?.from || o.pickup_time_slot || '09:00'} - ${o.pickup?.to || '11:00'}`,
+    pickup_date: cleanPickupDate,
+    pickup_time_slot: cleanTimeSlot,
+    pickupTime: finalPickupTime,
     driver: driverDisplay,
     status: normalizedStatus,
     payment: o.paymentStatus || (o.payment_status === 'PAID' ? 'Paid' : (o.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid'))
@@ -362,7 +456,20 @@ export const AdminProvider = ({ children }) => {
   const [customers, setCustomers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [services, setServices] = useState(DEFAULT_SERVICES);
-  const [complaints, setComplaints] = useState(DEFAULT_COMPLAINTS);
+  const [complaints, setComplaints] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('fabricare_admin_complaints');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return [...parsed].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
+          }
+        }
+      }
+    } catch (_) {}
+    return [...DEFAULT_COMPLAINTS].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
+  });
   const [complaintsLoading, setComplaintsLoading] = useState(false);
   const [dashboardData, setDashboardData] = useState({ ordersPlaced: 0, revenue: 0, completedOrders: 0 });
   const [dashboardPeriod, setDashboardPeriod] = useState('today');
@@ -431,6 +538,16 @@ export const AdminProvider = ({ children }) => {
 
   const [loading, setLoading] = useState(false);
   const [supportLoading, setSupportLoading] = useState(false);
+  const [supportTickets, setSupportTickets] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('fabricare_support_tickets');
+        if (saved) return JSON.parse(saved);
+      }
+    } catch (_) {}
+    return [];
+  });
+  const [supportSummary, setSupportSummary] = useState({ total_tickets: 0, open: 0, in_progress: 0, resolved: 0 });
   const [error, setError] = useState(null);
 
   // Modals & Drawers State
@@ -446,6 +563,43 @@ export const AdminProvider = ({ children }) => {
   const [activeSupportTicket, setActiveSupportTicket] = useState(null);
   const [isRescheduleDrawerOpen, setIsRescheduleDrawerOpen] = useState(false);
   const [activeRescheduleComplaint, setActiveRescheduleComplaint] = useState(null);
+
+  const fetchComplaints = useCallback(async () => {
+    setComplaintsLoading(true);
+    try {
+      const endpoints = [
+        'http://127.0.0.1:8001/api/admin/complaints/',
+        'http://127.0.0.1:8000/api/admin/complaints/',
+        '/api/admin/complaints/'
+      ];
+      let backendComplaints = null;
+      let summary = null;
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.results && Array.isArray(data.results)) {
+              backendComplaints = data.results;
+              summary = data.summary;
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+      if (backendComplaints && backendComplaints.length > 0) {
+        const sorted = [...backendComplaints].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
+        setComplaints(sorted);
+        try {
+          localStorage.setItem('fabricare_admin_complaints', JSON.stringify(sorted));
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.error('Error fetching admin complaints:', err);
+    } finally {
+      setComplaintsLoading(false);
+    }
+  }, []);
 
   // Initial hydration from database on mount
   useEffect(() => {
@@ -466,7 +620,10 @@ export const AdminProvider = ({ children }) => {
         setServices([...fresh]);
       }
     }).catch(() => {});
-  }, []);
+
+    // Initial complaints hydration from backend
+    fetchComplaints();
+  }, [fetchComplaints]);
 
   // ========================================================
   // REAL-TIME RTDB SUBSCRIPTIONS (Strict cleanup on unmount)
@@ -564,6 +721,20 @@ export const AdminProvider = ({ children }) => {
       }
     });
 
+    const unsubSupportTickets = subscribeAdminSupportTickets((rtdbTickets) => {
+      if (rtdbTickets && rtdbTickets.length > 0) {
+        setSupportTickets(prev => {
+          const map = new Map();
+          (prev || []).forEach(t => { if (t?.id) map.set(String(t.id), t); });
+          rtdbTickets.forEach(t => {
+            const idKey = String(t.id || t.ticket_number);
+            map.set(idKey, { ...(map.get(idKey) || {}), ...t });
+          });
+          return Array.from(map.values()).sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
+        });
+      }
+    });
+
     return () => {
       if (typeof unsubOrders === 'function') unsubOrders();
       if (typeof unsubTasks === 'function') unsubTasks();
@@ -572,6 +743,7 @@ export const AdminProvider = ({ children }) => {
       if (typeof unsubAllUsers === 'function') unsubAllUsers();
       if (typeof unsubStats === 'function') unsubStats();
       if (typeof unsubComplaints === 'function') unsubComplaints();
+      if (typeof unsubSupportTickets === 'function') unsubSupportTickets();
       if (typeof unsubServices === 'function') unsubServices();
       if (typeof unsubSettings === 'function') unsubSettings();
     };
@@ -818,9 +990,64 @@ export const AdminProvider = ({ children }) => {
     }
   };
 
-  const replyToSupportTicket = async (ticketId, replyMessage) => {
-    await replyToSupportComplaint(ticketId, replyMessage, currentUser);
-    setIsSupportDrawerOpen(false);
+  const replyToSupportTicket = async (ticketId, replyMessage, selectedStatus) => {
+    try {
+      const payload = {
+        admin_reply: replyMessage,
+        status: selectedStatus || 'IN_PROGRESS'
+      };
+      const res = await supportApi.replyTicket(ticketId, payload);
+      try {
+        await replyToSupportComplaint(ticketId, replyMessage, currentUser);
+      } catch (_) {}
+
+      const updatedTicket = (res && res.data && res.data.ticket) ? res.data.ticket : {
+        id: ticketId,
+        admin_reply: replyMessage,
+        admin_reply_at: new Date().toISOString(),
+        formatted_admin_reply_at: new Date().toLocaleString(),
+        status: selectedStatus || 'IN_PROGRESS'
+      };
+
+      setSupportTickets(prev => prev.map(t => (String(t.id) === String(ticketId)) ? { ...t, ...updatedTicket } : t));
+      if (activeSupportTicket && String(activeSupportTicket.id) === String(ticketId)) {
+        setActiveSupportTicket(prev => ({ ...prev, ...updatedTicket }));
+      }
+      return { success: true, ticket: updatedTicket };
+    } catch (err) {
+      console.error('Error replying to support ticket:', err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const resolveSupportTicket = async (ticketId, replyMessage) => {
+    try {
+      const payload = {
+        admin_reply: replyMessage,
+        status: 'RESOLVED'
+      };
+      const res = await supportApi.resolveTicket(ticketId, payload);
+      try {
+        await replyToSupportComplaint(ticketId, replyMessage || 'Marked as resolved', currentUser);
+      } catch (_) {}
+
+      const updatedTicket = (res && res.data && res.data.ticket) ? res.data.ticket : {
+        id: ticketId,
+        admin_reply: replyMessage,
+        admin_reply_at: new Date().toISOString(),
+        formatted_admin_reply_at: new Date().toLocaleString(),
+        status: 'RESOLVED'
+      };
+
+      setSupportTickets(prev => prev.map(t => (String(t.id) === String(ticketId)) ? { ...t, ...updatedTicket } : t));
+      if (activeSupportTicket && String(activeSupportTicket.id) === String(ticketId)) {
+        setActiveSupportTicket(prev => ({ ...prev, ...updatedTicket }));
+      }
+      return { success: true, ticket: updatedTicket };
+    } catch (err) {
+      console.error('Error resolving support ticket:', err);
+      return { success: false, error: err.message };
+    }
   };
 
   const openSupportDrawer = (ticket) => {
@@ -845,7 +1072,7 @@ export const AdminProvider = ({ children }) => {
     setActiveRescheduleComplaint(null);
   };
 
-  // Derived Complaints & Support Summaries
+  // Derived Complaints Summary
   const complaintsSummary = useMemo(() => {
     const list = Array.isArray(complaints) && complaints.length > 0 ? complaints : DEFAULT_COMPLAINTS;
     const pending = list.filter(c => {
@@ -868,74 +1095,185 @@ export const AdminProvider = ({ children }) => {
     };
   }, [complaints]);
 
-  const supportTickets = useMemo(() => {
-    const list = Array.isArray(complaints) && complaints.length > 0 ? complaints : DEFAULT_COMPLAINTS;
-    return list.map((c, idx) => ({
-      ...c,
-      id: c.id || `ticket_${idx + 1}`,
-      ticket_number: c.order_id_display || c.ticket_number || `#SUP-${c.order_id || c.id}`,
-      customer_name: c.customer_name || 'Customer',
-      customer_email: c.customer_email || 'customer@fabricare.com',
-      customer_phone: c.customer_phone || '+91 98765 43210',
-      subject: c.failure_reason || c.subject || 'Delivery Issue',
-      status: String(c.status || '').toUpperCase().includes('RESOLVED')
-        ? 'RESOLVED'
-        : (String(c.status || '').toUpperCase().includes('RESCHEDULED') ? 'IN_PROGRESS' : 'OPEN'),
-      priority: c.priority || (String(c.failure_reason || '').toLowerCase().includes('unavailable') ? 'HIGH' : 'MEDIUM'),
-      created_at: c.report_date || c.createdAt || new Date().toISOString()
-    }));
-  }, [complaints]);
+  const fetchSupportTickets = useCallback(async (isSilent = false) => {
+    if (!isSilent) setSupportLoading(true);
+    try {
+      const endpoints = [
+        'http://127.0.0.1:8001/api/admin/support/tickets/',
+        'http://127.0.0.1:8000/api/admin/support/tickets/',
+        '/api/admin/support/tickets/'
+      ];
+      let backendTickets = null;
+      let summary = null;
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep);
+          if (res.ok) {
+            const data = await res.json();
+            const list = data.results || data.items;
+            if (list && Array.isArray(list)) {
+              backendTickets = list;
+              summary = data.summary;
+              break;
+            }
+          }
+        } catch (_) {}
+      }
 
-  const supportSummary = useMemo(() => {
-    const list = supportTickets || [];
-    const open = list.filter(t => t.status === 'OPEN').length;
-    const in_progress = list.filter(t => t.status === 'IN_PROGRESS').length;
-    const resolved = list.filter(t => t.status === 'RESOLVED').length;
-    return {
-      total_tickets: list.length,
-      open,
-      in_progress,
-      resolved
+      if (!backendTickets) {
+        try {
+          const apiRes = await supportApi.getTickets();
+          if (apiRes?.data?.results && Array.isArray(apiRes.data.results) && apiRes.data.results.length > 0) {
+            backendTickets = apiRes.data.results;
+          }
+        } catch (_) {}
+      }
+
+      if (backendTickets && Array.isArray(backendTickets)) {
+        backendTickets.sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
+        setSupportTickets(backendTickets);
+        if (summary) {
+          setSupportSummary(summary);
+        } else {
+          setSupportSummary({
+            total_tickets: backendTickets.length,
+            open: backendTickets.filter(t => t.status === 'OPEN').length,
+            in_progress: backendTickets.filter(t => t.status === 'IN_PROGRESS').length,
+            resolved: backendTickets.filter(t => ['RESOLVED', 'CLOSED'].includes(t.status)).length
+          });
+        }
+        try {
+          localStorage.setItem('fabricare_support_tickets', JSON.stringify(backendTickets));
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.error('Error fetching support tickets:', err);
+    } finally {
+      if (!isSilent) setSupportLoading(false);
+    }
+  }, []);
+
+  // Sync tickets whenever admin enters the 'help-support' tab
+  useEffect(() => {
+    if (adminTab === 'help-support') {
+      fetchSupportTickets();
+    }
+  }, [adminTab, fetchSupportTickets]);
+
+  useEffect(() => {
+    fetchSupportTickets();
+
+    const handleTicketCreated = (e) => {
+      const newTicket = e.detail;
+      if (!newTicket) return;
+      setSupportTickets(prev => {
+        const list = prev || [];
+        const filtered = list.filter(t => String(t.id) !== String(newTicket.id) && (!newTicket.ticket_number || t.ticket_number !== newTicket.ticket_number));
+        return [newTicket, ...filtered];
+      });
+      setSupportSummary(prev => ({
+        ...prev,
+        total_tickets: (prev.total_tickets || 0) + 1,
+        open: (prev.open || 0) + 1
+      }));
     };
-  }, [supportTickets]);
 
-  const fetchComplaints = useCallback(async () => {
-    setComplaintsLoading(true);
-    try {
-      await new Promise(r => setTimeout(r, 400));
-    } finally {
-      setComplaintsLoading(false);
-    }
-  }, []);
+    const handleTicketUpdated = (e) => {
+      const updated = e.detail;
+      if (!updated) return;
+      setSupportTickets(prev => (prev || []).map(t => (String(t.id) === String(updated.id) || (updated.ticket_number && t.ticket_number === updated.ticket_number)) ? { ...t, ...updated } : t));
+    };
 
-  const fetchSupportTickets = useCallback(async () => {
-    setSupportLoading(true);
-    try {
-      await new Promise(r => setTimeout(r, 400));
-    } finally {
-      setSupportLoading(false);
+    const handleStorageSync = () => {
+      fetchSupportTickets(true);
+    };
+
+    window.addEventListener('fabricare_support_ticket_created', handleTicketCreated);
+    window.addEventListener('fabricare_support_ticket_updated', handleTicketUpdated);
+    window.addEventListener('storage', handleStorageSync);
+
+    let bc = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        bc = new BroadcastChannel('fabricare_support_channel');
+        bc.onmessage = (msg) => {
+          if (msg.data?.type === 'TICKET_CREATED' || msg.data?.type === 'TICKET_UPDATED') {
+            fetchSupportTickets(true);
+          }
+        };
+      } catch (_) {}
     }
-  }, []);
+
+    return () => {
+      window.removeEventListener('fabricare_support_ticket_created', handleTicketCreated);
+      window.removeEventListener('fabricare_support_ticket_updated', handleTicketUpdated);
+      window.removeEventListener('storage', handleStorageSync);
+      if (bc) bc.close();
+    };
+  }, [fetchSupportTickets]);
 
   const rescheduleDelivery = useCallback(async (complaintId, rescheduleData) => {
     try {
       const now = Date.now();
-      const updates = {};
-      const newDate = rescheduleData?.delivery_date || rescheduleData?.new_delivery_date || '';
-      const newSlot = rescheduleData?.delivery_time_slot || rescheduleData?.time_slot || '';
-      const notes = rescheduleData?.notes || '';
+      const newDate = rescheduleData?.delivery_date || rescheduleData?.new_delivery_date || rescheduleData?.rescheduled_date || '';
+      const newSlot = rescheduleData?.delivery_time_slot || rescheduleData?.time_slot || rescheduleData?.rescheduled_time_slot || '10:00 AM–12:00 PM';
+      const notes = rescheduleData?.notes || rescheduleData?.admin_notes || '';
 
-      // Try updating in RTDB
+      // 1. Call Django Backend Reschedule API
+      const endpoints = [
+        `http://127.0.0.1:8001/api/admin/complaints/${complaintId}/reschedule/`,
+        `http://127.0.0.1:8000/api/admin/complaints/${complaintId}/reschedule/`,
+        `/api/admin/complaints/${complaintId}/reschedule/`
+      ];
+
+      const payload = {
+        delivery_date: newDate,
+        new_delivery_date: newDate,
+        rescheduled_date: newDate,
+        delivery_time_slot: newSlot,
+        time_slot: newSlot,
+        rescheduled_time_slot: newSlot,
+        notes: notes,
+        admin_notes: notes,
+        order_id: rescheduleData?.order_id || complaintId,
+        order_id_display: rescheduleData?.order_id_display || complaintId,
+        customer_name: rescheduleData?.customer_name || 'Customer',
+        customer_phone: rescheduleData?.customer_phone || '',
+        customer_email: rescheduleData?.customer_email || '',
+        failure_reason: rescheduleData?.failure_reason || 'Customer unavailable'
+      };
+
+      let backendComplaintData = null;
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (res.ok) {
+            const json = await res.json();
+            backendComplaintData = json?.complaint;
+            break;
+          }
+        } catch (_) {}
+      }
+
+      // 2. Try updating RTDB (complaints, orders, and delivery tasks nodes)
+      const targetOrderId = rescheduleData?.order_id || rescheduleData?.order_id_display || complaintId;
+      const cleanTarget = String(targetOrderId).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
       try {
         const { ref: rtdbRef, update: rtdbUpdate, get: rtdbGet, push: rtdbPush } = await import('firebase/database');
         const { rtdb } = await import('../config/firebase');
+        const updates = {};
 
         // 1. Update complaint record
         updates[`complaints/${complaintId}/status`] = 'RESCHEDULED';
         updates[`complaints/${complaintId}/rescheduled_date`] = newDate;
         updates[`complaints/${complaintId}/formatted_reschedule_date`] = newDate;
         updates[`complaints/${complaintId}/rescheduled_time_slot`] = newSlot;
-        updates[`complaints/${complaintId}/notes`] = notes;
+        if (notes) updates[`complaints/${complaintId}/notes`] = notes;
         updates[`complaints/${complaintId}/updatedAt`] = now;
 
         // 2. Fetch complaint to identify target order
@@ -1070,31 +1408,154 @@ export const AdminProvider = ({ children }) => {
           }
         }
 
+        // Fallback: Also synchronize any tasks in tasks/ matching the target order
+        try {
+          const cleanTarget = String(orderCodeOrKey || complaintId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const tasksSnap = await rtdbGet(rtdbRef(rtdb, 'tasks'));
+          if (tasksSnap.exists()) {
+            const allTasks = tasksSnap.val() || {};
+            for (const [tKey, tsk] of Object.entries(allTasks)) {
+              if (!tsk) continue;
+              const cTKey = String(tKey).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              const cOrd = String(tsk.orderId || tsk.orderCode || tsk.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              if (cTKey.includes(cleanTarget) || (cOrd && cOrd.includes(cleanTarget)) || (cleanTarget && cOrd && cleanTarget.includes(cOrd))) {
+                updates[`tasks/${tKey}/delivery_date`] = newDate;
+                updates[`tasks/${tKey}/delivery_time_slot`] = newSlot;
+                updates[`tasks/${tKey}/rescheduled_date`] = newDate;
+                updates[`tasks/${tKey}/rescheduled_time_slot`] = newSlot;
+                updates[`tasks/${tKey}/isRescheduled`] = true;
+                updates[`tasks/${tKey}/type`] = 'delivery';
+                updates[`tasks/${tKey}/status`] = 'READY_FOR_DELIVERY';
+                updates[`tasks/${tKey}/updatedAt`] = now;
+              }
+            }
+          }
+        } catch (_) {}
+
         await rtdbUpdate(rtdbRef(rtdb), updates);
       } catch (dbErr) {
         console.warn('RTDB update complaint & order notice:', dbErr);
       }
 
-      // Optimistically update local complaints state
+      // 3. Optimistically update local complaints state & localStorage
       setComplaints(prev => {
         const list = Array.isArray(prev) ? prev : [];
-        return list.map(c => {
-          if (c.id === complaintId || c.order_id === complaintId) {
+        let found = false;
+        const updated = list.map(c => {
+          const matches = String(c.id) === String(complaintId) || 
+                          String(c.order_id) === String(complaintId) || 
+                          String(c.order_id_display) === String(complaintId);
+          if (matches) {
+            found = true;
             return {
               ...c,
+              ...(backendComplaintData || {}),
               status: 'RESCHEDULED',
               rescheduled_date: newDate,
               formatted_reschedule_date: newDate,
               rescheduled_time_slot: newSlot,
-              notes: notes || c.notes,
+              notes: notes ? (c.notes ? `${c.notes}\nAdmin Note: ${notes}` : `Admin Note: ${notes}`) : c.notes,
               updatedAt: now
             };
           }
           return c;
         });
+        if (!found) {
+          updated.unshift({
+            id: complaintId,
+            order_id: complaintId,
+            order_id_display: complaintId,
+            customer_name: rescheduleData?.customer_name || 'Customer',
+            customer_phone: rescheduleData?.customer_phone || '',
+            failure_reason: rescheduleData?.failure_reason || 'Customer unavailable',
+            formatted_report_date: new Date(now).toLocaleString(),
+            status: 'RESCHEDULED',
+            rescheduled_date: newDate,
+            formatted_reschedule_date: newDate,
+            rescheduled_time_slot: newSlot,
+            notes: notes ? `Admin Note: ${notes}` : '',
+            updatedAt: now
+          });
+        }
+        const sorted = [...updated].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
+        try {
+          localStorage.setItem('fabricare_admin_complaints', JSON.stringify(sorted));
+        } catch (_) {}
+        return sorted;
       });
 
-      return { success: true, message: 'Delivery rescheduled successfully' };
+      // 4. Propagate to Customer Reports in localStorage & dispatch event for Customer Portal
+      try {
+        const allKeys = Object.keys(localStorage);
+        allKeys.forEach(k => {
+          if (k.startsWith('fabricare_customer_reports')) {
+            try {
+              const raw = localStorage.getItem(k);
+              if (raw) {
+                const arr = JSON.parse(raw);
+                if (Array.isArray(arr)) {
+                  let found = false;
+                  const updatedReports = arr.map(rep => {
+                    const codeMatch = String(rep.id) === String(complaintId) ||
+                                      String(rep.order_id) === String(complaintId) ||
+                                      String(rep.order_id_display) === String(complaintId);
+                    if (codeMatch) {
+                      found = true;
+                      return {
+                        ...rep,
+                        status: 'RESCHEDULED',
+                        rescheduled_date: newDate,
+                        new_delivery_date_formatted: newDate,
+                        rescheduled_time_slot: newSlot,
+                        admin_reply: notes || rep.admin_reply
+                      };
+                    }
+                    return rep;
+                  });
+                  if (!found) {
+                    updatedReports.unshift({
+                      id: complaintId,
+                      order_id: complaintId,
+                      order_id_display: complaintId,
+                      customer_name: rescheduleData?.customer_name || 'Customer',
+                      customer_phone: rescheduleData?.customer_phone || '',
+                      failure_reason: rescheduleData?.failure_reason || 'Customer unavailable',
+                      report_date_only: new Date(now).toISOString().split('T')[0],
+                      formatted_report_date: new Date(now).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+                      status: 'RESCHEDULED',
+                      rescheduled_date: newDate,
+                      new_delivery_date_formatted: newDate,
+                      rescheduled_time_slot: newSlot,
+                      admin_reply: notes
+                    });
+                  }
+                  localStorage.setItem(k, JSON.stringify(updatedReports));
+                }
+              }
+            } catch (_) {}
+          }
+        });
+        if (typeof window !== 'undefined') {
+          const detail = {
+            complaintId,
+            orderId: targetOrderId,
+            order_id: targetOrderId,
+            newDate,
+            delivery_date: newDate,
+            rescheduled_date: newDate,
+            newSlot,
+            delivery_time_slot: newSlot,
+            rescheduled_time_slot: newSlot,
+            notes,
+            timestamp: now
+          };
+          window.dispatchEvent(new CustomEvent('fabricare_complaint_rescheduled', { detail }));
+          window.dispatchEvent(new CustomEvent('fabricare_delivery_task_updated', { detail }));
+          window.dispatchEvent(new CustomEvent('fabricare_order_updated', { detail }));
+        }
+      } catch (_) {}
+
+      return { success: true, message: 'Delivery rescheduled successfully', complaint: backendComplaintData };
     } catch (err) {
       console.error('Failed to reschedule delivery:', err);
       return { success: false, detail: err.message || 'Failed to reschedule delivery' };
@@ -1365,8 +1826,10 @@ export const AdminProvider = ({ children }) => {
       customerPhone: orderData.customerPhone || '+91 98765 43210',
       address: orderData.address || 'Bengaluru',
       services: orderData.selectedServices || ['Wash & Fold'],
-      date: orderData.date || new Date().toLocaleDateString(),
-      pickupTime: orderData.time || '09:00 AM – 11:00 AM',
+      date: orderData.date || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      pickup_date: orderData.date || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      pickup_time_slot: orderData.time || '09:00 AM – 11:00 AM',
+      pickupTime: `${orderData.date || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${orderData.time || '09:00 AM – 11:00 AM'}`,
       amount: orderData.amount || 560,
       total_amount: orderData.amount || 560,
       status: 'Pending Pickup',
@@ -1403,14 +1866,11 @@ export const AdminProvider = ({ children }) => {
         setServices,
         complaints,
         setComplaints,
+        getComplaintSortTime,
         complaintsSummary,
         complaintsLoading,
         fetchComplaints,
         rescheduleDelivery,
-        supportTickets,
-        supportSummary,
-        supportLoading,
-        fetchSupportTickets,
         notifications: safeNotifications,
         setNotifications,
         markNotificationAsRead,
@@ -1495,6 +1955,13 @@ export const AdminProvider = ({ children }) => {
         activeRescheduleComplaint,
         openRescheduleDrawer,
         closeRescheduleDrawer,
+        supportTickets,
+        setSupportTickets,
+        supportSummary,
+        supportLoading,
+        fetchSupportTickets,
+        replyToSupportTicket,
+        resolveSupportTicket,
         newOrdersCount,
         hasNewOrders: newOrdersCount > 0,
         markOrdersSeen,
@@ -1542,6 +2009,7 @@ export const useAdmin = () => {
       assignDriverToOrder: async () => {},
       updateOrderStatus: async () => {},
       complaints: DEFAULT_COMPLAINTS,
+      getComplaintSortTime,
       complaintsSummary: {
         total_complaints: 28,
         pending_reschedule: 7,

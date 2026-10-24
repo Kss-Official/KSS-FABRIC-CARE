@@ -45,10 +45,12 @@ export const Profile = () => {
     setLoadingAddresses(true);
     try {
       const res = await addressApi.getAddresses();
-      const list = Array.isArray(res.data) ? res.data : res.data?.results || [];
+      const raw = res?.data ?? res;
+      const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.results) ? raw.results : (Array.isArray(raw?.data) ? raw.data : []));
       setAddresses(list);
     } catch (err) {
       console.warn('Failed to load addresses:', err);
+      setAddresses([]);
     } finally {
       setLoadingAddresses(false);
     }
@@ -137,10 +139,10 @@ export const Profile = () => {
   const email = profileUser?.email || userProfile?.email || '';
   const phone = profileUser?.phone || profileUser?.phoneNumber || userProfile?.phone || '';
   const username = profileUser?.username || (email ? email.split('@')[0] : (fullName ? fullName.toLowerCase().replace(/\s+/g, '') : 'customer'));
-  const avatarInitial = profileUser?.avatar || profileUser?.avatarUrl || 
+  const avatarInitial = 
     (fullName ? fullName[0].toUpperCase() : 
       (firstName ? firstName[0].toUpperCase() : 
-        (username ? username.substring(0, 2).toUpperCase() : 'C')));
+        (username ? username[0].toUpperCase() : 'C')));
 
   const handleOpenEditProfileModal = () => {
     setProfileForm({

@@ -109,7 +109,7 @@ export const OrderConfirmedPage = () => {
                   <span key={idx} style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '8px', fontSize: '0.8125rem', fontWeight: 600, color: '#334155', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                     <span>{it.item_name || it.service_name || it.name}</span>
                     <span style={{ color: '#64748B' }}>×{it.quantity || 1}</span>
-                    <span style={{ color: '#0D7A75', fontWeight: 700 }}>₹{it.total_price || (it.unit_price * (it.quantity || 1))}</span>
+                    <span style={{ color: '#0D7A75', fontWeight: 700 }}>₹{Number(it.total_price || it.lineTotal || (it.unit_price ?? it.unitPrice) * (it.quantity || 1)) || 0}</span>
                   </span>
                 ))}
               </div>
