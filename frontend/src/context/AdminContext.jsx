@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useNotifications } from '../hooks/useNotifications';
-import { formatDisplayDate, parseFlexibleDate } from '../utils/dateFilterUtils';
+import { formatDisplayDate, parseFlexibleDate, getOrderPickupDate } from '../utils/dateFilterUtils';
 import {
   subscribeAdminOrders,
   subscribeAdminTasks,
@@ -353,19 +353,13 @@ export const mapAdminOrderRecord = (o) => {
         : ['Wash & Fold']));
 
   // Resolve and format clean pickup date & time slot
-  let rawPickupDate = o.pickup?.date || o.pickup_date || o.date || '';
+  const parsedPickupDate = getOrderPickupDate(o);
   let cleanPickupDate = '';
-  if (rawPickupDate) {
-    const parsed = parseFlexibleDate(rawPickupDate);
-    if (parsed) {
-      cleanPickupDate = formatDisplayDate(parsed);
-    } else {
-      cleanPickupDate = String(rawPickupDate);
-    }
-  }
-  if (!cleanPickupDate) {
-    const fallbackParsed = parseFlexibleDate(o.createdAt || o.placedAt);
-    cleanPickupDate = fallbackParsed ? formatDisplayDate(fallbackParsed) : formatDisplayDate(new Date());
+  if (parsedPickupDate) {
+    cleanPickupDate = formatDisplayDate(parsedPickupDate);
+  } else if (o.date && !['today', 'tomorrow', 'yesterday', 'all'].includes(String(o.date).toLowerCase())) {
+    const parsedCustom = parseFlexibleDate(o.date);
+    cleanPickupDate = parsedCustom ? formatDisplayDate(parsedCustom) : String(o.date);
   }
 
   let cleanTimeSlot = o.pickup_time_slot || '';

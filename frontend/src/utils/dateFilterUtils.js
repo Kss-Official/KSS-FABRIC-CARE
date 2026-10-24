@@ -152,30 +152,208 @@ export const getActiveDateRanges = (ref = new Date()) => {
   };
 };
 
+export const toLocalIsoDate = (d = new Date()) => {
+  const date = d instanceof Date ? d : parseFlexibleDate(d);
+  if (!date || isNaN(date.getTime())) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const dNum = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dNum}`;
+};
+
 /**
- * Parse date from an entity by checking pickup/delivery dates first, then fallback to timestamps
+ * Resolves the scheduled pickup date for an order.
+ * Strictly extracts the pickup scheduling date from all known pickup date fields across
+ * RTDB, Django backend, and local assignment states.
+ * Under NO circumstances falls back to creation timestamps (createdAt, placedAt),
+ * completion timestamps, or new Date().
+ * Returns Date object in local midnight, or null if no pickup date is set.
+ */
+export const getOrderPickupDate = (order) => {
+  if (!order) return null;
+
+  // 1. Direct pickup date properties on order
+  const pickupDateCandidates = [
+    order.persistedPickupDate,
+    order.pickupDate,
+    order.pickup_date,
+    order.scheduled_date,
+    order.scheduledDate,
+    order.dateText,
+    order.date_text
+  ];
+
+  for (const candidate of pickupDateCandidates) {
+    if (candidate != null && candidate !== '') {
+      const parsed = parseFlexibleDate(candidate);
+      if (parsed) return parsed;
+    }
+  }
+
+  // 2. Nested pickup object on order: order.pickup?.date, order.pickup_slot?.date, order.pickupSchedule?.dateValue
+  if (order.pickup && typeof order.pickup === 'object' && order.pickup.date) {
+    const parsed = parseFlexibleDate(order.pickup.date);
+    if (parsed) return parsed;
+  }
+  if (order.pickup_slot && typeof order.pickup_slot === 'object' && order.pickup_slot.date) {
+    const parsed = parseFlexibleDate(order.pickup_slot.date);
+    if (parsed) return parsed;
+  }
+  if (order.pickupSchedule && typeof order.pickupSchedule === 'object' && order.pickupSchedule.dateValue) {
+    const parsed = parseFlexibleDate(order.pickupSchedule.dateValue);
+    if (parsed) return parsed;
+  }
+
+  // 3. Check inside rawOrder or original backend record if available
+  const raw = order.rawOrder || order._raw || order.order;
+  if (raw && typeof raw === 'object') {
+    const rawCandidates = [
+      raw.persistedPickupDate,
+      raw.pickupDate,
+      raw.pickup_date,
+      raw.scheduled_date,
+      raw.scheduledDate,
+      raw.dateText,
+      raw.date_text
+    ];
+    for (const candidate of rawCandidates) {
+      if (candidate != null && candidate !== '') {
+        const parsed = parseFlexibleDate(candidate);
+        if (parsed) return parsed;
+      }
+    }
+    if (raw.pickup && typeof raw.pickup === 'object' && raw.pickup.date) {
+      const parsed = parseFlexibleDate(raw.pickup.date);
+      if (parsed) return parsed;
+    }
+    if (raw.pickup_slot && typeof raw.pickup_slot === 'object' && raw.pickup_slot.date) {
+      const parsed = parseFlexibleDate(raw.pickup_slot.date);
+      if (parsed) return parsed;
+    }
+    if (raw.pickupSchedule && typeof raw.pickupSchedule === 'object' && raw.pickupSchedule.dateValue) {
+      const parsed = parseFlexibleDate(raw.pickupSchedule.dateValue);
+      if (parsed) return parsed;
+    }
+  }
+
+  // 4. Pickup time string containing a date prefix (e.g., "24 Oct 2026, 9:00 AM – 11:00 AM" or "2026-10-24, 09:00 AM")
+  const timeStrings = [order.pickupTime, order.pickup_time, raw?.pickupTime, raw?.pickup_time];
+  for (const timeStr of timeStrings) {
+    if (typeof timeStr === 'string' && timeStr.trim()) {
+      const parts = timeStr.split(/,|\bat\b/);
+      if (parts.length > 0) {
+        const datePart = parts[0].trim();
+        // Check if datePart parses into a valid date and is not just a time slot like "09:00 AM – 11:00 AM"
+        if (!/^\d{1,2}:\d{2}/.test(datePart)) {
+          const parsed = parseFlexibleDate(datePart);
+          if (parsed) return parsed;
+        }
+      }
+    }
+  }
+
+  // 5. Check order.rawDate or order.date IF it is a valid date string and not a relative keyword
+  const dateStrings = [order.rawDate, order.date];
+  for (const dStr of dateStrings) {
+    if (typeof dStr === 'string' && dStr.trim()) {
+      const s = dStr.trim().toLowerCase();
+      // Ignore non-date strings or relative keywords that might have been accidentally assigned
+      if (s !== 'today' && s !== 'tomorrow' && s !== 'yesterday' && s !== 'all' && s !== '—' && s !== '-') {
+        const parsed = parseFlexibleDate(dStr);
+        if (parsed) return parsed;
+      }
+    }
+  }
+
+  // Never fall back to creation/update timestamps or current date
+  return null;
+};
+
+/**
+ * Specifically checks if an order's pickup date matches the given date range.
+ * Strictly uses getOrderPickupDate(order) and will NEVER fall back to order creation
+ * or update timestamps.
+ */
+export const filterMatchesPickupDate = (order, rangeKey) => {
+  if (!rangeKey || rangeKey === 'all' || rangeKey === 'ALL' || rangeKey === 'all-time') {
+    return true;
+  }
+
+  const pickupDate = getOrderPickupDate(order);
+  if (!pickupDate) return false;
+
+  const ranges = getActiveDateRanges();
+  const time = pickupDate.getTime();
+
+  // If rangeKey is an object with start and end
+  if (typeof rangeKey === 'object' && rangeKey !== null && (rangeKey.start || rangeKey.end)) {
+    const sStart = rangeKey.start ? getStartOfDay(parseFlexibleDate(rangeKey.start)).getTime() : 0;
+    const sEnd = rangeKey.end ? getEndOfDay(parseFlexibleDate(rangeKey.end)).getTime() : Infinity;
+    return time >= sStart && time <= sEnd;
+  }
+
+  const normKey = String(rangeKey).toLowerCase().replace(/[\s_-]+/g, '');
+
+  if (normKey === 'today') {
+    return time >= ranges.today.start.getTime() && time <= ranges.today.end.getTime();
+  }
+
+  if (normKey === 'tomorrow') {
+    return time >= ranges.tomorrow.start.getTime() && time <= ranges.tomorrow.end.getTime();
+  }
+
+  if (normKey === 'yesterday') {
+    return time >= ranges.yesterday.start.getTime() && time <= ranges.yesterday.end.getTime();
+  }
+
+  if (normKey === 'thisweek') {
+    return time >= ranges.thisWeek.start.getTime() && time <= ranges.thisWeek.end.getTime();
+  }
+
+  if (normKey === 'lastweek' || normKey === '7days' || normKey === 'last7days') {
+    return time >= ranges.lastWeek.start.getTime() && time <= ranges.lastWeek.end.getTime();
+  }
+
+  if (normKey === 'last30' || normKey === 'last30days' || normKey === 'thismonth') {
+    return time >= ranges.last30Days.start.getTime() && time <= ranges.last30Days.end.getTime();
+  }
+
+  // Exact date match (e.g., "2026-10-24", "24 Oct 2026", "Tuesday, 23 Sep 2026")
+  const specificDate = parseFlexibleDate(rangeKey);
+  if (specificDate) {
+    const sStart = getStartOfDay(specificDate).getTime();
+    const sEnd = getEndOfDay(specificDate).getTime();
+    return time >= sStart && time <= sEnd;
+  }
+
+  return true;
+};
+
+/**
+ * Parse date from an entity by checking candidate fields first, then fallback to timestamps
  */
 export const extractEntityDate = (entity, customFields = []) => {
   if (!entity) return null;
 
   // Primary candidate fields in order of scheduling priority
-  const candidateFields = [
-    ...customFields,
-    'pickup_date',
-    'pickupDate',
-    'delivery_date',
-    'deliveryDate',
-    'rescheduled_date',
-    'formatted_reschedule_date',
-    'scheduled_date',
-    'report_date',
-    'rawDate',
-    'date',
-    'pickupTime',
-    'pickup_time',
-    'deliveryTime',
-    'delivery_time'
-  ];
+  const candidateFields = customFields.length > 0
+    ? customFields
+    : [
+        'pickup_date',
+        'pickupDate',
+        'delivery_date',
+        'deliveryDate',
+        'rescheduled_date',
+        'formatted_reschedule_date',
+        'scheduled_date',
+        'report_date',
+        'rawDate',
+        'date',
+        'pickupTime',
+        'pickup_time',
+        'deliveryTime',
+        'delivery_time'
+      ];
 
   // 1. Direct fields on entity
   for (const field of candidateFields) {
@@ -220,26 +398,32 @@ export const extractEntityDate = (entity, customFields = []) => {
     }
   }
 
-  // 4. Fallback to order placement / creation timestamps if scheduling date was absent
-  const timestampFields = [
-    'createdAt',
-    'created_at',
-    'placedAt',
-    'placed_at',
-    'timestamp',
-    'joinedAt',
-    'joined_at',
-    'joinDate',
-    'join_date',
-    'completedAt',
-    'deliveredAt',
-    'updatedAt'
-  ];
-  for (const field of timestampFields) {
-    const val = entity[field] || (entity.rawOrder && entity.rawOrder[field]);
-    if (val != null && val !== '') {
-      const parsed = parseFlexibleDate(val);
-      if (parsed) return parsed;
+  // 4. Fallback to order placement / creation timestamps ONLY if customFields is empty or explicitly includes timestamps
+  const allowsTimestampFallback = customFields.length === 0 || customFields.some(f => 
+    ['createdAt', 'created_at', 'placedAt', 'placed_at', 'timestamp', 'joinedAt', 'joinDate', 'completedAt', 'deliveredAt', 'updatedAt'].includes(f)
+  );
+
+  if (allowsTimestampFallback) {
+    const timestampFields = [
+      'createdAt',
+      'created_at',
+      'placedAt',
+      'placed_at',
+      'timestamp',
+      'joinedAt',
+      'joined_at',
+      'joinDate',
+      'join_date',
+      'completedAt',
+      'deliveredAt',
+      'updatedAt'
+    ];
+    for (const field of timestampFields) {
+      const val = entity[field] || (entity.rawOrder && entity.rawOrder[field]);
+      if (val != null && val !== '') {
+        const parsed = parseFlexibleDate(val);
+        if (parsed) return parsed;
+      }
     }
   }
 

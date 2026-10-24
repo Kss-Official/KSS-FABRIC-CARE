@@ -13,7 +13,15 @@ import {
   SlidersHorizontal,
   Check
 } from 'lucide-react';
-import { filterMatchesDate, formatDisplayDate, getActiveDateRanges, parseFlexibleDate } from '../../utils/dateFilterUtils';
+import { 
+  filterMatchesDate, 
+  filterMatchesPickupDate, 
+  formatDisplayDate, 
+  getActiveDateRanges, 
+  getOrderPickupDate, 
+  parseFlexibleDate, 
+  toLocalIsoDate 
+} from '../../utils/dateFilterUtils';
 import { formatOrderId } from '../../utils/helpers';
 
 // Dynamic real dates relative to today
@@ -662,19 +670,20 @@ export const AdminPickupDeliveryPage = () => {
         status = 'Assigned';
       }
 
-      let rawDate = persisted?.pickupDate || o.pickup?.date || o.pickup_date || o.date || o.createdAt || o.placedAt;
-      let dateDisplay = (persisted && persisted.pickupDate) ? persisted.pickupDate : (o.date || '');
-      if (rawDate && (!persisted || !persisted.pickupDate)) {
-        const parsedD = parseFlexibleDate(rawDate);
-        if (parsedD) {
-          dateDisplay = formatDisplayDate(parsedD);
-        } else {
-          dateDisplay = String(rawDate);
-        }
+      // Resolve pickup scheduling date strictly from scheduling fields, never from createdAt or new Date()
+      const pDateObj = (persisted?.pickupDate ? parseFlexibleDate(persisted.pickupDate) : null) || getOrderPickupDate(o);
+      
+      let dateDisplay = '';
+      if (pDateObj) {
+        dateDisplay = formatDisplayDate(pDateObj);
+      } else if (o.date && !['today', 'tomorrow', 'yesterday', 'all'].includes(String(o.date).toLowerCase())) {
+        const parsedCustom = parseFlexibleDate(o.date);
+        dateDisplay = parsedCustom ? formatDisplayDate(parsedCustom) : String(o.date);
+      } else {
+        dateDisplay = '—';
       }
-      if (!dateDisplay) {
-        dateDisplay = formatDisplayDate(new Date());
-      }
+
+      const pickupDateDisplay = pDateObj ? formatDisplayDate(pDateObj) : '';
 
       let timeSlot = o.pickup?.from 
         ? `${o.pickup.from} – ${o.pickup.to || ''}` 
@@ -690,8 +699,9 @@ export const AdminPickupDeliveryPage = () => {
         rawId: o.rawId || o.id,
         rawOrder: o,
         date: dateDisplay,
-        rawDate: rawDate,
-        pickup_date: persisted?.pickupDate || o.pickup?.date || o.pickup_date || dateDisplay,
+        rawDate: pDateObj || (o.pickup?.date || o.pickup_date || null),
+        pickup_date: pickupDateDisplay || (persisted?.pickupDate || o.pickup?.date || o.pickup_date || ''),
+        persistedPickupDate: persisted?.pickupDate || null,
         delivery_date: o.delivery?.date || o.delivery_date || o.rescheduled_date || null,
         timeStart: timeParts[0] || '09:00 AM',
         timeEnd: timeParts[1] || '11:00 AM',
@@ -719,8 +729,8 @@ export const AdminPickupDeliveryPage = () => {
   // 1. Scoped orders matching active Date Range and Search term
   const scopedOrders = useMemo(() => {
     return combinedOrders.filter(ord => {
-      // Date Range filter
-      if (!filterMatchesDate(ord, selectedDateRange, ['pickup_date', 'delivery_date', 'date', 'rawDate', 'timestamp', 'pickupTime', 'pickup_time', 'createdAt', 'placedAt'])) {
+      // Date Range filter: strictly match based on actual pickup scheduling date
+      if (!filterMatchesPickupDate(ord, selectedDateRange)) {
         return false;
       }
 
@@ -835,6 +845,18 @@ export const AdminPickupDeliveryPage = () => {
 
   const openAssignModalForOrder = (ord) => {
     if (!ord) return;
+
+    // Guard: Only allow opening assignment modal for pending, unassigned orders
+    const statusLower = String(ord.status || '').toLowerCase().trim();
+    const isAlreadyAssigned = Boolean(
+      (ord.driver && ord.driver.assigned && ord.driver.name !== 'Not Assigned') ||
+      (statusLower === 'assigned') ||
+      (!statusLower.includes('pending') && statusLower !== 'order placed')
+    );
+    if (isAlreadyAssigned) {
+      return;
+    }
+
     const raw = ord.rawOrder || {};
 
     // 1. Extract accurate services
@@ -867,20 +889,10 @@ export const AdminPickupDeliveryPage = () => {
     const rawAmount = raw.total_price ?? raw.totalAmount ?? raw.total ?? raw.amount ?? raw.payable_amount ?? ord.amount;
     const amount = Number(rawAmount) > 0 ? Number(rawAmount) : 240;
 
-    // 4. Extract pickup date & ISO date
-    let dateStr = raw.pickup_date || raw.pickup?.date || ord.rawDate || ord.date || '';
-    let isoDate = '';
-    if (dateStr) {
-      try {
-        const dt = new Date(dateStr);
-        if (!isNaN(dt.getTime())) {
-          isoDate = dt.toISOString().split('T')[0];
-        }
-      } catch (_) {}
-    }
-    if (!isoDate) {
-      isoDate = new Date().toISOString().split('T')[0];
-    }
+    // 4. Extract pickup date & ISO date in local timezone
+    const pDateObj = (ord.persistedPickupDate ? parseFlexibleDate(ord.persistedPickupDate) : null) || getOrderPickupDate(raw) || getOrderPickupDate(ord);
+    const isoDate = pDateObj ? toLocalIsoDate(pDateObj) : toLocalIsoDate(new Date());
+    const dateStr = pDateObj ? formatDisplayDate(pDateObj) : (ord.date !== '—' ? ord.date : formatDisplayDate(new Date()));
 
     // 5. Extract pickup time slot
     const timeSlot = ord.timeStart && ord.timeEnd
@@ -917,31 +929,29 @@ export const AdminPickupDeliveryPage = () => {
   };
 
   const handleAssignOrderClick = () => {
-    // 1. If orders are checked in selectedOrderIds, pick the selected pending order (or first selected)
+    const isPendingUnassigned = (o) => {
+      if (!o) return false;
+      const statusLower = String(o.status || '').toLowerCase().trim();
+      const isStatusPending = statusLower.includes('pending') || statusLower === 'order placed';
+      const isDriverUnassigned = !o.driver?.assigned || o.driver?.name === 'Not Assigned';
+      return isStatusPending && isDriverUnassigned;
+    };
+
+    // 1. If orders are checked in selectedOrderIds, pick the selected pending order
     if (selectedOrderIds.length > 0) {
       const selectedOrders = combinedOrders.filter(o => selectedOrderIds.includes(o.id));
-      const pendingMatch = selectedOrders.find(o => 
-        String(o.status).toLowerCase().includes('pending') || !o.driver?.assigned
-      );
-      const chosen = pendingMatch || selectedOrders[0];
-      if (chosen) {
-        openAssignModalForOrder(chosen);
+      const pendingMatch = selectedOrders.find(isPendingUnassigned);
+      if (pendingMatch) {
+        openAssignModalForOrder(pendingMatch);
         return;
       }
     }
 
-    // 2. If no checkbox is selected, find the first pending/unassigned order in combinedOrders
-    const pendingOrder = combinedOrders.find(o => 
-      String(o.status).toLowerCase().includes('pending') || !o.driver?.assigned
-    );
+    // 2. If no checkbox is selected or selected orders are already assigned, find the first pending/unassigned order in combinedOrders
+    const pendingOrder = combinedOrders.find(isPendingUnassigned);
     if (pendingOrder) {
       openAssignModalForOrder(pendingOrder);
       return;
-    }
-
-    // 3. Fallback to the first available order if any
-    if (combinedOrders.length > 0) {
-      openAssignModalForOrder(combinedOrders[0]);
     }
   };
 
@@ -1254,7 +1264,11 @@ export const AdminPickupDeliveryPage = () => {
               ) : (
                 currentPageOrders.map((ord) => {
                   const isChecked = selectedOrderIds.includes(ord.id);
-                  const isAssigned = ord.driver && ord.driver.assigned;
+                  const isAssigned = Boolean(
+                    (ord.driver && ord.driver.assigned && ord.driver.name !== 'Not Assigned') ||
+                    (ord.status && String(ord.status).toLowerCase() === 'assigned') ||
+                    (ord.status && !String(ord.status).toLowerCase().includes('pending') && String(ord.status).toLowerCase() !== 'order placed')
+                  );
 
                   return (
                     <tr 
@@ -1342,9 +1356,7 @@ export const AdminPickupDeliveryPage = () => {
                         {isAssigned ? (
                           <div 
                             className="driver-assigned-cell"
-                            onClick={() => openAssignModalForOrder(ord)}
-                            title="Click to reassign driver"
-                            style={{ cursor: 'pointer' }}
+                            title={`Assigned Driver: ${ord.driver.name}`}
                           >
                             <div className="driver-avatar-circle dark">
                               {ord.driver.initials}

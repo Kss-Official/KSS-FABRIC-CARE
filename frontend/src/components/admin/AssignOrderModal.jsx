@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { formatOrderId } from '../../utils/helpers';
 import { syncOrderAssignmentToDjango } from '../../services/adminDataService';
+import { toLocalIsoDate, parseFlexibleDate, getOrderPickupDate } from '../../utils/dateFilterUtils';
 
 // Shirt SVG Icon matching Row 4 of Order Details in Reference Image
 const ShirtIcon = ({ size = 16, color = '#0891B2' }) => (
@@ -60,18 +61,13 @@ export const AssignOrderModal = () => {
     if (assigningOrder) {
       let initDate = assigningOrder.isoDate || '';
       if (!initDate) {
-        const raw = assigningOrder.pickup_date || assigningOrder.rawDate || assigningOrder.date;
-        if (raw) {
-          try {
-            const dt = new Date(raw);
-            if (!isNaN(dt.getTime())) {
-              initDate = dt.toISOString().split('T')[0];
-            }
-          } catch (_) {}
+        const pDate = getOrderPickupDate(assigningOrder) || parseFlexibleDate(assigningOrder.pickup_date || assigningOrder.rawDate || assigningOrder.date);
+        if (pDate) {
+          initDate = toLocalIsoDate(pDate);
         }
       }
       if (!initDate) {
-        initDate = new Date().toISOString().split('T')[0];
+        initDate = toLocalIsoDate(new Date());
       }
       setPickupDate(initDate);
 
