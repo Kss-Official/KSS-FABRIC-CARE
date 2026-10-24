@@ -63,10 +63,49 @@ export const AdminLayout = ({ children }) => {
 
   // Dynamic profile information from settings / userProfile / currentUser
   const adminDisplayName = settings?.name || userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name || 'Admin';
-  const avatarPhoto = settings?.photoUrl || userProfile?.avatarUrl || currentUser?.avatarUrl || userProfile?.photoUrl || '';
+  const avatarPhoto = settings?.photoUrl !== undefined 
+    ? settings.photoUrl 
+    : (userProfile?.avatarUrl !== undefined 
+        ? userProfile.avatarUrl 
+        : (currentUser?.avatarUrl !== undefined ? currentUser.avatarUrl : (userProfile?.photoUrl || '')));
   const adminInitials = adminDisplayName
     ? adminDisplayName.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase()
     : 'AD';
+
+  // Instantaneous reactive header photo state listening for immediate changes
+  const [localHeaderPhoto, setLocalHeaderPhoto] = useState(null);
+  const [headerPhotoVersion, setHeaderPhotoVersion] = useState(() => Date.now());
+
+  useEffect(() => {
+    const handleProfileUpdate = (e) => {
+      if (e?.detail && e.detail.photoUrl !== undefined) {
+        setLocalHeaderPhoto(e.detail.photoUrl);
+        setHeaderPhotoVersion(Date.now());
+      }
+    };
+    const handleStorage = (e) => {
+      if (!e.key || e.key === 'fabricare_admin_settings' || e.key === 'fabricare_user') {
+        try {
+          const s = JSON.parse(localStorage.getItem('fabricare_admin_settings') || '{}');
+          if (s && s.photoUrl !== undefined) {
+            setLocalHeaderPhoto(s.photoUrl);
+            setHeaderPhotoVersion(Date.now());
+          }
+        } catch (_) {}
+      }
+    };
+    window.addEventListener('fabricare_profile_updated', handleProfileUpdate);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('fabricare_profile_updated', handleProfileUpdate);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  const rawEffectivePhoto = localHeaderPhoto !== null ? localHeaderPhoto : avatarPhoto;
+  const effectiveAvatarPhoto = (rawEffectivePhoto && typeof rawEffectivePhoto === 'string' && !rawEffectivePhoto.startsWith('data:') && !rawEffectivePhoto.startsWith('blob:'))
+    ? `${rawEffectivePhoto}${rawEffectivePhoto.includes('?') ? '&' : '?'}v=${headerPhotoVersion}`
+    : rawEffectivePhoto;
 
   const isAnyModalActive = Boolean(
     isCreateOrderDrawerOpen ||
@@ -577,8 +616,8 @@ export const AdminLayout = ({ children }) => {
                 aria-haspopup="true"
               >
                 <div className="admin-avatar">
-                  {avatarPhoto ? (
-                    <img src={avatarPhoto} alt={adminDisplayName} className="admin-avatar-img" />
+                  {effectiveAvatarPhoto ? (
+                    <img src={effectiveAvatarPhoto} alt={adminDisplayName} className="admin-avatar-img" />
                   ) : (
                     adminInitials
                   )}

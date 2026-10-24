@@ -847,8 +847,10 @@ export const AuthProvider = ({ children }) => {
           phoneNumber: cleanPhone,
           role: normalizeRole(val.role || currentUser?.role || 'customer'),
           rawRole: val.role || currentUser?.rawRole,
-          avatarUrl: val.avatarUrl || currentUser?.avatarUrl,
-          avatar_url: val.avatarUrl || currentUser?.avatarUrl,
+          avatarUrl: val.avatarUrl !== undefined ? val.avatarUrl : (val.avatar_url !== undefined ? val.avatar_url : (val.photoUrl !== undefined ? val.photoUrl : (val.photoURL !== undefined ? val.photoURL : (currentUser?.avatarUrl || '')))),
+          avatar_url: val.avatarUrl !== undefined ? val.avatarUrl : (val.avatar_url !== undefined ? val.avatar_url : (val.photoUrl !== undefined ? val.photoUrl : (val.photoURL !== undefined ? val.photoURL : (currentUser?.avatar_url || '')))),
+          photoUrl: val.avatarUrl !== undefined ? val.avatarUrl : (val.photoUrl !== undefined ? val.photoUrl : (currentUser?.photoUrl || '')),
+          photoURL: val.avatarUrl !== undefined ? val.avatarUrl : (val.photoURL !== undefined ? val.photoURL : (currentUser?.photoURL || '')),
           initials: getInitials(refreshedName),
           address: val.address !== undefined ? val.address : (currentUser?.address || ''),
           city: val.city !== undefined ? val.city : (currentUser?.city || ''),
@@ -888,6 +890,35 @@ export const AuthProvider = ({ children }) => {
       safeUpdates.phone = p;
       safeUpdates.phoneNumber = p;
     }
+    if (safeUpdates.avatarUrl !== undefined) {
+      const cleanPhoto = safeUpdates.avatarUrl || '';
+      safeUpdates.avatarUrl = cleanPhoto;
+      safeUpdates.avatar_url = cleanPhoto;
+      safeUpdates.photoUrl = cleanPhoto;
+      safeUpdates.photoURL = cleanPhoto;
+    }
+
+    // Immediately update in-memory user and localStorage so all UI headers/avatars reflect changes instantly
+    setCurrentUser(prev => {
+      if (!prev) return prev;
+      const nextUser = {
+        ...prev,
+        ...safeUpdates
+      };
+      try {
+        localStorage.setItem('fabricare_user', JSON.stringify(nextUser));
+      } catch (_) {}
+      return nextUser;
+    });
+
+    setUserProfile(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        ...safeUpdates
+      };
+    });
+
     await update(ref(rtdb, `users/${currentUser.uid}`), safeUpdates);
     return refreshProfile();
   };

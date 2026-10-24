@@ -536,14 +536,15 @@ export const AdminProvider = ({ children }) => {
   useEffect(() => {
     if (userProfile || currentUser) {
       const pName = userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name;
-      const pPhoto = userProfile?.avatarUrl || currentUser?.avatarUrl;
+      const pPhoto = userProfile?.avatarUrl !== undefined ? userProfile.avatarUrl : (currentUser?.avatarUrl !== undefined ? currentUser.avatarUrl : undefined);
       const pPhone = userProfile?.phone || currentUser?.phone;
-      if (pName || pPhoto || pPhone) {
+      if (pName || pPhoto !== undefined || pPhone) {
         setSettings(prev => {
+          const resolvedPhoto = prev?.photoUrl !== undefined ? prev.photoUrl : (pPhoto !== undefined ? pPhoto : '');
           const updated = {
             ...prev,
             name: prev?.name && prev.name !== 'Admin' ? prev.name : (pName || prev?.name || 'Admin'),
-            photoUrl: prev?.photoUrl || pPhoto || '',
+            photoUrl: resolvedPhoto,
             phone: prev?.phone || pPhone || '+91 98765 43210'
           };
           try {
@@ -735,9 +736,16 @@ export const AdminProvider = ({ children }) => {
     const unsubSettings = subscribeAdminSettings((rtdbSettings) => {
       if (rtdbSettings) {
         setSettings(prev => {
-          const merged = { ...prev, ...rtdbSettings };
+          const merged = { 
+            ...prev, 
+            ...rtdbSettings,
+            photoUrl: rtdbSettings.photoUrl !== undefined ? rtdbSettings.photoUrl : (prev?.photoUrl !== undefined ? prev.photoUrl : '')
+          };
           try {
             localStorage.setItem('fabricare_admin_settings', JSON.stringify(merged));
+          } catch (_) {}
+          try {
+            window.dispatchEvent(new CustomEvent('fabricare_profile_updated', { detail: merged }));
           } catch (_) {}
           return merged;
         });
@@ -1617,14 +1625,19 @@ export const AdminProvider = ({ children }) => {
   }, []);
 
   const updateSettings = useCallback(async (newSettings) => {
-    let merged = {};
-    setSettings(prev => {
-      merged = { ...prev, ...newSettings };
-      try {
-        localStorage.setItem('fabricare_admin_settings', JSON.stringify(merged));
-      } catch (e) {}
-      return merged;
-    });
+    let currentSettings = {};
+    try {
+      const saved = localStorage.getItem('fabricare_admin_settings');
+      if (saved) currentSettings = JSON.parse(saved);
+    } catch (_) {}
+    if (!currentSettings || typeof currentSettings !== 'object' || Object.keys(currentSettings).length === 0) {
+      currentSettings = settings || {};
+    }
+    const merged = { ...currentSettings, ...newSettings };
+    try {
+      localStorage.setItem('fabricare_admin_settings', JSON.stringify(merged));
+    } catch (e) {}
+    setSettings(merged);
 
     const effectiveName = newSettings.name;
     const effectivePhone = newSettings.phone;
@@ -1636,7 +1649,12 @@ export const AdminProvider = ({ children }) => {
         await updateCurrentUserProfile({
           ...(effectiveName ? { name: effectiveName, displayName: effectiveName } : {}),
           ...(effectivePhone ? { phone: effectivePhone } : {}),
-          ...(effectivePhoto !== undefined ? { avatarUrl: effectivePhoto, photoUrl: effectivePhoto } : {})
+          ...(effectivePhoto !== undefined ? { 
+            avatarUrl: effectivePhoto, 
+            avatar_url: effectivePhoto,
+            photoUrl: effectivePhoto, 
+            photoURL: effectivePhoto 
+          } : {})
         });
       } catch (err) {
         console.warn('AuthContext update error:', err);
@@ -1660,7 +1678,9 @@ export const AdminProvider = ({ children }) => {
         if (effectivePhone) userUpdates.phone = effectivePhone;
         if (effectivePhoto !== undefined) {
           userUpdates.avatarUrl = effectivePhoto;
+          userUpdates.avatar_url = effectivePhoto;
           userUpdates.photoUrl = effectivePhoto;
+          userUpdates.photoURL = effectivePhoto;
         }
         userUpdates.updatedAt = Date.now();
         await rUpdate(rRef(rtdb, `users/${uid}`), userUpdates);
@@ -1668,6 +1688,24 @@ export const AdminProvider = ({ children }) => {
       if (refreshProfile) await refreshProfile();
     } catch (err) {
       console.warn('Backend adminSettings persistence notice:', err);
+    }
+
+    // 3. Persist to Django REST backend if available
+    if (effectivePhoto !== undefined) {
+      try {
+        const { fetchBackend } = await import('../api/apiClient');
+        if (effectivePhoto) {
+          await fetchBackend('/api/auth/me/', {
+            method: 'PATCH',
+            body: JSON.stringify({ avatar: effectivePhoto })
+          });
+        } else {
+          await fetchBackend('/api/auth/me/', {
+            method: 'PATCH',
+            body: JSON.stringify({ remove_profile_picture: true, avatar: '' })
+          });
+        }
+      } catch (_) {}
     }
 
     // Broadcast change across tabs / components

@@ -2200,19 +2200,22 @@ export const HomePage = () => {
           text-align: center;
         }
 
-        .cta-banner-title {
+        .cta-banner-title,
+        .cta-banner-section h1,
+        .cta-banner-section h2 {
           font-family: 'Poppins', sans-serif;
           font-size: 2.85rem;
           font-weight: 800;
-          color: #FFFFFF;
+          color: #000000;
           margin: 0 0 16px;
           line-height: 1.2;
         }
 
-        .cta-banner-sub {
+        .cta-banner-sub,
+        .cta-banner-section p {
           font-family: 'Inter', sans-serif;
           font-size: 1.05rem;
-          color: rgba(255, 255, 255, 0.95);
+          color: #000000;
           line-height: 1.6;
           margin: 0 auto 30px;
           max-width: 620px;
