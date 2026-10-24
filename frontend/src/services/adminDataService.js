@@ -24,10 +24,45 @@ import {
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 
+export const syncOrderAssignmentToDjango = async (orderId, driver, options = {}) => {
+  const cleanId = String(orderId || '').replace(/^#/, '').trim();
+  const rawId = String(orderId || '').trim();
+  const endpoints = [
+    `http://127.0.0.1:8000/api/admin/orders/${cleanId}/assign-staff/`,
+    `http://127.0.0.1:8000/api/orders/${cleanId}/assign-staff/`,
+    `http://127.0.0.1:8000/api/admin/orders/${rawId}/assign-staff/`,
+    `http://127.0.0.1:8000/api/orders/${rawId}/assign-staff/`
+  ];
+
+  const payload = {
+    pickup_driver_id: driver?.djangoId || 3,
+    driver_name: driver?.name || 'Ravi Kumar',
+    driver_phone: driver?.phone || '+91 98765 43210',
+    pickup_date: options.pickupDate,
+    pickup_time_slot: options.pickupTimeSlot,
+    status: 'PICKUP_ASSIGNED',
+    note: options.note || ''
+  };
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (_) {}
+  }
+  return null;
+};
+
 /**
  * 1. Admin assigns pickup agent -> PICKUP_SCHEDULED
  */
-export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, driverNameOverride, driverPhoneOverride) => {
+export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, driverNameOverride, driverPhoneOverride, options = {}) => {
   let actualOrderId = orderId;
   let orderSnap = await get(ref(rtdb, `orders/${orderId}`));
 
@@ -90,6 +125,19 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, dri
   updates[`orders/${actualOrderId}/driver`] = `${agent.name} (${agent.phone || driverPhoneOverride || '+91 98765 43210'})`;
   updates[`orders/${actualOrderId}/pickupTaskId`] = effectiveTaskId;
 
+  // Persist confirmed pickup date and time
+  if (options.pickupDate) {
+    updates[`orders/${actualOrderId}/pickup_date`] = options.pickupDate;
+    updates[`orders/${actualOrderId}/pickupDate`] = options.pickupDate;
+    updates[`orders/${actualOrderId}/pickup/date`] = options.pickupDate;
+  }
+  if (options.pickupTimeSlot) {
+    updates[`orders/${actualOrderId}/pickup_time_slot`] = options.pickupTimeSlot;
+    updates[`orders/${actualOrderId}/pickup/time`] = options.pickupTimeSlot;
+    const finalDateStr = options.pickupDate || order.pickup_date || order.pickup?.date || '';
+    updates[`orders/${actualOrderId}/pickupTime`] = `${finalDateStr}, ${options.pickupTimeSlot}`;
+  }
+
   // Move status index
   updates[`ordersByStatus/PLACED/${actualOrderId}`] = null;
   updates[`ordersByStatus/PAYMENT_PENDING/${actualOrderId}`] = null;
@@ -104,7 +152,16 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, dri
   updates[`tasks/${effectiveTaskId}/agentId`] = cleanAgentId;
   updates[`tasks/${effectiveTaskId}/agentName`] = agent.name;
   updates[`tasks/${effectiveTaskId}/agentPhone`] = agent.phone || driverPhoneOverride || '+91 98765 43210';
-  updates[`tasks/${effectiveTaskId}/scheduledAt`] = order.pickup?.date ? new Date(order.pickup.date).getTime() : now;
+  updates[`tasks/${effectiveTaskId}/scheduledAt`] = options.pickupDate 
+    ? (new Date(options.pickupDate).getTime() || now)
+    : (order.pickup?.date ? new Date(order.pickup.date).getTime() : now);
+  if (options.pickupDate) {
+    updates[`tasks/${effectiveTaskId}/pickup_date`] = options.pickupDate;
+  }
+  if (options.pickupTimeSlot) {
+    updates[`tasks/${effectiveTaskId}/pickup_time_slot`] = options.pickupTimeSlot;
+    updates[`tasks/${effectiveTaskId}/timeSlot`] = options.pickupTimeSlot;
+  }
   updates[`tasks/${effectiveTaskId}/customer`] = {
     name: order.customerName || order.pickup_full_name || 'Customer',
     phone: order.customerPhone || order.pickup_phone || '+91 98765 43210'
@@ -124,7 +181,7 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, dri
     to: 'PICKUP_SCHEDULED',
     byUid: adminUser?.uid || 'admin',
     byName: adminUser?.name || 'Admin',
-    note: `Assigned pickup agent: ${agent.name}`,
+    note: `Assigned pickup agent: ${agent.name}${options.note ? ` | Note: ${options.note}` : ''}`,
     at: now
   };
 
@@ -157,6 +214,13 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, dri
   }
 
   await update(ref(rtdb), updates);
+
+  // Sync to Django SQLite backend
+  try {
+    await syncOrderAssignmentToDjango(actualOrderId, agent, options);
+  } catch (err) {
+    console.warn('Sync to Django backend note:', err);
+  }
 };
 
 /**

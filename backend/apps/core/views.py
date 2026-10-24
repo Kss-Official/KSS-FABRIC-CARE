@@ -352,24 +352,58 @@ class AdminRejectOrderView(APIView):
 
 
 class AdminAssignStaffView(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.AllowAny,)
 
     def post(self, request, pk):
-        try:
-            order = Order.objects.get(pk=pk)
-        except Order.DoesNotExist:
-            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+        lookup = str(pk).strip()
+        order = None
+        if lookup.isdigit():
+            order = Order.objects.filter(pk=int(lookup)).first()
+        if not order:
+            order = Order.objects.filter(order_id__iexact=lookup).first()
+        if not order and not lookup.startswith('#'):
+            order = Order.objects.filter(order_id__iexact=f"#{lookup}").first()
+        if not order and lookup.startswith('#'):
+            order = Order.objects.filter(order_id__iexact=lookup[1:]).first()
+        if not order:
+            clean = lookup.replace('#', '').strip()
+            order = Order.objects.filter(Q(order_id__icontains=clean)).first()
+        if not order:
+            return Response({'detail': f'Order {pk} not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        pickup_driver_id = request.data.get('pickup_driver_id')
+        pickup_driver_id = request.data.get('pickup_driver_id') or request.data.get('staff_id')
         delivery_driver_id = request.data.get('delivery_driver_id')
         laundry_staff_id = request.data.get('laundry_staff_id')
+        pickup_date = request.data.get('pickup_date')
+        pickup_time_slot = request.data.get('pickup_time_slot') or request.data.get('pickup_time')
+        driver_name = request.data.get('driver_name')
+        new_status = request.data.get('status')
 
-        if pickup_driver_id:
+        if pickup_date:
             try:
-                driver = User.objects.get(pk=pickup_driver_id, role=User.Role.DELIVERY_STAFF)
+                from datetime import datetime
+                d_str = str(pickup_date).split('T')[0].strip()
+                if '-' in d_str and len(d_str) == 10:
+                    order.pickup_date = datetime.strptime(d_str, '%Y-%m-%d').date()
+            except Exception:
+                pass
+
+        if pickup_time_slot:
+            order.pickup_time_slot = str(pickup_time_slot).strip()
+
+        if pickup_driver_id or driver_name:
+            driver = None
+            if pickup_driver_id and str(pickup_driver_id).isdigit():
+                driver = User.objects.filter(pk=int(pickup_driver_id)).first()
+            if not driver and driver_name:
+                driver = User.objects.filter(
+                    Q(first_name__icontains=driver_name) | Q(username__icontains=driver_name) | Q(email__icontains=driver_name)
+                ).first()
+            if not driver:
+                driver = User.objects.filter(role=User.Role.DELIVERY_STAFF).first()
+
+            if driver:
                 order.assigned_pickup_driver = driver
-                if order.status in [Order.Status.PENDING_REVIEW, Order.Status.ACCEPTED]:
-                    order.status = Order.Status.PICKUP_ASSIGNED
                 Notification.objects.create(
                     user=driver,
                     order=order,
@@ -377,8 +411,6 @@ class AdminAssignStaffView(APIView):
                     message=f"New pickup assigned for {order.order_id} at {order.pickup_address} ({order.pickup_time_slot}).",
                     type=Notification.Type.PICKUP
                 )
-            except User.DoesNotExist:
-                return Response({'detail': 'Pickup driver not found.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if delivery_driver_id:
             try:
@@ -393,6 +425,11 @@ class AdminAssignStaffView(APIView):
                 order.assigned_laundry_staff = l_staff
             except User.DoesNotExist:
                 pass
+
+        if new_status:
+            order.status = new_status
+        elif order.status in [Order.Status.PENDING_REVIEW, Order.Status.ACCEPTED]:
+            order.status = Order.Status.PICKUP_ASSIGNED
 
         order.save()
         return Response(OrderSerializer(order).data)

@@ -750,7 +750,7 @@ export const AdminProvider = ({ children }) => {
   }, [currentUser?.uid, isAdminAuthenticated]);
 
   // Workflow Handlers
-  const assignDriverToOrder = async (orderId, driverParam, taskType = 'pickup') => {
+  const assignDriverToOrder = async (orderId, driverParam, taskType = 'pickup', options = {}) => {
     if (!orderId || !driverParam) throw new Error('Order and driver must be specified.');
     const order = (orders || []).find(o => o.id === orderId || o.code === orderId || o.order_id === orderId || o.rawId === orderId);
     const targetOrderId = order?.rawId || order?.id || orderId;
@@ -782,24 +782,36 @@ export const AdminProvider = ({ children }) => {
     const effectiveAgentId = realAgent?.uid || realAgent?.id || driverId;
 
     const task = tasks.find(t => t.orderId === targetOrderId || t.orderCode === orderId || t.orderId === order?.code);
-    const taskId = task ? task.id : (taskType === 'pickup' ? order?.pickupTaskId : order?.deliveryTaskId);
+    const taskId = task ? task.id : (taskType === 'delivery' ? order?.deliveryTaskId : order?.pickupTaskId);
 
     if (taskType === 'delivery') {
-      await assignDeliveryAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone);
+      await assignDeliveryAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone, options);
     } else {
-      await assignPickupAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone);
+      await assignPickupAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone, options);
     }
 
     // Optimistically update local orders so UI updates instantaneously
     const newStatus = taskType === 'delivery' ? 'In Transit' : 'Pickup Scheduled';
     setOrders(prev => (prev || []).map(o => {
-      if (o.id === orderId || o.rawId === targetOrderId || o.code === orderId) {
+      if (o.id === orderId || o.rawId === targetOrderId || o.code === orderId || o.order_id === orderId || o.order_number === orderId) {
+        const pDate = options.pickupDate || o.pickup_date || o.pickupDate;
+        const pSlot = options.pickupTimeSlot || o.pickup_time_slot;
+        const pTime = pSlot ? `${pDate || ''}, ${pSlot}` : o.pickupTime;
         return {
           ...o,
           status: newStatus,
           assignedAgentName: driverName,
           assignedAgentPhone: driverPhone,
-          driver: `${driverName} (${driverPhone})`
+          driver: `${driverName} (${driverPhone})`,
+          pickup_date: pDate || o.pickup_date,
+          pickup_time_slot: pSlot || o.pickup_time_slot,
+          pickupDate: pDate || o.pickupDate,
+          pickupTime: pTime || o.pickupTime,
+          pickup: {
+            ...(o.pickup || {}),
+            date: pDate || o.pickup?.date,
+            time: pSlot || o.pickup?.time
+          }
         };
       }
       return o;

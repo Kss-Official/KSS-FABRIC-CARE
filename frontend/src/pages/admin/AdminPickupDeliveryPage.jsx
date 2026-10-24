@@ -761,25 +761,115 @@ export const AdminPickupDeliveryPage = () => {
   };
 
   const openAssignModalForOrder = (ord) => {
+    if (!ord) return;
+    const raw = ord.rawOrder || {};
+
+    // 1. Extract accurate services
+    let services = [];
+    if (Array.isArray(raw.items) && raw.items.length > 0) {
+      services = [...new Set(raw.items.map(it => it.service_name || it.service || it.category || it.name).filter(Boolean))];
+    } else if (Array.isArray(raw.services) && raw.services.length > 0) {
+      services = raw.services;
+    } else if (raw.service_type) {
+      services = [raw.service_type];
+    } else if (Array.isArray(ord.services) && ord.services.length > 0) {
+      services = ord.services;
+    }
+    if (!services || services.length === 0) {
+      services = ['Dry Cleaning'];
+    }
+
+    // 2. Extract accurate item count
+    let itemCount = '1 item';
+    if (Array.isArray(raw.items) && raw.items.length > 0) {
+      const totalQty = raw.items.reduce((sum, it) => sum + (Number(it.quantity) || 1), 0);
+      itemCount = `${totalQty} item${totalQty === 1 ? '' : 's'}`;
+    } else if (raw.itemCount) {
+      itemCount = raw.itemCount;
+    } else if (ord.itemCount) {
+      itemCount = ord.itemCount;
+    }
+
+    // 3. Extract accurate price/amount
+    const rawAmount = raw.total_price ?? raw.totalAmount ?? raw.total ?? raw.amount ?? raw.payable_amount ?? ord.amount;
+    const amount = Number(rawAmount) > 0 ? Number(rawAmount) : 240;
+
+    // 4. Extract pickup date & ISO date
+    let dateStr = raw.pickup_date || raw.pickup?.date || ord.rawDate || ord.date || '';
+    let isoDate = '';
+    if (dateStr) {
+      try {
+        const dt = new Date(dateStr);
+        if (!isNaN(dt.getTime())) {
+          isoDate = dt.toISOString().split('T')[0];
+        }
+      } catch (_) {}
+    }
+    if (!isoDate) {
+      isoDate = new Date().toISOString().split('T')[0];
+    }
+
+    // 5. Extract pickup time slot
+    const timeSlot = ord.timeStart && ord.timeEnd
+      ? `${ord.timeStart} – ${ord.timeEnd}`
+      : (raw.pickup_time_slot || raw.pickupTime || '09:00 AM – 11:00 AM');
+
     setAssigningOrder({
       id: ord.id,
       rawId: ord.rawId || ord.id,
+      rawOrder: raw,
       date: ord.date,
+      rawDate: dateStr,
+      isoDate: isoDate,
       timeStart: ord.timeStart,
       timeEnd: ord.timeEnd,
-      pickupTime: `${ord.date}, ${ord.timeStart} – ${ord.timeEnd}`,
+      pickup_time_slot: timeSlot,
+      pickupTime: `${ord.date}, ${timeSlot}`,
       customer: {
         name: ord.customer.name,
         phone: ord.customer.phone,
         locality: ord.customer.address?.split(',')[0]?.trim() || 'HRBR Layout, Bengaluru',
-        address: ord.customer.address
+        address: ord.customer.address,
+        fullAddress: ord.customer.address
       },
-      services: ['Dry Cleaning'],
-      itemCount: '1 item',
-      amount: ord.amount || 240,
-      type: ord.type
+      services,
+      itemCount,
+      amount,
+      type: ord.type || 'Pickup',
+      status: ord.status,
+      driver: ord.driver
     });
+    setSelectedOrderIds([ord.id]);
     setIsAssignOrderModalOpen(true);
+  };
+
+  const handleAssignOrderClick = () => {
+    // 1. If orders are checked in selectedOrderIds, pick the selected pending order (or first selected)
+    if (selectedOrderIds.length > 0) {
+      const selectedOrders = combinedOrders.filter(o => selectedOrderIds.includes(o.id));
+      const pendingMatch = selectedOrders.find(o => 
+        String(o.status).toLowerCase().includes('pending') || !o.driver?.assigned
+      );
+      const chosen = pendingMatch || selectedOrders[0];
+      if (chosen) {
+        openAssignModalForOrder(chosen);
+        return;
+      }
+    }
+
+    // 2. If no checkbox is selected, find the first pending/unassigned order in combinedOrders
+    const pendingOrder = combinedOrders.find(o => 
+      String(o.status).toLowerCase().includes('pending') || !o.driver?.assigned
+    );
+    if (pendingOrder) {
+      openAssignModalForOrder(pendingOrder);
+      return;
+    }
+
+    // 3. Fallback to the first available order if any
+    if (combinedOrders.length > 0) {
+      openAssignModalForOrder(combinedOrders[0]);
+    }
   };
 
   return (
@@ -800,30 +890,13 @@ export const AdminPickupDeliveryPage = () => {
             >
               <Calendar size={17} className="pill-calendar-icon" />
               <span className="pill-date-text">{selectedPillLabel}</span>
-              <ChevronDown size={16} className="pill-chevron-icon" />
             </div>
           </div>
 
           {/* + Assign Order Button */}
           <button 
             className="btn-assign-order"
-            onClick={() => {
-              setAssigningOrder({
-                id: '#LDX10289',
-                pickupTime: '23 Sep 2026, 10:00 AM – 12:00 PM',
-                type: 'Pickup',
-                customer: {
-                  name: 'Priya Sharma',
-                  phone: '+91 99876 54321',
-                  locality: 'HRBR Layout, Bengaluru',
-                  address: 'House #45, 3rd Cross, HBBR Layout, Bengaluru – 560043'
-                },
-                services: ['Dry Cleaning'],
-                itemCount: '1 item',
-                amount: 240
-              });
-              setIsAssignOrderModalOpen(true);
-            }}
+            onClick={handleAssignOrderClick}
             type="button"
           >
             <Plus size={18} strokeWidth={2.4} />
@@ -1057,14 +1130,26 @@ export const AdminPickupDeliveryPage = () => {
                   const isAssigned = ord.driver && ord.driver.assigned;
 
                   return (
-                    <tr key={ord.id} className={isChecked ? 'row-selected' : ''}>
+                    <tr 
+                      key={ord.id} 
+                      className={isChecked ? 'row-selected' : ''}
+                      onClick={(e) => {
+                        if (!e.target.closest('input') && !e.target.closest('.driver-assigned-cell')) {
+                          handleToggleSelectOrder(ord.id);
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
                       {/* Checkbox */}
                       <td className="td-col-checkbox">
                         <input 
                           type="checkbox" 
                           className="styled-table-checkbox"
                           checked={isChecked}
-                          onChange={() => handleToggleSelectOrder(ord.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleToggleSelectOrder(ord.id);
+                          }}
                         />
                       </td>
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
@@ -7,9 +7,12 @@ import {
   MapPin, 
   User, 
   Search, 
-  FileText
+  FileText,
+  Calendar,
+  Clock
 } from 'lucide-react';
 import { formatOrderId } from '../../utils/helpers';
+import { syncOrderAssignmentToDjango } from '../../services/adminDataService';
 
 // Shirt SVG Icon matching Row 4 of Order Details in Reference Image
 const ShirtIcon = ({ size = 16, color = '#0891B2' }) => (
@@ -45,24 +48,64 @@ export const AssignOrderModal = () => {
     assignDriverToOrder 
   } = useAdmin();
 
-  const [selectedDriverId, setSelectedDriverId] = useState('d1'); // Default to Ravi Kumar matching Reference Image
+  const [selectedDriverId, setSelectedDriverId] = useState('d1');
   const [driverSearch, setDriverSearch] = useState('');
   const [driverNote, setDriverNote] = useState('');
   const [validationError, setValidationError] = useState('');
+  const [pickupDate, setPickupDate] = useState('');
+  const [pickupTimeSlot, setPickupTimeSlot] = useState('');
+
+  // Sync state whenever assigningOrder changes
+  useEffect(() => {
+    if (assigningOrder) {
+      let initDate = assigningOrder.isoDate || '';
+      if (!initDate) {
+        const raw = assigningOrder.pickup_date || assigningOrder.rawDate || assigningOrder.date;
+        if (raw) {
+          try {
+            const dt = new Date(raw);
+            if (!isNaN(dt.getTime())) {
+              initDate = dt.toISOString().split('T')[0];
+            }
+          } catch (_) {}
+        }
+      }
+      if (!initDate) {
+        initDate = new Date().toISOString().split('T')[0];
+      }
+      setPickupDate(initDate);
+
+      const initSlot = assigningOrder.pickup_time_slot || 
+        (assigningOrder.timeStart && assigningOrder.timeEnd ? `${assigningOrder.timeStart} – ${assigningOrder.timeEnd}` : '09:00 AM – 11:00 AM');
+      setPickupTimeSlot(initSlot);
+
+      if (assigningOrder.driver?.id && assigningOrder.driver.assigned) {
+        setSelectedDriverId(assigningOrder.driver.id);
+      } else {
+        setSelectedDriverId('d1');
+      }
+
+      setDriverNote('');
+      setValidationError('');
+    }
+  }, [assigningOrder]);
 
   const formattedPickupTime = useMemo(() => {
-    let p = assigningOrder?.pickupTime || (assigningOrder?.date ? `${assigningOrder.date}, ${assigningOrder.timeStart || '10:00 AM'} – ${assigningOrder.timeEnd || '12:00 PM'}` : '23 Sep 2026, 10:00 AM – 12:00 PM');
-    const isoM = String(p).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (isoM) {
-      const dt = new Date(parseInt(isoM[1], 10), parseInt(isoM[2], 10) - 1, parseInt(isoM[3], 10));
-      if (!isNaN(dt.getTime())) {
-        const dStr = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-        p = p.replace(/^(\d{4})-(\d{1,2})-(\d{1,2})/, dStr);
-      }
+    let datePart = pickupDate;
+    if (pickupDate && /^\d{4}-\d{2}-\d{2}$/.test(pickupDate)) {
+      try {
+        const parts = pickupDate.split('-');
+        const dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        if (!isNaN(dt.getTime())) {
+          datePart = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+      } catch (_) {}
+    } else if (!datePart) {
+      datePart = assigningOrder?.date || 'Today';
     }
-    p = p.replace(/(AM|PM)\s*[-–—]\s*11:00\s*$/i, '$1');
-    return p;
-  }, [assigningOrder?.pickupTime, assigningOrder?.date, assigningOrder?.timeStart, assigningOrder?.timeEnd]);
+    const slotPart = pickupTimeSlot || '09:00 AM – 11:00 AM';
+    return `${datePart}, ${slotPart}`;
+  }, [pickupDate, pickupTimeSlot, assigningOrder?.date]);
 
   if (!isAssignOrderModalOpen) return null;
 
@@ -74,10 +117,10 @@ export const AssignOrderModal = () => {
     customer: {
       name: assigningOrder?.customer?.name || 'Priya Sharma',
       phone: assigningOrder?.customer?.phone || '+91 99876 54321',
-      locality: assigningOrder?.customer?.address?.split(',')[0]?.trim() || 'HRBR Layout, Bengaluru',
+      locality: assigningOrder?.customer?.locality || assigningOrder?.customer?.address?.split(',')[0]?.trim() || 'HRBR Layout, Bengaluru',
       address: assigningOrder?.customer?.fullAddress || assigningOrder?.customer?.address || 'House #45, 3rd Cross, HBBR Layout, Bengaluru – 560043'
     },
-    services: assigningOrder?.services?.length ? assigningOrder.services : ['Dry Cleaning'],
+    services: Array.isArray(assigningOrder?.services) && assigningOrder.services.length ? assigningOrder.services : ['Dry Cleaning'],
     itemCount: assigningOrder?.itemCount || '1 item',
     amount: assigningOrder?.amount || 240
   };
@@ -105,26 +148,45 @@ export const AssignOrderModal = () => {
       const orderIdentifier = assigningOrder?.rawId || assigningOrder?.id || currentOrder.id;
       const taskType = (assigningOrder?.type === 'Delivery' || currentOrder.type === 'Delivery') ? 'delivery' : 'pickup';
 
+      const assignmentOptions = {
+        pickupDate,
+        pickupTimeSlot,
+        note: driverNote,
+        driverName: driver.name,
+        driverPhone: driver.phone
+      };
+
       try {
-        await assignDriverToOrder(orderIdentifier, driver, taskType);
+        await assignDriverToOrder(orderIdentifier, driver, taskType, assignmentOptions);
       } catch (err) {
         console.warn('assignDriverToOrder note:', err);
       }
 
       try {
+        await syncOrderAssignmentToDjango(orderIdentifier, driver, assignmentOptions);
+      } catch (err) {
+        console.warn('syncOrderAssignmentToDjango note:', err);
+      }
+
+      try {
         const stored = JSON.parse(localStorage.getItem('fabricare_pickup_delivery_assignments') || '{}');
-        const driverInitials = String(driver.name || 'DR').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
+        const driverInitials = String(driver.name || 'DR').split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
         const assignmentRecord = {
           driverName: driver.name,
           driverPhone: driver.phone,
           driverInitials,
-          assigned: true
+          assigned: true,
+          pickupDate,
+          pickupTimeSlot,
+          status: 'Assigned',
+          assignedAt: Date.now()
         };
         stored[currentOrder.id] = assignmentRecord;
         if (assigningOrder?.id) stored[assigningOrder.id] = assignmentRecord;
         if (assigningOrder?.rawId) stored[assigningOrder.rawId] = assignmentRecord;
         localStorage.setItem('fabricare_pickup_delivery_assignments', JSON.stringify(stored));
         window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new CustomEvent('fabricare_order_assigned', { detail: { orderId: currentOrder.id, ...assignmentRecord } }));
       } catch (e) {}
 
       setIsAssignOrderModalOpen(false);
@@ -233,6 +295,42 @@ export const AssignOrderModal = () => {
                   </div>
                 </div>
                 <div className="details-order-price">₹{currentOrder.amount}</div>
+              </div>
+            </div>
+
+            {/* Confirm Pickup Schedule Card */}
+            <div className="pickup-schedule-confirm-card">
+              <div className="schedule-card-header">
+                <div className="schedule-header-icon">
+                  <Calendar size={14} color="#0D7A75" strokeWidth={2.2} />
+                </div>
+                <span className="schedule-header-title">Confirm Pickup Schedule</span>
+              </div>
+              <div className="schedule-inputs-grid">
+                <div className="schedule-field-wrap">
+                  <label className="schedule-field-label">Pickup Date</label>
+                  <input 
+                    type="date"
+                    className="schedule-date-input"
+                    value={pickupDate}
+                    onChange={(e) => setPickupDate(e.target.value)}
+                  />
+                </div>
+                <div className="schedule-field-wrap">
+                  <label className="schedule-field-label">Pickup Time Slot</label>
+                  <select 
+                    className="schedule-slot-select"
+                    value={pickupTimeSlot}
+                    onChange={(e) => setPickupTimeSlot(e.target.value)}
+                  >
+                    <option value="09:00 AM – 11:00 AM">09:00 AM – 11:00 AM</option>
+                    <option value="10:00 AM – 12:00 PM">10:00 AM – 12:00 PM</option>
+                    <option value="11:00 AM – 01:00 PM">11:00 AM – 01:00 PM</option>
+                    <option value="02:00 PM – 04:00 PM">02:00 PM – 04:00 PM</option>
+                    <option value="04:00 PM – 06:00 PM">04:00 PM – 06:00 PM</option>
+                    <option value="06:00 PM – 08:00 PM">06:00 PM – 08:00 PM</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -837,6 +935,81 @@ export const AssignOrderModal = () => {
           cursor: pointer;
           box-shadow: 0 2px 4px rgba(13, 122, 117, 0.2);
           transition: all 0.15s;
+        }
+
+        /* Pickup Schedule Confirmation Card */
+        .pickup-schedule-confirm-card {
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 12px 14px;
+          margin-top: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .schedule-card-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .schedule-header-icon {
+          width: 24px;
+          height: 24px;
+          border-radius: 6px;
+          background: #E6F4F2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .schedule-header-title {
+          font-size: 0.8125rem;
+          font-weight: 700;
+          color: #0D7A75;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+
+        .schedule-inputs-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        .schedule-field-wrap {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .schedule-field-label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: #475569;
+        }
+
+        .schedule-date-input,
+        .schedule-slot-select {
+          width: 100%;
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+          border-radius: 8px;
+          padding: 7px 10px;
+          font-size: 0.8125rem;
+          font-weight: 500;
+          color: #0F172A;
+          outline: none;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+          box-sizing: border-box;
+        }
+
+        .schedule-date-input:focus,
+        .schedule-slot-select:focus {
+          border-color: #0D7A75;
+          box-shadow: 0 0 0 2px rgba(13, 122, 117, 0.15);
         }
 
         .btn-modal-submit:hover {
