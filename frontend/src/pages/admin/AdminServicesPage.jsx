@@ -196,14 +196,8 @@ export const AdminServicesPage = () => {
   // Check if Express Laundry filter is active
   const isExpressMode = (typeFilter || '').toLowerCase().includes('express');
 
-  // Dynamic Category options including the 4 core services & subcategories
-  const availableCategories = useMemo(() => {
-    const baseCats = ['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing', 'Household', 'Men', 'Women', 'Kids'];
-    const dynamicCats = services.map(s => s.category).filter(Boolean);
-    const dynamicSubs = services.map(s => s.subcatName || (s.subcategory ? s.subcategory.charAt(0).toUpperCase() + s.subcategory.slice(1) : null)).filter(Boolean);
-    return Array.from(new Set([...baseCats, ...dynamicCats, ...dynamicSubs]))
-      .filter(cat => cat !== 'Special Care' && cat !== 'Special');
-  }, [services]);
+  // Four categories: Household, Men, Women, Kids
+  const ITEM_CATEGORIES = ['Household', 'Men', 'Women', 'Kids'];
 
   // Sorted Services to maintain catalog order (1: Shirt, 2: Jeans, ..., 8: Curtain)
   const sortedServices = useMemo(() => {
@@ -235,24 +229,13 @@ export const AdminServicesPage = () => {
       }
 
       if (categoryFilter !== 'all') {
-        const catNorm = (s.category || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const subNorm = (s.subcatName || s.subcategory || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const targetNorm = categoryFilter.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const matchesCat = catNorm.includes(targetNorm) || targetNorm.includes(catNorm);
-        const matchesSub = subNorm.includes(targetNorm) || targetNorm.includes(subNorm);
-        
-        // Also check if any of the item's applicable 4 core services matches the category filter
-        const applicable = Array.isArray(s.applicableServices) 
-          ? s.applicableServices 
-          : Array.isArray(s.services) 
-            ? s.services 
-            : [];
-        const matchesService = applicable.some(svc => {
-          const svcNorm = svc.toLowerCase().replace(/[^a-z0-9]/g, '');
-          return svcNorm.includes(targetNorm) || targetNorm.includes(svcNorm);
-        });
+        const catNorm = (s.category || '').toLowerCase().trim();
+        const subNorm = (s.subcatName || s.subcategory || '').toLowerCase().trim();
+        const targetNorm = categoryFilter.toLowerCase().trim();
+        const matchesSubcat = subNorm === targetNorm;
+        const matchesCategory = catNorm === targetNorm;
 
-        if (!matchesCat && !matchesSub && !matchesService) return false;
+        if (!matchesSubcat && !matchesCategory) return false;
       }
 
       if (searchTerm && searchTerm.trim()) {
@@ -610,7 +593,7 @@ export const AdminServicesPage = () => {
             <ChevronDown size={14} strokeWidth={2} className="select-picker-arrow" />
           </div>
 
-          {/* Category Dropdown */}
+          {/* Category Dropdown: All Items + Household, Men, Women, Kids */}
           <div className="select-picker-wrap">
             <select 
               className="select-picker-input"
@@ -619,10 +602,10 @@ export const AdminServicesPage = () => {
                 setCategoryFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              aria-label="Filter by Service"
+              aria-label="Filter by Category"
             >
-              <option value="all">All Services</option>
-              {availableCategories.map(cat => (
+              <option value="all">All Items</option>
+              {ITEM_CATEGORIES.map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
@@ -692,21 +675,6 @@ export const AdminServicesPage = () => {
                   if (isExpressMode) {
                     displayedTurnaround = '24 hours';
                     displayedPrice = service.expressPrice || (service.prices && service.prices['express-laundry']) || (Number(service.price) * 2);
-
-                    const catLow = (categoryFilter || '').toLowerCase();
-                    if (catLow.includes('iron') && !catLow.includes('wash')) {
-                      displayedCategory = 'Steam Ironing';
-                      displayedPrice = service.expressPrices?.['steam-iron'] || displayedPrice;
-                    } else if (catLow.includes('wash') && catLow.includes('iron')) {
-                      displayedCategory = 'Wash & Iron';
-                      displayedPrice = service.expressPrices?.['wash-iron'] || displayedPrice;
-                    } else if (catLow.includes('dry')) {
-                      displayedCategory = 'Dry Cleaning';
-                      displayedPrice = service.expressPrices?.['dry-cleaning'] || displayedPrice;
-                    } else if (catLow.includes('fold')) {
-                      displayedCategory = 'Wash & Fold';
-                      displayedPrice = service.expressPrices?.['wash-fold'] || displayedPrice;
-                    }
                   }
 
                   const catStyle = getCategoryPillStyle(displayedCategory);
@@ -978,7 +946,7 @@ export const AdminServicesPage = () => {
                     value={editForm.category}
                     onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                   >
-                    {availableCategories.map(cat => (
+                    {['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing', 'Household'].map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
