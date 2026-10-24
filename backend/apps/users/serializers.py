@@ -32,6 +32,13 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'created_at', 'is_staff', 'is_superuser')
 
     def get_profile_picture_url(self, obj):
+        if obj.avatar:
+            request = self.context.get('request')
+            if str(obj.avatar).startswith('http') or str(obj.avatar).startswith('data:'):
+                return obj.avatar
+            if request:
+                return request.build_absolute_uri(obj.avatar)
+            return obj.avatar
         if obj.profile_picture:
             request = self.context.get('request')
             if request:
@@ -134,7 +141,19 @@ class UserSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
-        if instance.profile_picture:
+        if 'avatar' in validated_data:
+            new_avatar = validated_data['avatar']
+            if new_avatar:
+                if instance.profile_picture:
+                    try:
+                        instance.profile_picture.delete(save=False)
+                    except Exception:
+                        pass
+                    instance.profile_picture = None
+                instance.avatar = new_avatar
+            else:
+                instance.avatar = None
+        elif instance.profile_picture:
             instance.avatar = instance.profile_picture.url
         elif remove_pic and str(remove_pic).lower() in ['true', '1', 'yes']:
             instance.avatar = None

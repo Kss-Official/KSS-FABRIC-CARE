@@ -36,6 +36,7 @@ export const Step1SelectServices = () => {
     toggleService, 
     clearAllServices, 
     selectedItemsList = [],
+    adminItemsCatalog = [],
     totalItemsCount = 0,
     addItem,
     removeItem,
@@ -213,7 +214,8 @@ export const Step1SelectServices = () => {
     ? getCategoryItems(
         activeCategory, 
         activeSubcategory, 
-        activeCategory === 'express-laundry' ? activeExpressService : 'wash-fold'
+        activeCategory === 'express-laundry' ? activeExpressService : 'wash-fold',
+        adminItemsCatalog
       ).filter(item =>
         item.name.toLowerCase().includes(itemSearchQuery.trim().toLowerCase())
       )
@@ -592,7 +594,7 @@ export const Step1SelectServices = () => {
               <div className="subcat-cards-grid">
                 {SUBCATEGORY_CARD_DATA.filter(sub => {
                   if (activeCategory === 'express-laundry') {
-                    return getCategoryItems('express-laundry', sub.id, activeExpressService).length > 0;
+                    return getCategoryItems('express-laundry', sub.id, activeExpressService, adminItemsCatalog).length > 0;
                   }
                   return true;
                 }).map(sub => {
@@ -982,7 +984,7 @@ export const Step1SelectServices = () => {
                                 <div className="expanded-subcat-quick-pills">
                                   {PRICING_SUBCATEGORIES.filter(sub => {
                                     if (service.id === 'express-laundry') {
-                                      return getCategoryItems('express-laundry', sub.id, activeExpressService).length > 0;
+                                      return getCategoryItems('express-laundry', sub.id, activeExpressService, adminItemsCatalog).length > 0;
                                     }
                                     return true;
                                   }).map(sub => (
@@ -998,7 +1000,7 @@ export const Step1SelectServices = () => {
                                 </div>
 
                                 <div className="expanded-quick-items-grid">
-                                  {getCategoryItems(service.id, expandedActiveSubcat, service.id === 'express-laundry' ? activeExpressService : 'wash-fold').slice(0, 5).map(it => {
+                                  {getCategoryItems(service.id, expandedActiveSubcat, service.id === 'express-laundry' ? activeExpressService : 'wash-fold', adminItemsCatalog).slice(0, 5).map(it => {
                                     const isExpress = service.id === 'express-laundry';
                                     const itemKey = isExpress
                                       ? `express-laundry__${activeExpressService}__${it.id}`

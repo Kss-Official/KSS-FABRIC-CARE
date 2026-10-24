@@ -10,7 +10,9 @@ import {
   PRICING_ITEMS,
   EXPRESS_SERVICES,
   getItemBasePrice,
-  getExpressItemPrice
+  getExpressItemPrice,
+  setLiveAdminCatalog,
+  getLiveAdminCatalog
 } from '../data/pricingData';
 
 const BookingContext = createContext();
@@ -139,18 +141,112 @@ export const BookingProvider = ({ children }) => {
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState('dry-cleaning');
   const [servicesList, setServicesList] = useState(INITIAL_SERVICES);
-  const [adminItemsCatalog, setAdminItemsCatalog] = useState([]);
+  const [adminItemsCatalog, setAdminItemsCatalog] = useState(() => getLiveAdminCatalog() || []);
 
   useEffect(() => {
+    // 1. Subscribe to RTDB live admin services
     const unsub = subscribeAdminServices((liveServices) => {
       if (liveServices && liveServices.length > 0) {
         setAdminItemsCatalog(liveServices);
+        setLiveAdminCatalog(liveServices);
       }
     });
+
+    // 2. Cross-tab and local window event listener for immediate updates
+    const handleAdminServicesUpdated = (e) => {
+      const latest = getLiveAdminCatalog();
+      if (latest && latest.length > 0) {
+        setAdminItemsCatalog([...latest]);
+      } else if (e.detail?.service || e.detail?.updates) {
+        const stored = localStorage.getItem('fabricare_admin_services');
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            setAdminItemsCatalog(parsed);
+            setLiveAdminCatalog(parsed);
+          } catch (_) {}
+        }
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('fabricare_admin_services_updated', handleAdminServicesUpdated);
+      window.addEventListener('storage', handleAdminServicesUpdated);
+    }
+
     return () => {
       if (typeof unsub === 'function') unsub();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('fabricare_admin_services_updated', handleAdminServicesUpdated);
+        window.removeEventListener('storage', handleAdminServicesUpdated);
+      }
     };
   }, []);
+
+  // Synchronize cart items with admin updates: remove inactive/deleted items and update prices
+  useEffect(() => {
+    if (!adminItemsCatalog || adminItemsCatalog.length === 0) return;
+
+    setSelectedItems(prev => {
+      let changed = false;
+      const next = { ...prev };
+
+      Object.keys(next).forEach(k => {
+        const it = next[k];
+        if (!it) return;
+
+        const cleanItemId = String(it.id || '').toLowerCase();
+        const cleanItemName = String(it.name || '').trim().toLowerCase();
+
+        const match = adminItemsCatalog.find(s => 
+          (s.code && String(s.code).toLowerCase() === cleanItemId) ||
+          (s.id && String(s.id).toLowerCase() === cleanItemId) ||
+          (s.name && String(s.name).trim().toLowerCase() === cleanItemName)
+        );
+
+        if (match) {
+          // If deactivated or deleted by admin, remove immediately from customer's selected items!
+          if (
+            match.isDeleted === true ||
+            match.status === 'Deleted' ||
+            match.status === 'Inactive' ||
+            match.is_active === false ||
+            match.isActive === false ||
+            match.status === false
+          ) {
+            delete next[k];
+            changed = true;
+            return;
+          }
+
+          // If price or name was edited, update in customer's cart
+          const effectiveService = it.categoryId === 'express-laundry' ? (it.expressService || 'wash-fold') : it.categoryId;
+          let newBaseRate = null;
+          if (match.prices && match.prices[effectiveService] != null) {
+            newBaseRate = Number(match.prices[effectiveService]);
+          } else if (match.price != null && (match.category === effectiveService || !match.prices)) {
+            newBaseRate = Number(match.price);
+          }
+
+          if (newBaseRate !== null && newBaseRate > 0) {
+            const isExpress = it.categoryId === 'express-laundry';
+            const expectedUnitPrice = isExpress ? (newBaseRate * 2) : newBaseRate;
+            if (Number(it.unitPrice) !== expectedUnitPrice || it.name !== match.name) {
+              next[k] = {
+                ...it,
+                name: match.name || it.name,
+                unitPrice: expectedUnitPrice,
+                baseUnitPrice: newBaseRate
+              };
+              changed = true;
+            }
+          }
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [adminItemsCatalog]);
 
   const [serviceCategories, setServiceCategories] = useState([]);
 
@@ -247,6 +343,8 @@ export const BookingProvider = ({ children }) => {
     let unitPrice = 100;
     if (isExpress) {
       unitPrice = item.price || getExpressItemPrice(item, effectiveExpressService);
+    } else if (item.price != null && Number(item.price) > 0) {
+      unitPrice = Number(item.price);
     } else if (cat?.isPriceEnabled && item.prices && item.prices[categoryId] != null) {
       unitPrice = Number(item.prices[categoryId]);
     } else if (categoryId === 'dry-cleaning') {
@@ -1069,6 +1167,7 @@ export const BookingProvider = ({ children }) => {
         calculateTotal,
         allServices: servicesList,
         serviceCategories,
+        adminItemsCatalog,
         isExpressBooking,
         isSubmittingOrder,
         orderError

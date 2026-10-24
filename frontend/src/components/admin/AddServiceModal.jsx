@@ -28,7 +28,7 @@ export const AddServiceModal = () => {
     description: 'Regular shirt cleaning and pressing',
     category: 'Wash & Fold',
     price: 80,
-    turnaround: '1 - 2 Days',
+    turnaround: '2–3 days',
     status: true,
     image: null
   });
@@ -55,7 +55,7 @@ export const AddServiceModal = () => {
         description: '',
         category: 'Wash & Fold',
         price: '',
-        turnaround: '1 - 2 Days',
+        turnaround: '2–3 days',
         status: true,
         image: null
       });
@@ -185,9 +185,9 @@ export const AddServiceModal = () => {
                 value={form.turnaround}
                 onChange={(e) => setForm({ ...form, turnaround: e.target.value })}
               >
-                <option value="2 - 3 Days">2 - 3 Days</option>
-                <option value="1 - 2 Days">1 - 2 Days</option>
-                <option value="24 Hours">24 Hours</option>
+                <option value="2–3 days">2–3 days</option>
+                <option value="24 hours">24 hours</option>
+                <option value="3–4 days">3–4 days</option>
                 <option value="Same Day Express">Same Day Express</option>
               </select>
               <ChevronDown size={16} className="add-service-select-chevron" />

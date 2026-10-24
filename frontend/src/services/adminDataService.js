@@ -13,14 +13,56 @@ import {
 } from 'firebase/database';
 import { rtdb, auth } from '../config/firebase.js';
 import { addNotificationToUpdates, addRoleNotificationsToUpdates, getRoleUserIds } from './notificationService.js';
-import { PRICING_ITEMS, PRICING_SUBCATEGORIES } from '../data/pricingData.js';
+import { 
+  PRICING_ITEMS, 
+  PRICING_SUBCATEGORIES,
+  isItemApplicableToService,
+  getExpressItemPrice,
+  getItemBasePrice,
+  setLiveAdminCatalog
+} from '../data/pricingData.js';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
+
+export const syncOrderAssignmentToDjango = async (orderId, driver, options = {}) => {
+  const cleanId = String(orderId || '').replace(/^#/, '').trim();
+  const rawId = String(orderId || '').trim();
+  const endpoints = [
+    `http://127.0.0.1:8000/api/admin/orders/${cleanId}/assign-staff/`,
+    `http://127.0.0.1:8000/api/orders/${cleanId}/assign-staff/`,
+    `http://127.0.0.1:8000/api/admin/orders/${rawId}/assign-staff/`,
+    `http://127.0.0.1:8000/api/orders/${rawId}/assign-staff/`
+  ];
+
+  const payload = {
+    pickup_driver_id: driver?.djangoId || 3,
+    driver_name: driver?.name || 'Ravi Kumar',
+    driver_phone: driver?.phone || '+91 98765 43210',
+    pickup_date: options.pickupDate,
+    pickup_time_slot: options.pickupTimeSlot,
+    status: 'PICKUP_ASSIGNED',
+    note: options.note || ''
+  };
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (_) {}
+  }
+  return null;
+};
 
 /**
  * 1. Admin assigns pickup agent -> PICKUP_SCHEDULED
  */
-export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, driverNameOverride, driverPhoneOverride) => {
+export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, driverNameOverride, driverPhoneOverride, options = {}) => {
   let actualOrderId = orderId;
   let orderSnap = await get(ref(rtdb, `orders/${orderId}`));
 
@@ -83,6 +125,19 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, dri
   updates[`orders/${actualOrderId}/driver`] = `${agent.name} (${agent.phone || driverPhoneOverride || '+91 98765 43210'})`;
   updates[`orders/${actualOrderId}/pickupTaskId`] = effectiveTaskId;
 
+  // Persist confirmed pickup date and time
+  if (options.pickupDate) {
+    updates[`orders/${actualOrderId}/pickup_date`] = options.pickupDate;
+    updates[`orders/${actualOrderId}/pickupDate`] = options.pickupDate;
+    updates[`orders/${actualOrderId}/pickup/date`] = options.pickupDate;
+  }
+  if (options.pickupTimeSlot) {
+    updates[`orders/${actualOrderId}/pickup_time_slot`] = options.pickupTimeSlot;
+    updates[`orders/${actualOrderId}/pickup/time`] = options.pickupTimeSlot;
+    const finalDateStr = options.pickupDate || order.pickup_date || order.pickup?.date || '';
+    updates[`orders/${actualOrderId}/pickupTime`] = `${finalDateStr}, ${options.pickupTimeSlot}`;
+  }
+
   // Move status index
   updates[`ordersByStatus/PLACED/${actualOrderId}`] = null;
   updates[`ordersByStatus/PAYMENT_PENDING/${actualOrderId}`] = null;
@@ -97,7 +152,16 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, dri
   updates[`tasks/${effectiveTaskId}/agentId`] = cleanAgentId;
   updates[`tasks/${effectiveTaskId}/agentName`] = agent.name;
   updates[`tasks/${effectiveTaskId}/agentPhone`] = agent.phone || driverPhoneOverride || '+91 98765 43210';
-  updates[`tasks/${effectiveTaskId}/scheduledAt`] = order.pickup?.date ? new Date(order.pickup.date).getTime() : now;
+  updates[`tasks/${effectiveTaskId}/scheduledAt`] = options.pickupDate 
+    ? (new Date(options.pickupDate).getTime() || now)
+    : (order.pickup?.date ? new Date(order.pickup.date).getTime() : now);
+  if (options.pickupDate) {
+    updates[`tasks/${effectiveTaskId}/pickup_date`] = options.pickupDate;
+  }
+  if (options.pickupTimeSlot) {
+    updates[`tasks/${effectiveTaskId}/pickup_time_slot`] = options.pickupTimeSlot;
+    updates[`tasks/${effectiveTaskId}/timeSlot`] = options.pickupTimeSlot;
+  }
   updates[`tasks/${effectiveTaskId}/customer`] = {
     name: order.customerName || order.pickup_full_name || 'Customer',
     phone: order.customerPhone || order.pickup_phone || '+91 98765 43210'
@@ -117,7 +181,7 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, dri
     to: 'PICKUP_SCHEDULED',
     byUid: adminUser?.uid || 'admin',
     byName: adminUser?.name || 'Admin',
-    note: `Assigned pickup agent: ${agent.name}`,
+    note: `Assigned pickup agent: ${agent.name}${options.note ? ` | Note: ${options.note}` : ''}`,
     at: now
   };
 
@@ -159,6 +223,13 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, dri
   }
 
   await update(ref(rtdb), updates);
+
+  // Sync to Django SQLite backend
+  try {
+    await syncOrderAssignmentToDjango(actualOrderId, agent, options);
+  } catch (err) {
+    console.warn('Sync to Django backend note:', err);
+  }
 };
 
 /**
@@ -640,7 +711,7 @@ export const generateAdminServicesList = () => {
     const nameLower = (item.name || '').toLowerCase();
     const itemId = item.id;
 
-    if (item.subcategory === 'household') {
+    if (item.subcategory === 'household' || itemId === 'kids-blanket' || nameLower.includes('blanket') || nameLower.includes('bedsheet')) {
       category = 'Household';
     } else if (
       itemId === 'men-suit-2pc' || 
@@ -665,10 +736,8 @@ export const generateAdminServicesList = () => {
     // Base price matching Customer Portal (Wash & Fold rate or fallback)
     const basePrice = item.prices?.['wash-fold'] || item.prices?.['wash-iron'] || 50;
 
-    // Turnaround time: 1–2 days for everyday, 2–3 days for delicate/household
-    const turnaround = (item.subcategory === 'household' || category === 'Dry Cleaning')
-      ? '2–3 days'
-      : '1–2 days';
+    // Turnaround time: 2–3 days for normal services (at least two days advance rule), 24 hours for Express
+    const turnaround = '2–3 days';
 
     // Type: Premium for sets or dry cleaning or >= 100, Standard otherwise
     const isPremium = item.unit === 'set' || basePrice >= 100 || category === 'Dry Cleaning';
@@ -688,6 +757,22 @@ export const generateAdminServicesList = () => {
       description = `Regular wash and fold`;
     }
 
+    // Determine all applicable services from the 4 existing core services
+    const applicableServices = [];
+    if (isItemApplicableToService(item, 'wash-fold')) applicableServices.push('Wash & Fold');
+    if (isItemApplicableToService(item, 'wash-iron')) applicableServices.push('Wash & Iron');
+    if (isItemApplicableToService(item, 'dry-cleaning')) applicableServices.push('Dry Cleaning');
+    if (isItemApplicableToService(item, 'steam-iron')) applicableServices.push('Steam Ironing');
+
+    // Calculate Express rates for the item across services (2x base rate or configured express price)
+    const expressPrice = item.prices?.['express-laundry'] || getExpressItemPrice(item, 'wash-fold');
+    const expressPrices = {
+      'wash-fold': getExpressItemPrice(item, 'wash-fold'),
+      'wash-iron': getExpressItemPrice(item, 'wash-iron'),
+      'dry-cleaning': getExpressItemPrice(item, 'dry-cleaning'),
+      'steam-iron': getExpressItemPrice(item, 'steam-iron'),
+    };
+
     return {
       id: index + 1,
       code: item.id,
@@ -699,6 +784,12 @@ export const generateAdminServicesList = () => {
       subcatName,
       price: basePrice,
       prices: item.prices,
+      services: applicableServices,
+      applicableServices,
+      isExpressAvailable: true,
+      expressPrice,
+      expressPrices,
+      expressTurnaround: '24 hours',
       unit: item.unit || 'item',
       turnaround,
       status: 'Active',
@@ -711,6 +802,88 @@ export const generateAdminServicesList = () => {
 export const DEFAULT_SERVICES = generateAdminServicesList();
 
 /**
+ * Synchronization helper for Django backend Service API
+ */
+const syncServiceToDjango = async (action, serviceId, serviceData = {}) => {
+  try {
+    const idNum = parseInt(serviceId, 10);
+    const hasNumId = !isNaN(idNum) && idNum > 0;
+    const baseApi = 'http://127.0.0.1:8000/api/services';
+
+    if (action === 'delete') {
+      if (hasNumId) {
+        await fetch(`${baseApi}/${idNum}/`, { method: 'DELETE' }).catch(() => {});
+      } else if (serviceData?.name) {
+        const res = await fetch(`${baseApi}/`).catch(() => null);
+        if (res && res.ok) {
+          const all = await res.json().catch(() => []);
+          const match = (all || []).find(s => s.name?.toLowerCase() === serviceData.name.toLowerCase());
+          if (match?.id) {
+            await fetch(`${baseApi}/${match.id}/`, { method: 'DELETE' }).catch(() => {});
+          }
+        }
+      }
+      return;
+    }
+
+    if (action === 'update' || action === 'toggle') {
+      const payload = {};
+      if (serviceData.price !== undefined) payload.price = Number(serviceData.price);
+      if (serviceData.name !== undefined) payload.name = serviceData.name;
+      if (serviceData.turnaround !== undefined) payload.turnaround_time = serviceData.turnaround;
+      if (serviceData.description !== undefined) payload.description = serviceData.description;
+      if (serviceData.status !== undefined) payload.is_active = (serviceData.status === 'Active');
+      if (serviceData.is_active !== undefined) payload.is_active = Boolean(serviceData.is_active);
+
+      if (hasNumId) {
+        const patchRes = await fetch(`${baseApi}/${idNum}/`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).catch(() => null);
+        if (patchRes && patchRes.ok) return;
+      }
+
+      // Try finding by name in Django
+      if (serviceData.name) {
+        const res = await fetch(`${baseApi}/`).catch(() => null);
+        if (res && res.ok) {
+          const all = await res.json().catch(() => []);
+          const match = (all || []).find(s => s.name?.toLowerCase() === serviceData.name.toLowerCase());
+          if (match?.id) {
+            await fetch(`${baseApi}/${match.id}/`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            }).catch(() => {});
+          }
+        }
+      }
+      return;
+    }
+
+    if (action === 'add') {
+      const payload = {
+        name: serviceData.name,
+        price: Number(serviceData.price) || 100,
+        description: serviceData.description || '',
+        turnaround_time: serviceData.turnaround || '2–3 days',
+        is_active: serviceData.status === 'Active' || serviceData.is_active !== false,
+        unit: serviceData.unit || 'per piece',
+        category: 1 // default Wash & Fold category
+      };
+      await fetch(`${baseApi}/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('Django service sync notice:', err);
+  }
+};
+
+/**
  * Realtime subscription to services in Realtime Database
  */
 export const subscribeAdminServices = (onServicesUpdated, onError) => {
@@ -718,33 +891,39 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
   const unsub = onValue(servicesRef, (snap) => {
     if (!snap.exists()) {
       onServicesUpdated(DEFAULT_SERVICES);
+      setLiveAdminCatalog(DEFAULT_SERVICES);
+      try {
+        localStorage.setItem('fabricare_admin_services', JSON.stringify(DEFAULT_SERVICES));
+      } catch (_) {}
       seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
       return;
     }
     const data = snap.val();
     const rawList = data ? Object.keys(data).map(k => ({ ...data[k], id: data[k].id || k })) : [];
 
-    // Detect if RTDB has incomplete dummy data or fewer than 69 items
-    const isOldIncomplete = rawList.length < 69 || rawList.some(s => 
-      !s.category || s.price === undefined || s.price === null ||
-      s.category === 'Special Care' || s.category === 'Special'
-    );
+    // Filter out permanently deleted items
+    const activeRawList = rawList.filter(s => !s.isDeleted && s.status !== 'Deleted');
 
-    if (isOldIncomplete) {
-      // Overwrite RTDB with the full 69 services matching Customer Portal
+    if (rawList.length === 0) {
       seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
       onServicesUpdated(DEFAULT_SERVICES);
+      setLiveAdminCatalog(DEFAULT_SERVICES);
       return;
     }
 
-    const list = rawList.map(item => {
+    const list = activeRawList.map(item => {
       let cat = item.category || item.category_name || 'Wash & Fold';
       const nameLower = String(item.name || '').toLowerCase();
-      if (item.subcategory === 'household' || nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
+      if (item.subcategory === 'household' || item.id === 'kids-blanket' || nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
         cat = 'Household';
       } else if (cat === 'Special Care' || cat === 'Special') {
         cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
       }
+      const defMatch = DEFAULT_SERVICES.find(d => (d.code && d.code === item.code) || d.name === item.name || String(d.id) === String(item.id));
+      const applicableServices = item.applicableServices || item.services || defMatch?.applicableServices || ['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing'];
+      const expressPrice = item.expressPrice || defMatch?.expressPrice || (Number(item.price) * 2);
+      const expressPrices = item.expressPrices || defMatch?.expressPrices || {};
+
       return {
         ...item,
         price: Number(item.price) || 0,
@@ -753,14 +932,27 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
         subcategory: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
         subcategoryId: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
         subcatName: item.subcatName || (item.subcategory ? item.subcategory.charAt(0).toUpperCase() + item.subcategory.slice(1) : (cat === 'Household' ? 'Household' : 'Men')),
-        turnaround: item.turnaround || item.turnaround_time || '1–2 days',
-        type: item.type || (Number(item.price) > 200 ? 'Premium' : (String(item.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard'))
+        turnaround: item.turnaround && !String(item.turnaround).includes('1') ? item.turnaround : '2–3 days',
+        type: item.type || (Number(item.price) > 200 ? 'Premium' : 'Standard'),
+        services: applicableServices,
+        applicableServices,
+        isExpressAvailable: true,
+        expressPrice,
+        expressPrices,
+        expressTurnaround: '24 hours'
       };
     });
+
+    // Synchronize live admin catalog in memory and storage
+    setLiveAdminCatalog(list);
+    try {
+      localStorage.setItem('fabricare_admin_services', JSON.stringify(list));
+    } catch (_) {}
 
     onServicesUpdated(list);
   }, (err) => {
     onServicesUpdated(DEFAULT_SERVICES);
+    setLiveAdminCatalog(DEFAULT_SERVICES);
     if (onError) onError(err);
   });
 
@@ -768,7 +960,7 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
 };
 
 /**
- * Seed full 69 services into RTDB if not present or incomplete
+ * Seed full services into RTDB if node is completely empty
  */
 export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICES, forceOverwrite = false) => {
   try {
@@ -786,11 +978,9 @@ export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICE
     const servicesRef = ref(rtdb, 'services');
     const snap = await get(servicesRef);
     const existing = snap.val();
-    const isOldIncomplete = !snap.exists() || !existing || Object.keys(existing).length < 69 || Object.values(existing).some(s => 
-      !s.category || !s.price || s.category === 'Special Care' || s.category === 'Special'
-    );
+    const isCompletelyEmpty = !snap.exists() || !existing || Object.keys(existing).length === 0;
 
-    if (forceOverwrite || isOldIncomplete) {
+    if (forceOverwrite || isCompletelyEmpty) {
       const seedObj = {};
       initialServices.forEach(s => {
         seedObj[s.id] = {
@@ -800,6 +990,10 @@ export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICE
         };
       });
       await set(servicesRef, seedObj);
+      setLiveAdminCatalog(initialServices);
+      try {
+        localStorage.setItem('fabricare_admin_services', JSON.stringify(initialServices));
+      } catch (_) {}
       return initialServices;
     }
     return Object.values(existing);
@@ -822,9 +1016,12 @@ export const addAdminService = async (serviceData) => {
     name: serviceData.name || 'New Service',
     description: serviceData.description || '',
     category: serviceData.category || 'Wash & Fold',
+    subcategory: serviceData.subcategory || 'men',
+    subcategoryId: serviceData.subcategory || 'men',
     price: Number(serviceData.price) || 100,
-    turnaround: serviceData.turnaround || '1–2 days',
+    turnaround: serviceData.turnaround || '2–3 days',
     status: (serviceData.status === true || serviceData.status === 'Active') ? 'Active' : 'Inactive',
+    is_active: (serviceData.status === true || serviceData.status === 'Active'),
     icon: serviceData.icon || 'Shirt',
     type: serviceData.type || (Number(serviceData.price) > 200 ? 'Premium' : (String(serviceData.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard')),
     createdAt: Date.now(),
@@ -835,6 +1032,25 @@ export const addAdminService = async (serviceData) => {
   } catch (e) {
     console.warn('RTDB add service notice:', e);
   }
+
+  // Update in localStorage and live catalog
+  try {
+    const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
+    const next = [...cached, newService];
+    localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
+    setLiveAdminCatalog(next);
+  } catch (_) {}
+
+  // Sync to Django Backend
+  syncServiceToDjango('add', serviceId, newService);
+
+  // Dispatch local & cross-tab sync event
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('fabricare_admin_services_updated', {
+      detail: { type: 'add', serviceId, service: newService }
+    }));
+  }
+
   return newService;
 };
 
@@ -853,6 +1069,24 @@ export const updateAdminService = async (serviceId, updateFields) => {
     console.warn('RTDB update service notice:', e);
   }
 
+  // Update in localStorage and live catalog
+  try {
+    const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
+    const next = cached.map(s => String(s.id) === cleanId ? { ...s, ...updates } : s);
+    localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
+    setLiveAdminCatalog(next);
+  } catch (_) {}
+
+  // Sync to Django Backend
+  syncServiceToDjango('update', cleanId, updates);
+
+  // Dispatch local & cross-tab sync event
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('fabricare_admin_services_updated', {
+      detail: { type: 'update', serviceId: cleanId, updates }
+    }));
+  }
+
   return true;
 };
 
@@ -861,10 +1095,35 @@ export const updateAdminService = async (serviceId, updateFields) => {
  */
 export const deleteAdminService = async (serviceId) => {
   const cleanId = String(serviceId).trim();
+  const deleteUpdates = {
+    isDeleted: true,
+    status: 'Deleted',
+    is_active: false,
+    updatedAt: Date.now()
+  };
   try {
-    await set(ref(rtdb, `services/${cleanId}`), null);
+    // Mark as deleted in RTDB
+    await update(ref(rtdb, `services/${cleanId}`), deleteUpdates);
   } catch (e) {
     console.warn('RTDB delete service notice:', e);
+  }
+
+  // Update in localStorage and live catalog
+  try {
+    const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
+    const next = cached.filter(s => String(s.id) !== cleanId).map(s => String(s.id) === cleanId ? { ...s, ...deleteUpdates } : s);
+    localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
+    setLiveAdminCatalog(next);
+  } catch (_) {}
+
+  // Sync to Django Backend
+  syncServiceToDjango('delete', cleanId, deleteUpdates);
+
+  // Dispatch local & cross-tab sync event
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('fabricare_admin_services_updated', {
+      detail: { type: 'delete', serviceId: cleanId }
+    }));
   }
 
   return true;
@@ -876,13 +1135,33 @@ export const deleteAdminService = async (serviceId) => {
 export const toggleAdminServiceStatus = async (serviceId, currentStatus) => {
   const cleanId = String(serviceId).trim();
   const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+  const updates = {
+    status: newStatus,
+    is_active: (newStatus === 'Active'),
+    updatedAt: Date.now()
+  };
   try {
-    await update(ref(rtdb, `services/${cleanId}`), {
-      status: newStatus,
-      updatedAt: Date.now()
-    });
+    await update(ref(rtdb, `services/${cleanId}`), updates);
   } catch (e) {
     console.warn('RTDB toggle service status notice:', e);
+  }
+
+  // Update in localStorage and live catalog
+  try {
+    const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
+    const next = cached.map(s => String(s.id) === cleanId ? { ...s, ...updates } : s);
+    localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
+    setLiveAdminCatalog(next);
+  } catch (_) {}
+
+  // Sync to Django Backend
+  syncServiceToDjango('toggle', cleanId, updates);
+
+  // Dispatch local & cross-tab sync event
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('fabricare_admin_services_updated', {
+      detail: { type: 'toggle', serviceId: cleanId, status: newStatus }
+    }));
   }
 
   return newStatus;
@@ -974,6 +1253,11 @@ export const fetchAdminServicesOnce = async () => {
     } else if (cat === 'Special Care' || cat === 'Special') {
       cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
     }
+    const defMatch = DEFAULT_SERVICES.find(d => (d.code && d.code === item.code) || d.name === item.name || String(d.id) === String(item.id));
+    const applicableServices = item.applicableServices || item.services || defMatch?.applicableServices || ['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing'];
+    const expressPrice = item.expressPrice || defMatch?.expressPrice || (Number(item.price) * 2);
+    const expressPrices = item.expressPrices || defMatch?.expressPrices || {};
+
     return {
       ...item,
       price: Number(item.price) || 0,
@@ -982,8 +1266,14 @@ export const fetchAdminServicesOnce = async () => {
       subcategory: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
       subcategoryId: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
       subcatName: item.subcatName || (item.subcategory ? item.subcategory.charAt(0).toUpperCase() + item.subcategory.slice(1) : (cat === 'Household' ? 'Household' : 'Men')),
-      turnaround: item.turnaround || item.turnaround_time || '1–2 days',
-      type: item.type || (Number(item.price) > 200 ? 'Premium' : (String(item.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard'))
+      turnaround: item.turnaround && !String(item.turnaround).includes('1') ? item.turnaround : '2–3 days',
+      type: item.type || (Number(item.price) > 200 ? 'Premium' : 'Standard'),
+      services: applicableServices,
+      applicableServices,
+      isExpressAvailable: true,
+      expressPrice,
+      expressPrices,
+      expressTurnaround: '24 hours'
     };
   });
 };

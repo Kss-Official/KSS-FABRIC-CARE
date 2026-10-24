@@ -20,6 +20,11 @@ import {
   Upload,
   Image as ImageIcon
 } from 'lucide-react';
+import { 
+  isItemApplicableToService, 
+  getItemBasePrice, 
+  getExpressItemPrice 
+} from '../../data/pricingData';
 
 // Exact SVG icons matching Reference Image 2
 const HangerIcon = ({ color = '#2563EB' }) => (
@@ -74,11 +79,15 @@ const CurtainWindowIcon = () => (
   </svg>
 );
 
-// Turnaround helper to guarantee clean "1–2 days" format
+// Turnaround helper to guarantee clean "2–3 days" or "24 hours" format
 const formatTurnaround = (val) => {
-  if (!val) return '1–2 days';
-  return String(val)
-    .replace(/\?{1,2}|--|—/g, '–')
+  if (!val) return '2–3 days';
+  const str = String(val).trim();
+  if (str.includes('1') && (str.toLowerCase().includes('day'))) {
+    return '2–3 days';
+  }
+  return str
+    .replace(/\s*-\s*|\?{1,2}|--|—/g, '–')
     .replace(/days?/i, 'days')
     .trim();
 };
@@ -117,7 +126,7 @@ export const AdminServicesPage = () => {
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [serviceFilter, setServiceFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
 
   // Selection & Pagination
@@ -157,7 +166,7 @@ export const AdminServicesPage = () => {
     name: '',
     category: 'Wash & Fold',
     price: '',
-    turnaround: '1–2 days',
+    turnaround: '2–3 days',
     status: 'Active',
     description: '',
     image: null
@@ -193,22 +202,86 @@ export const AdminServicesPage = () => {
     };
   }, [editingService]);
 
-  // Dynamic Metrics Calculation
-  const totalServices = services.length;
-  const activeServices = services.filter(s => s.status === 'Active').length;
-  const inactiveServices = services.filter(s => s.status === 'Inactive').length;
-  const avgPrice = totalServices > 0 
-    ? Math.round(services.reduce((acc, s) => acc + (Number(s.price) || 0), 0) / totalServices) 
-    : 0;
+  // Four categories: Household, Men, Women, Kids
+  const ITEM_CATEGORIES = ['Household', 'Men', 'Women', 'Kids'];
 
-  // Dynamic Category options
-  const availableCategories = useMemo(() => {
-    const baseCats = ['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing', 'Household', 'Men', 'Women', 'Kids'];
-    const dynamicCats = services.map(s => s.category).filter(Boolean);
-    const dynamicSubs = services.map(s => s.subcatName || (s.subcategory ? s.subcategory.charAt(0).toUpperCase() + s.subcategory.slice(1) : null)).filter(Boolean);
-    return Array.from(new Set([...baseCats, ...dynamicCats, ...dynamicSubs]))
-      .filter(cat => cat !== 'Special Care' && cat !== 'Special');
-  }, [services]);
+  // All Services options
+  const SERVICE_OPTIONS = [
+    'Wash & Fold',
+    'Wash & Iron',
+    'Dry Cleaning',
+    'Steam Iron',
+    'Express Laundry'
+  ];
+
+  // Helper to retrieve dynamic display category, price, and turnaround based on selected service filter
+  const getItemDisplayInfo = (service, activeService = serviceFilter) => {
+    const sFilter = (activeService || '').toLowerCase().trim();
+    const isExpress = sFilter.includes('express');
+    const isWashIron = sFilter.includes('iron') && sFilter.includes('wash');
+    const isDryClean = sFilter.includes('dry');
+    const isSteamIron = sFilter.includes('iron') && !sFilter.includes('wash');
+    const isWashFold = sFilter.includes('fold');
+
+    if (isExpress) {
+      const price = service.expressPrice || (service.prices && service.prices['express-laundry']) || (Number(service.price) * 2);
+      return {
+        category: service.category,
+        price,
+        turnaround: '24 hours',
+        isExpress: true,
+        basePrice: service.price
+      };
+    }
+
+    if (isWashIron) {
+      const price = service.prices?.['wash-iron'] || getItemBasePrice(service, 'wash-iron');
+      return {
+        category: 'Wash & Iron',
+        price,
+        turnaround: '2–3 days',
+        isExpress: false
+      };
+    }
+
+    if (isDryClean) {
+      const price = service.prices?.['dry-cleaning'] || getItemBasePrice(service, 'dry-cleaning');
+      return {
+        category: 'Dry Cleaning',
+        price,
+        turnaround: '2–3 days',
+        isExpress: false
+      };
+    }
+
+    if (isSteamIron) {
+      const price = service.prices?.['steam-iron'] || getItemBasePrice(service, 'steam-iron');
+      return {
+        category: 'Steam Iron',
+        price,
+        turnaround: '2–3 days',
+        isExpress: false
+      };
+    }
+
+    if (isWashFold) {
+      const price = service.prices?.['wash-fold'] || getItemBasePrice(service, 'wash-fold');
+      return {
+        category: 'Wash & Fold',
+        price,
+        turnaround: '2–3 days',
+        isExpress: false
+      };
+    }
+
+    // Default: 'all' services selected
+    return {
+      category: service.category,
+      price: service.price,
+      turnaround: formatTurnaround(service.turnaround),
+      isExpress: false
+    };
+  };
 
   // Sorted Services to maintain catalog order (1: Shirt, 2: Jeans, ..., 8: Curtain)
   const sortedServices = useMemo(() => {
@@ -222,31 +295,67 @@ export const AdminServicesPage = () => {
   // Filtered Services
   const filteredServices = useMemo(() => {
     return sortedServices.filter(s => {
+      // 1. Status Filter
       if (statusFilter !== 'all' && (s.status || '').toLowerCase() !== statusFilter.toLowerCase()) return false;
-      if (typeFilter !== 'all') {
-        const itemType = (s.type || (Number(s.price) > 200 ? 'Premium' : (String(s.name || '').toLowerCase().includes('express') || String(s.category || '').toLowerCase().includes('express') ? 'Express' : 'Standard'))).toLowerCase();
-        if (itemType !== typeFilter.toLowerCase()) return false;
+      
+      // 2. Service Filter (All Services, Wash & Fold, Wash & Iron, Dry Cleaning, Steam Iron, Express Laundry)
+      if (serviceFilter !== 'all') {
+        const sFilter = serviceFilter.toLowerCase().trim();
+        if (sFilter.includes('express')) {
+          const supportsExpress = s.isExpressAvailable !== false || 
+            (s.prices && s.prices['express-laundry'] != null) || 
+            (Array.isArray(s.applicableServices) && s.applicableServices.length > 0) ||
+            s.type === 'Express';
+          if (!supportsExpress) return false;
+        } else if (sFilter.includes('iron') && sFilter.includes('wash')) {
+          if (!isItemApplicableToService(s, 'wash-iron')) return false;
+        } else if (sFilter.includes('dry')) {
+          if (!isItemApplicableToService(s, 'dry-cleaning')) return false;
+        } else if (sFilter.includes('iron')) {
+          if (!isItemApplicableToService(s, 'steam-iron')) return false;
+        } else if (sFilter.includes('fold')) {
+          if (!isItemApplicableToService(s, 'wash-fold')) return false;
+        }
       }
+
+      // 3. Category Filter (Household, Men, Women, Kids)
       if (categoryFilter !== 'all') {
-        const catNorm = (s.category || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const subNorm = (s.subcatName || s.subcategory || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const targetNorm = categoryFilter.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const matchesCat = catNorm.includes(targetNorm) || targetNorm.includes(catNorm);
-        const matchesSub = subNorm.includes(targetNorm) || targetNorm.includes(subNorm);
-        if (!matchesCat && !matchesSub) return false;
+        const catNorm = (s.category || '').toLowerCase().trim();
+        const subNorm = (s.subcatName || s.subcategory || '').toLowerCase().trim();
+        const targetNorm = categoryFilter.toLowerCase().trim();
+        const matchesSubcat = subNorm === targetNorm;
+        const matchesCategory = catNorm === targetNorm;
+
+        if (!matchesSubcat && !matchesCategory) return false;
       }
+
+      // 4. Search Filter
       if (searchTerm && searchTerm.trim()) {
         const query = searchTerm.toLowerCase().trim();
         const matchesName = s.name?.toLowerCase().includes(query);
         const matchesDesc = s.description && s.description.toLowerCase().includes(query);
         const matchesCat = s.category?.toLowerCase().includes(query);
         const matchesSub = (s.subcatName || s.subcategory || '')?.toLowerCase().includes(query);
-        const matchesPrice = String(s.price).includes(query);
-        if (!matchesName && !matchesDesc && !matchesCat && !matchesSub && !matchesPrice) return false;
+        const info = getItemDisplayInfo(s);
+        const matchesPrice = String(info.price).includes(query) || String(s.price).includes(query);
+        const matchesServices = Array.isArray(s.applicableServices) && s.applicableServices.some(svc => svc.toLowerCase().includes(query));
+        if (!matchesName && !matchesDesc && !matchesCat && !matchesSub && !matchesPrice && !matchesServices) return false;
       }
+
       return true;
     });
-  }, [sortedServices, statusFilter, typeFilter, categoryFilter, searchTerm]);
+  }, [sortedServices, statusFilter, serviceFilter, categoryFilter, searchTerm]);
+
+  // Dynamic Metrics Calculation reflecting Active Filters & Services
+  const totalServices = filteredServices.length;
+  const activeServices = filteredServices.filter(s => s.status === 'Active').length;
+  const inactiveServices = filteredServices.filter(s => s.status === 'Inactive').length;
+  const avgPrice = filteredServices.length > 0 
+    ? Math.round(filteredServices.reduce((acc, s) => {
+        const info = getItemDisplayInfo(s);
+        return acc + (Number(info.price) || 0);
+      }, 0) / filteredServices.length) 
+    : 0;
 
   // Paginated Services
   const totalPages = Math.max(1, Math.ceil(filteredServices.length / itemsPerPage));
@@ -279,7 +388,7 @@ export const AdminServicesPage = () => {
   const handleReset = () => {
     setSearchTerm('');
     setStatusFilter('all');
-    setTypeFilter('all');
+    setServiceFilter('all');
     setCategoryFilter('all');
     setCurrentPage(1);
   };
@@ -303,10 +412,27 @@ export const AdminServicesPage = () => {
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!editingService) return;
+
+    const catKey = editForm.category === 'Wash & Iron' ? 'wash-iron'
+      : editForm.category === 'Dry Cleaning' ? 'dry-cleaning'
+      : (editForm.category === 'Steam Iron' || editForm.category === 'Steam Ironing') ? 'steam-iron'
+      : 'wash-fold';
+
+    const updatedPrices = { ...(editingService.prices || {}) };
+    const editedPriceNum = Number(editForm.price) || editingService.price;
+    updatedPrices[catKey] = editedPriceNum;
+    updatedPrices['express-laundry'] = editedPriceNum * 2;
+
     const updated = {
       name: editForm.name,
       category: editForm.category,
-      price: Number(editForm.price) || editingService.price,
+      price: editedPriceNum,
+      prices: updatedPrices,
+      expressPrice: editedPriceNum * 2,
+      code: editingService.code,
+      subcategory: editingService.subcategory,
+      subcategoryId: editingService.subcategoryId,
+      subcatName: editingService.subcatName,
       turnaround: editForm.turnaround,
       status: editForm.status,
       description: editForm.description,
@@ -549,26 +675,26 @@ export const AdminServicesPage = () => {
             <ChevronDown size={14} strokeWidth={2} className="select-picker-arrow" />
           </div>
 
-          {/* Type Dropdown */}
+          {/* Service Dropdown (Replaces All Types filter) */}
           <div className="select-picker-wrap">
             <select 
               className="select-picker-input"
-              value={typeFilter}
+              value={serviceFilter}
               onChange={(e) => {
-                setTypeFilter(e.target.value);
+                setServiceFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              aria-label="Filter by Type"
+              aria-label="Filter by Service"
             >
-              <option value="all">All Types</option>
-              <option value="Standard">Standard</option>
-              <option value="Premium">Premium</option>
-              <option value="Express">Express</option>
+              <option value="all">All Services</option>
+              {SERVICE_OPTIONS.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
             </select>
             <ChevronDown size={14} strokeWidth={2} className="select-picker-arrow" />
           </div>
 
-          {/* Category Dropdown */}
+          {/* Category Dropdown: All Items + Household, Men, Women, Kids */}
           <div className="select-picker-wrap">
             <select 
               className="select-picker-input"
@@ -577,10 +703,10 @@ export const AdminServicesPage = () => {
                 setCategoryFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              aria-label="Filter by Service"
+              aria-label="Filter by Category"
             >
-              <option value="all">All Services</option>
-              {availableCategories.map(cat => (
+              <option value="all">All Items</option>
+              {ITEM_CATEGORIES.map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
@@ -640,15 +766,17 @@ export const AdminServicesPage = () => {
                 currentServices.map((service) => {
                   const isChecked = selectedIds.includes(service.id);
                   const isMenuOpen = openActionMenuId === service.id;
-                  const catStyle = getCategoryPillStyle(service.category);
                   const isActive = service.status === 'Active';
+
+                  const displayInfo = getItemDisplayInfo(service);
+                  const catStyle = getCategoryPillStyle(displayInfo.category);
 
                   return (
                     <tr key={service.id} className={isChecked ? 'row-selected' : ''}>
                       {/* Checkbox */}
                       <td style={{ textAlign: 'center' }}>
                         <input 
-                          type="checkbox"
+                          type="checkbox" 
                           className="checkbox-custom"
                           checked={isChecked}
                           onChange={() => toggleSelectRow(service.id)}
@@ -672,24 +800,56 @@ export const AdminServicesPage = () => {
                         </div>
                       </td>
 
-                      {/* Category */}
+                      {/* Category / Services */}
                       <td>
-                        <span 
-                          className="badge-pill" 
-                          style={catStyle}
-                        >
-                          {service.category}
-                        </span>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                          <span 
+                            className="badge-pill" 
+                            style={catStyle}
+                          >
+                            {displayInfo.category}
+                          </span>
+                          {displayInfo.isExpress && (
+                            <span 
+                              className="badge-pill" 
+                              style={{ 
+                                background: '#ECFEFF', 
+                                color: '#0891B2', 
+                                fontWeight: 700, 
+                                fontSize: '11px',
+                                padding: '3px 8px',
+                                borderRadius: '999px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                            >
+                              ⚡ Express
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Price */}
                       <td>
-                        <span className="service-price-val">₹{service.price}</span>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+                          <span className="service-price-val">₹{displayInfo.price}</span>
+                          {displayInfo.isExpress && displayInfo.basePrice && Number(displayInfo.price) !== Number(displayInfo.basePrice) && (
+                            <span style={{ fontSize: '11px', color: '#94A3B8', textDecoration: 'line-through' }}>
+                              ₹{displayInfo.basePrice}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Turnaround Time */}
                       <td>
-                        <span className="service-turnaround-val">{formatTurnaround(service.turnaround)}</span>
+                        <span 
+                          className="service-turnaround-val" 
+                          style={displayInfo.isExpress ? { color: '#059669', fontWeight: 600 } : {}}
+                        >
+                          {displayInfo.turnaround}
+                        </span>
                       </td>
 
                       {/* Status */}
@@ -878,7 +1038,7 @@ export const AdminServicesPage = () => {
                     value={editForm.category}
                     onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                   >
-                    {availableCategories.map(cat => (
+                    {['Wash & Fold', 'Wash & Iron', 'Dry Cleaning', 'Steam Ironing', 'Household'].map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>

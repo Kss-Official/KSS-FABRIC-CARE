@@ -169,10 +169,26 @@ export const getActiveStepIndex = (status, stage) => {
 };
 
 export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
-  const { updateOrderStatus, setIsAssignOrderModalOpen, setAssigningOrder } = useAdmin();
+  const { updateOrderStatus, setIsAssignOrderModalOpen, setAssigningOrder, orders: contextOrders } = useAdmin();
   const [currentStatus, setCurrentStatus] = useState(order?.status || 'Pending Pickup');
   const [isUpdating, setIsUpdating] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState(null);
+  const [modalTick, setModalTick] = useState(0);
+
+  // Real-time synchronization across events (assignment, updates, storage)
+  useEffect(() => {
+    const handleSync = () => setModalTick(t => t + 1);
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('fabricare_order_assigned', handleSync);
+    window.addEventListener('fabricare_order_updated', handleSync);
+    window.addEventListener('fabricare_pickup_delivery_updated', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('fabricare_order_assigned', handleSync);
+      window.removeEventListener('fabricare_order_updated', handleSync);
+      window.removeEventListener('fabricare_pickup_delivery_updated', handleSync);
+    };
+  }, []);
 
   // Lock body scroll while OrderProcessingModal is open
   useEffect(() => {
@@ -437,9 +453,94 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
   const customerName = order?.customer?.name || order?.customer_name || 'Customer';
   const customerPhone = order?.customer?.phone || order?.customer_phone || '+91 98765 43210';
   const customerAddress = order?.customer?.address || order?.pickup_address || 'Bengaluru, Karnataka';
-  const orderAmount = order?.amount || order?.total_amount || 0;
-  const paymentStatus = order?.payment || 'Paid';
-  const driverName = order?.driver || 'Not Assigned';
+  const orderAmount = order?.amount ?? order?.total_amount ?? order?.total ?? 0;
+  const paymentStatus = order?.payment || (order?.paymentStatus === 'Pending' ? 'Pending' : 'Paid');
+  const cleanId = String(order?.id || order?.order_number || order?.order_id || '').replace(/^#/, '');
+
+  const persistedAssignments = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('fabricare_pickup_delivery_assignments') || '{}');
+    } catch (_) {
+      return {};
+    }
+  }, [modalTick, order?.id]);
+
+  const persistedMatch = useMemo(() => {
+    if (!cleanId) return null;
+    return (
+      persistedAssignments[cleanId] ||
+      persistedAssignments[`#${cleanId}`] ||
+      persistedAssignments[order?.id] ||
+      persistedAssignments[order?.rawId] ||
+      persistedAssignments[order?.order_number] ||
+      persistedAssignments[order?.order_id] ||
+      null
+    );
+  }, [persistedAssignments, cleanId, order]);
+
+  // Context order fallback
+  const liveContextOrder = useMemo(() => {
+    if (!contextOrders || !cleanId) return null;
+    return contextOrders.find(co => {
+      const coId = String(co.id || co.order_number || co.order_id || '').replace(/^#/, '');
+      return coId === cleanId || co.rawId === order?.rawId;
+    });
+  }, [contextOrders, cleanId, order]);
+
+  const { riderName, riderPhone, isRiderAssigned } = useMemo(() => {
+    let name = '';
+    let phone = '';
+
+    if (persistedMatch && persistedMatch.driverName) {
+      name = persistedMatch.driverName;
+      phone = persistedMatch.driverPhone || '';
+    } else if (order?.assignedAgentName) {
+      name = order.assignedAgentName;
+      phone = order.assignedAgentPhone || '';
+    } else if (order?.assigned_pickup_driver_detail?.full_name) {
+      name = order.assigned_pickup_driver_detail.full_name;
+      phone = order.assigned_pickup_driver_detail.phone || '';
+    } else if (order?.assigned_delivery_driver_detail?.full_name) {
+      name = order.assigned_delivery_driver_detail.full_name;
+      phone = order.assigned_delivery_driver_detail.phone || '';
+    } else if (order?.driver && typeof order.driver === 'object') {
+      name = order.driver.name || '';
+      phone = order.driver.phone || '';
+    } else if (order?.driver && typeof order.driver === 'string' && order.driver !== 'Not Assigned' && order.driver !== '—') {
+      const match = String(order.driver).match(/^(.*?)\s*\((.*?)\)$/);
+      name = match ? match[1].trim() : order.driver;
+      phone = match ? match[2].trim() : '';
+    } else if (order?.assigned_pickup_driver && typeof order.assigned_pickup_driver === 'string' && order.assigned_pickup_driver !== 'Not Assigned') {
+      name = order.assigned_pickup_driver;
+    }
+
+    // Check liveContextOrder if still not found
+    if (!name && liveContextOrder) {
+      if (liveContextOrder.assignedAgentName) {
+        name = liveContextOrder.assignedAgentName;
+        phone = liveContextOrder.assignedAgentPhone || '';
+      } else if (liveContextOrder.assigned_pickup_driver_detail?.full_name) {
+        name = liveContextOrder.assigned_pickup_driver_detail.full_name;
+        phone = liveContextOrder.assigned_pickup_driver_detail.phone || '';
+      } else if (liveContextOrder.driver && typeof liveContextOrder.driver === 'object') {
+        name = liveContextOrder.driver.name || '';
+        phone = liveContextOrder.driver.phone || '';
+      } else if (liveContextOrder.driver && typeof liveContextOrder.driver === 'string' && liveContextOrder.driver !== 'Not Assigned' && liveContextOrder.driver !== '—') {
+        const match = String(liveContextOrder.driver).match(/^(.*?)\s*\((.*?)\)$/);
+        name = match ? match[1].trim() : liveContextOrder.driver;
+        phone = match ? match[2].trim() : '';
+      }
+    }
+
+    const assigned = Boolean(name && name !== 'Not Assigned' && name !== '—');
+    return {
+      riderName: assigned ? name : 'Not Assigned',
+      riderPhone: phone,
+      isRiderAssigned: assigned
+    };
+  }, [persistedMatch, order, liveContextOrder]);
+
+  const driverName = riderName;
 
   const modalContent = (
     <div className="order-proc-modal-backdrop animate-fade-in" onClick={onClose}>
@@ -600,20 +701,48 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
                 <div className="logistic-item">
                   <Truck size={16} className="item-icon-slate" />
                   <div className="logistic-text">
-                    <span className="logistic-lbl">Assigned Logistics Driver:</span>
+                    <span className="logistic-lbl">Assigned Rider:</span>
                     <div className="driver-row">
-                      <strong className="logistic-val">{driverName}</strong>
-                      <button 
-                        type="button" 
-                        className="change-driver-btn"
-                        onClick={() => {
-                          setAssigningOrder(order);
-                          setIsAssignOrderModalOpen(true);
-                        }}
-                      >
-                        <UserCheck size={13} />
-                        <span>{driverName === 'Not Assigned' ? 'Assign Driver' : 'Change'}</span>
-                      </button>
+                      <div className="driver-details-stack" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <strong className="logistic-val" style={{ color: isRiderAssigned ? '#0F172A' : '#64748B' }}>
+                            {riderName}
+                          </strong>
+                          {isRiderAssigned && (
+                            <span 
+                              style={{ 
+                                fontSize: '0.6875rem', 
+                                fontWeight: 600, 
+                                background: '#ECFDF5', 
+                                color: '#047857', 
+                                padding: '2px 8px', 
+                                borderRadius: '12px',
+                                border: '1px solid #A7F3D0'
+                              }}
+                            >
+                              Assigned
+                            </span>
+                          )}
+                        </div>
+                        {isRiderAssigned && riderPhone ? (
+                          <span className="driver-phone-sub" style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                            {riderPhone}
+                          </span>
+                        ) : null}
+                      </div>
+                      {!isRiderAssigned && (
+                        <button 
+                          type="button" 
+                          className="change-driver-btn"
+                          onClick={() => {
+                            setAssigningOrder(order);
+                            setIsAssignOrderModalOpen(true);
+                          }}
+                        >
+                          <UserCheck size={13} />
+                          <span>Assign Rider</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

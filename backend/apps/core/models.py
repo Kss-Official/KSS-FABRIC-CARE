@@ -26,7 +26,7 @@ class Service(models.Model):
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     unit = models.CharField(max_length=50, default='per piece')
-    turnaround_time = models.CharField(max_length=100, default='1-2 days')
+    turnaround_time = models.CharField(max_length=100, default='2–3 days')
     icon = models.CharField(max_length=50, default='shirt')
     image_url = models.CharField(max_length=500, blank=True, null=True)
     is_active = models.BooleanField(default=True)

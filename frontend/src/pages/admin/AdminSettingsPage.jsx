@@ -3,10 +3,6 @@ import { useAdmin } from '../../context/AdminContext';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Upload, 
-  ShoppingBag, 
-  MessageSquare, 
-  Truck, 
-  Share2,
   Eye, 
   EyeOff, 
   CheckCircle2,
@@ -15,9 +11,9 @@ import {
   Linkedin,
   ExternalLink,
   Trash2,
-  X,
   Camera,
-  ChevronDown
+  ChevronDown,
+  Edit3
 } from 'lucide-react';
 
 export const AdminSettingsPage = () => {
@@ -27,7 +23,21 @@ export const AdminSettingsPage = () => {
   const photoDropdownRef = useRef(null);
 
   const [photoDropdownOpen, setPhotoDropdownOpen] = useState(false);
-  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [localPhoto, setLocalPhoto] = useState(null);
+  const [photoVersion, setPhotoVersion] = useState(() => Date.now());
+
+  useEffect(() => {
+    const handleProfileUpdate = (e) => {
+      if (e?.detail && e.detail.photoUrl !== undefined) {
+        setLocalPhoto(e.detail.photoUrl);
+        setPhotoVersion(Date.now());
+      }
+    };
+    window.addEventListener('fabricare_profile_updated', handleProfileUpdate);
+    return () => {
+      window.removeEventListener('fabricare_profile_updated', handleProfileUpdate);
+    };
+  }, []);
 
   const [form, setForm] = useState(() => ({
     name: settings?.name || userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name || 'Admin',
@@ -41,7 +51,7 @@ export const AdminSettingsPage = () => {
     facebook: settings?.facebook || 'https://facebook.com/fabricare',
     twitter: settings?.twitter || 'https://x.com/fabricare',
     linkedin: settings?.linkedin || 'https://linkedin.com/company/fabricare',
-    photoUrl: settings?.photoUrl || userProfile?.avatarUrl || currentUser?.avatarUrl || '',
+    photoUrl: settings?.photoUrl !== undefined ? settings.photoUrl : (userProfile?.avatarUrl !== undefined ? userProfile.avatarUrl : (currentUser?.avatarUrl || '')),
     notifications: {
       newOrders: settings?.notifications?.newOrders ?? true,
       customerMessages: settings?.notifications?.customerMessages ?? true,
@@ -50,29 +60,83 @@ export const AdminSettingsPage = () => {
     }
   }));
 
+  // Card 1: Profile Information edit state
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [savedProfileValues, setSavedProfileValues] = useState(() => ({
+    name: settings?.name || userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name || 'Admin',
+    email: settings?.email || userProfile?.email || currentUser?.email || 'admin@fabricare.com',
+    phone: settings?.phone || userProfile?.phone || currentUser?.phone || '+91 98765 43210'
+  }));
+
+  // Card 2: Contact & Social Media edit state
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [isSavingContact, setIsSavingContact] = useState(false);
+  const [savedContactValues, setSavedContactValues] = useState(() => ({
+    supportEmail: settings?.supportEmail || 'support@fabricare.com',
+    supportPhone: settings?.supportPhone || '+91 98765 43210',
+    websiteUrl: settings?.websiteUrl || 'https://www.fabricare.com',
+    instagram: settings?.instagram || 'https://instagram.com/fabricare',
+    facebook: settings?.facebook || 'https://facebook.com/fabricare',
+    twitter: settings?.twitter || 'https://x.com/fabricare',
+    linkedin: settings?.linkedin || 'https://linkedin.com/company/fabricare'
+  }));
+
   // Synchronize form whenever settings or userProfile load from backend
   useEffect(() => {
     if (!settings && !userProfile && !currentUser) return;
+    const resolvedName = settings?.name || userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name || 'Admin';
+    const resolvedEmail = settings?.email || userProfile?.email || currentUser?.email || 'admin@fabricare.com';
+    const resolvedPhone = settings?.phone || userProfile?.phone || currentUser?.phone || '+91 98765 43210';
+    const resolvedRole = settings?.role || userProfile?.role || currentUser?.role || 'Administrator';
+    const resolvedSupportEmail = settings?.supportEmail || 'support@fabricare.com';
+    const resolvedSupportPhone = settings?.supportPhone || '+91 98765 43210';
+    const resolvedWebsiteUrl = settings?.websiteUrl || 'https://www.fabricare.com';
+    const resolvedInstagram = settings?.instagram || 'https://instagram.com/fabricare';
+    const resolvedFacebook = settings?.facebook || 'https://facebook.com/fabricare';
+    const resolvedTwitter = settings?.twitter || 'https://x.com/fabricare';
+    const resolvedLinkedin = settings?.linkedin || 'https://linkedin.com/company/fabricare';
+    const resolvedPhoto = settings?.photoUrl !== undefined 
+      ? settings.photoUrl 
+      : (userProfile?.avatarUrl !== undefined 
+          ? userProfile.avatarUrl 
+          : (currentUser?.avatarUrl !== undefined ? currentUser.avatarUrl : ''));
+
     setForm(prev => ({
       ...prev,
-      name: settings?.name || userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name || prev.name,
-      email: settings?.email || userProfile?.email || currentUser?.email || prev.email,
-      phone: settings?.phone || userProfile?.phone || currentUser?.phone || prev.phone,
-      role: settings?.role || userProfile?.role || currentUser?.role || prev.role,
-      supportEmail: settings?.supportEmail || prev.supportEmail,
-      supportPhone: settings?.supportPhone || prev.supportPhone,
-      websiteUrl: settings?.websiteUrl || prev.websiteUrl,
-      instagram: settings?.instagram || prev.instagram,
-      facebook: settings?.facebook || prev.facebook,
-      twitter: settings?.twitter || prev.twitter,
-      linkedin: settings?.linkedin || prev.linkedin,
-      photoUrl: settings?.photoUrl !== undefined ? settings.photoUrl : (userProfile?.avatarUrl || currentUser?.avatarUrl || prev.photoUrl),
-      notifications: {
-        ...prev.notifications,
-        ...(settings?.notifications || {})
-      }
+      name: isEditingProfile ? prev.name : resolvedName,
+      email: isEditingProfile ? prev.email : resolvedEmail,
+      phone: isEditingProfile ? prev.phone : resolvedPhone,
+      role: resolvedRole,
+      supportEmail: isEditingContact ? prev.supportEmail : resolvedSupportEmail,
+      supportPhone: isEditingContact ? prev.supportPhone : resolvedSupportPhone,
+      websiteUrl: isEditingContact ? prev.websiteUrl : resolvedWebsiteUrl,
+      instagram: isEditingContact ? prev.instagram : resolvedInstagram,
+      facebook: isEditingContact ? prev.facebook : resolvedFacebook,
+      twitter: isEditingContact ? prev.twitter : resolvedTwitter,
+      linkedin: isEditingContact ? prev.linkedin : resolvedLinkedin,
+      photoUrl: localPhoto !== null ? localPhoto : (prev.photoUrl || resolvedPhoto)
     }));
-  }, [settings, userProfile, currentUser]);
+
+    if (!isEditingProfile) {
+      setSavedProfileValues({
+        name: resolvedName,
+        email: resolvedEmail,
+        phone: resolvedPhone
+      });
+    }
+    if (!isEditingContact) {
+      setSavedContactValues({
+        supportEmail: resolvedSupportEmail,
+        supportPhone: resolvedSupportPhone,
+        websiteUrl: resolvedWebsiteUrl,
+        instagram: resolvedInstagram,
+        facebook: resolvedFacebook,
+        twitter: resolvedTwitter,
+        linkedin: resolvedLinkedin
+      });
+    }
+  }, [settings, userProfile, currentUser, isEditingProfile, isEditingContact]);
 
   const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' });
   const [showPwd, setShowPwd] = useState({ current: false, next: false, confirm: false });
@@ -96,6 +160,7 @@ export const AdminSettingsPage = () => {
     };
   }, [photoDropdownOpen]);
 
+
   const ensureUrl = (url) => {
     if (!url) return '';
     const trimmed = String(url).trim();
@@ -103,55 +168,257 @@ export const AdminSettingsPage = () => {
     return `https://${trimmed}`;
   };
 
-  // Handle Photo Upload
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setErrors(prev => ({ ...prev, photo: 'File size exceeds 5MB limit' }));
+  // Helper: Compress and resize image to guaranteed lightweight avatar size (~30-50KB)
+  // This eliminates WebSocket frame size errors in Firebase RTDB and prevents storage quota failures
+  const compressImage = (file, maxDimension = 500, quality = 0.88) => {
+    return new Promise((resolve) => {
+      if (!file || !file.type.startsWith('image/')) {
+        resolve('');
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = async () => {
-        const dataUrl = reader.result;
-        setForm(prev => ({ ...prev, photoUrl: dataUrl }));
-        await updateSettings({ photoUrl: dataUrl });
-        setErrors(prev => ({ ...prev, photo: '' }));
-        setToastMessage('Profile photo updated successfully!');
-        setSavedToast(true);
-        setTimeout(() => setSavedToast(false), 3500);
+      reader.onerror = () => resolve('');
+      reader.onload = (readerEvent) => {
+        const img = new Image();
+        img.onerror = () => resolve(readerEvent.target?.result || '');
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > maxDimension) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            }
+          } else {
+            if (height > maxDimension) {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(readerEvent.target?.result || '');
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressed);
+        };
+        img.src = readerEvent.target?.result;
       };
       reader.readAsDataURL(file);
-      e.target.value = '';
+    });
+  };
+
+  // Handle Photo Upload
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      setErrors(prev => ({ ...prev, photo: 'File size exceeds 15MB limit' }));
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    try {
+      const dataUrl = await compressImage(file, 500, 0.88);
+      if (!dataUrl) {
+        setErrors(prev => ({ ...prev, photo: 'Unable to process image file' }));
+        return;
+      }
+
+      // 1. Immediately update reactive state for zero-latency preview
+      setLocalPhoto(dataUrl);
+      setPhotoVersion(Date.now());
+      setForm(prev => ({ ...prev, photoUrl: dataUrl }));
+
+      // 2. Immediately save to localStorage caches
+      try {
+        const savedSettings = JSON.parse(localStorage.getItem('fabricare_admin_settings') || '{}');
+        savedSettings.photoUrl = dataUrl;
+        localStorage.setItem('fabricare_admin_settings', JSON.stringify(savedSettings));
+      } catch (_) {}
+      try {
+        const savedUser = JSON.parse(localStorage.getItem('fabricare_user') || '{}');
+        if (savedUser && typeof savedUser === 'object') {
+          savedUser.avatarUrl = dataUrl;
+          savedUser.avatar_url = dataUrl;
+          savedUser.photoUrl = dataUrl;
+          savedUser.photoURL = dataUrl;
+          localStorage.setItem('fabricare_user', JSON.stringify(savedUser));
+        }
+      } catch (_) {}
+
+      // 3. Immediately broadcast to header and all listening components
+      try {
+        window.dispatchEvent(new CustomEvent('fabricare_profile_updated', {
+          detail: { photoUrl: dataUrl }
+        }));
+      } catch (_) {}
+
+      // 4. Persist to backend contexts and RTDB
+      await updateSettings({ photoUrl: dataUrl });
+
+      setErrors(prev => ({ ...prev, photo: '' }));
+      setToastMessage('Profile photo updated successfully!');
+      setSavedToast(true);
+      setTimeout(() => setSavedToast(false), 3500);
+    } catch (err) {
+      console.error('Error uploading photo:', err);
+      setErrors(prev => ({ ...prev, photo: 'Failed to upload photo' }));
+    } finally {
+      if (e.target) e.target.value = '';
     }
   };
 
   // Handle Delete Photo
   const handleDeletePhoto = async () => {
     setPhotoDropdownOpen(false);
+    setLocalPhoto('');
+    setPhotoVersion(Date.now());
     setForm(prev => ({ ...prev, photoUrl: '' }));
-    await updateSettings({ photoUrl: '' });
-    setErrors(prev => ({ ...prev, photo: '' }));
-    setToastMessage('Profile photo removed.');
-    setSavedToast(true);
-    setTimeout(() => setSavedToast(false), 3000);
+
+    try {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+
+      try {
+        const savedSettings = JSON.parse(localStorage.getItem('fabricare_admin_settings') || '{}');
+        savedSettings.photoUrl = '';
+        localStorage.setItem('fabricare_admin_settings', JSON.stringify(savedSettings));
+      } catch (_) {}
+      try {
+        const savedUser = JSON.parse(localStorage.getItem('fabricare_user') || '{}');
+        if (savedUser && typeof savedUser === 'object') {
+          savedUser.avatarUrl = '';
+          savedUser.avatar_url = '';
+          savedUser.photoUrl = '';
+          savedUser.photoURL = '';
+          localStorage.setItem('fabricare_user', JSON.stringify(savedUser));
+        }
+      } catch (_) {}
+
+      try {
+        window.dispatchEvent(new CustomEvent('fabricare_profile_updated', {
+          detail: { photoUrl: '' }
+        }));
+      } catch (_) {}
+
+      await updateSettings({ photoUrl: '' });
+      setErrors(prev => ({ ...prev, photo: '' }));
+      setToastMessage('Profile photo removed successfully.');
+      setSavedToast(true);
+      setTimeout(() => setSavedToast(false), 3000);
+    } catch (err) {
+      console.error('Error removing photo:', err);
+    }
   };
 
-  // Toggle Notification Checkboxes
-  const handleToggleNotif = (key) => {
-    setForm(prev => {
-      const updated = {
-        ...prev,
-        notifications: {
-          ...prev.notifications,
-          [key]: !prev.notifications[key]
-        }
-      };
-      // Auto-persist notification preferences
-      updateSettings(updated);
-      return updated;
-    });
+  // Handle Card 1 Edit / Save
+  const handleCancelProfile = () => {
+    setForm(prev => ({
+      ...prev,
+      name: savedProfileValues.name,
+      email: savedProfileValues.email,
+      phone: savedProfileValues.phone
+    }));
+    setErrors(prev => ({ ...prev, name: '', email: '' }));
+    setIsEditingProfile(false);
   };
+
+  const handleSaveProfile = async () => {
+    const errs = {};
+    if (!form.name.trim()) errs.name = 'Name is required';
+    if (!form.email.trim()) {
+      errs.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      errs.email = 'Invalid email address';
+    }
+    if (Object.keys(errs).length > 0) {
+      setErrors(prev => ({ ...prev, ...errs }));
+      return;
+    }
+
+    try {
+      setIsSavingProfile(true);
+      await updateSettings({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        photoUrl: form.photoUrl
+      });
+      setSavedProfileValues({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim()
+      });
+      setIsEditingProfile(false);
+      setToastMessage('Profile information saved successfully!');
+      setSavedToast(true);
+      setTimeout(() => setSavedToast(false), 3500);
+    } catch (err) {
+      console.error('Error saving profile info:', err);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  // Handle Card 2 Edit / Save
+  const handleCancelContact = () => {
+    setForm(prev => ({
+      ...prev,
+      ...savedContactValues
+    }));
+    setErrors(prev => ({ ...prev, supportEmail: '' }));
+    setIsEditingContact(false);
+  };
+
+  const handleSaveContact = async () => {
+    const errs = {};
+    if (!form.supportEmail.trim()) {
+      errs.supportEmail = 'Email address is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.supportEmail.trim())) {
+      errs.supportEmail = 'Invalid email address';
+    }
+    if (Object.keys(errs).length > 0) {
+      setErrors(prev => ({ ...prev, ...errs }));
+      return;
+    }
+
+    try {
+      setIsSavingContact(true);
+      await updateSettings({
+        supportEmail: form.supportEmail.trim(),
+        supportPhone: form.supportPhone.trim(),
+        websiteUrl: form.websiteUrl.trim(),
+        instagram: form.instagram.trim(),
+        facebook: form.facebook.trim(),
+        twitter: form.twitter.trim(),
+        linkedin: form.linkedin.trim()
+      });
+      setSavedContactValues({
+        supportEmail: form.supportEmail.trim(),
+        supportPhone: form.supportPhone.trim(),
+        websiteUrl: form.websiteUrl.trim(),
+        instagram: form.instagram.trim(),
+        facebook: form.facebook.trim(),
+        twitter: form.twitter.trim(),
+        linkedin: form.linkedin.trim()
+      });
+      setIsEditingContact(false);
+      setToastMessage('Contact & social media details saved successfully!');
+      setSavedToast(true);
+      setTimeout(() => setSavedToast(false), 3500);
+    } catch (err) {
+      console.error('Error saving contact info:', err);
+    } finally {
+      setIsSavingContact(false);
+    }
+  };
+
 
   // Validation
   const validate = () => {
@@ -210,7 +477,44 @@ export const AdminSettingsPage = () => {
     }
   };
 
-  const avatarInitial = (form.name || 'Admin').trim().charAt(0).toUpperCase();
+  const avatarInitial = (form.name || settings?.name || 'Admin').trim().charAt(0).toUpperCase();
+
+  // Unified profile photo resolver: ensures Profile Photo Preview and Card Avatar ALWAYS display the exact same active photo
+  const getRawActivePhoto = () => {
+    // 1. Explicit local session action takes highest precedence
+    if (localPhoto !== null) {
+      return localPhoto;
+    }
+    // 2. Settings from backend / AdminContext
+    if (settings?.photoUrl) {
+      return settings.photoUrl;
+    }
+    // 3. Form photoUrl if non-empty
+    if (form.photoUrl) {
+      return form.photoUrl;
+    }
+    // 4. User profile / currentUser from AuthContext
+    if (userProfile?.avatarUrl) return userProfile.avatarUrl;
+    if (userProfile?.photoUrl) return userProfile.photoUrl;
+    if (currentUser?.avatarUrl) return currentUser.avatarUrl;
+    if (currentUser?.photoUrl) return currentUser.photoUrl;
+    // 5. LocalStorage as guaranteed instant fallback
+    try {
+      const savedAdmin = JSON.parse(localStorage.getItem('fabricare_admin_settings') || '{}');
+      if (savedAdmin?.photoUrl) return savedAdmin.photoUrl;
+      const savedUser = JSON.parse(localStorage.getItem('fabricare_user') || '{}');
+      if (savedUser?.avatarUrl) return savedUser.avatarUrl;
+      if (savedUser?.photoUrl) return savedUser.photoUrl;
+    } catch (_) {}
+    return '';
+  };
+
+  const rawActivePhoto = getRawActivePhoto();
+
+  // Attach cache buster to remote HTTP/HTTPS urls
+  const activeBackendPhoto = (rawActivePhoto && typeof rawActivePhoto === 'string' && !rawActivePhoto.startsWith('data:') && !rawActivePhoto.startsWith('blob:'))
+    ? `${rawActivePhoto}${rawActivePhoto.includes('?') ? '&' : '?'}v=${photoVersion}`
+    : rawActivePhoto;
 
   return (
     <div className="as-page-container">
@@ -225,9 +529,42 @@ export const AdminSettingsPage = () => {
         {/* Card 1: Profile Information */}
         {/* ======================================================== */}
         <div className="as-card">
-          <div className="as-card-header">
-            <h2 className="as-card-title">Profile Information</h2>
-            <p className="as-card-subtitle">Update your profile details and profile picture.</p>
+          <div className="as-card-header as-card-header-flex">
+            <div>
+              <h2 className="as-card-title">Profile Information</h2>
+              <p className="as-card-subtitle">Update your profile details and profile picture.</p>
+            </div>
+            <div className="as-card-header-actions">
+              {!isEditingProfile ? (
+                <button 
+                  type="button" 
+                  className="as-btn-edit"
+                  onClick={() => setIsEditingProfile(true)}
+                  aria-label="Edit Profile Information"
+                >
+                  <Edit3 size={14} />
+                  <span>Edit</span>
+                </button>
+              ) : (
+                <div className="as-btn-edit-group">
+                  <button 
+                    type="button" 
+                    className="as-btn-cancel"
+                    onClick={handleCancelProfile}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="as-btn-save-inline"
+                    onClick={handleSaveProfile}
+                    disabled={isSavingProfile}
+                  >
+                    {isSavingProfile ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="as-profile-layout">
@@ -237,10 +574,15 @@ export const AdminSettingsPage = () => {
                 <div 
                   className="as-avatar-circle"
                   onClick={() => setPhotoDropdownOpen(prev => !prev)}
-                  title={form.photoUrl ? "Click to manage photo" : "Click to upload photo"}
+                  title={activeBackendPhoto ? "Click to manage photo" : "Click to upload photo"}
                 >
-                  {form.photoUrl ? (
-                    <img src={form.photoUrl} alt="Profile" className="as-avatar-img" />
+                  {activeBackendPhoto ? (
+                    <img 
+                      key={`card-${photoVersion}`}
+                      src={activeBackendPhoto} 
+                      alt="Profile" 
+                      className="as-avatar-img" 
+                    />
                   ) : (
                     <span>{avatarInitial}</span>
                   )}
@@ -273,7 +615,7 @@ export const AdminSettingsPage = () => {
                   aria-expanded={photoDropdownOpen}
                 >
                   <Upload size={14} strokeWidth={2.2} />
-                  <span>{form.photoUrl ? 'Change Photo' : 'Upload Photo'}</span>
+                  <span>{activeBackendPhoto ? 'Change Photo' : 'Upload Photo'}</span>
                   <ChevronDown size={14} className={`as-photo-chevron ${photoDropdownOpen ? 'rotated' : ''}`} />
                 </button>
 
@@ -296,26 +638,8 @@ export const AdminSettingsPage = () => {
                       </div>
                     </button>
 
-                    {form.photoUrl && (
-                      <button 
-                        type="button" 
-                        className="as-photo-dropdown-item"
-                        onClick={() => {
-                          setPhotoDropdownOpen(false);
-                          setPreviewModalOpen(true);
-                        }}
-                      >
-                        <div className="as-dropdown-icon-box as-icon-view">
-                          <Eye size={14} strokeWidth={2.2} />
-                        </div>
-                        <div className="as-dropdown-item-text">
-                          <span className="as-item-title">Preview photo</span>
-                          <span className="as-item-desc">View full size</span>
-                        </div>
-                      </button>
-                    )}
 
-                    {form.photoUrl && (
+                    {activeBackendPhoto && (
                       <>
                         <div className="as-photo-dropdown-divider" />
                         <button 
@@ -350,6 +674,7 @@ export const AdminSettingsPage = () => {
                   </label>
                   <input 
                     type="text" 
+                    disabled={!isEditingProfile}
                     className={`as-input ${errors.name ? 'as-input-error' : ''}`}
                     value={form.name}
                     onChange={(e) => {
@@ -367,6 +692,7 @@ export const AdminSettingsPage = () => {
                   </label>
                   <input 
                     type="email" 
+                    disabled={!isEditingProfile}
                     className={`as-input ${errors.email ? 'as-input-error' : ''}`}
                     value={form.email}
                     onChange={(e) => {
@@ -382,6 +708,7 @@ export const AdminSettingsPage = () => {
                   <label className="as-label">Phone Number</label>
                   <input 
                     type="tel" 
+                    disabled={!isEditingProfile}
                     className="as-input"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -407,9 +734,42 @@ export const AdminSettingsPage = () => {
         {/* Card 2: Contact & Social Media */}
         {/* ======================================================== */}
         <div className="as-card">
-          <div className="as-card-header">
-            <h2 className="as-card-title">Contact & Social Media</h2>
-            <p className="as-card-subtitle">Add your contact information and social media links.</p>
+          <div className="as-card-header as-card-header-flex">
+            <div>
+              <h2 className="as-card-title">Contact & Social Media</h2>
+              <p className="as-card-subtitle">Add your contact information and social media links.</p>
+            </div>
+            <div className="as-card-header-actions">
+              {!isEditingContact ? (
+                <button 
+                  type="button" 
+                  className="as-btn-edit"
+                  onClick={() => setIsEditingContact(true)}
+                  aria-label="Edit Contact & Social Media"
+                >
+                  <Edit3 size={14} />
+                  <span>Edit</span>
+                </button>
+              ) : (
+                <div className="as-btn-edit-group">
+                  <button 
+                    type="button" 
+                    className="as-btn-cancel"
+                    onClick={handleCancelContact}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="as-btn-save-inline"
+                    onClick={handleSaveContact}
+                    disabled={isSavingContact}
+                  >
+                    {isSavingContact ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="as-contact-grid">
@@ -422,6 +782,7 @@ export const AdminSettingsPage = () => {
                 </label>
                 <input 
                   type="email" 
+                  disabled={!isEditingContact}
                   className={`as-input ${errors.supportEmail ? 'as-input-error' : ''}`}
                   value={form.supportEmail}
                   onChange={(e) => {
@@ -437,6 +798,7 @@ export const AdminSettingsPage = () => {
                 <label className="as-label">Phone Number</label>
                 <input 
                   type="tel" 
+                  disabled={!isEditingContact}
                   className="as-input"
                   value={form.supportPhone}
                   onChange={(e) => setForm({ ...form, supportPhone: e.target.value })}
@@ -462,6 +824,7 @@ export const AdminSettingsPage = () => {
                 </div>
                 <input 
                   type="text" 
+                  disabled={!isEditingContact}
                   className="as-input"
                   value={form.websiteUrl}
                   onChange={(e) => setForm({ ...form, websiteUrl: e.target.value })}
@@ -501,6 +864,7 @@ export const AdminSettingsPage = () => {
                 </div>
                 <input 
                   type="text" 
+                  disabled={!isEditingContact}
                   className="as-input"
                   value={form.instagram}
                   onChange={(e) => setForm({ ...form, instagram: e.target.value })}
@@ -537,6 +901,7 @@ export const AdminSettingsPage = () => {
                 </div>
                 <input 
                   type="text" 
+                  disabled={!isEditingContact}
                   className="as-input"
                   value={form.facebook}
                   onChange={(e) => setForm({ ...form, facebook: e.target.value })}
@@ -573,6 +938,7 @@ export const AdminSettingsPage = () => {
                 </div>
                 <input 
                   type="text" 
+                  disabled={!isEditingContact}
                   className="as-input"
                   value={form.twitter}
                   onChange={(e) => setForm({ ...form, twitter: e.target.value })}
@@ -609,111 +975,12 @@ export const AdminSettingsPage = () => {
                 </div>
                 <input 
                   type="text" 
+                  disabled={!isEditingContact}
                   className="as-input"
                   value={form.linkedin}
                   onChange={(e) => setForm({ ...form, linkedin: e.target.value })}
                 />
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ======================================================== */}
-        {/* Card 3: Notification Preferences */}
-        {/* ======================================================== */}
-        <div className="as-card">
-          <div className="as-card-header">
-            <h2 className="as-card-title">Notification Preferences</h2>
-            <p className="as-card-subtitle">Choose what notifications you want to receive.</p>
-          </div>
-
-          <div className="as-notif-grid">
-            {/* 1. New Order Notifications */}
-            <div className="as-notif-card">
-              <div className="as-notif-left">
-                <div className="as-notif-icon-badge mint">
-                  <ShoppingBag size={17} strokeWidth={2} />
-                </div>
-                <div className="as-notif-text">
-                  <h4 className="as-notif-title">New Order Notifications</h4>
-                  <p className="as-notif-desc">Get notified when a new order is placed.</p>
-                </div>
-              </div>
-              <button 
-                type="button" 
-                role="switch"
-                aria-checked={form.notifications.newOrders}
-                className={`as-toggle-switch ${form.notifications.newOrders ? 'active' : ''}`}
-                onClick={() => handleToggleNotif('newOrders')}
-              >
-                <span className="as-toggle-knob" />
-              </button>
-            </div>
-
-            {/* 2. Customer Messages */}
-            <div className="as-notif-card">
-              <div className="as-notif-left">
-                <div className="as-notif-icon-badge mint">
-                  <MessageSquare size={17} strokeWidth={2} />
-                </div>
-                <div className="as-notif-text">
-                  <h4 className="as-notif-title">Customer Messages</h4>
-                  <p className="as-notif-desc">Get notified for new customer messages.</p>
-                </div>
-              </div>
-              <button 
-                type="button" 
-                role="switch"
-                aria-checked={form.notifications.customerMessages}
-                className={`as-toggle-switch ${form.notifications.customerMessages ? 'active' : ''}`}
-                onClick={() => handleToggleNotif('customerMessages')}
-              >
-                <span className="as-toggle-knob" />
-              </button>
-            </div>
-
-            {/* 3. Pickup & Delivery Updates */}
-            <div className="as-notif-card">
-              <div className="as-notif-left">
-                <div className="as-notif-icon-badge mint">
-                  <Truck size={17} strokeWidth={2} />
-                </div>
-                <div className="as-notif-text">
-                  <h4 className="as-notif-title">Pickup & Delivery Updates</h4>
-                  <p className="as-notif-desc">Get updates on pickup and delivery status.</p>
-                </div>
-              </div>
-              <button 
-                type="button" 
-                role="switch"
-                aria-checked={form.notifications.pickupDelivery}
-                className={`as-toggle-switch ${form.notifications.pickupDelivery ? 'active' : ''}`}
-                onClick={() => handleToggleNotif('pickupDelivery')}
-              >
-                <span className="as-toggle-knob" />
-              </button>
-            </div>
-
-            {/* 4. System Announcements */}
-            <div className="as-notif-card">
-              <div className="as-notif-left">
-                <div className="as-notif-icon-badge gray">
-                  <Share2 size={17} strokeWidth={2} />
-                </div>
-                <div className="as-notif-text">
-                  <h4 className="as-notif-title">System Announcements</h4>
-                  <p className="as-notif-desc">Receive important system updates.</p>
-                </div>
-              </div>
-              <button 
-                type="button" 
-                role="switch"
-                aria-checked={form.notifications.systemAnnouncements}
-                className={`as-toggle-switch ${form.notifications.systemAnnouncements ? 'active' : ''}`}
-                onClick={() => handleToggleNotif('systemAnnouncements')}
-              >
-                <span className="as-toggle-knob" />
-              </button>
             </div>
           </div>
         </div>
@@ -830,56 +1097,6 @@ export const AdminSettingsPage = () => {
         )}
       </form>
 
-      {/* Preview Photo Modal */}
-      {previewModalOpen && (
-        <div className="as-preview-modal-backdrop" onClick={() => setPreviewModalOpen(false)}>
-          <div className="as-preview-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="as-preview-modal-header">
-              <h3 className="as-preview-modal-title">Profile Photo Preview</h3>
-              <button 
-                type="button" 
-                className="as-preview-modal-close"
-                onClick={() => setPreviewModalOpen(false)}
-                aria-label="Close preview"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="as-preview-modal-body">
-              {form.photoUrl ? (
-                <img src={form.photoUrl} alt="Profile Preview" className="as-preview-large-img" />
-              ) : (
-                <div className="as-preview-avatar-large">
-                  <span>{avatarInitial}</span>
-                </div>
-              )}
-              <p className="as-preview-meta-text">
-                {form.photoUrl ? 'Current active profile picture' : 'Default initials avatar active'}
-              </p>
-            </div>
-            <div className="as-preview-modal-footer">
-              <button 
-                type="button" 
-                className="as-btn-modal-secondary"
-                onClick={() => setPreviewModalOpen(false)}
-              >
-                Close
-              </button>
-              <button 
-                type="button" 
-                className="as-btn-modal-primary"
-                onClick={() => {
-                  setPreviewModalOpen(false);
-                  fileInputRef.current?.click();
-                }}
-              >
-                <Upload size={14} />
-                <span>Upload New</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Scoped CSS strictly matching Reference Image 2 */}
       <style>{`
@@ -931,6 +1148,94 @@ export const AdminSettingsPage = () => {
 
         .as-card-header {
           margin-bottom: 20px;
+        }
+
+        .as-card-header.as-card-header-flex {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+        }
+
+        .as-card-header-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .as-btn-edit {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          height: 34px;
+          padding: 0 14px;
+          background: #FFFFFF;
+          color: #0D7A75;
+          border: 1.5px solid #0D7A75;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          font-family: inherit;
+        }
+
+        .as-btn-edit:hover {
+          background: #E6F7F5;
+          border-color: #005F66;
+          color: #005F66;
+        }
+
+        .as-btn-edit-group {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .as-btn-cancel {
+          height: 34px;
+          padding: 0 14px;
+          background: #FFFFFF;
+          color: #64748B;
+          border: 1px solid #CBD5E1;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          font-family: inherit;
+        }
+
+        .as-btn-cancel:hover {
+          background: #F1F5F9;
+          color: #334155;
+          border-color: #94A3B8;
+        }
+
+        .as-btn-save-inline {
+          height: 34px;
+          padding: 0 16px;
+          background: #0D7A75;
+          color: #FFFFFF;
+          border: none;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          font-family: inherit;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .as-btn-save-inline:hover {
+          background: #005F66;
+        }
+
+        .as-btn-save-inline:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .as-card-title {
@@ -1144,15 +1449,6 @@ export const AdminSettingsPage = () => {
           color: #FFFFFF;
         }
 
-        .as-icon-view {
-          background: #F1F5F9;
-          color: #475569;
-        }
-
-        .as-photo-dropdown-item:hover .as-icon-view {
-          background: #334155;
-          color: #FFFFFF;
-        }
 
         .as-icon-delete {
           background: #FEF2F2;
@@ -1258,6 +1554,14 @@ export const AdminSettingsPage = () => {
           color: #64748B;
           cursor: not-allowed;
           border-color: #E2E8F0;
+        }
+
+        .as-input:disabled {
+          background: #F8FAFC !important;
+          color: #64748B !important;
+          cursor: not-allowed !important;
+          border-color: #E2E8F0 !important;
+          opacity: 0.9;
         }
 
         .as-input-error {
@@ -1541,15 +1845,13 @@ export const AdminSettingsPage = () => {
           color: #34D399;
         }
 
+
         @media (max-width: 960px) {
           .as-password-grid {
             grid-template-columns: 1fr;
             align-items: stretch;
           }
           .as-contact-grid {
-            grid-template-columns: 1fr;
-          }
-          .as-notif-grid {
             grid-template-columns: 1fr;
           }
           .as-profile-layout {

@@ -16,7 +16,7 @@ class User(AbstractUser):
         db_index=True
     )
     phone = models.CharField(max_length=20, blank=True, null=True)
-    avatar = models.CharField(max_length=500, blank=True, null=True)
+    avatar = models.TextField(blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     city = models.CharField(max_length=100, blank=True, default='Bengaluru')
     pincode = models.CharField(max_length=20, blank=True, null=True)

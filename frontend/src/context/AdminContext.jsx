@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useNotifications } from '../hooks/useNotifications';
+import { formatDisplayDate, parseFlexibleDate, getOrderPickupDate } from '../utils/dateFilterUtils';
 import {
   subscribeAdminOrders,
   subscribeAdminTasks,
@@ -258,6 +259,38 @@ export const getComplaintSortTime = (item) => {
   return 0;
 };
 
+export const mergeComplaintsLists = (listA = [], listB = []) => {
+  const map = new Map();
+  const cleanId = (c) => String(c.order_id_display || c.order_id || c.orderId || c.id || '').replace(/^#/, '').trim().toUpperCase();
+
+  const addComplaint = (item) => {
+    if (!item) return;
+    const key = cleanId(item) || String(item.id || '');
+    if (!key) return;
+
+    if (map.has(key)) {
+      const existing = map.get(key);
+      let custName = item.customer_name || item.customerName;
+      if ((!custName || custName === 'Customer') && (existing.customer_name || existing.customerName) && existing.customer_name !== 'Customer') {
+        custName = existing.customer_name || existing.customerName;
+      }
+      map.set(key, { ...existing, ...item, customer_name: custName || item.customer_name || 'Customer' });
+    } else {
+      map.set(key, item);
+    }
+  };
+
+  (listB || []).forEach(addComplaint);
+  (listA || []).forEach(addComplaint);
+
+  const cleanList = Array.from(map.values()).filter(c => {
+    const str = String(c?.order_id_display || c?.order_id || c?.id || '').toUpperCase();
+    return !str.includes('FC-57606') && !str.includes('57606');
+  });
+
+  return cleanList.sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
+};
+
 const AdminContext = createContext();
 
 export const mapAdminOrderRecord = (o) => {
@@ -352,21 +385,13 @@ export const mapAdminOrderRecord = (o) => {
         : ['Wash & Fold']));
 
   // Resolve and format clean pickup date & time slot
-  let cleanPickupDate = o.pickup?.date || o.pickup_date || o.date || '';
-  if (cleanPickupDate && typeof cleanPickupDate === 'string') {
-    const trimmed = cleanPickupDate.trim().replace(/^(?:Today|Tomorrow|[A-Za-z]+),\s*/i, '');
-    const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (isoMatch) {
-      const dt = new Date(parseInt(isoMatch[1], 10), parseInt(isoMatch[2], 10) - 1, parseInt(isoMatch[3], 10));
-      if (!isNaN(dt.getTime())) {
-        cleanPickupDate = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-      }
-    } else if (/^\d{1,2}\s+[A-Za-z]{3}$/.test(trimmed)) {
-      cleanPickupDate = `${trimmed} 2026`;
-    }
-  }
-  if (!cleanPickupDate || cleanPickupDate === 'Today' || cleanPickupDate === 'Tomorrow') {
-    cleanPickupDate = '25 Oct 2026';
+  const parsedPickupDate = getOrderPickupDate(o);
+  let cleanPickupDate = '';
+  if (parsedPickupDate) {
+    cleanPickupDate = formatDisplayDate(parsedPickupDate);
+  } else if (o.date && !['today', 'tomorrow', 'yesterday', 'all'].includes(String(o.date).toLowerCase())) {
+    const parsedCustom = parseFlexibleDate(o.date);
+    cleanPickupDate = parsedCustom ? formatDisplayDate(parsedCustom) : String(o.date);
   }
 
   let cleanTimeSlot = o.pickup_time_slot || '';
@@ -511,14 +536,15 @@ export const AdminProvider = ({ children }) => {
   useEffect(() => {
     if (userProfile || currentUser) {
       const pName = userProfile?.displayName || userProfile?.name || currentUser?.displayName || currentUser?.name;
-      const pPhoto = userProfile?.avatarUrl || currentUser?.avatarUrl;
+      const pPhoto = userProfile?.avatarUrl !== undefined ? userProfile.avatarUrl : (currentUser?.avatarUrl !== undefined ? currentUser.avatarUrl : undefined);
       const pPhone = userProfile?.phone || currentUser?.phone;
-      if (pName || pPhoto || pPhone) {
+      if (pName || pPhoto !== undefined || pPhone) {
         setSettings(prev => {
+          const resolvedPhoto = prev?.photoUrl !== undefined ? prev.photoUrl : (pPhoto !== undefined ? pPhoto : '');
           const updated = {
             ...prev,
             name: prev?.name && prev.name !== 'Admin' ? prev.name : (pName || prev?.name || 'Admin'),
-            photoUrl: prev?.photoUrl || pPhoto || '',
+            photoUrl: resolvedPhoto,
             phone: prev?.phone || pPhone || '+91 98765 43210'
           };
           try {
@@ -588,11 +614,13 @@ export const AdminProvider = ({ children }) => {
         } catch (_) {}
       }
       if (backendComplaints && backendComplaints.length > 0) {
-        const sorted = [...backendComplaints].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
-        setComplaints(sorted);
-        try {
-          localStorage.setItem('fabricare_admin_complaints', JSON.stringify(sorted));
-        } catch (_) {}
+        setComplaints(prev => {
+          const merged = mergeComplaintsLists(backendComplaints, prev);
+          try {
+            localStorage.setItem('fabricare_admin_complaints', JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
+        });
       }
     } catch (err) {
       console.error('Error fetching admin complaints:', err);
@@ -688,17 +716,13 @@ export const AdminProvider = ({ children }) => {
 
     const unsubComplaints = subscribeAdminComplaints((rtdbComplaints) => {
       const source = (rtdbComplaints && rtdbComplaints.length > 0) ? rtdbComplaints : DEFAULT_COMPLAINTS;
-      const cleanList = source.filter(c => {
-        const str = String(c?.order_id_display || c?.order_id || c?.id || '').toUpperCase();
-        return !str.includes('FC-57606') && !str.includes('57606');
+      setComplaints(prev => {
+        const merged = mergeComplaintsLists(source, prev);
+        try {
+          localStorage.setItem('fabricare_admin_complaints', JSON.stringify(merged));
+        } catch (_) {}
+        return merged;
       });
-      cleanList.sort((a, b) => {
-        const timeA = Number(a.createdAt || a.created_at || a.updatedAt) || (a.report_date ? new Date(a.report_date).getTime() : 0);
-        const timeB = Number(b.createdAt || b.created_at || b.updatedAt) || (b.report_date ? new Date(b.report_date).getTime() : 0);
-        if (timeB !== timeA) return timeB - timeA;
-        return String(b.id || '').localeCompare(String(a.id || ''));
-      });
-      setComplaints(cleanList);
     });
 
     const unsubServices = subscribeAdminServices((rtdbServices) => {
@@ -712,9 +736,16 @@ export const AdminProvider = ({ children }) => {
     const unsubSettings = subscribeAdminSettings((rtdbSettings) => {
       if (rtdbSettings) {
         setSettings(prev => {
-          const merged = { ...prev, ...rtdbSettings };
+          const merged = { 
+            ...prev, 
+            ...rtdbSettings,
+            photoUrl: rtdbSettings.photoUrl !== undefined ? rtdbSettings.photoUrl : (prev?.photoUrl !== undefined ? prev.photoUrl : '')
+          };
           try {
             localStorage.setItem('fabricare_admin_settings', JSON.stringify(merged));
+          } catch (_) {}
+          try {
+            window.dispatchEvent(new CustomEvent('fabricare_profile_updated', { detail: merged }));
           } catch (_) {}
           return merged;
         });
@@ -750,7 +781,7 @@ export const AdminProvider = ({ children }) => {
   }, [currentUser?.uid, isAdminAuthenticated]);
 
   // Workflow Handlers
-  const assignDriverToOrder = async (orderId, driverParam, taskType = 'pickup') => {
+  const assignDriverToOrder = async (orderId, driverParam, taskType = 'pickup', options = {}) => {
     if (!orderId || !driverParam) throw new Error('Order and driver must be specified.');
     const order = (orders || []).find(o => o.id === orderId || o.code === orderId || o.order_id === orderId || o.rawId === orderId);
     const targetOrderId = order?.rawId || order?.id || orderId;
@@ -782,28 +813,59 @@ export const AdminProvider = ({ children }) => {
     const effectiveAgentId = realAgent?.uid || realAgent?.id || driverId;
 
     const task = tasks.find(t => t.orderId === targetOrderId || t.orderCode === orderId || t.orderId === order?.code);
-    const taskId = task ? task.id : (taskType === 'pickup' ? order?.pickupTaskId : order?.deliveryTaskId);
+    const taskId = task ? task.id : (taskType === 'delivery' ? order?.deliveryTaskId : order?.pickupTaskId);
 
-    if (taskType === 'delivery') {
-      await assignDeliveryAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone);
-    } else {
-      await assignPickupAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone);
-    }
-
-    // Optimistically update local orders so UI updates instantaneously
+    // Optimistically update local orders immediately so UI and cards update instantaneously in real time
     const newStatus = taskType === 'delivery' ? 'In Transit' : 'Pickup Scheduled';
+    const cleanId = String(orderId || '').replace(/^#/, '').trim().toUpperCase();
+
     setOrders(prev => (prev || []).map(o => {
-      if (o.id === orderId || o.rawId === targetOrderId || o.code === orderId) {
+      const match = 
+        o.id === orderId || o.rawId === targetOrderId || o.code === orderId || 
+        o.order_id === orderId || o.order_number === orderId ||
+        String(o.order_number || '').replace(/^#/, '').trim().toUpperCase() === cleanId ||
+        String(o.code || '').replace(/^#/, '').trim().toUpperCase() === cleanId ||
+        String(o.id || '').replace(/^#/, '').trim().toUpperCase() === cleanId;
+
+      if (match) {
+        const pDate = options.pickupDate || o.pickup_date || o.pickupDate;
+        const pSlot = options.pickupTimeSlot || o.pickup_time_slot;
+        const pTime = pSlot ? `${pDate || ''}, ${pSlot}` : o.pickupTime;
         return {
           ...o,
           status: newStatus,
           assignedAgentName: driverName,
           assignedAgentPhone: driverPhone,
-          driver: `${driverName} (${driverPhone})`
+          assigned_pickup_driver: driverName,
+          driver: `${driverName} (${driverPhone})`,
+          pickup_date: pDate || o.pickup_date,
+          pickup_time_slot: pSlot || o.pickup_time_slot,
+          pickupDate: pDate || o.pickupDate,
+          pickupTime: pTime || o.pickupTime,
+          pickup: {
+            ...(o.pickup || {}),
+            date: pDate || o.pickup?.date,
+            time: pSlot || o.pickup?.time
+          }
         };
       }
       return o;
     }));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('fabricare_order_assigned', { detail: { orderId: targetOrderId, driverName, driverPhone, status: newStatus } }));
+      window.dispatchEvent(new CustomEvent('fabricare_pickup_delivery_updated', { detail: { orderId: targetOrderId } }));
+    }
+
+    try {
+      if (taskType === 'delivery') {
+        await assignDeliveryAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone, options);
+      } else {
+        await assignPickupAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone, options);
+      }
+    } catch (netErr) {
+      console.warn('Background agent assignment network note:', netErr);
+    }
   };
 
   const updateOrderStatus = async (orderId, newStatus, reason = 'Admin updated order status') => {
@@ -1563,14 +1625,19 @@ export const AdminProvider = ({ children }) => {
   }, []);
 
   const updateSettings = useCallback(async (newSettings) => {
-    let merged = {};
-    setSettings(prev => {
-      merged = { ...prev, ...newSettings };
-      try {
-        localStorage.setItem('fabricare_admin_settings', JSON.stringify(merged));
-      } catch (e) {}
-      return merged;
-    });
+    let currentSettings = {};
+    try {
+      const saved = localStorage.getItem('fabricare_admin_settings');
+      if (saved) currentSettings = JSON.parse(saved);
+    } catch (_) {}
+    if (!currentSettings || typeof currentSettings !== 'object' || Object.keys(currentSettings).length === 0) {
+      currentSettings = settings || {};
+    }
+    const merged = { ...currentSettings, ...newSettings };
+    try {
+      localStorage.setItem('fabricare_admin_settings', JSON.stringify(merged));
+    } catch (e) {}
+    setSettings(merged);
 
     const effectiveName = newSettings.name;
     const effectivePhone = newSettings.phone;
@@ -1582,7 +1649,12 @@ export const AdminProvider = ({ children }) => {
         await updateCurrentUserProfile({
           ...(effectiveName ? { name: effectiveName, displayName: effectiveName } : {}),
           ...(effectivePhone ? { phone: effectivePhone } : {}),
-          ...(effectivePhoto !== undefined ? { avatarUrl: effectivePhoto, photoUrl: effectivePhoto } : {})
+          ...(effectivePhoto !== undefined ? { 
+            avatarUrl: effectivePhoto, 
+            avatar_url: effectivePhoto,
+            photoUrl: effectivePhoto, 
+            photoURL: effectivePhoto 
+          } : {})
         });
       } catch (err) {
         console.warn('AuthContext update error:', err);
@@ -1606,7 +1678,9 @@ export const AdminProvider = ({ children }) => {
         if (effectivePhone) userUpdates.phone = effectivePhone;
         if (effectivePhoto !== undefined) {
           userUpdates.avatarUrl = effectivePhoto;
+          userUpdates.avatar_url = effectivePhoto;
           userUpdates.photoUrl = effectivePhoto;
+          userUpdates.photoURL = effectivePhoto;
         }
         userUpdates.updatedAt = Date.now();
         await rUpdate(rRef(rtdb, `users/${uid}`), userUpdates);
@@ -1614,6 +1688,24 @@ export const AdminProvider = ({ children }) => {
       if (refreshProfile) await refreshProfile();
     } catch (err) {
       console.warn('Backend adminSettings persistence notice:', err);
+    }
+
+    // 3. Persist to Django REST backend if available
+    if (effectivePhoto !== undefined) {
+      try {
+        const { fetchBackend } = await import('../api/apiClient');
+        if (effectivePhoto) {
+          await fetchBackend('/api/auth/me/', {
+            method: 'PATCH',
+            body: JSON.stringify({ avatar: effectivePhoto })
+          });
+        } else {
+          await fetchBackend('/api/auth/me/', {
+            method: 'PATCH',
+            body: JSON.stringify({ remove_profile_picture: true, avatar: '' })
+          });
+        }
+      } catch (_) {}
     }
 
     // Broadcast change across tabs / components
