@@ -134,7 +134,7 @@ const BASELINE_PICKUP_DELIVERY_ORDERS = [
       address: 'Marathahalli, Bengaluru'
     },
     type: 'Delivery',
-    status: 'In Transit',
+    status: 'Assigned',
     driver: {
       name: 'Ravi Kumar',
       phone: '+91 98765 43210',
@@ -470,7 +470,7 @@ const getPickupDeliveryStatus = (order, hasDriver) => {
     return 'Completed';
   }
   if (s === 'IN_TRANSIT' || s === 'OUT_FOR_DELIVERY' || s === 'PICKED_UP') {
-    return 'In Transit';
+    return hasDriver ? 'Assigned' : 'Pending';
   }
   if (s === 'CANCELLED') {
     return 'Cancelled';
@@ -507,7 +507,6 @@ export const AdminPickupDeliveryPage = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
   const [selectedDateRange, setSelectedDateRange] = useState('all');
-  const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
 
   const todayDateObj = useMemo(() => new Date(), []);
   const yesterdayDateObj = useMemo(() => {
@@ -518,15 +517,15 @@ export const AdminPickupDeliveryPage = () => {
 
   const dateFilterOptions = useMemo(() => [
     { key: 'all', label: 'All Dates', pillLabel: 'All Dates', shortLabel: 'All Dates' },
-    { key: 'today', label: `Today (${formatDisplayDate(todayDateObj)})`, pillLabel: formatDisplayDate(todayDateObj, { weekday: true }), shortLabel: 'Today' },
-    { key: 'yesterday', label: `Yesterday (${formatDisplayDate(yesterdayDateObj)})`, pillLabel: `Yesterday, ${formatDisplayDate(yesterdayDateObj, { weekday: true })}`, shortLabel: 'Yesterday' },
+    { key: 'today', label: `Today (${formatDisplayDate(todayDateObj)})`, pillLabel: `Today (${formatDisplayDate(todayDateObj)})`, shortLabel: 'Today' },
+    { key: 'yesterday', label: `Yesterday (${formatDisplayDate(yesterdayDateObj)})`, pillLabel: `Yesterday (${formatDisplayDate(yesterdayDateObj)})`, shortLabel: 'Yesterday' },
     { key: 'last-week', label: 'Last Week', pillLabel: 'Last Week', shortLabel: 'Last Week' }
   ], [todayDateObj, yesterdayDateObj]);
 
   const selectedPillLabel = useMemo(() => {
     const found = dateFilterOptions.find(o => o.key === selectedDateRange);
-    return found ? found.pillLabel : formatDisplayDate(todayDateObj, { weekday: true });
-  }, [dateFilterOptions, selectedDateRange, todayDateObj]);
+    return found ? found.pillLabel : 'All Dates';
+  }, [dateFilterOptions, selectedDateRange]);
 
   const [updateTick, setUpdateTick] = useState(0);
 
@@ -534,6 +533,18 @@ export const AdminPickupDeliveryPage = () => {
     const handleStorage = () => setUpdateTick(t => t + 1);
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest('.toolbar-dropdown-wrapper')) {
+        setIsFilterDropdownOpen(false);
+        setIsDateRangeDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
   // Synchronize orders with dynamic real-time updates from AdminContext (RTDB backend)
@@ -781,34 +792,16 @@ export const AdminPickupDeliveryPage = () => {
         </div>
 
         <div className="pickup-header-right">
-          {/* Date Selector Pill */}
+          {/* Date Indicator Pill - Automatically reflects Select Date Range filter */}
           <div className="header-dropdown-wrapper">
-            <button 
+            <div 
               className="date-selector-pill"
-              onClick={() => setDateDropdownOpen(!dateDropdownOpen)}
-              type="button"
+              title="Current Date Filter (Use 'Select Date Range' filter below to adjust)"
             >
               <Calendar size={17} className="pill-calendar-icon" />
               <span className="pill-date-text">{selectedPillLabel}</span>
               <ChevronDown size={16} className="pill-chevron-icon" />
-            </button>
-            {dateDropdownOpen && (
-              <div className="header-dropdown-popover">
-                {dateFilterOptions.map(opt => (
-                  <button 
-                    key={opt.key} 
-                    className={`dropdown-item ${selectedDateRange === opt.key ? 'active' : ''}`}
-                    onClick={() => {
-                      setSelectedDateRange(opt.key);
-                      setCurrentPage(1);
-                      setDateDropdownOpen(false);
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            </div>
           </div>
 
           {/* + Assign Order Button */}
@@ -947,7 +940,7 @@ export const AdminPickupDeliveryPage = () => {
               {isFilterDropdownOpen && (
                 <div className="dropdown-popover-card animate-scale-in">
                   <div className="popover-header">Filter by Status</div>
-                  {['all', 'assigned', 'pending', 'in transit', 'completed'].map(st => (
+                  {['all', 'assigned', 'pending', 'completed'].map(st => (
                     <button
                       key={st}
                       className={`popover-option ${statusFilter === st ? 'selected' : ''}`}
@@ -979,7 +972,7 @@ export const AdminPickupDeliveryPage = () => {
             {/* Select Date Range Dropdown Button */}
             <div className="toolbar-dropdown-wrapper">
               <button 
-                className="toolbar-pill-btn"
+                className={`toolbar-pill-btn ${selectedDateRange !== 'all' ? 'has-filter' : ''}`}
                 onClick={() => {
                   setIsDateRangeDropdownOpen(!isDateRangeDropdownOpen);
                   setIsFilterDropdownOpen(false);
@@ -1011,6 +1004,18 @@ export const AdminPickupDeliveryPage = () => {
                       {r.label}
                     </button>
                   ))}
+                  {selectedDateRange !== 'all' && (
+                    <button 
+                      className="popover-reset-btn"
+                      onClick={() => {
+                        setSelectedDateRange('all');
+                        setIsDateRangeDropdownOpen(false);
+                        setCurrentPage(1);
+                      }}
+                    >
+                      Reset Filter
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1256,7 +1261,8 @@ export const AdminPickupDeliveryPage = () => {
           border: 1px solid #CBD5E1;
           border-radius: 10px;
           padding: 9px 16px;
-          cursor: pointer;
+          cursor: default;
+          user-select: none;
           font-size: 0.875rem;
           font-weight: 600;
           color: #1E293B;
@@ -1266,7 +1272,7 @@ export const AdminPickupDeliveryPage = () => {
 
         .date-selector-pill:hover {
           background: #F8FAFC;
-          border-color: #94A3B8;
+          border-color: #CBD5E1;
         }
 
         .pill-calendar-icon {

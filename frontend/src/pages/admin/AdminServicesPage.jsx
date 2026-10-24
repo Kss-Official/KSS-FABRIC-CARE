@@ -412,10 +412,27 @@ export const AdminServicesPage = () => {
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!editingService) return;
+
+    const catKey = editForm.category === 'Wash & Iron' ? 'wash-iron'
+      : editForm.category === 'Dry Cleaning' ? 'dry-cleaning'
+      : (editForm.category === 'Steam Iron' || editForm.category === 'Steam Ironing') ? 'steam-iron'
+      : 'wash-fold';
+
+    const updatedPrices = { ...(editingService.prices || {}) };
+    const editedPriceNum = Number(editForm.price) || editingService.price;
+    updatedPrices[catKey] = editedPriceNum;
+    updatedPrices['express-laundry'] = editedPriceNum * 2;
+
     const updated = {
       name: editForm.name,
       category: editForm.category,
-      price: Number(editForm.price) || editingService.price,
+      price: editedPriceNum,
+      prices: updatedPrices,
+      expressPrice: editedPriceNum * 2,
+      code: editingService.code,
+      subcategory: editingService.subcategory,
+      subcategoryId: editingService.subcategoryId,
+      subcatName: editingService.subcatName,
       turnaround: editForm.turnaround,
       status: editForm.status,
       description: editForm.description,

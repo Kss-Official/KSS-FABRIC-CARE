@@ -638,12 +638,71 @@ export const isItemApplicableToService = (item, serviceId) => {
   return true;
 };
 
+// Live Admin Services Catalog state and caching
+let _liveAdminCatalog = null;
+
+export const setLiveAdminCatalog = (catalog) => {
+  if (Array.isArray(catalog)) {
+    _liveAdminCatalog = catalog;
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('fabricare_admin_services', JSON.stringify(catalog));
+      }
+    } catch (_) {}
+  }
+};
+
+export const getLiveAdminCatalog = () => {
+  if (_liveAdminCatalog && _liveAdminCatalog.length > 0) return _liveAdminCatalog;
+  try {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('fabricare_admin_services');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          _liveAdminCatalog = parsed;
+          return parsed;
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+};
+
 /**
- * Determine base standard price for an item under a specific service
+ * Determine base standard price for an item under a specific service,
+ * respecting any live admin updates.
  */
 export const getItemBasePrice = (item, serviceId) => {
   if (!item) return 50;
 
+  // 1. Direct explicit price override on the item
+  if (item.prices && serviceId && item.prices[serviceId] != null) {
+    return Number(item.prices[serviceId]);
+  }
+
+  // 2. Check live admin catalog for updated price
+  const catalog = getLiveAdminCatalog();
+  if (catalog && catalog.length > 0) {
+    const cleanItemId = String(item.id || '').toLowerCase();
+    const cleanItemName = String(item.name || '').trim().toLowerCase();
+    const match = catalog.find(s => 
+      (s.code && String(s.code).toLowerCase() === cleanItemId) ||
+      (s.id && String(s.id).toLowerCase() === cleanItemId) ||
+      (s.name && String(s.name).trim().toLowerCase() === cleanItemName)
+    );
+
+    if (match) {
+      if (serviceId && match.prices && match.prices[serviceId] != null) {
+        return Number(match.prices[serviceId]);
+      }
+      if (match.price != null && (match.category === serviceId || !match.prices)) {
+        return Number(match.price);
+      }
+    }
+  }
+
+  // 3. Category/Service specific fallbacks
   if (serviceId === 'wash-fold') {
     return item.prices?.['wash-fold'] || 40;
   }
@@ -673,39 +732,130 @@ export const getItemBasePrice = (item, serviceId) => {
     return 20;
   }
 
-  return 50;
+  return Number(item.price) || 50;
 };
 
 /**
  * Determine doubled Express Laundry price for an item based on selected service
  */
 export const getExpressItemPrice = (item, serviceId = 'wash-fold') => {
+  if (item?.expressPrice) return Number(item.expressPrice);
   const basePrice = getItemBasePrice(item, serviceId);
   return basePrice * 2;
 };
 
 /**
  * Helper to fetch category items for a given category and subcategory,
- * with support for Express Laundry's 4 selected services and doubled prices.
+ * with real-time support for admin edits, status deactivations, deletions, and new items.
  */
-export const getCategoryItems = (categoryId, subcategoryId, expressService = 'wash-fold') => {
+export const getCategoryItems = (categoryId, subcategoryId, expressService = 'wash-fold', overrideCatalog = null) => {
   const isExpress = categoryId === 'express-laundry';
   const effectiveService = isExpress ? (expressService || 'wash-fold') : categoryId;
-  const category = PRICING_CATEGORIES.find(c => c.id === categoryId);
 
-  return PRICING_ITEMS
+  // Retrieve live admin services catalog (override or cache or memory)
+  const liveCatalog = (overrideCatalog && Array.isArray(overrideCatalog)) 
+    ? overrideCatalog 
+    : getLiveAdminCatalog();
+
+  // Build lookup map for admin updates
+  const adminOverridesMap = new Map();
+  const customAdminItems = [];
+
+  if (Array.isArray(liveCatalog) && liveCatalog.length > 0) {
+    liveCatalog.forEach(adminItem => {
+      if (!adminItem) return;
+      const cCode = adminItem.code ? String(adminItem.code).toLowerCase() : null;
+      const cId = adminItem.id ? String(adminItem.id).toLowerCase() : null;
+      const cName = adminItem.name ? String(adminItem.name).trim().toLowerCase() : null;
+
+      if (cCode) adminOverridesMap.set(cCode, adminItem);
+      if (cId) adminOverridesMap.set(cId, adminItem);
+      if (cName) adminOverridesMap.set(cName, adminItem);
+
+      // Check if this is a custom item added by admin (not in base PRICING_ITEMS)
+      const isBaseItem = PRICING_ITEMS.some(b => 
+        (cCode && b.id.toLowerCase() === cCode) ||
+        (cName && b.name.trim().toLowerCase() === cName)
+      );
+
+      if (!isBaseItem) {
+        const subCat = (adminItem.subcategory || adminItem.subcategoryId || '').toLowerCase();
+        if (subCat === String(subcategoryId || '').toLowerCase()) {
+          customAdminItems.push(adminItem);
+        }
+      }
+    });
+  }
+
+  // Combine base items and custom admin items
+  const combinedList = [...PRICING_ITEMS];
+  customAdminItems.forEach(cust => {
+    combinedList.push({
+      id: cust.code || cust.id || `custom-${cust.name.toLowerCase().replace(/\s+/g, '-')}`,
+      name: cust.name,
+      subcategory: subcategoryId,
+      unit: cust.unit || 'item',
+      prices: cust.prices || { [effectiveService]: Number(cust.price) || 100 },
+      isCustomAdminItem: true
+    });
+  });
+
+  return combinedList
     .filter(item => {
       if (item.subcategory !== subcategoryId) return false;
+
+      // Check if item has admin override
+      const cleanItemId = String(item.id || '').toLowerCase();
+      const cleanItemName = String(item.name || '').trim().toLowerCase();
+      const match = adminOverridesMap.get(cleanItemId) || adminOverridesMap.get(cleanItemName);
+
+      // If marked Inactive or Deleted by admin, exclude immediately!
+      if (match) {
+        if (
+          match.isDeleted === true ||
+          match.status === 'Deleted' ||
+          match.status === 'Inactive' ||
+          match.is_active === false ||
+          match.isActive === false ||
+          match.status === false
+        ) {
+          return false;
+        }
+      }
+
       return isItemApplicableToService(item, effectiveService);
     })
     .map(item => {
+      const cleanItemId = String(item.id || '').toLowerCase();
+      const cleanItemName = String(item.name || '').trim().toLowerCase();
+      const match = adminOverridesMap.get(cleanItemId) || adminOverridesMap.get(cleanItemName);
+
+      const displayName = match?.name || item.name;
+      const displayUnit = match?.unit || item.unit;
+
+      // Determine effective base rate for this service:
+      let baseRate = 0;
+      if (match) {
+        if (match.prices && match.prices[effectiveService] != null) {
+          baseRate = Number(match.prices[effectiveService]);
+        } else if (match.price != null && (match.category === effectiveService || !match.prices)) {
+          baseRate = Number(match.price);
+        } else {
+          baseRate = getItemBasePrice(item, effectiveService);
+        }
+      } else {
+        baseRate = getItemBasePrice(item, effectiveService);
+      }
+
       if (isExpress) {
-        const baseRate = getItemBasePrice(item, effectiveService);
-        const doubledPrice = getExpressItemPrice(item, effectiveService);
+        const doubledPrice = (match?.expressPrice && Number(match.expressPrice) > 0)
+          ? Number(match.expressPrice)
+          : (baseRate * 2);
+
         return {
           id: item.id,
-          name: item.name,
-          unit: item.unit,
+          name: displayName,
+          unit: displayUnit,
           price: doubledPrice,
           basePrice: baseRate,
           isPriceEnabled: true,
@@ -713,17 +863,12 @@ export const getCategoryItems = (categoryId, subcategoryId, expressService = 'wa
         };
       }
 
-      const baseRate = getItemBasePrice(item, effectiveService);
-      const price = (item.prices && item.prices[effectiveService] != null) 
-        ? item.prices[effectiveService] 
-        : baseRate;
-
       return {
         id: item.id,
-        name: item.name,
-        unit: item.unit,
-        price: price,
-        basePrice: price,
+        name: displayName,
+        unit: displayUnit,
+        price: baseRate,
+        basePrice: baseRate,
         isPriceEnabled: true
       };
     });

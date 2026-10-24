@@ -18,7 +18,8 @@ import {
   PRICING_SUBCATEGORIES,
   isItemApplicableToService,
   getExpressItemPrice,
-  getItemBasePrice 
+  getItemBasePrice,
+  setLiveAdminCatalog
 } from '../data/pricingData.js';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
@@ -719,6 +720,88 @@ export const generateAdminServicesList = () => {
 export const DEFAULT_SERVICES = generateAdminServicesList();
 
 /**
+ * Synchronization helper for Django backend Service API
+ */
+const syncServiceToDjango = async (action, serviceId, serviceData = {}) => {
+  try {
+    const idNum = parseInt(serviceId, 10);
+    const hasNumId = !isNaN(idNum) && idNum > 0;
+    const baseApi = 'http://127.0.0.1:8000/api/services';
+
+    if (action === 'delete') {
+      if (hasNumId) {
+        await fetch(`${baseApi}/${idNum}/`, { method: 'DELETE' }).catch(() => {});
+      } else if (serviceData?.name) {
+        const res = await fetch(`${baseApi}/`).catch(() => null);
+        if (res && res.ok) {
+          const all = await res.json().catch(() => []);
+          const match = (all || []).find(s => s.name?.toLowerCase() === serviceData.name.toLowerCase());
+          if (match?.id) {
+            await fetch(`${baseApi}/${match.id}/`, { method: 'DELETE' }).catch(() => {});
+          }
+        }
+      }
+      return;
+    }
+
+    if (action === 'update' || action === 'toggle') {
+      const payload = {};
+      if (serviceData.price !== undefined) payload.price = Number(serviceData.price);
+      if (serviceData.name !== undefined) payload.name = serviceData.name;
+      if (serviceData.turnaround !== undefined) payload.turnaround_time = serviceData.turnaround;
+      if (serviceData.description !== undefined) payload.description = serviceData.description;
+      if (serviceData.status !== undefined) payload.is_active = (serviceData.status === 'Active');
+      if (serviceData.is_active !== undefined) payload.is_active = Boolean(serviceData.is_active);
+
+      if (hasNumId) {
+        const patchRes = await fetch(`${baseApi}/${idNum}/`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).catch(() => null);
+        if (patchRes && patchRes.ok) return;
+      }
+
+      // Try finding by name in Django
+      if (serviceData.name) {
+        const res = await fetch(`${baseApi}/`).catch(() => null);
+        if (res && res.ok) {
+          const all = await res.json().catch(() => []);
+          const match = (all || []).find(s => s.name?.toLowerCase() === serviceData.name.toLowerCase());
+          if (match?.id) {
+            await fetch(`${baseApi}/${match.id}/`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            }).catch(() => {});
+          }
+        }
+      }
+      return;
+    }
+
+    if (action === 'add') {
+      const payload = {
+        name: serviceData.name,
+        price: Number(serviceData.price) || 100,
+        description: serviceData.description || '',
+        turnaround_time: serviceData.turnaround || '2–3 days',
+        is_active: serviceData.status === 'Active' || serviceData.is_active !== false,
+        unit: serviceData.unit || 'per piece',
+        category: 1 // default Wash & Fold category
+      };
+      await fetch(`${baseApi}/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('Django service sync notice:', err);
+  }
+};
+
+/**
  * Realtime subscription to services in Realtime Database
  */
 export const subscribeAdminServices = (onServicesUpdated, onError) => {
@@ -726,29 +809,30 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
   const unsub = onValue(servicesRef, (snap) => {
     if (!snap.exists()) {
       onServicesUpdated(DEFAULT_SERVICES);
+      setLiveAdminCatalog(DEFAULT_SERVICES);
+      try {
+        localStorage.setItem('fabricare_admin_services', JSON.stringify(DEFAULT_SERVICES));
+      } catch (_) {}
       seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
       return;
     }
     const data = snap.val();
     const rawList = data ? Object.keys(data).map(k => ({ ...data[k], id: data[k].id || k })) : [];
 
-    // Detect if RTDB has incomplete dummy data or fewer than 69 items
-    const isOldIncomplete = rawList.length < 69 || rawList.some(s => 
-      !s.category || s.price === undefined || s.price === null ||
-      s.category === 'Special Care' || s.category === 'Special'
-    );
+    // Filter out permanently deleted items
+    const activeRawList = rawList.filter(s => !s.isDeleted && s.status !== 'Deleted');
 
-    if (isOldIncomplete) {
-      // Overwrite RTDB with the full 69 services matching Customer Portal
+    if (rawList.length === 0) {
       seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
       onServicesUpdated(DEFAULT_SERVICES);
+      setLiveAdminCatalog(DEFAULT_SERVICES);
       return;
     }
 
-    const list = rawList.map(item => {
+    const list = activeRawList.map(item => {
       let cat = item.category || item.category_name || 'Wash & Fold';
       const nameLower = String(item.name || '').toLowerCase();
-      if (item.subcategory === 'household' || nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
+      if (item.subcategory === 'household' || item.id === 'kids-blanket' || nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
         cat = 'Household';
       } else if (cat === 'Special Care' || cat === 'Special') {
         cat = nameLower.includes('saree') ? 'Dry Cleaning' : 'Household';
@@ -777,9 +861,16 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
       };
     });
 
+    // Synchronize live admin catalog in memory and storage
+    setLiveAdminCatalog(list);
+    try {
+      localStorage.setItem('fabricare_admin_services', JSON.stringify(list));
+    } catch (_) {}
+
     onServicesUpdated(list);
   }, (err) => {
     onServicesUpdated(DEFAULT_SERVICES);
+    setLiveAdminCatalog(DEFAULT_SERVICES);
     if (onError) onError(err);
   });
 
@@ -787,7 +878,7 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
 };
 
 /**
- * Seed full 69 services into RTDB if not present or incomplete
+ * Seed full services into RTDB if node is completely empty
  */
 export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICES, forceOverwrite = false) => {
   try {
@@ -805,11 +896,9 @@ export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICE
     const servicesRef = ref(rtdb, 'services');
     const snap = await get(servicesRef);
     const existing = snap.val();
-    const isOldIncomplete = !snap.exists() || !existing || Object.keys(existing).length < 69 || Object.values(existing).some(s => 
-      !s.category || !s.price || s.category === 'Special Care' || s.category === 'Special'
-    );
+    const isCompletelyEmpty = !snap.exists() || !existing || Object.keys(existing).length === 0;
 
-    if (forceOverwrite || isOldIncomplete) {
+    if (forceOverwrite || isCompletelyEmpty) {
       const seedObj = {};
       initialServices.forEach(s => {
         seedObj[s.id] = {
@@ -819,6 +908,10 @@ export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICE
         };
       });
       await set(servicesRef, seedObj);
+      setLiveAdminCatalog(initialServices);
+      try {
+        localStorage.setItem('fabricare_admin_services', JSON.stringify(initialServices));
+      } catch (_) {}
       return initialServices;
     }
     return Object.values(existing);
@@ -841,9 +934,12 @@ export const addAdminService = async (serviceData) => {
     name: serviceData.name || 'New Service',
     description: serviceData.description || '',
     category: serviceData.category || 'Wash & Fold',
+    subcategory: serviceData.subcategory || 'men',
+    subcategoryId: serviceData.subcategory || 'men',
     price: Number(serviceData.price) || 100,
     turnaround: serviceData.turnaround || '2–3 days',
     status: (serviceData.status === true || serviceData.status === 'Active') ? 'Active' : 'Inactive',
+    is_active: (serviceData.status === true || serviceData.status === 'Active'),
     icon: serviceData.icon || 'Shirt',
     type: serviceData.type || (Number(serviceData.price) > 200 ? 'Premium' : (String(serviceData.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard')),
     createdAt: Date.now(),
@@ -854,6 +950,25 @@ export const addAdminService = async (serviceData) => {
   } catch (e) {
     console.warn('RTDB add service notice:', e);
   }
+
+  // Update in localStorage and live catalog
+  try {
+    const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
+    const next = [...cached, newService];
+    localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
+    setLiveAdminCatalog(next);
+  } catch (_) {}
+
+  // Sync to Django Backend
+  syncServiceToDjango('add', serviceId, newService);
+
+  // Dispatch local & cross-tab sync event
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('fabricare_admin_services_updated', {
+      detail: { type: 'add', serviceId, service: newService }
+    }));
+  }
+
   return newService;
 };
 
@@ -872,6 +987,24 @@ export const updateAdminService = async (serviceId, updateFields) => {
     console.warn('RTDB update service notice:', e);
   }
 
+  // Update in localStorage and live catalog
+  try {
+    const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
+    const next = cached.map(s => String(s.id) === cleanId ? { ...s, ...updates } : s);
+    localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
+    setLiveAdminCatalog(next);
+  } catch (_) {}
+
+  // Sync to Django Backend
+  syncServiceToDjango('update', cleanId, updates);
+
+  // Dispatch local & cross-tab sync event
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('fabricare_admin_services_updated', {
+      detail: { type: 'update', serviceId: cleanId, updates }
+    }));
+  }
+
   return true;
 };
 
@@ -880,10 +1013,35 @@ export const updateAdminService = async (serviceId, updateFields) => {
  */
 export const deleteAdminService = async (serviceId) => {
   const cleanId = String(serviceId).trim();
+  const deleteUpdates = {
+    isDeleted: true,
+    status: 'Deleted',
+    is_active: false,
+    updatedAt: Date.now()
+  };
   try {
-    await set(ref(rtdb, `services/${cleanId}`), null);
+    // Mark as deleted in RTDB
+    await update(ref(rtdb, `services/${cleanId}`), deleteUpdates);
   } catch (e) {
     console.warn('RTDB delete service notice:', e);
+  }
+
+  // Update in localStorage and live catalog
+  try {
+    const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
+    const next = cached.filter(s => String(s.id) !== cleanId).map(s => String(s.id) === cleanId ? { ...s, ...deleteUpdates } : s);
+    localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
+    setLiveAdminCatalog(next);
+  } catch (_) {}
+
+  // Sync to Django Backend
+  syncServiceToDjango('delete', cleanId, deleteUpdates);
+
+  // Dispatch local & cross-tab sync event
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('fabricare_admin_services_updated', {
+      detail: { type: 'delete', serviceId: cleanId }
+    }));
   }
 
   return true;
@@ -895,13 +1053,33 @@ export const deleteAdminService = async (serviceId) => {
 export const toggleAdminServiceStatus = async (serviceId, currentStatus) => {
   const cleanId = String(serviceId).trim();
   const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+  const updates = {
+    status: newStatus,
+    is_active: (newStatus === 'Active'),
+    updatedAt: Date.now()
+  };
   try {
-    await update(ref(rtdb, `services/${cleanId}`), {
-      status: newStatus,
-      updatedAt: Date.now()
-    });
+    await update(ref(rtdb, `services/${cleanId}`), updates);
   } catch (e) {
     console.warn('RTDB toggle service status notice:', e);
+  }
+
+  // Update in localStorage and live catalog
+  try {
+    const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
+    const next = cached.map(s => String(s.id) === cleanId ? { ...s, ...updates } : s);
+    localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
+    setLiveAdminCatalog(next);
+  } catch (_) {}
+
+  // Sync to Django Backend
+  syncServiceToDjango('toggle', cleanId, updates);
+
+  // Dispatch local & cross-tab sync event
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('fabricare_admin_services_updated', {
+      detail: { type: 'toggle', serviceId: cleanId, status: newStatus }
+    }));
   }
 
   return newStatus;

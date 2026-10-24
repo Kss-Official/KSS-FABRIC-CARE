@@ -89,6 +89,19 @@ export const PricingCalculator = () => {
 
   // State 3: Search filter for clothing items within active subcategory
   const [itemSearchQuery, setItemSearchQuery] = useState('');
+  const [, setCatalogVersion] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setCatalogVersion(v => v + 1);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('fabricare_admin_services_updated', handleUpdate);
+      window.addEventListener('storage', handleUpdate);
+      return () => {
+        window.removeEventListener('fabricare_admin_services_updated', handleUpdate);
+        window.removeEventListener('storage', handleUpdate);
+      };
+    }
+  }, []);
 
   // Handle Main Category click
   const handleCategoryClick = (catId) => {
