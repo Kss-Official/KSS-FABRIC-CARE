@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useBooking } from '../../context/BookingContext';
 import { 
   Calendar, 
@@ -6,7 +6,10 @@ import {
   MapPin, 
   ChevronLeft, 
   ChevronRight, 
-  ArrowRight 
+  ArrowRight,
+  Zap,
+  X,
+  AlertCircle
 } from 'lucide-react';
 
 export const Step3ChooseTime = () => {
@@ -16,10 +19,63 @@ export const Step3ChooseTime = () => {
     pickupDetails, 
     allServices, 
     selectedServices, 
-    setCurrentStep 
+    setSelectedServices,
+    isExpressDelivery,
+    setIsExpressDelivery,
+    selectedItemsList = [],
+    setCurrentStep,
+    switchToExpressLaundry,
+    switchToNormalLaundry
   } = useBooking();
 
   const dateInputRef = useRef(null);
+  const [showExpressModal, setShowExpressModal] = useState(false);
+  const [attemptedDate, setAttemptedDate] = useState(null);
+
+  // Lock background scroll when Express recommendation modal is open
+  useEffect(() => {
+    if (showExpressModal) {
+      const origHtmlOverflow = document.documentElement.style.overflow;
+      const origBodyOverflow = document.body.style.overflow;
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      document.documentElement.classList.add('modal-open');
+      document.body.classList.add('modal-open');
+      return () => {
+        document.documentElement.style.overflow = origHtmlOverflow || '';
+        document.body.style.overflow = origBodyOverflow || '';
+        document.documentElement.classList.remove('modal-open');
+        document.body.classList.remove('modal-open');
+      };
+    }
+  }, [showExpressModal]);
+
+  // Check if current booking has Express Laundry
+  const isExpressBooking = useMemo(() => {
+    if (isExpressDelivery) return true;
+    if (selectedServices && selectedServices.some(s => s === 'express-laundry' || String(s).toLowerCase().includes('express'))) {
+      return true;
+    }
+    if (selectedItemsList && selectedItemsList.some(it => it.categoryId === 'express-laundry' || String(it.categoryName || '').toLowerCase().includes('express'))) {
+      return true;
+    }
+    return false;
+  }, [isExpressDelivery, selectedServices, selectedItemsList]);
+
+  // Helper to compute calendar day difference between a YYYY-MM-DD date and today
+  const getDaysDifferenceFromToday = (isoDateStr) => {
+    if (!isoDateStr) return null;
+    const parts = isoDateStr.split('-');
+    if (parts.length !== 3) return null;
+    const targetDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    targetDate.setHours(0, 0, 0, 0);
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    const diffMs = targetDate.getTime() - now.getTime();
+    return Math.round(diffMs / (1000 * 60 * 60 * 24));
+  };
 
   const dateOptions = useMemo(() => {
     const options = [];
@@ -37,11 +93,164 @@ export const Step3ChooseTime = () => {
         label: dayName,
         date: dateStr,
         full: full,
-        isoDate: isoDate
+        isoDate: isoDate,
+        dayOffset: i
       });
     }
     return options;
   }, []);
+
+  // Earliest valid normal service date is 2 days in advance
+  const earliestNormalDate = dateOptions[2] || dateOptions[0];
+
+  // Auto-adjust default date if customer has normal services and current date is < 2 days out
+  useEffect(() => {
+    if (!isExpressBooking && pickupSchedule.dateValue) {
+      const diff = getDaysDifferenceFromToday(pickupSchedule.dateValue);
+      if (diff === null || diff < 2) {
+        if (earliestNormalDate) {
+          setPickupSchedule(prev => ({
+            ...prev,
+            dateLabel: earliestNormalDate.full,
+            dateValue: earliestNormalDate.isoDate
+          }));
+        }
+      }
+    }
+  }, [isExpressBooking, earliestNormalDate, pickupSchedule.dateValue]);
+
+  // Handle Date Pill Click
+  const handleDateSelect = (opt) => {
+    // Normal services rule: only dates at least 2 days in advance are accepted
+    if (!isExpressBooking && opt.dayOffset < 2) {
+      setAttemptedDate(opt);
+      setShowExpressModal(true);
+      return;
+    }
+
+    setPickupSchedule(prev => ({
+      ...prev,
+      dateLabel: opt.full,
+      dateValue: opt.isoDate
+    }));
+  };
+
+  // Handle Custom Calendar Date Change
+  const handleCustomDateChange = (e) => {
+    const val = e.target.value;
+    if (!val) return;
+    const diff = getDaysDifferenceFromToday(val);
+    const d = new Date(val + 'T00:00:00');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const label = `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+
+    if (!isExpressBooking && diff !== null && diff < 2) {
+      setAttemptedDate({
+        label: diff === 1 ? 'Tomorrow' : diff === 0 ? 'Today' : 'Selected Date',
+        date: `${d.getDate()} ${months[d.getMonth()]}`,
+        full: label,
+        isoDate: val,
+        dayOffset: diff
+      });
+      setShowExpressModal(true);
+      if (dateInputRef.current) {
+        dateInputRef.current.value = pickupSchedule.dateValue || '';
+      }
+      return;
+    }
+
+    setPickupSchedule(prev => ({ ...prev, dateLabel: label, dateValue: val }));
+  };
+
+  // Min selectable date for calendar input
+  const minCalendarDate = useMemo(() => {
+    if (isExpressBooking) {
+      return dateOptions[1]?.isoDate || new Date().toISOString().split('T')[0];
+    }
+    return dateOptions[2]?.isoDate || new Date().toISOString().split('T')[0];
+  }, [isExpressBooking, dateOptions]);
+
+  // Handle Next Navigation with strict validation
+  const handleProceedNext = () => {
+    if (!pickupSchedule.dateLabel || !pickupSchedule.timeSlot) return;
+    const diff = getDaysDifferenceFromToday(pickupSchedule.dateValue);
+    if (!isExpressBooking && diff !== null && diff < 2) {
+      setAttemptedDate({
+        label: diff === 1 ? 'Tomorrow' : 'Selected Date',
+        full: pickupSchedule.dateLabel,
+        isoDate: pickupSchedule.dateValue,
+        dayOffset: diff
+      });
+      setShowExpressModal(true);
+      return;
+    }
+    setCurrentStep(4);
+  };
+
+  // Modal Action: Switch to Express Laundry (enables next-day booking)
+  const handleUpgradeToExpress = () => {
+    const targetDateObj = attemptedDate 
+      ? { label: attemptedDate.label, full: attemptedDate.full, isoDate: attemptedDate.isoDate }
+      : (dateOptions[1] ? { label: 'Tomorrow', full: dateOptions[1].full, isoDate: dateOptions[1].isoDate } : null);
+
+    if (typeof switchToExpressLaundry === 'function') {
+      switchToExpressLaundry(targetDateObj);
+    } else {
+      if (typeof setIsExpressDelivery === 'function') {
+        setIsExpressDelivery(true);
+      }
+      if (typeof setSelectedServices === 'function') {
+        setSelectedServices(prev => {
+          if (prev.includes('express-laundry')) return prev;
+          return [...prev, 'express-laundry'];
+        });
+      }
+      if (targetDateObj) {
+        setPickupSchedule(prev => ({
+          ...prev,
+          dateLabel: targetDateObj.full,
+          dateValue: targetDateObj.isoDate
+        }));
+      }
+    }
+    setShowExpressModal(false);
+  };
+
+  // Modal Action: Keep Normal Service (auto-selects 2 days in advance)
+  const handleKeepNormalService = () => {
+    if (typeof switchToNormalLaundry === 'function') {
+      switchToNormalLaundry('wash-fold', earliestNormalDate);
+    } else if (earliestNormalDate) {
+      setPickupSchedule(prev => ({
+        ...prev,
+        dateLabel: earliestNormalDate.full,
+        dateValue: earliestNormalDate.isoDate
+      }));
+    }
+    setShowExpressModal(false);
+  };
+
+  // Banner Action: Switch back to standard Normal Laundry
+  const handleDowngradeToNormal = () => {
+    if (typeof switchToNormalLaundry === 'function') {
+      switchToNormalLaundry('wash-fold', earliestNormalDate);
+    } else {
+      if (typeof setIsExpressDelivery === 'function') {
+        setIsExpressDelivery(false);
+      }
+      if (typeof setSelectedServices === 'function') {
+        setSelectedServices(['wash-fold']);
+      }
+      if (earliestNormalDate) {
+        setPickupSchedule(prev => ({
+          ...prev,
+          dateLabel: earliestNormalDate.full,
+          dateValue: earliestNormalDate.isoDate
+        }));
+      }
+    }
+  };
 
   const timeSlots = [
     { slot: '9:00 AM – 11:00 AM', subtitle: "We'll be at your door" },
@@ -86,6 +295,10 @@ export const Step3ChooseTime = () => {
             <path d="M5 15.5c.5-2.5 2-4.5 5-5.5l4 .5 4 3 3 2" /><path d="M10 10.5 8 9" />
           </svg>
         );
+      case 'express-laundry':
+        return (
+          <Zap size={22} className="text-amber-500" />
+        );
       case 'home-care':
         return (
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -106,7 +319,7 @@ export const Step3ChooseTime = () => {
   return (
     <div className="step3-container animate-fade-in">
       <div className="booking-layout-grid">
-        {/* Left: Single Parent Card enclosing Header, Date Chips, Time Slots 3x2 Grid, and Pagination */}
+        {/* Left: Single Parent Card enclosing Header, Rule Notice, Date Chips, Time Slots Grid, and Pagination */}
         <div className="time-parent-card">
           <div className="step-header">
             <span className="step-count">03 / 04</span>
@@ -115,18 +328,64 @@ export const Step3ChooseTime = () => {
           </div>
 
           <div className="time-picker-body">
+            {/* Service Advance Booking Notice Banner */}
+            {!isExpressBooking ? (
+              <div className="booking-service-rule-banner normal-rule">
+                <Clock size={16} className="rule-banner-icon text-teal" />
+                <div className="rule-banner-text">
+                  <span><strong>Normal Services:</strong> Pickups can only be booked <strong>at least two days in advance</strong> (from {earliestNormalDate?.date}).</span>
+                  <button 
+                    type="button" 
+                    className="rule-banner-upgrade-btn"
+                    onClick={() => {
+                      setAttemptedDate(dateOptions[1]);
+                      setShowExpressModal(true);
+                    }}
+                  >
+                    Need urgent washing? Choose Express ⚡
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="booking-service-rule-banner express-rule">
+                <Zap size={16} className="rule-banner-icon text-amber-500" />
+                <div className="rule-banner-text">
+                  <span><strong>Express Laundry Active:</strong> Superfast priority turnaround! <strong>Next-day pickup</strong> is available ({dateOptions[1]?.label}, {dateOptions[1]?.date}).</span>
+                  <button 
+                    type="button" 
+                    className="rule-banner-upgrade-btn rule-banner-downgrade-btn"
+                    onClick={handleDowngradeToNormal}
+                  >
+                    Switch to Normal (Standard rates) ↩
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Date Selector Row */}
             <div className="date-pills-row">
               {dateOptions.map((opt) => {
                 const isSelected = pickupSchedule.dateLabel === opt.full || pickupSchedule.dateValue === opt.isoDate;
+                const isWithinTwoDays = opt.dayOffset < 2;
+                const isNextDay = opt.dayOffset === 1;
+
                 return (
                   <button
                     key={opt.isoDate}
                     type="button"
-                    className={`date-pill-btn ${isSelected ? 'selected' : ''}`}
-                    onClick={() => setPickupSchedule(prev => ({ ...prev, dateLabel: opt.full, dateValue: opt.isoDate }))}
+                    className={`date-pill-btn ${isSelected ? 'selected' : ''} ${!isExpressBooking && isWithinTwoDays ? 'rule-restricted' : ''}`}
+                    onClick={() => handleDateSelect(opt)}
+                    title={!isExpressBooking && isWithinTwoDays ? 'Express Laundry required for urgent/next-day pickup' : opt.full}
                   >
-                    <span className="date-day-label">{opt.label}</span>
+                    <div className="date-pill-top">
+                      <span className="date-day-label">{opt.label}</span>
+                      {!isExpressBooking && isWithinTwoDays && (
+                        <span className="date-pill-rule-badge" title="Express Laundry required">⚡ Express</span>
+                      )}
+                      {isExpressBooking && isNextDay && (
+                        <span className="date-pill-rule-badge express-ok" title="Next-day pickup available">Next-Day</span>
+                      )}
+                    </div>
                     <span className="date-day-val">{opt.date}</span>
                   </button>
                 );
@@ -156,18 +415,9 @@ export const Step3ChooseTime = () => {
                 <input
                   ref={dateInputRef}
                   type="date"
-                  min={new Date().toISOString().split('T')[0]}
+                  min={minCalendarDate}
                   style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val) {
-                      const d = new Date(val + 'T00:00:00');
-                      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                      const label = `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-                      setPickupSchedule(prev => ({ ...prev, dateLabel: label, dateValue: val }));
-                    }
-                  }}
+                  onChange={handleCustomDateChange}
                 />
               </button>
             </div>
@@ -217,7 +467,7 @@ export const Step3ChooseTime = () => {
 
             <button
               className="pagination-circle-btn"
-              onClick={() => setCurrentStep(4)}
+              onClick={handleProceedNext}
               aria-label="Next step"
               disabled={!pickupSchedule.dateLabel || !pickupSchedule.timeSlot}
             >
@@ -290,13 +540,97 @@ export const Step3ChooseTime = () => {
       <div className="step-footer-actions">
         <button
           className="btn-next-action"
-          onClick={() => setCurrentStep(4)}
+          onClick={handleProceedNext}
           disabled={!pickupSchedule.dateLabel || !pickupSchedule.timeSlot}
         >
           <span>Next</span>
           <ArrowRight size={17} />
         </button>
       </div>
+
+      {/* Express Laundry Recommendation Popup Modal */}
+      {showExpressModal && (
+        <div className="express-modal-overlay" onClick={() => setShowExpressModal(false)}>
+          <div className="express-modal-card animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <button 
+              type="button" 
+              className="express-modal-close-btn"
+              onClick={() => setShowExpressModal(false)}
+              aria-label="Close modal"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="express-modal-icon-badge">
+              <Zap size={28} />
+            </div>
+
+            <div className="express-modal-tag">
+              <span>Booking Rule Notice</span>
+            </div>
+
+            <h3 className="express-modal-title">
+              Urgent Laundry Pickup Needed?
+            </h3>
+
+            <p className="express-modal-description">
+              You selected <strong>{attemptedDate?.label || 'Tomorrow'} ({attemptedDate?.date || attemptedDate?.full || 'next-day'})</strong> for normal laundry service.
+            </p>
+
+            <p className="express-modal-subtext">
+              <strong>Normal services</strong> can only be booked for dates at least <strong>two days in advance</strong> (earliest available: <strong>{earliestNormalDate?.full}</strong>).
+              <br />
+              If you need your clothes washed urgently, please choose <strong>Express Laundry</strong> to schedule next-day pickup!
+            </p>
+
+            <div className="express-comparison-box">
+              <div className="comparison-col express-col">
+                <div className="comparison-badge express-tag">
+                  <Zap size={13} />
+                  <span>Express Laundry</span>
+                </div>
+                <div className="comparison-text">
+                  <strong>Next-Day Pickup</strong>
+                  <span>Superfast 24-hr turnaround</span>
+                </div>
+              </div>
+
+              <div className="comparison-divider" />
+
+              <div className="comparison-col normal-col">
+                <div className="comparison-badge normal-tag">
+                  <Clock size={13} />
+                  <span>Normal Services</span>
+                </div>
+                <div className="comparison-text">
+                  <strong>2+ Days Advance</strong>
+                  <span>Standard 48-hr turnaround</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="express-modal-actions">
+              <button
+                type="button"
+                className="btn-upgrade-express"
+                onClick={handleUpgradeToExpress}
+              >
+                <Zap size={16} />
+                <span>Switch to Express Laundry (Next-Day)</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn-keep-normal"
+                onClick={handleKeepNormalService}
+              >
+                <Calendar size={15} />
+                <span>Book for {earliestNormalDate?.label} ({earliestNormalDate?.date})</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .step3-container {
@@ -322,7 +656,7 @@ export const Step3ChooseTime = () => {
         }
 
         .step-header {
-          margin-bottom: 22px;
+          margin-bottom: 18px;
         }
 
         .step-count {
@@ -350,6 +684,68 @@ export const Step3ChooseTime = () => {
           flex-direction: column;
         }
 
+        /* Service Advance Booking Notice Banner */
+        .booking-service-rule-banner {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 14px;
+          border-radius: 12px;
+          margin-bottom: 18px;
+          font-size: 0.8125rem;
+          line-height: 1.45;
+        }
+
+        .booking-service-rule-banner.normal-rule {
+          background: #F0FDFA;
+          border: 1px solid #CCFBF1;
+          color: #0F766E;
+        }
+
+        .booking-service-rule-banner.express-rule {
+          background: #FFFBEB;
+          border: 1px solid #FDE68A;
+          color: #B45309;
+        }
+
+        .rule-banner-icon {
+          flex-shrink: 0;
+        }
+
+        .rule-banner-text {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          width: 100%;
+        }
+
+        .rule-banner-upgrade-btn {
+          background: #0D7A75;
+          color: #ffffff;
+          border: none;
+          padding: 4px 12px;
+          border-radius: 999px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background 0.15s ease;
+        }
+
+        .rule-banner-upgrade-btn:hover {
+          background: #095F5B;
+        }
+
+        .rule-banner-downgrade-btn {
+          background: #B45309;
+        }
+
+        .rule-banner-downgrade-btn:hover {
+          background: #92400E;
+        }
+
         /* Date selector row */
         .date-pills-row {
           display: grid;
@@ -362,13 +758,14 @@ export const Step3ChooseTime = () => {
           background: #ffffff;
           border: 1.5px solid #E2E8F0;
           border-radius: 14px;
-          padding: 12px 6px;
+          padding: 10px 4px;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
           cursor: pointer;
           transition: all 0.2s ease;
+          position: relative;
         }
 
         .date-pill-btn:hover {
@@ -379,6 +776,13 @@ export const Step3ChooseTime = () => {
         .date-pill-btn.selected {
           border: 2px solid #0D7A75;
           background: #F4FBFA;
+        }
+
+        .date-pill-top {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
         }
 
         .date-day-label {
@@ -394,6 +798,34 @@ export const Step3ChooseTime = () => {
           margin-top: 2px;
         }
 
+        .date-pill-rule-badge {
+          font-size: 0.625rem;
+          font-weight: 700;
+          padding: 1px 5px;
+          border-radius: 999px;
+          background: #FEF3C7;
+          color: #D97706;
+          border: 1px solid #FDE68A;
+          white-space: nowrap;
+          line-height: 1.2;
+        }
+
+        .date-pill-rule-badge.express-ok {
+          background: #E8FAF6;
+          color: #0D7A75;
+          border-color: #BCEAE6;
+        }
+
+        .date-pill-btn.rule-restricted {
+          border-color: #FED7AA;
+          background: #FFFDF9;
+        }
+
+        .date-pill-btn.rule-restricted:hover {
+          border-color: #F97316;
+          background: #FFF7ED;
+        }
+
         .date-pill-btn.selected .date-day-label {
           color: #0D7A75;
           font-weight: 600;
@@ -405,6 +837,248 @@ export const Step3ChooseTime = () => {
 
         .calendar-custom-pill {
           color: #0D7A75;
+        }
+
+        /* Express Recommendation Modal */
+        .express-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.6);
+          backdrop-filter: blur(5px);
+          -webkit-backdrop-filter: blur(5px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          padding: 20px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          touch-action: pan-y;
+          animation: modalFadeIn 0.2s ease-out;
+        }
+
+        .express-modal-card {
+          background: #ffffff;
+          border-radius: 20px;
+          max-width: 480px;
+          width: 100%;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          padding: 28px 24px 22px;
+          position: relative;
+          box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+          border: 1px solid #E2E8F0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          animation: modalScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+          box-sizing: border-box;
+        }
+
+        @keyframes modalFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes modalScaleIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+
+        .express-modal-close-btn {
+          position: absolute;
+          top: 14px;
+          right: 14px;
+          background: #F1F5F9;
+          border: none;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #64748B;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .express-modal-close-btn:hover {
+          background: #E2E8F0;
+          color: #0F172A;
+        }
+
+        .express-modal-icon-badge {
+          width: 54px;
+          height: 54px;
+          border-radius: 16px;
+          background: #FFFBEB;
+          border: 1.5px solid #FDE68A;
+          color: #D97706;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 12px;
+          box-shadow: 0 4px 14px rgba(217, 119, 6, 0.15);
+        }
+
+        .express-modal-tag {
+          background: #FEF3C7;
+          color: #B45309;
+          border: 1px solid #FDE68A;
+          padding: 3px 12px;
+          border-radius: 999px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          letter-spacing: 0.03em;
+          margin-bottom: 10px;
+          text-transform: uppercase;
+        }
+
+        .express-modal-title {
+          font-size: 1.3rem;
+          font-weight: 800;
+          color: #0F172A;
+          margin: 0 0 8px 0;
+          letter-spacing: -0.015em;
+          line-height: 1.3;
+        }
+
+        .express-modal-description {
+          font-size: 0.875rem;
+          color: #334155;
+          line-height: 1.5;
+          margin: 0 0 6px 0;
+        }
+
+        .express-modal-subtext {
+          font-size: 0.8125rem;
+          color: #64748B;
+          line-height: 1.5;
+          margin: 0 0 18px 0;
+        }
+
+        .express-comparison-box {
+          display: grid;
+          grid-template-columns: 1fr auto 1fr;
+          align-items: center;
+          gap: 12px;
+          background: #F8FAFC;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 14px;
+          padding: 12px 14px;
+          width: 100%;
+          margin-bottom: 20px;
+          box-sizing: border-box;
+        }
+
+        .comparison-col {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 5px;
+        }
+
+        .comparison-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 0.6875rem;
+          font-weight: 700;
+        }
+
+        .comparison-badge.express-tag {
+          background: #FFFBEB;
+          color: #D97706;
+          border: 1px solid #FDE68A;
+        }
+
+        .comparison-badge.normal-tag {
+          background: #E8FAF6;
+          color: #0D7A75;
+          border: 1px solid #BCEAE6;
+        }
+
+        .comparison-text {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+
+        .comparison-text strong {
+          font-size: 0.8125rem;
+          color: #0F172A;
+          font-weight: 700;
+        }
+
+        .comparison-text span {
+          font-size: 0.72rem;
+          color: #64748B;
+        }
+
+        .comparison-divider {
+          width: 1px;
+          height: 44px;
+          background: #CBD5E1;
+        }
+
+        .express-modal-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          width: 100%;
+        }
+
+        .btn-upgrade-express {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          height: 44px;
+          border-radius: 12px;
+          background: linear-gradient(135deg, #0D7A75 0%, #08605C 100%);
+          color: #ffffff;
+          font-size: 0.875rem;
+          font-weight: 700;
+          border: none;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(13, 122, 117, 0.25);
+          transition: all 0.2s ease;
+        }
+
+        .btn-upgrade-express:hover {
+          background: linear-gradient(135deg, #0A6964 0%, #064E4B 100%);
+          box-shadow: 0 6px 16px rgba(13, 122, 117, 0.35);
+          transform: translateY(-1px);
+        }
+
+        .btn-keep-normal {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          height: 42px;
+          border-radius: 12px;
+          background: #ffffff;
+          color: #475569;
+          font-size: 0.8125rem;
+          font-weight: 600;
+          border: 1.5px solid #CBD5E1;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .btn-keep-normal:hover {
+          background: #F8FAFC;
+          color: #0F172A;
+          border-color: #94A3B8;
         }
 
         .pick-date-inner {

@@ -11,13 +11,17 @@ import {
   ChevronLeft, 
   ArrowRight, 
   Loader2, 
-  AlertCircle 
+  AlertCircle,
+  User,
+  Zap
 } from 'lucide-react';
 
 export const Step4ReviewConfirm = () => {
   const { 
     allServices, 
-    selectedServices, 
+    selectedServices,
+    selectedItemsList = [],
+    totalItemsCount = 0,
     pickupDetails, 
     pickupSchedule, 
     specialInstructions, 
@@ -25,11 +29,22 @@ export const Step4ReviewConfirm = () => {
     setCurrentStep, 
     confirmOrder, 
     calculateTotal, 
+    calculateDuplicateWashSavings = () => 0,
+    getItemPricing = (it) => ({ effectiveUnitPrice: it.unitPrice, lineTotal: it.unitPrice * it.quantity, hasIroningDiscount: false }),
+    isExpressDelivery,
     isSubmittingOrder, 
     orderError 
   } = useBooking();
 
   const [isEditingInstructions, setIsEditingInstructions] = useState(false);
+
+  const isExpressBooking = Boolean(isExpressDelivery) || 
+    (selectedServices && selectedServices.some(s => s === 'express-laundry' || String(s).toLowerCase().includes('express'))) ||
+    (selectedItemsList && selectedItemsList.some(it => it.categoryId === 'express-laundry' || String(it.categoryName || '').toLowerCase().includes('express')));
+
+  const primaryCategoryId = isExpressBooking 
+    ? 'express-laundry' 
+    : (selectedItemsList[0]?.categoryId || selectedServices[0] || 'wash-fold');
 
   const selectedItemsData = allServices.filter(s => selectedServices.includes(s.id));
   const estimatedTotal = calculateTotal() || 300;
@@ -61,6 +76,8 @@ export const Step4ReviewConfirm = () => {
             <path d="M4 17h16a1 1 0 0 0 1-1c0-4-3-6-7-6H9a5 5 0 0 0-5 5v2z" /><path d="M9 10V6h7v4" />
           </svg>
         );
+      case 'express-laundry':
+        return <Zap size={20} color="#087F8C" strokeWidth={2.2} />;
       case 'shoe-laundry':
         return (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -95,14 +112,18 @@ export const Step4ReviewConfirm = () => {
           </div>
 
           <div className="review-grid-2x2">
-            {/* Card 1: Selected Services */}
+            {/* Card 1: Selected Clothing Items & Services */}
             <div className="review-inner-card">
               <div className="inner-card-header">
                 <div className="inner-header-left">
                   <div className="icon-square">
-                    {renderServiceIcon('wash-fold')}
+                    {renderServiceIcon(primaryCategoryId)}
                   </div>
-                  <h3 className="inner-card-title">Selected Services</h3>
+                  <h3 className="inner-card-title">
+                    {selectedItemsList.length > 0 
+                      ? `Selected Clothing Items (${totalItemsCount})` 
+                      : 'Selected Services'}
+                  </h3>
                 </div>
                 <button 
                   type="button" 
@@ -115,17 +136,68 @@ export const Step4ReviewConfirm = () => {
               </div>
 
               <div className="inner-card-body">
-                {selectedItemsData.map(s => (
-                  <div key={s.id} className="service-item-row">
-                    <span className="item-service-icon">
-                      {renderServiceIcon(s.id)}
-                    </span>
-                    <div className="item-text-wrap">
-                      <div className="item-main-title">{s.name}</div>
-                      <div className="item-sub-title">{s.subtitle}</div>
-                    </div>
+                {selectedItemsList.length > 0 ? (
+                  <div className="review-items-stack">
+                    {selectedItemsList.map(item => {
+                      const pricing = getItemPricing(item);
+                      return (
+                        <div key={item.key} className="service-item-row">
+                          <span className="item-service-icon">
+                            {renderServiceIcon(item.categoryId)}
+                          </span>
+                          <div className="item-text-wrap" style={{ flex: 1 }}>
+                            <div className="item-main-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span>{item.name}</span>
+                                {pricing.hasIroningDiscount && (
+                                  <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#0D7A75', background: '#E6F8F6', border: '1px solid #BCEAE6', padding: '1px 6px', borderRadius: '999px' }}>
+                                    Ironing only
+                                  </span>
+                                )}
+                              </div>
+                              <span style={{ fontWeight: 700, color: '#087F8C', fontSize: '0.875rem' }}>
+                                ₹{pricing.lineTotal}
+                              </span>
+                            </div>
+                            <div className="item-sub-title">
+                              {item.categoryName} • Qty: {item.quantity} (
+                                {item.isPriceEnabled ? (
+                                  pricing.hasIroningDiscount ? (
+                                    <>
+                                      <span style={{ textDecoration: 'line-through', color: '#94A3B8' }}>₹{item.unitPrice}</span>{' '}
+                                      <span style={{ color: '#0D7A75', fontWeight: 600 }}>₹{pricing.effectiveUnitPrice} each</span>
+                                    </>
+                                  ) : (
+                                    `₹${item.unitPrice} each`
+                                  )
+                                ) : (
+                                  `Standard Care`
+                                )}
+                              )
+                              {pricing.hasIroningDiscount && (
+                                <span style={{ display: 'block', fontSize: '0.7rem', color: '#0D7A75', marginTop: '2px' }}>
+                                  ✓ Wash fee waived (included in Wash & Fold)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                ) : (
+                  selectedItemsData.map(s => (
+                    <div key={s.id} className="service-item-row">
+                      <span className="item-service-icon">
+                        {renderServiceIcon(s.id)}
+                      </span>
+                      <div className="item-text-wrap">
+                        <div className="item-main-title">{s.name}</div>
+                        <div className="item-sub-title">{s.subtitle}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -149,6 +221,12 @@ export const Step4ReviewConfirm = () => {
               </div>
 
               <div className="inner-card-body">
+                <div className="detail-item-row mb-2">
+                  <User size={16} className="detail-icon" />
+                  <span className="detail-text bold" style={{ color: '#0F172A', fontSize: '0.95rem' }}>
+                    {pickupDetails.name || 'Customer'}
+                  </span>
+                </div>
                 <div className="detail-item-row">
                   <Phone size={16} className="detail-icon" />
                   <span className="detail-text bold">{pickupDetails.mobile || '+91 98765 43210'}</span>
@@ -265,15 +343,59 @@ export const Step4ReviewConfirm = () => {
               <h3 className="sidebar-main-title">Estimated Summary</h3>
             </div>
 
-            {/* Services breakdown table */}
+            {/* Services & clothing items breakdown table */}
             <div className="summary-items-list">
-              {selectedItemsData.map(s => (
-                <div key={s.id} className="summary-item-row">
-                  <span className="item-name">{s.name}</span>
-                  <span className="item-qty">1</span>
-                  <span className="item-price">₹{s.price || 120}</span>
+              {calculateDuplicateWashSavings() > 0 && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#E6F8F6',
+                  border: '1px solid #BCEAE6',
+                  color: '#0D7A75',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  fontSize: '0.725rem',
+                  marginBottom: '10px'
+                }}>
+                  <span>🎉</span>
+                  <span><strong>₹{calculateDuplicateWashSavings()} saved</strong> — duplicate wash charge waived</span>
                 </div>
-              ))}
+              )}
+              {selectedItemsList.length > 0 ? (
+                selectedItemsList.map(it => {
+                  const pricing = getItemPricing(it);
+                  return (
+                    <div key={it.key} className="summary-item-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className="item-name" style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {it.name}
+                          </span>
+                          {pricing.hasIroningDiscount && (
+                            <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#0D7A75', background: '#E6F8F6', border: '1px solid #BCEAE6', padding: '1px 5px', borderRadius: '4px' }}>
+                              Ironing
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#087F8C', fontWeight: 600 }}>
+                          {it.categoryName}
+                        </span>
+                      </div>
+                      <span className="item-qty" style={{ fontWeight: 600, color: '#64748B' }}>×{it.quantity}</span>
+                      <span className="item-price" style={{ fontWeight: 700, color: '#111827' }}>₹{pricing.lineTotal}</span>
+                    </div>
+                  );
+                })
+              ) : (
+                selectedItemsData.map(s => (
+                  <div key={s.id} className="summary-item-row">
+                    <span className="item-name">{s.name}</span>
+                    <span className="item-qty">1</span>
+                    <span className="item-price">₹{s.price || 120}</span>
+                  </div>
+                ))
+              )}
             </div>
 
             {/* Estimated Total */}

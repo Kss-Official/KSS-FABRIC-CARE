@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
+import { formatDisplayDate } from '../../utils/dateFilterUtils';
 import { 
   X, 
   Search, 
@@ -12,11 +14,12 @@ import {
   Layers, 
   Sparkles, 
   Flame, 
-  Footprints, 
-  BedDouble, 
   Check, 
   ArrowRight,
-  UserPlus
+  UserPlus,
+  Menu,
+  SunMedium,
+  Zap
 } from 'lucide-react';
 
 export const CreateOrderDrawer = () => {
@@ -39,11 +42,22 @@ export const CreateOrderDrawer = () => {
     { id: 'wi', name: 'Wash & Iron', rate: 180, count: 0, selected: false, icon: 'Layers' },
     { id: 'dc', name: 'Dry Cleaning', rate: 240, count: 1, selected: true, icon: 'Sparkles' },
     { id: 'si', name: 'Steam Iron', rate: 150, count: 0, selected: false, icon: 'Flame' },
-    { id: 'sl', name: 'Shoe Laundry', rate: 200, count: 0, selected: false, icon: 'Footprints' },
-    { id: 'hc', name: 'Home Care', rate: 300, count: 0, selected: false, icon: 'BedDouble' },
+    { id: 'el', name: 'Express Laundry', rate: 200, count: 0, selected: false, icon: 'Zap' },
   ]);
 
-  const [pickupDate, setPickupDate] = useState('23 Sep 2026');
+  const todayDateStr = useMemo(() => formatDisplayDate(new Date()), []);
+  const tomorrowDateStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return formatDisplayDate(d);
+  }, []);
+  const dayAfterDateStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return formatDisplayDate(d);
+  }, []);
+
+  const [pickupDate, setPickupDate] = useState(todayDateStr);
   const [pickupTime, setPickupTime] = useState('09:00 AM – 11:00 AM');
 
   if (!isCreateOrderDrawerOpen) return null;
@@ -95,7 +109,24 @@ export const CreateOrderDrawer = () => {
     }
   };
 
-  return (
+  const getSelectedServiceIcon = (name) => {
+    switch (name) {
+      case 'Wash & Fold':
+        return <Menu size={18} strokeWidth={2} />;
+      case 'Dry Cleaning':
+        return <SunMedium size={18} strokeWidth={2} />;
+      case 'Wash & Iron':
+        return <Layers size={18} strokeWidth={2} />;
+      case 'Steam Iron':
+        return <Flame size={18} strokeWidth={2} />;
+      case 'Express Laundry':
+        return <Zap size={18} strokeWidth={2} />;
+      default:
+        return <Shirt size={18} strokeWidth={2} />;
+    }
+  };
+
+  return createPortal(
     <div className="drawer-backdrop animate-fade-in" onClick={() => setIsCreateOrderDrawerOpen(false)}>
       <div className="drawer-panel" onClick={(e) => e.stopPropagation()}>
         {/* Drawer Header */}
@@ -192,25 +223,51 @@ export const CreateOrderDrawer = () => {
               </div>
 
               {/* Selected Services Counter List */}
-              <div className="selected-services-sublist">
-                <span className="sublist-heading">Selected Services</span>
-                {selectedServicesList.map(s => (
-                  <div key={s.id} className="selected-sublist-row">
-                    <span className="sublist-name">{s.name}</span>
-                    <div className="sublist-actions">
-                      <div className="counter-pill">
-                        <button onClick={() => updateCount(s.id, -1)}><Minus size={12} /></button>
-                        <span>{s.count}</span>
-                        <button onClick={() => updateCount(s.id, 1)}><Plus size={12} /></button>
+              {selectedServicesList.length > 0 && (
+                <div className="selected-services-sublist-wrap">
+                  <h4 className="selected-services-heading">Selected Services</h4>
+                  <div className="selected-services-cards">
+                    {selectedServicesList.map(s => (
+                      <div key={s.id} className="selected-service-row-card">
+                        <div className="service-row-left">
+                          <span className="service-row-icon">{getSelectedServiceIcon(s.name)}</span>
+                          <span className="service-row-name">{s.name}</span>
+                        </div>
+                        <div className="service-row-actions">
+                          <div className="service-qty-pill">
+                            <button 
+                              type="button" 
+                              className="qty-pill-btn" 
+                              onClick={() => updateCount(s.id, -1)}
+                              aria-label="Decrease quantity"
+                            >
+                              −
+                            </button>
+                            <span className="qty-pill-val">{s.count}</span>
+                            <button 
+                              type="button" 
+                              className="qty-pill-btn" 
+                              onClick={() => updateCount(s.id, 1)}
+                              aria-label="Increase quantity"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <span className="service-row-price">₹{s.count * s.rate}</span>
+                          <button 
+                            type="button" 
+                            className="service-row-remove" 
+                            onClick={() => toggleService(s.id)}
+                            aria-label={`Remove ${s.name}`}
+                          >
+                            <X size={17} strokeWidth={2} />
+                          </button>
+                        </div>
                       </div>
-                      <span className="sublist-price">₹{s.count * s.rate}</span>
-                      <button className="sublist-remove" onClick={() => toggleService(s.id)}>
-                        <X size={14} />
-                      </button>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -231,9 +288,9 @@ export const CreateOrderDrawer = () => {
                     value={pickupDate}
                     onChange={(e) => setPickupDate(e.target.value)}
                   >
-                    <option value="23 Sep 2026">23 Sep 2026</option>
-                    <option value="24 Sep 2026">24 Sep 2026</option>
-                    <option value="25 Sep 2026">25 Sep 2026</option>
+                    <option value={todayDateStr}>{todayDateStr} (Today)</option>
+                    <option value={tomorrowDateStr}>{tomorrowDateStr} (Tomorrow)</option>
+                    <option value={dayAfterDateStr}>{dayAfterDateStr}</option>
                   </select>
                 </div>
 
@@ -268,7 +325,7 @@ export const CreateOrderDrawer = () => {
               <div className="estimated-total-card">
                 <div className="total-card-left">
                   <div className="rupee-icon-wrap">₹</div>
-                  <div>
+                  <div className="total-card-meta">
                     <span className="total-card-label">Estimated Total</span>
                     <span className="total-card-sub">Inclusive of all charges</span>
                   </div>
@@ -301,27 +358,33 @@ export const CreateOrderDrawer = () => {
         .drawer-backdrop {
           position: fixed;
           inset: 0;
+          width: 100%;
+          height: 100%;
           background: rgba(15, 23, 42, 0.5);
           backdrop-filter: blur(4px);
           z-index: 1000;
           display: flex;
           justify-content: flex-end;
+          overflow: hidden;
+          overscroll-behavior: contain;
         }
 
         .drawer-panel {
           width: 540px;
           max-width: 100%;
           height: 100vh;
+          height: 100dvh;
           background: #FFFFFF;
           display: flex;
           flex-direction: column;
           box-shadow: -10px 0 40px rgba(0,0,0,0.15);
           animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          overscroll-behavior: contain;
         }
 
         @keyframes slideInRight {
           from { transform: translateX(100%); }
-          to { transform: translateX(0); }
+          to { transform: none; }
         }
 
         .drawer-header {
@@ -572,72 +635,122 @@ export const CreateOrderDrawer = () => {
           font-weight: 600;
         }
 
-        .selected-services-sublist {
+        .selected-services-sublist-wrap {
+          margin-top: 18px;
+        }
+
+        .selected-services-heading {
+          font-size: 1rem;
+          font-weight: 800;
+          color: #1E293B;
+          margin-bottom: 12px;
+        }
+
+        .selected-services-cards {
           display: flex;
           flex-direction: column;
           gap: 10px;
+        }
+
+        .selected-service-row-card {
           background: #F8FAFC;
-          border-radius: 12px;
-          padding: 14px;
-        }
-
-        .sublist-heading {
-          font-size: 0.8125rem;
-          font-weight: 700;
-          color: #475569;
-        }
-
-        .selected-sublist-row {
+          border: 1.5px solid #F1F5F9;
+          border-radius: 18px;
+          padding: 12px 18px;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          font-size: 0.875rem;
+          transition: background 0.15s ease;
         }
 
-        .sublist-name {
-          font-weight: 600;
-          color: #1E293B;
-        }
-
-        .sublist-actions {
+        .service-row-left {
           display: flex;
           align-items: center;
           gap: 12px;
         }
 
-        .counter-pill {
+        .service-row-icon {
+          color: #94A3B8;
           display: flex;
           align-items: center;
-          background: #FFFFFF;
-          border: 1px solid #E2E8F0;
-          border-radius: 6px;
+          justify-content: center;
         }
 
-        .counter-pill button {
+        .service-row-name {
+          font-size: 0.9375rem;
+          font-weight: 600;
+          color: #1E293B;
+        }
+
+        .service-row-actions {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .service-qty-pill {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: #FFFFFF;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 9999px;
+          padding: 3px 12px;
+          min-width: 86px;
+          height: 32px;
+          box-sizing: border-box;
+        }
+
+        .qty-pill-btn {
           border: none;
           background: none;
-          padding: 4px 8px;
+          color: #64748B;
+          font-size: 1rem;
+          font-weight: 400;
+          line-height: 1;
           cursor: pointer;
-        }
-
-        .counter-pill span {
           padding: 0 4px;
-          font-weight: 700;
-          font-size: 0.75rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: color 0.15s;
         }
 
-        .sublist-price {
+        .qty-pill-btn:hover {
+          color: #0F172A;
+        }
+
+        .qty-pill-val {
+          font-size: 0.9375rem;
           font-weight: 700;
-          color: #1E293B;
-          min-width: 50px;
+          color: #0F172A;
+          min-width: 14px;
+          text-align: center;
+          padding: 0 4px;
+        }
+
+        .service-row-price {
+          font-size: 1rem;
+          font-weight: 800;
+          color: #0F172A;
+          min-width: 48px;
           text-align: right;
         }
 
-        .sublist-remove {
+        .service-row-remove {
           background: none;
           border: none;
           color: #94A3B8;
           cursor: pointer;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: color 0.15s;
+        }
+
+        .service-row-remove:hover {
+          color: #475569;
         }
 
         .pickup-time-grid {
@@ -686,49 +799,59 @@ export const CreateOrderDrawer = () => {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          background: #EBF8F7;
-          border: 1.5px solid #BCEAE6;
-          border-radius: 14px;
-          padding: 16px 20px;
-          margin-top: 20px;
+          background: #FFF9F2;
+          border: 1.5px solid #FDE4D0;
+          border-radius: 26px;
+          padding: 18px 24px;
+          margin-top: 22px;
         }
 
         .total-card-left {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 14px;
         }
 
         .rupee-icon-wrap {
-          width: 32px;
-          height: 32px;
+          width: 48px;
+          height: 48px;
           border-radius: 50%;
-          background: #0D7A75;
+          background: #085E5A;
           color: #FFFFFF;
           display: flex;
           align-items: center;
           justify-content: center;
           font-weight: 800;
-          font-size: 1rem;
+          font-size: 1.35rem;
+          flex-shrink: 0;
+        }
+
+        .total-card-meta {
+          display: flex;
+          flex-direction: column;
         }
 
         .total-card-label {
-          font-size: 0.9375rem;
-          font-weight: 700;
-          color: #1E293B;
+          font-size: 1.0625rem;
+          font-weight: 800;
+          color: #0F172A;
           display: block;
+          line-height: 1.25;
         }
 
         .total-card-sub {
-          font-size: 0.75rem;
-          color: #64748B;
+          font-size: 0.8125rem;
+          font-weight: 500;
+          color: #8A9BA8;
           display: block;
+          margin-top: 3px;
         }
 
         .total-card-amount {
-          font-size: 1.5rem;
-          font-weight: 800;
-          color: #0D7A75;
+          font-size: 1.75rem;
+          font-weight: 900;
+          color: #0F172A;
+          letter-spacing: -0.5px;
         }
 
         .drawer-divider {
@@ -754,6 +877,7 @@ export const CreateOrderDrawer = () => {
           padding: 10px 24px;
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };

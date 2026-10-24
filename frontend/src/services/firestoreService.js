@@ -5,51 +5,925 @@ import {
   getDoc,
   getDocs,
   updateDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
   onSnapshot,
   serverTimestamp
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import {
-  INITIAL_ORDERS,
-  INITIAL_CUSTOMERS,
-  INITIAL_SERVICES_ADMIN,
-  INITIAL_DRIVERS,
-  INITIAL_FAQS_ADMIN
-} from '../context/AdminContext';
+import { ref, onValue, off, get, set, update, push } from 'firebase/database';
+import { db, rtdb, isFirebaseConfigured } from '../config/firebase.js';
+import { DEFAULT_SERVICES } from './adminDataService.js';
+
+// Standard uniform order ID formatter
+export const formatOrderId = (rawId) => {
+  if (rawId === null || rawId === undefined) return '';
+  const str = String(rawId).trim();
+  if (!str) return '';
+  if (/^FC-\d{5}$/i.test(str)) return str.toUpperCase();
+  const hashFcHyphen = str.match(/^#?FC-(\d+)$/i);
+  if (hashFcHyphen) return `FC-${hashFcHyphen[1].padStart(5, '0').slice(-5)}`;
+  const ldxMatch = str.match(/^#?LDX(\d+)/i);
+  if (ldxMatch) return `FC-${ldxMatch[1].padStart(5, '0').slice(-5)}`;
+  const fcMatch = str.match(/^#?FC(\d+)/i);
+  if (fcMatch) return `FC-${fcMatch[1].padStart(5, '0').slice(-5)}`;
+  if (/^\d+$/.test(str)) return `FC-${str.padStart(5, '0').slice(-5)}`;
+  const embeddedNum = str.match(/\d{4,5}/);
+  if (embeddedNum) return `FC-${embeddedNum[0].padStart(5, '0').slice(-5)}`;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return `FC-${10000 + (Math.abs(hash) % 90000)}`;
+};
 
 // ===============================================================
-// ORDERS COLLECTION
+// INITIAL SEED DATA FOR FIRST LAUNCH IN USER'S FIREBASE PROJECT
+// ===============================================================
+
+export const INITIAL_SERVICES_ADMIN = DEFAULT_SERVICES;
+
+export const INITIAL_FAQS_ADMIN = [
+  {
+    id: 'faq-1',
+    question: 'How does Laundrix pickup and delivery work?',
+    answer: 'Schedule a pickup through our app or website. Our executive will arrive with specialized laundry bags and deliver clean clothes within 24-48 hours.',
+    status: 'Active',
+    displayOrder: 1
+  },
+  {
+    id: 'faq-2',
+    question: 'What areas do you service?',
+    answer: 'We currently provide pickup and delivery services across Bengaluru including Indiranagar, Koramangala, Whitefield, HSR Layout, Banaswadi, and Malleshwaram.',
+    status: 'Active',
+    displayOrder: 2
+  },
+  {
+    id: 'faq-3',
+    question: 'What types of clothes do you clean?',
+    answer: 'We clean all types of everyday and premium fabrics including cotton, silk, linen, wool, denim, party wear, suits, and curtains.',
+    status: 'Active',
+    displayOrder: 3
+  },
+  {
+    id: 'faq-4',
+    question: 'How long does the cleaning process take?',
+    answer: 'Standard turnaround time is 1–2 days. Express services may be delivered within 24 hours.',
+    status: 'Active',
+    displayOrder: 4
+  },
+  {
+    id: 'faq-5',
+    question: 'How should I prepare my clothes for pickup?',
+    answer: 'Please keep your clothes in a clean bag. You can also add special instructions for delicate items during booking.',
+    status: 'Active',
+    displayOrder: 5
+  },
+  {
+    id: 'faq-6',
+    question: 'What are the payment options?',
+    answer: 'We accept online payments (UPI, cards, net banking) and cash on delivery (COD) upon inspection.',
+    status: 'Active',
+    displayOrder: 6
+  },
+  {
+    id: 'faq-7',
+    question: 'How can I track my order?',
+    answer: 'You can track your order in real-time through our app or website with live SMS and WhatsApp status updates.',
+    status: 'Active',
+    displayOrder: 7
+  },
+  {
+    id: 'faq-8',
+    question: 'What if I am not satisfied with the service?',
+    answer: 'Your satisfaction is our priority. If you are not happy with the service, we offer a 100% free re-wash guarantee.',
+    status: 'Inactive',
+    displayOrder: 8
+  }
+];
+
+export const INITIAL_DRIVERS = [
+  { id: 'd1', name: 'Ravi Kumar', phone: '+91 98765 43210', status: 'Available', ordersToday: 5, avatar: 'RK' },
+  { id: 'd2', name: 'Arjun Singh', phone: '+91 87654 32109', status: 'Available', ordersToday: 4, avatar: 'AS' },
+  { id: 'd3', name: 'Mohammed Taha', phone: '+91 91234 55678', status: 'Available', ordersToday: 3, avatar: 'MT' },
+  { id: 'd4', name: 'Suresh Kumar', phone: '+91 99887 66554', status: 'On Delivery', ordersToday: 2, avatar: 'SK' },
+  { id: 'd5', name: 'Praveen D', phone: '+91 98712 34567', status: 'Available', ordersToday: 4, avatar: 'PD' }
+];
+
+export const INITIAL_CUSTOMERS = [
+  {
+    id: '#CUS1001',
+    name: 'Pratiksha Sharma',
+    phone: '+91 98765 43220',
+    email: 'customer@fabricare.com',
+    avatar: 'PS',
+    location: '100ft Road, Indiranagar, Bengaluru - 560038',
+    totalOrders: 3,
+    totalSpent: '₹1,450',
+    status: 'Active',
+    joinDate: '10 Oct 2026'
+  },
+  {
+    id: '#CUS1002',
+    name: 'Rohan Mehta',
+    phone: '+91 98765 43210',
+    email: 'rohan.mehta@gmail.com',
+    avatar: 'RM',
+    location: 'HRBR Layout, Banaswadi, Bengaluru - 560043',
+    totalOrders: 5,
+    totalSpent: '₹2,800',
+    status: 'Active',
+    joinDate: '01 Oct 2026'
+  },
+  {
+    id: '#CUS1003',
+    name: 'Pooja Hegde',
+    phone: '+91 91234 56780',
+    email: 'pooja.h@gmail.com',
+    avatar: 'PH',
+    location: '5th Block, Koramangala, Bengaluru - 560034',
+    totalOrders: 2,
+    totalSpent: '₹950',
+    status: 'Active',
+    joinDate: '05 Oct 2026'
+  }
+];
+
+export const INITIAL_ORDERS = [
+  {
+    id: 'FC-10285',
+    order_number: 'FC-10285',
+    order_id: 'FC-10285',
+    customerId: 'usr-cust-02',
+    date: '17 Oct 2026',
+    customer: {
+      name: 'Rohan Mehta',
+      phone: '+91 98765 43210',
+      email: 'rohan.mehta@gmail.com',
+      avatar: 'RM',
+      address: 'House #12, 3rd Cross, HRBR Layout, Banaswadi, Bengaluru - 560043'
+    },
+    customer_name: 'Rohan Mehta',
+    customer_phone: '+91 98765 43210',
+    pickup_full_name: 'Rohan Mehta',
+    pickup_phone: '+91 98765 43210',
+    pickup_address: 'House #12, 3rd Cross, HRBR Layout, Banaswadi, Bengaluru - 560043',
+    delivery_address: 'House #12, 3rd Cross, HRBR Layout, Banaswadi, Bengaluru - 560043',
+    services: ['Wash & Fold', 'Steam Iron'],
+    services_list: ['Wash & Fold', 'Steam Iron'],
+    pickupTime: '17 Oct 2026, 09:00 AM – 11:00 AM',
+    pickup_time_slot: '09:00 AM – 11:00 AM',
+    pickup_date: '2026-10-17',
+    amount: 540,
+    total_amount: 540,
+    status: 'Pending Pickup',
+    status_display: 'Pending Pickup',
+    payment: 'Paid',
+    payment_status: 'PAID',
+    type: 'Pickup',
+    driver: 'Ravi Kumar',
+    stage: 'incoming',
+    specialInstructions: 'Handle silk shirts with extra care.',
+    items: [
+      { item_name: 'Cotton Shirt', quantity: 3, unit_price: 60, total_price: 180 },
+      { item_name: 'Denim Trousers', quantity: 2, unit_price: 90, total_price: 180 },
+      { item_name: 'Steam Iron Shirt', quantity: 3, unit_price: 60, total_price: 180 }
+    ]
+  },
+  {
+    id: 'FC-10286',
+    order_number: 'FC-10286',
+    order_id: 'FC-10286',
+    customerId: 'usr-cust-01',
+    date: '17 Oct 2026',
+    customer: {
+      name: 'Pratiksha Sharma',
+      phone: '+91 98765 43220',
+      email: 'customer@fabricare.com',
+      avatar: 'PS',
+      address: '100ft Road, Indiranagar, Bengaluru - 560038'
+    },
+    customer_name: 'Pratiksha Sharma',
+    customer_phone: '+91 98765 43220',
+    pickup_full_name: 'Pratiksha Sharma',
+    pickup_phone: '+91 98765 43220',
+    pickup_address: '100ft Road, Indiranagar, Bengaluru - 560038',
+    delivery_address: '100ft Road, Indiranagar, Bengaluru - 560038',
+    services: ['Dry Cleaning'],
+    services_list: ['Dry Cleaning'],
+    pickupTime: '16 Oct 2026, 02:00 PM – 04:00 PM',
+    pickup_time_slot: '02:00 PM – 04:00 PM',
+    pickup_date: '2026-10-16',
+    amount: 660,
+    total_amount: 660,
+    status: 'In Cleaning',
+    status_display: 'In Cleaning',
+    payment: 'Paid',
+    payment_status: 'PAID',
+    type: 'Processing',
+    driver: 'Arjun Singh',
+    stage: 'washing',
+    laundryNotes: 'Inspection passed, loaded in machine #2',
+    items: [
+      { item_name: 'Blazer Suit', quantity: 1, unit_price: 350, total_price: 350 },
+      { item_name: 'Silk Saree', quantity: 1, unit_price: 310, total_price: 310 }
+    ]
+  },
+  {
+    id: 'FC-10287',
+    order_number: 'FC-10287',
+    order_id: 'FC-10287',
+    customerId: 'usr-cust-03',
+    date: '16 Oct 2026',
+    customer: {
+      name: 'Pooja Hegde',
+      phone: '+91 91234 56780',
+      email: 'pooja.h@gmail.com',
+      avatar: 'PH',
+      address: '5th Block, Koramangala, Bengaluru - 560034'
+    },
+    customer_name: 'Pooja Hegde',
+    customer_phone: '+91 91234 56780',
+    pickup_full_name: 'Pooja Hegde',
+    pickup_phone: '+91 91234 56780',
+    pickup_address: '5th Block, Koramangala, Bengaluru - 560034',
+    delivery_address: '5th Block, Koramangala, Bengaluru - 560034',
+    services: ['Wash & Iron'],
+    services_list: ['Wash & Iron'],
+    pickupTime: '15 Oct 2026, 10:00 AM – 12:00 PM',
+    pickup_time_slot: '10:00 AM – 12:00 PM',
+    pickup_date: '2026-10-15',
+    amount: 480,
+    total_amount: 480,
+    status: 'Ready for Delivery',
+    status_display: 'Ready for Delivery',
+    payment: 'Paid',
+    payment_status: 'PAID',
+    type: 'Delivery',
+    driver: 'Suresh Kumar',
+    stage: 'ready',
+    laundryNotes: 'QC passed, packed in protective dust cover',
+    items: [
+      { item_name: 'Casual Shirts', quantity: 4, unit_price: 60, total_price: 240 },
+      { item_name: 'Cotton Pants', quantity: 2, unit_price: 120, total_price: 240 }
+    ]
+  }
+];
+
+export const INITIAL_TERMS_CONTENT = {
+  title: 'Terms & Conditions',
+  body: `1. Introduction\nWelcome to Laundrix. These Terms & Conditions govern your use of our website, mobile application and laundry services. By accessing our services, you agree to comply with and be bound by these terms.\n\n2. Services\nLaundrix provides professional laundry and dry cleaning services, including pickup and delivery. Service details, pricing and turnaround time may vary based on location and fabric type.`
+};
+
+export const INITIAL_SETTINGS = {
+  name: 'Admin',
+  email: 'admin@fabricare.com',
+  phone: '+91 98765 43210',
+  role: 'Administrator',
+  supportEmail: 'support@fabricare.com',
+  supportPhone: '+91 98765 43210',
+  websiteUrl: 'https://www.fabricare.com',
+  instagram: 'https://instagram.com/fabricare',
+  facebook: 'https://facebook.com/fabricare',
+  twitter: 'https://x.com/fabricare',
+  linkedin: 'https://linkedin.com/company/fabricare',
+  notifications: {
+    newOrders: true,
+    customerMessages: true,
+    pickupDelivery: true,
+    systemAnnouncements: false
+  }
+};
+
+// ===============================================================
+// NORMALIZATION HELPERS
+// ===============================================================
+
+export const normalizeFirestoreOrder = (docData, docId) => {
+  const d = docData || {};
+  const idStr = String(d.id || docId || '');
+  const orderCode = d.order_number || d.order_id || d.code || (idStr.startsWith('#') ? idStr : `#${idStr}`);
+
+  // Safely extract customer name
+  let rawCustName = '';
+  if (typeof d.customer === 'object' && d.customer !== null) {
+    rawCustName = d.customer.name || d.customer.fullName || d.customer.customerName || d.customer_name || '';
+  } else if (typeof d.customer === 'string' && d.customer.trim() && d.customer.trim().toLowerCase() !== 'customer') {
+    rawCustName = d.customer.trim();
+  }
+  if (!rawCustName || rawCustName.trim().toLowerCase() === 'customer') {
+    rawCustName = d.customerName || d.customer_name || d.pickup_full_name || d.recipient_name || d.userName || d.name || '';
+  }
+  const custName = (rawCustName && rawCustName.trim().toLowerCase() !== 'customer') ? rawCustName.trim() : 'Customer';
+
+  // Safely extract customer phone
+  let rawCustPhone = '';
+  if (typeof d.customer === 'object' && d.customer !== null) {
+    rawCustPhone = d.customer.phone || d.customer.mobile || d.customer.phoneNumber || d.customer_phone || '';
+  }
+  if (!rawCustPhone) {
+    rawCustPhone = d.customerPhone || d.customer_phone || d.pickup_phone || d.phone || d.mobile || d.phoneNumber || d.userPhone || '';
+  }
+  const custPhone = rawCustPhone && String(rawCustPhone).trim() !== '-' ? String(rawCustPhone).trim() : '';
+
+  // Safely extract customer email
+  let rawCustEmail = '';
+  if (typeof d.customer === 'object' && d.customer !== null) {
+    rawCustEmail = d.customer.email || d.customer_email || '';
+  }
+  if (!rawCustEmail) {
+    rawCustEmail = d.customerEmail || d.customer_email || d.email || d.userEmail || '';
+  }
+  const custEmail = rawCustEmail ? String(rawCustEmail).trim() : '';
+
+  // Safely extract address & pincode
+  let custAddress = '';
+  let addrObj = null;
+  if (d.address && typeof d.address === 'object') {
+    addrObj = d.address;
+    const parts = [d.address.flatHouse, d.address.areaColony, d.address.city, d.address.pincode].filter(Boolean);
+    if (parts.length > 0) custAddress = parts.join(', ');
+  } else if (typeof d.address === 'string' && d.address.trim()) {
+    custAddress = d.address.trim();
+  }
+
+  if (!custAddress && d.delivery_address && typeof d.delivery_address === 'string' && d.delivery_address.trim()) {
+    custAddress = d.delivery_address.trim();
+  } else if (!custAddress && d.deliveryAddress) {
+    if (typeof d.deliveryAddress === 'object') {
+      addrObj = addrObj || d.deliveryAddress;
+      const parts = [d.deliveryAddress.flatHouse, d.deliveryAddress.areaColony, d.deliveryAddress.city, d.deliveryAddress.pincode].filter(Boolean);
+      if (parts.length > 0) custAddress = parts.join(', ');
+    } else {
+      custAddress = String(d.deliveryAddress).trim();
+    }
+  }
+
+  if (!custAddress && d.pickup_address && typeof d.pickup_address === 'string' && d.pickup_address.trim()) {
+    custAddress = d.pickup_address.trim();
+  } else if (!custAddress && d.pickupAddress) {
+    if (typeof d.pickupAddress === 'object') {
+      addrObj = addrObj || d.pickupAddress;
+      const parts = [d.pickupAddress.flatHouse, d.pickupAddress.areaColony, d.pickupAddress.city, d.pickupAddress.pincode].filter(Boolean);
+      if (parts.length > 0) custAddress = parts.join(', ');
+    } else {
+      custAddress = String(d.pickupAddress).trim();
+    }
+  }
+
+  if (!custAddress && d.customer && typeof d.customer === 'object' && d.customer.address) {
+    if (typeof d.customer.address === 'object') {
+      addrObj = addrObj || d.customer.address;
+      const parts = [addrObj.flatHouse, addrObj.areaColony, addrObj.city, addrObj.pincode].filter(Boolean);
+      if (parts.length > 0) custAddress = parts.join(', ');
+    } else {
+      custAddress = String(d.customer.address).trim();
+    }
+  }
+
+  if (!custAddress) {
+    custAddress = 'Bengaluru';
+  }
+
+  const pincode = d.pincode || (addrObj && addrObj.pincode) || (custAddress.match(/\b\d{6}\b/)?.[0]) || '';
+  const zone = d.zone || (pincode ? `PIN ${pincode}` : 'Zone 4');
+  const custAvatar = custName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CU';
+
+  const detectItemCategory = (rawCat, rawName) => {
+    const sCat = String(rawCat || '').trim();
+    if (sCat && sCat.toLowerCase() !== 'general') return sCat;
+    const sName = String(rawName || '').toLowerCase();
+    if (sName.includes('dry clean')) return 'Dry Clean';
+    if (sName.includes('steam')) return 'Steam Iron';
+    if (sName.includes('wash & iron') || sName.includes('wash + iron') || sName.includes('wash and iron')) return 'Wash + Iron';
+    if (sName.includes('iron') && sName.includes('fold')) return 'Wash & Fold + Iron';
+    if (sName.includes('iron')) return 'Steam Iron';
+    if (sName.includes('wash') || sName.includes('fold')) return 'Wash & Fold';
+    return sCat || 'Wash & Fold';
+  };
+
+  let parsedItems = [];
+  if (Array.isArray(d.items)) {
+    parsedItems = d.items.map((it, idx) => {
+      const q = Number(it.quantity || it.qty || 1);
+      const rawPrice = Number(it.unitPrice ?? it.rate ?? it.price ?? 60);
+      const price = (rawPrice >= 1000 || (rawPrice >= 500 && rawPrice % 100 === 0)) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
+      const rawTotal = Number(it.lineTotal ?? it.total ?? q * price);
+      const total = (rawTotal >= 1000 || (rawTotal >= 500 && rawTotal % 100 === 0)) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+      const cat = detectItemCategory(it.category || it.categoryName || it.service_category, it.name || it.item_name || it.garment);
+      return {
+        id: it.id || `item_${idx + 1}`,
+        item_name: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
+        name: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
+        garment: it.name || it.item_name || it.garment || `Item ${idx + 1}`,
+        category: cat,
+        services: it.services || [cat],
+        quantity: q,
+        rate: price,
+        price: price,
+        unitPrice: price,
+        total: total,
+        lineTotal: total
+      };
+    });
+  } else if (d.items && typeof d.items === 'object') {
+    parsedItems = Object.entries(d.items).map(([k, val]) => {
+      if (typeof val === 'object' && val !== null) {
+        const q = Number(val.quantity || val.qty || 1);
+        const rawPrice = Number(val.unitPrice ?? val.rate ?? val.price ?? 60);
+        const price = (rawPrice >= 1000 || (rawPrice >= 500 && rawPrice % 100 === 0)) ? Number((rawPrice / 100).toFixed(2)) : rawPrice;
+        const rawTotal = Number(val.lineTotal ?? val.total ?? q * price);
+        const total = (rawTotal >= 1000 || (rawTotal >= 500 && rawTotal % 100 === 0)) ? Number((rawTotal / 100).toFixed(2)) : rawTotal;
+        const cat = detectItemCategory(val.category || val.categoryName || val.service_category, val.name || val.item_name || val.garment || k);
+        return {
+          id: k,
+          item_name: val.name || val.item_name || val.garment || k,
+          name: val.name || val.item_name || val.garment || k,
+          garment: val.name || val.item_name || val.garment || k,
+          category: cat,
+          services: val.services || [cat],
+          quantity: q,
+          rate: price,
+          price: price,
+          unitPrice: price,
+          total: total,
+          lineTotal: total
+        };
+      }
+      const q = Number(val) || 1;
+      return { id: k, item_name: k, name: k, garment: k, category: 'Wash & Fold', services: ['Wash & Fold'], quantity: q, rate: 60, price: 60, unitPrice: 60, total: q * 60, lineTotal: q * 60 };
+    });
+  }
+
+  const totalItemsCount = parsedItems.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0);
+  const itemsCalculatedTotal = parsedItems.reduce((acc, it) => acc + (Number(it.lineTotal || it.total) || 0), 0);
+  const itemsSummaryStr = parsedItems.length > 0
+    ? parsedItems.map(it => `${it.name || it.item_name || 'Item'} × ${it.quantity || 1}`).join(', ')
+    : (Array.isArray(d.services) && d.services.length > 0 ? d.services.join(' + ') : (d.service || 'Laundry Bag'));
+
+  let totalAmount = 0;
+  if (itemsCalculatedTotal > 0) {
+    totalAmount = Number(itemsCalculatedTotal.toFixed(2));
+  } else if (d.subtotal !== undefined && d.subtotal !== null && Number(d.subtotal) > 0) {
+    const rawSub = Number(d.subtotal);
+    totalAmount = (rawSub >= 1000 || (rawSub >= 500 && rawSub % 100 === 0)) ? Number((rawSub / 100).toFixed(2)) : Number(rawSub.toFixed(2));
+  } else if (d.total_paise !== undefined || d.amount_paise !== undefined) {
+    totalAmount = Number(((d.total_paise || d.amount_paise) / 100).toFixed(2));
+  } else if (d.total !== undefined && d.total !== null) {
+    let rawNum = Number(d.total);
+    if (rawNum >= 1000 || (rawNum >= 500 && rawNum % 100 === 0)) rawNum = rawNum / 100;
+    const expCharge = Number(d.expressCharge || 0);
+    if (expCharge > 0) rawNum -= (expCharge >= 1000 ? expCharge / 100 : expCharge);
+    totalAmount = Number(Math.max(0, rawNum).toFixed(2));
+  } else if (d.total_amount !== undefined && d.total_amount !== null) {
+    let rawNum = Number(d.total_amount);
+    if (rawNum >= 1000 || (rawNum >= 500 && rawNum % 100 === 0)) rawNum = rawNum / 100;
+    const expCharge = Number(d.expressCharge || 0);
+    if (expCharge > 0) rawNum -= (expCharge >= 1000 ? expCharge / 100 : expCharge);
+    totalAmount = Number(Math.max(0, rawNum).toFixed(2));
+  } else if (d.amount !== undefined && d.amount !== null) {
+    let rawNum = Number(d.amount);
+    if (rawNum >= 1000 || (rawNum >= 500 && rawNum % 100 === 0)) rawNum = rawNum / 100;
+    const expCharge = Number(d.expressCharge || 0);
+    if (expCharge > 0) rawNum -= (expCharge >= 1000 ? expCharge / 100 : expCharge);
+    totalAmount = Number(Math.max(0, rawNum).toFixed(2));
+  } else {
+    totalAmount = Number(d.estimatedTotal ?? 0);
+  }
+
+  const placedTime = d.placed || (d.placedAt ? new Date(d.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (d.createdAt ? new Date(d.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''));
+
+  // Status mapping
+  let uiStatus = d.status_display || d.status || 'Pending Pickup';
+  const rawStatus = String(d.status || d.orderStatus || d.raw_status || '').toUpperCase();
+  if (['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF'].includes(rawStatus)) {
+    uiStatus = 'Dropped Off at Hub';
+  } else if (['PICKED_UP', 'RECEIVED_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'WASHING', 'DRYING', 'IRONING', 'IN_CLEANING'].includes(rawStatus)) {
+    uiStatus = 'In Cleaning';
+  } else if (['ARRIVED'].includes(rawStatus)) {
+    uiStatus = 'Driver Arrived';
+  } else if (['PICKUP_IN_PROGRESS', 'ON_THE_WAY', 'IN_TRANSIT'].includes(rawStatus)) {
+    uiStatus = 'Driver on the Way';
+  } else if (['PENDING', 'ACCEPTED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PLACED', 'PAYMENT_PENDING'].includes(rawStatus)) {
+    uiStatus = 'Pending Pickup';
+  } else if (['OUT_FOR_DELIVERY'].includes(rawStatus)) {
+    uiStatus = 'Out for Delivery';
+  } else if (['QUALITY_CHECK', 'PACKED', 'READY_FOR_DELIVERY'].includes(rawStatus)) {
+    uiStatus = 'Ready for Delivery';
+  } else if (['DELIVERED', 'COMPLETED', 'CLOSED'].includes(rawStatus)) {
+    uiStatus = 'Completed';
+  }
+
+  // Extract all distinct services from items
+  const itemServices = [
+    ...new Set(
+      parsedItems.map(it => it.category || it.service_category || (it.services && it.services[0]))
+    )
+  ].filter(s => s && s !== 'General');
+
+  let servicesList = [];
+  if (Array.isArray(d.services) && d.services.length > 0) {
+    servicesList = [...d.services];
+  } else if (Array.isArray(d.services_list) && d.services_list.length > 0) {
+    servicesList = [...d.services_list];
+  } else if (d.service) {
+    if (d.service.includes('+')) {
+      servicesList = d.service.split('+').map(s => s.trim());
+    } else if (d.service.includes(',')) {
+      servicesList = d.service.split(',').map(s => s.trim());
+    } else {
+      servicesList = [d.service.trim()];
+    }
+  }
+
+  // Merge any distinct services found in items that might not yet be in servicesList
+  itemServices.forEach(s => {
+    if (!servicesList.some(existing => existing.toLowerCase() === s.toLowerCase())) {
+      servicesList.push(s);
+    }
+  });
+
+  if (servicesList.length === 0) {
+    servicesList = ['Wash & Fold'];
+  }
+
+  const formatIsoDate = (val) => {
+    if (!val) return '';
+    try {
+      if (typeof val === 'string') {
+        const tr = val.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(tr)) return tr.slice(0, 10);
+      }
+      const dt = val?.toDate ? val.toDate() : new Date(typeof val === 'number' ? val : (typeof val === 'string' && /^\d+$/.test(val) ? Number(val) : val));
+      if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+    } catch (_) {}
+    return String(val);
+  };
+
+  const formatTime12h = (t) => {
+    if (!t) return '';
+    const s = String(t).trim();
+    if (/am|pm/i.test(s)) return s;
+    const parts = s.split(':');
+    if (parts.length >= 2) {
+      let h = parseInt(parts[0], 10);
+      const m = parts[1].slice(0, 2);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${m} ${ampm}`;
+    }
+    return s;
+  };
+
+  // 1. Resolve pickup date (priority to actual structured pickup date)
+  let rawPickupDate = '';
+  if (d.pickup && typeof d.pickup === 'object' && d.pickup.date) {
+    rawPickupDate = d.pickup.date;
+  }
+  if (!rawPickupDate && d.pickup_date && d.pickup_date !== 'Today' && d.pickup_date !== 'Scheduled') {
+    rawPickupDate = d.pickup_date;
+  }
+  if (!rawPickupDate && d.pickupDate) {
+    rawPickupDate = d.pickupDate;
+  }
+  if (!rawPickupDate && d.dateText && d.dateText !== 'Today') {
+    rawPickupDate = d.dateText;
+  }
+  if (!rawPickupDate && d.date && d.date !== 'Today') {
+    rawPickupDate = d.date;
+  }
+  if (!rawPickupDate && (d.placedAt || d.createdAt)) {
+    rawPickupDate = formatIsoDate(d.placedAt || d.createdAt);
+  }
+  if (!rawPickupDate) {
+    rawPickupDate = new Date().toISOString().split('T')[0];
+  }
+
+  // 2. Resolve pickup time slot
+  let resolvedPickupSlot = '';
+  if (d.pickup && typeof d.pickup === 'object') {
+    if (d.pickup.time_slot || d.pickup.timeSlot) {
+      resolvedPickupSlot = d.pickup.time_slot || d.pickup.timeSlot;
+    } else if (d.pickup.from && d.pickup.to) {
+      resolvedPickupSlot = `${formatTime12h(d.pickup.from)} – ${formatTime12h(d.pickup.to)}`;
+    }
+  }
+  if (!resolvedPickupSlot && d.pickup_time_slot && d.pickup_time_slot !== 'Standard Slot') {
+    resolvedPickupSlot = d.pickup_time_slot;
+  }
+  if (!resolvedPickupSlot && d.timeText) {
+    resolvedPickupSlot = d.timeText;
+  }
+  if (!resolvedPickupSlot) {
+    resolvedPickupSlot = '11:00 AM – 1:00 PM';
+  }
+
+  // 3. Resolve delivery date
+  let rawDeliveryDate = '';
+  if (d.rescheduled_date) {
+    rawDeliveryDate = formatIsoDate(d.rescheduled_date);
+  }
+  if (!rawDeliveryDate && d.formatted_reschedule_date && d.formatted_reschedule_date !== '—') {
+    rawDeliveryDate = d.formatted_reschedule_date;
+  }
+  if (!rawDeliveryDate && d.new_delivery_date) {
+    rawDeliveryDate = formatIsoDate(d.new_delivery_date);
+  }
+  if (!rawDeliveryDate && d.delivery && typeof d.delivery === 'object' && d.delivery.date) {
+    rawDeliveryDate = d.delivery.date;
+  }
+  if (!rawDeliveryDate && d.delivery_date && d.delivery_date !== '14 Oct 2026') {
+    rawDeliveryDate = d.delivery_date;
+  }
+  if (!rawDeliveryDate && d.deliveryDate) {
+    rawDeliveryDate = d.deliveryDate;
+  }
+  if (!rawDeliveryDate && d.estimated_delivery) {
+    rawDeliveryDate = d.estimated_delivery;
+  }
+  if (!rawDeliveryDate && d.dueBy) {
+    rawDeliveryDate = formatIsoDate(d.dueBy);
+  }
+  if (!rawDeliveryDate) {
+    try {
+      const pDt = new Date(rawPickupDate);
+      if (!isNaN(pDt.getTime())) {
+        pDt.setDate(pDt.getDate() + (d.isExpress ? 1 : 2));
+        rawDeliveryDate = pDt.toISOString().split('T')[0];
+      }
+    } catch (_) {}
+  }
+  if (!rawDeliveryDate) {
+    const fallbackDt = new Date();
+    fallbackDt.setDate(fallbackDt.getDate() + 2);
+    rawDeliveryDate = fallbackDt.toISOString().split('T')[0];
+  }
+
+  // 4. Resolve delivery time slot
+  let resolvedDeliverySlot = '';
+  if (d.rescheduled_time_slot) {
+    resolvedDeliverySlot = d.rescheduled_time_slot;
+  }
+  if (!resolvedDeliverySlot && d.delivery && typeof d.delivery === 'object') {
+    if (d.delivery.time_slot || d.delivery.timeSlot) {
+      resolvedDeliverySlot = d.delivery.time_slot || d.delivery.timeSlot;
+    } else if (d.delivery.from && d.delivery.to) {
+      resolvedDeliverySlot = `${formatTime12h(d.delivery.from)} – ${formatTime12h(d.delivery.to)}`;
+    }
+  }
+  if (!resolvedDeliverySlot && d.delivery_time_slot) {
+    resolvedDeliverySlot = d.delivery_time_slot;
+  }
+  if (!resolvedDeliverySlot && d.deliveryTimeSlot) {
+    resolvedDeliverySlot = d.deliveryTimeSlot;
+  }
+  if (!resolvedDeliverySlot) {
+    resolvedDeliverySlot = '02:00 PM – 05:00 PM';
+  }
+
+  const dateStr = d.date || rawPickupDate;
+
+  return {
+    ...d,
+    docId: docId || idStr,
+    id: orderCode,
+    order_number: orderCode,
+    order_id: orderCode,
+    code: orderCode,
+    date: dateStr,
+    dateText: d.dateText || dateStr,
+    placed: placedTime,
+    placedAt: d.placedAt || d.createdAt,
+    timeText: resolvedPickupSlot,
+    pickupTime: `${rawPickupDate}, ${resolvedPickupSlot}`,
+    pickup_time_slot: resolvedPickupSlot,
+    pickup_date: rawPickupDate,
+    delivery_date: rawDeliveryDate,
+    delivery_time_slot: resolvedDeliverySlot,
+    rescheduled_date: d.rescheduled_date || null,
+    rescheduled_time_slot: d.rescheduled_time_slot || null,
+    isRescheduled: Boolean(d.rescheduled_date || d.isRescheduled || String(d.status || '').toUpperCase() === 'RESCHEDULED'),
+    pickup_address: custAddress,
+    delivery_address: d.delivery_address || custAddress,
+    addressTitle: custAddress,
+    addressDetail: d.landmark || '',
+    customer: {
+      name: custName,
+      phone: custPhone,
+      email: custEmail,
+      address: custAddress,
+      avatar: custAvatar
+    },
+    customerName: custName,
+    customer_name: custName,
+    customerPhone: custPhone,
+    customer_phone: custPhone,
+    pickup_full_name: custName,
+    pickup_phone: custPhone,
+    amount: totalAmount,
+    total_amount: totalAmount,
+    estimatedTotal: totalAmount,
+    pincode: pincode,
+    zone: zone,
+    services: servicesList,
+    services_list: servicesList,
+    service: servicesList.join(' + '),
+    items: parsedItems,
+    itemsCount: totalItemsCount || d.itemsCount || d.items_count || 0,
+    items_summary: itemsSummaryStr,
+    status: d.status || uiStatus,
+    status_display: d.status_display || uiStatus,
+    raw_status: d.raw_status || d.status || rawStatus,
+    stage: d.stage || (uiStatus === 'Pending Pickup' ? 'incoming' : uiStatus === 'In Cleaning' ? 'washing' : 'ready'),
+    payment: d.payment || 'Paid',
+    payment_status: d.payment_status || 'PAID',
+    driver: d.driver || 'Not Assigned',
+    driver_name: d.driver || 'Not Assigned',
+    type: d.type || 'Pickup',
+    specialInstructions: d.specialInstructions || d.notes || ''
+  };
+};
+
+// ===============================================================
+// 1. ORDERS COLLECTION (CRUD & REAL-TIME)
 // ===============================================================
 
 /**
- * Realtime subscription to Orders
+ * Realtime subscription to all orders in Firestore
  */
 export const subscribeOrders = (callback, errorCallback) => {
+  if (!isFirebaseConfigured) return () => {};
   try {
+    const targetDb = rtdb || db;
+    if (!targetDb) return () => {};
+    const ordersRef = ref(targetDb, 'orders');
+    const unsub = onValue(ordersRef, (snap) => {
+      if (!snap.exists()) {
+        callback([]);
+        return;
+      }
+      const data = snap.val();
+      const orderList = Object.keys(data)
+        .filter(k => !k.includes('P4CbA4_8YTw7XnFWZiV'))
+        .map(k => normalizeFirestoreOrder(data[k], k))
+        .filter(o => o.code || (o.items && Object.keys(o.items).length > 0) || (o.customerName && o.customerName !== 'Customer'));
+      orderList.sort((a, b) => {
+        const timeA = a.updatedAt || a.placedAt || a.createdAt || 0;
+        const timeB = b.updatedAt || b.placedAt || b.createdAt || 0;
+        return timeB - timeA;
+      });
+      callback(orderList);
+    }, (err) => {
+      console.warn('Orders subscription notice:', err.message);
+      if (errorCallback) errorCallback(err);
+    });
+    return () => off(ordersRef, 'value', unsub);
+  } catch (err) {
+    return () => {};
+  }
+};
+
+/**
+ * Realtime subscription to a single order by ID
+ */
+export const subscribeOrderById = (orderId, callback, errorCallback) => {
+  if (!isFirebaseConfigured || !orderId) return () => {};
+  try {
+    const rawId = String(orderId).trim();
+    const cleanId = rawId.replace(/^#/, '');
+    const withHash = `#${cleanId}`;
+
+    if (rtdb) {
+      const ordersRef = ref(rtdb, 'orders');
+      const cleanTarget = cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+      const unsub = onValue(ordersRef, (snap) => {
+        if (!snap.exists()) {
+          callback(null);
+          return;
+        }
+        const all = snap.val() || {};
+
+        // 1. Direct match on key
+        if (all[cleanId]) {
+          callback(normalizeFirestoreOrder(all[cleanId], cleanId));
+          return;
+        }
+        if (all[rawId]) {
+          callback(normalizeFirestoreOrder(all[rawId], rawId));
+          return;
+        }
+
+        // 2. Scan all orders for code, id, order_number, displayId, or numeric match
+        const foundKey = Object.keys(all).find(k => {
+          const o = all[k];
+          if (!o) return false;
+          const cK = String(k || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cCode = String(o.code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cId = String(o.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cNum = String(o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const cDisp = String(o.displayId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+          // 1. Exact matches
+          if (
+            cK === cleanTarget ||
+            cCode === cleanTarget ||
+            cId === cleanTarget ||
+            cNum === cleanTarget ||
+            cDisp === cleanTarget
+          ) {
+            return true;
+          }
+
+          // 2. Suffix matches (only if candidate string has at least 4 chars)
+          if (cleanTarget.length >= 4) {
+            if (cCode.length >= 4 && (cCode.endsWith(cleanTarget) || cleanTarget.endsWith(cCode))) return true;
+            if (cNum.length >= 4 && (cNum.endsWith(cleanTarget) || cleanTarget.endsWith(cNum))) return true;
+            if (cId.length >= 4 && (cId.endsWith(cleanTarget) || cleanTarget.endsWith(cId))) return true;
+          }
+
+          // 3. Digit matches (only if candidate digits have at least 4 digits)
+          const targetDigits = cleanTarget.replace(/\D/g, '');
+          if (targetDigits.length >= 4) {
+            const codeDigits = cCode.replace(/\D/g, '');
+            const numDigits = cNum.replace(/\D/g, '');
+            const idDigits = cId.replace(/\D/g, '');
+            if (codeDigits.length >= 4 && (codeDigits === targetDigits || codeDigits.endsWith(targetDigits) || targetDigits.endsWith(codeDigits))) return true;
+            if (numDigits.length >= 4 && (numDigits === targetDigits || numDigits.endsWith(targetDigits) || targetDigits.endsWith(numDigits))) return true;
+            if (idDigits.length >= 4 && (idDigits === targetDigits || idDigits.endsWith(targetDigits) || targetDigits.endsWith(idDigits))) return true;
+          }
+
+          return false;
+        });
+
+        if (foundKey) {
+          callback(normalizeFirestoreOrder(all[foundKey], foundKey));
+        } else {
+          callback(null);
+        }
+      }, (err) => {
+        console.warn('RTDB Order subscription error:', err.message);
+        if (errorCallback) errorCallback(err);
+      });
+      return () => {
+        try {
+          if (typeof unsub === 'function') unsub();
+          off(ordersRef, 'value', unsub);
+        } catch (_) {}
+      };
+    }
+
+    if (!db) return () => {};
+    // Real-time listener on orders collection matching ID
     const ordersCol = collection(db, 'orders');
-    const q = query(ordersCol, orderBy('createdAt', 'desc'));
     return onSnapshot(
-      q,
+      ordersCol,
       (snapshot) => {
-        const orderList = snapshot.docs.map(d => ({
-          docId: d.id,
-          ...d.data(),
-          // Format date string for UI display if needed
-          date: d.data().date || (d.data().createdAt?.toDate ? d.data().createdAt.toDate().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '23 Sep 2026')
-        }));
-        callback(orderList);
+        const foundDoc = snapshot.docs.find(d => {
+          const docId = d.id;
+          const data = d.data();
+          const dId = String(data.id || '').replace(/^#/, '');
+          const dNum = String(data.order_number || data.orderNumber || data.code || '').replace(/^#/, '');
+          return (
+            docId === rawId ||
+            docId === withHash ||
+            docId === cleanId ||
+            dId === cleanId ||
+            dNum === cleanId
+          );
+        });
+
+        if (foundDoc) {
+          callback(normalizeFirestoreOrder(foundDoc.data(), foundDoc.id));
+        } else {
+          callback(null);
+        }
       },
       (err) => {
-        console.warn('Orders snapshot subscription note:', err.message);
+        console.warn('Order subscription error:', err.message);
         if (errorCallback) errorCallback(err);
       }
     );
   } catch (err) {
-    console.warn('Orders subscribe exception:', err);
+    console.warn('Order subscribe exception:', err);
     return () => {};
+  }
+};
+
+/**
+ * Fetch all orders once from Firestore
+ */
+export const getFirestoreOrders = async () => {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snapshot = await getDocs(collection(db, 'orders'));
+    const list = snapshot.docs.map(d => normalizeFirestoreOrder(d.data(), d.id));
+    return list;
+  } catch (error) {
+    console.error('Error fetching orders from Firestore:', error);
+    return [];
   }
 };
 
@@ -57,35 +931,71 @@ export const subscribeOrders = (callback, errorCallback) => {
  * Create a new Order in Firestore
  */
 export const createFirestoreOrder = async (orderData) => {
+  if (!isFirebaseConfigured || !db) return null;
   try {
-    const orderId = orderData.id || `#LDX${Math.floor(1000 + Math.random() * 9000)}`;
+    const rawId = orderData.id || orderData.order_number || orderData.order_id;
+    const orderId = rawId
+      ? formatOrderId(rawId)
+      : `FC-${Math.floor(10000 + Math.random() * 90000)}`;
+
     const orderDocRef = doc(db, 'orders', orderId);
+
+    const custName = orderData.customer?.name || orderData.customerName || orderData.pickup_full_name || 'Customer';
+    const custPhone = orderData.customer?.phone || orderData.customerPhone || orderData.pickup_phone || '+91 98765 43210';
+    const custEmail = orderData.customer?.email || orderData.email || 'customer@gmail.com';
+    const custAddress = orderData.customer?.address || orderData.pickup_address || orderData.address || 'Bengaluru';
+    const totalAmount = Number(orderData.amount ?? orderData.total_amount ?? orderData.estimatedTotal ?? 300);
 
     const newOrder = {
       id: orderId,
+      order_number: orderId,
+      order_id: orderId,
       customerId: orderData.customerId || 'guest',
       date: orderData.date || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       customer: {
-        name: orderData.customer?.name || orderData.customerName || 'Customer',
-        phone: orderData.customer?.phone || orderData.customerPhone || '+91 98765 43210',
-        email: orderData.customer?.email || 'customer@gmail.com',
-        avatar: orderData.customer?.avatar || 'CU',
-        address: orderData.customer?.address || orderData.address || 'Banaswadi, Bengaluru - 560043'
+        name: custName,
+        phone: custPhone,
+        email: custEmail,
+        avatar: (custName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CU'),
+        address: custAddress
       },
-      services: orderData.services || orderData.selectedServices || ['Wash & Fold'],
-      pickupTime: orderData.pickupTime || `${orderData.date || '23 Sep 2026'}, ${orderData.time || '09:00 AM – 11:00 AM'}`,
-      amount: Number(orderData.amount) || 300,
+      customer_name: custName,
+      customer_phone: custPhone,
+      pickup_full_name: custName,
+      pickup_phone: custPhone,
+      pickup_address: custAddress,
+      delivery_address: orderData.delivery_address || custAddress,
+      services: orderData.services || orderData.selectedServices || orderData.services_list || ['Wash & Fold'],
+      services_list: orderData.services || orderData.selectedServices || orderData.services_list || ['Wash & Fold'],
+      items: Array.isArray(orderData.items) ? orderData.items : [],
+      pickupTime: orderData.pickupTime || `${orderData.date || 'Today'}, ${orderData.pickup_time_slot || '09:00 AM – 11:00 AM'}`,
+      pickup_time_slot: orderData.pickup_time_slot || '09:00 AM – 11:00 AM',
+      pickup_date: orderData.pickup_date || new Date().toISOString().split('T')[0],
+      amount: totalAmount,
+      total_amount: totalAmount,
+      estimatedTotal: totalAmount,
       status: orderData.status || 'Pending Pickup',
+      status_display: orderData.status_display || orderData.status || 'Pending Pickup',
+      stage: orderData.stage || 'incoming',
       payment: orderData.payment || 'Paid',
+      payment_status: orderData.payment_status || 'PAID',
       type: orderData.type || 'Pickup',
       driver: orderData.driver || 'Not Assigned',
-      specialInstructions: orderData.specialInstructions || '',
+      driver_name: orderData.driver || 'Not Assigned',
+      specialInstructions: orderData.specialInstructions || orderData.notes || '',
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
+      history: [
+        {
+          status: orderData.status || 'Pending Pickup',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          note: 'Order placed successfully'
+        }
+      ]
     };
 
     await setDoc(orderDocRef, newOrder);
-    return newOrder;
+    return normalizeFirestoreOrder(newOrder, orderId);
   } catch (error) {
     console.error('Error creating order in Firestore:', error);
     throw error;
@@ -93,47 +1003,378 @@ export const createFirestoreOrder = async (orderData) => {
 };
 
 /**
- * Update an order's status
+ * Update an order's status in Realtime Database / Firestore
  */
-export const updateFirestoreOrderStatus = async (orderId, status) => {
+export const updateFirestoreOrderStatus = async (orderId, status, extraFields = {}) => {
+  if (!isFirebaseConfigured || !orderId) return true;
   try {
-    const orderDocRef = doc(db, 'orders', orderId);
-    await updateDoc(orderDocRef, {
+    const rawId = String(orderId).trim();
+    let cleanId = rawId.replace(/^#/, '');
+    const candidateIds = [rawId, `#${cleanId}`, cleanId];
+    const targetDb = rtdb || db;
+    if (!targetDb) return true;
+
+    let key = cleanId;
+
+    // If cleanId is a task ID (e.g. starts with task_pk_ or in tasks node), resolve to underlying orderId
+    if (rtdb) {
+      try {
+        const taskSnap = await get(ref(rtdb, `tasks/${cleanId}`));
+        if (taskSnap.exists() && taskSnap.val().orderId) {
+          key = String(taskSnap.val().orderId).trim();
+          cleanId = key;
+        }
+      } catch (_) {}
+
+      // Resolve exact RTDB key (handles display codes like FC-10452)
+      try {
+        const snap = await get(ref(rtdb, `orders/${key}`));
+        if (!snap.exists()) {
+          const allSnap = await get(ref(rtdb, 'orders'));
+          if (allSnap.exists()) {
+            const all = allSnap.val();
+            const cleanTarget = cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const altTargets = [
+              extraFields.order_number,
+              extraFields.orderId,
+              extraFields.order_id,
+              extraFields.code
+            ].filter(Boolean).map(x => String(x).replace(/[^a-zA-Z0-9]/g, '').toLowerCase());
+            const allTargets = [cleanTarget, ...altTargets].filter(Boolean);
+
+            const found = Object.keys(all).find(k => {
+              const o = all[k];
+              if (!o) return false;
+              const cK = String(k || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              const cCode = String(o.code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              const cId = String(o.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              const cNum = String(o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+              const cDisp = String(o.displayId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+              return allTargets.some(t => 
+                t && (
+                  cK === t ||
+                  cCode === t ||
+                  cId === t ||
+                  cNum === t ||
+                  cDisp === t ||
+                  (t.length >= 4 && (
+                    (cCode.length >= 4 && (t.endsWith(cCode) || cCode.endsWith(t))) ||
+                    (cId.length >= 4 && (t.endsWith(cId) || cId.endsWith(t))) ||
+                    (cNum.length >= 4 && (t.endsWith(cNum) || cNum.endsWith(t))) ||
+                    (cDisp.length >= 4 && (t.endsWith(cDisp) || cDisp.endsWith(t)))
+                  ))
+                )
+              );
+            });
+            if (found) key = found;
+          }
+        }
+      } catch (_) {}
+    }
+
+    const now = Date.now();
+    const rawStatus = extraFields.raw_status || status;
+    const isDelivered = ['COMPLETED', 'DELIVERED'].includes(String(status).toUpperCase()) || ['COMPLETED', 'DELIVERED'].includes(String(rawStatus).toUpperCase());
+    const isCancelled = String(status).toUpperCase() === 'CANCELLED' || String(rawStatus).toUpperCase() === 'CANCELLED';
+    const isDroppedAtHub = ['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'AT_HUB', 'HUB INTAKE'].includes(String(status).toUpperCase()) ||
+                           ['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'AT_HUB'].includes(String(rawStatus).toUpperCase()) ||
+                           Boolean(extraFields.droppedAtHub || extraFields.droppedOffAt);
+
+    const updatePayload = {
       status,
-      updatedAt: serverTimestamp()
-    });
+      orderStatus: status,
+      status_display: status,
+      raw_status: rawStatus,
+      updatedAt: now,
+      ...extraFields
+    };
+
+    const isReady = ['READY_FOR_DELIVERY', 'READY', 'PACKED', 'QUALITY_CHECK'].includes(String(status).toUpperCase()) ||
+                    ['READY_FOR_DELIVERY', 'READY', 'PACKED'].includes(String(rawStatus).toUpperCase()) ||
+                    String(status).toLowerCase().includes('ready') ||
+                    extraFields.stage === 'ready';
+
+    const isProcessing = ['IN_CLEANING', 'WASHING', 'DRYING', 'IRONING', 'PROCESSING', 'STEAMING', 'PRESSING'].includes(String(status).toUpperCase()) ||
+                         ['IN_CLEANING', 'WASHING', 'DRYING', 'IRONING', 'PROCESSING', 'STEAMING', 'PRESSING'].includes(String(rawStatus).toUpperCase()) ||
+                         ['washing', 'drying', 'ironing', 'steaming', 'pressing', 'cleaning'].includes(String(extraFields.stage || '').toLowerCase());
+
+    if (isReady) {
+      updatePayload.readyAt = updatePayload.readyAt || now;
+      updatePayload.ready_at = updatePayload.ready_at || now;
+      updatePayload.packagedAt = updatePayload.packagedAt || now;
+    }
+
+    if (isProcessing) {
+      updatePayload.processing_started_at = updatePayload.processing_started_at || now;
+      updatePayload.processingStartedAt = updatePayload.processingStartedAt || now;
+    }
+
+    if (isDroppedAtHub) {
+      const dropTime = extraFields.droppedAtHub || extraFields.droppedOffAt || now;
+      const formattedDropTime = new Date(dropTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      updatePayload.droppedAtHub = dropTime;
+      updatePayload.droppedOffAt = dropTime;
+      updatePayload.dropped_at_hub = dropTime;
+      updatePayload.dropped_off_at = dropTime;
+      updatePayload.droppedAt = formattedDropTime;
+      updatePayload.hubReceivedAt = dropTime;
+      updatePayload.facility_received_at = updatePayload.facility_received_at || dropTime;
+      updatePayload.facilityReceivedAt = updatePayload.facilityReceivedAt || dropTime;
+    }
+
+    if (isDelivered) {
+      updatePayload.deliveredAt = updatePayload.deliveredAt || now;
+      updatePayload.delivered_at = updatePayload.delivered_at || now;
+      updatePayload.completedAt = updatePayload.completedAt || now;
+    } else if (isCancelled) {
+      updatePayload.cancelledAt = updatePayload.cancelledAt || now;
+      updatePayload.cancelled_at = updatePayload.cancelled_at || now;
+    }
+
+    if (extraFields.stage) {
+      updatePayload.stage = extraFields.stage;
+    }
+
+    if (rtdb) {
+      await update(ref(rtdb, `orders/${key}`), updatePayload);
+
+      if (isDelivered) {
+        try {
+          await update(ref(rtdb, 'ordersByStatus/DELIVERED'), { [key]: now });
+        } catch (_) {}
+      } else if (isCancelled) {
+        try {
+          await update(ref(rtdb, 'ordersByStatus/CANCELLED'), { [key]: now });
+        } catch (_) {}
+      }
+
+      // If order was dropped off at laundry or updated pickup/delivery stage, synchronize associated tasks
+      try {
+        const taskCollections = ['tasks', 'delivery_tasks'];
+        for (const taskCol of taskCollections) {
+          try {
+            const tasksSnap = await get(ref(rtdb, taskCol));
+            if (tasksSnap.exists()) {
+              const tasks = tasksSnap.val();
+              for (const [tId, tVal] of Object.entries(tasks)) {
+                if (!tVal) continue;
+                const cValOid = String(tVal.orderId || tVal.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cValNum = String(tVal.order_number || tVal.code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cKey = String(key || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cCleanId = String(cleanId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const cNum = String(extraFields.order_number || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+                const isMatch = (cValOid && (cValOid === cKey || cValOid === cCleanId || (cNum && cValOid === cNum))) ||
+                                (cValNum && (cValNum === cKey || cValNum === cCleanId || (cNum && cValNum === cNum))) ||
+                                (tVal.orderId === key || tVal.orderId === cleanId);
+
+                if (isMatch) {
+                  if (rawStatus === 'DROPPED_OFF' || rawStatus === 'DROPPED_OFF_AT_LAUNDRY') {
+                    if (tVal.type === 'pickup') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'completed',
+                        tracker_stage: 'AT_HUB',
+                        droppedOffAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'PICKED_UP' || rawStatus === 'COLLECTED' || status === 'Picked Up') {
+                    if (tVal.type === 'pickup') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'picked_up',
+                        tracker_stage: 'COLLECTED',
+                        completedAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'ARRIVED') {
+                    if (tVal.type === 'pickup') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'arrived',
+                        tracker_stage: 'ARRIVED',
+                        arrivedAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'PICKUP_IN_PROGRESS' || rawStatus === 'ON_THE_WAY') {
+                    if (tVal.type === 'pickup') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'on_the_way',
+                        tracker_stage: 'ON_THE_WAY',
+                        startedAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'PICKUP_ASSIGNED' || rawStatus === 'ASSIGNED') {
+                    if (tVal.type === 'pickup') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'assigned',
+                        tracker_stage: 'ASSIGNED',
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'DELIVERED' || status === 'Delivered') {
+                    if (tVal.type === 'delivery') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'completed',
+                        completedAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'OUT_FOR_DELIVERY' || status === 'Out for Delivery') {
+                    if (tVal.type === 'delivery') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'on_the_way',
+                        startedAt: now,
+                        updatedAt: now
+                      });
+                    }
+                  } else if (rawStatus === 'READY_FOR_DELIVERY' || status === 'Ready for Delivery') {
+                    if (tVal.type === 'delivery') {
+                      await update(ref(rtdb, `${taskCol}/${tId}`), {
+                        status: 'assigned',
+                        updatedAt: now
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
+    if (db) {
+      let updated = false;
+      for (const cId of candidateIds) {
+        try {
+          const orderDocRef = doc(db, 'orders', cId);
+          await updateDoc(orderDocRef, updatePayload);
+          updated = true;
+          break;
+        } catch (err) {
+          // try next
+        }
+      }
+
+      if (!updated) {
+        const q = query(collection(db, 'orders'), where('id', 'in', candidateIds));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          await updateDoc(qSnap.docs[0].ref, updatePayload);
+          updated = true;
+        }
+      }
+    }
+
     return true;
   } catch (error) {
-    console.error('Error updating order status in Firestore:', error);
-    throw error;
+    console.error('Error updating order status in database:', error);
+    return false;
   }
+};
+
+/**
+ * Generic update for any order fields
+ */
+export const updateFirestoreOrder = async (orderId, updateFields) => {
+  if (!isFirebaseConfigured || !orderId) return true;
+  try {
+    const rawId = String(orderId).trim();
+    const cleanId = rawId.replace(/^#/, '');
+    const candidateIds = [rawId, `#${cleanId}`, cleanId];
+
+    if (rtdb) {
+      let key = cleanId;
+      const snap = await get(ref(rtdb, `orders/${key}`));
+      if (!snap.exists()) {
+        const allSnap = await get(ref(rtdb, 'orders'));
+        if (allSnap.exists()) {
+          const all = allSnap.val();
+          const found = Object.keys(all).find(k => 
+            String(all[k].code || '').toUpperCase() === cleanId.toUpperCase() ||
+            String(all[k].id || '').toUpperCase() === cleanId.toUpperCase() ||
+            String(all[k].order_number || '').toUpperCase() === cleanId.toUpperCase() ||
+            String(all[k].displayId || '').toUpperCase() === cleanId.toUpperCase()
+          );
+          if (found) key = found;
+        }
+      }
+
+      await update(ref(rtdb, `orders/${key}`), {
+        ...updateFields,
+        updatedAt: Date.now()
+      });
+    }
+
+    if (db) {
+      let updated = false;
+      for (const cId of candidateIds) {
+        try {
+          const orderDocRef = doc(db, 'orders', cId);
+          await updateDoc(orderDocRef, {
+            ...updateFields,
+            updatedAt: serverTimestamp()
+          });
+          updated = true;
+          break;
+        } catch (err) {
+          // try next
+        }
+      }
+
+      if (!updated) {
+        const q = query(collection(db, 'orders'), where('id', 'in', candidateIds));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          await updateDoc(qSnap.docs[0].ref, {
+            ...updateFields,
+            updatedAt: serverTimestamp()
+          });
+          updated = true;
+        }
+      }
+    }
+    return true;
+  } catch (error) {
+    console.error('Error updating order in database:', error);
+    return false;
+  }
+};
+
+/**
+ * Cancel an order in Firestore
+ */
+export const cancelFirestoreOrder = async (orderId, reason = 'Cancelled by user') => {
+  return updateFirestoreOrderStatus(orderId, 'Cancelled', {
+    cancelReason: reason,
+    cancelledAt: serverTimestamp()
+  });
 };
 
 /**
  * Assign a driver to an order
  */
-export const assignDriverToFirestoreOrder = async (orderId, driverName) => {
-  try {
-    const orderDocRef = doc(db, 'orders', orderId);
-    await updateDoc(orderDocRef, {
-      driver: driverName,
-      updatedAt: serverTimestamp()
-    });
-    return true;
-  } catch (error) {
-    console.error('Error assigning driver in Firestore:', error);
-    throw error;
-  }
+export const assignDriverToFirestoreOrder = async (orderId, driverName, driverPhone = '') => {
+  return updateFirestoreOrderStatus(orderId, 'Pending Pickup', {
+    driver: driverName,
+    driver_name: driverName,
+    driver_phone: driverPhone,
+    status: 'Pending Pickup'
+  });
 };
 
 // ===============================================================
-// CUSTOMERS COLLECTION
+// 2. CUSTOMERS COLLECTION (CRUD & REAL-TIME)
 // ===============================================================
 
 /**
  * Realtime subscription to Customers
  */
 export const subscribeCustomers = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
   try {
     const customersCol = collection(db, 'customers');
     return onSnapshot(
@@ -156,22 +1397,32 @@ export const subscribeCustomers = (callback, errorCallback) => {
   }
 };
 
-/**
- * Add a new customer to Firestore
- */
+export const getFirestoreCustomers = async () => {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snapshot = await getDocs(collection(db, 'customers'));
+    return snapshot.docs.map(d => ({ docId: d.id, ...d.data() }));
+  } catch (error) {
+    console.error('Error fetching customers:', error);
+    return [];
+  }
+};
+
 export const addFirestoreCustomer = async (customerData) => {
+  if (!isFirebaseConfigured || !db) return null;
   try {
     const customerId = customerData.id || `#CUS${Math.floor(1000 + Math.random() * 9000)}`;
     const customerDocRef = doc(db, 'customers', customerId);
 
+    const name = customerData.name || 'New Customer';
     const newCustomer = {
       id: customerId,
-      name: customerData.name || 'New Customer',
+      name,
       phone: customerData.phone || '+91 98765 00000',
       email: customerData.email || 'customer@example.com',
-      avatar: (customerData.name || 'NC').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(),
+      avatar: (name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CU'),
       location: customerData.area ? `${customerData.area}, Bengaluru ${customerData.pincode || ''}` : (customerData.location || 'Bengaluru'),
-      totalOrders: Number(customerData.totalOrders) || 1,
+      totalOrders: Number(customerData.totalOrders) || 0,
       totalSpent: customerData.totalSpent || '₹0',
       status: customerData.status !== undefined ? (customerData.status ? 'Active' : 'Inactive') : 'Active',
       joinDate: 'Today',
@@ -188,44 +1439,99 @@ export const addFirestoreCustomer = async (customerData) => {
   }
 };
 
+export const updateFirestoreCustomerStatus = async (customerId, isActive) => {
+  if (!isFirebaseConfigured || !db) return true;
+  try {
+    const customerDocRef = doc(db, 'customers', String(customerId));
+    await updateDoc(customerDocRef, {
+      status: isActive ? 'Active' : 'Blocked',
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating customer status:', error);
+    throw error;
+  }
+};
+
 // ===============================================================
-// SERVICES COLLECTION
+// 3. SERVICES CATALOG COLLECTION (CRUD & REAL-TIME)
 // ===============================================================
 
-/**
- * Realtime subscription to Services
- */
 export const subscribeServices = (callback, errorCallback) => {
+  if (!isFirebaseConfigured) return () => {};
   try {
-    const servicesCol = collection(db, 'services');
-    return onSnapshot(
-      servicesCol,
-      (snapshot) => {
-        const servList = snapshot.docs.map(d => ({
-          docId: d.id,
-          ...d.data()
-        }));
-        callback(servList);
-      },
-      (err) => {
-        console.warn('Services snapshot subscription note:', err.message);
+    if (rtdb) {
+      const sRef = ref(rtdb, 'services');
+      const unsub = onValue(sRef, (snap) => {
+        if (!snap.exists()) {
+          callback(INITIAL_SERVICES_ADMIN);
+          return;
+        }
+        const val = snap.val();
+        const list = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
+        callback(list.length >= 69 ? list : INITIAL_SERVICES_ADMIN);
+      }, (err) => {
+        console.warn('RTDB Services subscription note:', err.message);
+        callback(INITIAL_SERVICES_ADMIN);
         if (errorCallback) errorCallback(err);
-      }
-    );
+      });
+      return () => off(sRef, 'value', unsub);
+    }
+
+    if (db && typeof collection === 'function') {
+      const servicesCol = collection(db, 'services');
+      return onSnapshot(
+        servicesCol,
+        (snapshot) => {
+          const servList = snapshot.docs.map(d => ({
+            docId: d.id,
+            ...d.data()
+          }));
+          callback(servList.length >= 69 ? servList : INITIAL_SERVICES_ADMIN);
+        },
+        (err) => {
+          console.warn('Services snapshot subscription note:', err.message);
+          if (errorCallback) errorCallback(err);
+        }
+      );
+    }
+    callback(INITIAL_SERVICES_ADMIN);
+    return () => {};
   } catch (err) {
     console.warn('Services subscribe exception:', err);
+    callback(INITIAL_SERVICES_ADMIN);
     return () => {};
   }
 };
 
-/**
- * Add a new service to Firestore
- */
+export const getFirestoreServices = async () => {
+  if (!isFirebaseConfigured) return INITIAL_SERVICES_ADMIN;
+  try {
+    if (rtdb) {
+      const snap = await get(ref(rtdb, 'services'));
+      if (snap.exists()) {
+        const val = snap.val();
+        const list = Object.keys(val).map(k => ({ ...val[k], id: val[k].id || k }));
+        return list.length >= 69 ? list : INITIAL_SERVICES_ADMIN;
+      }
+      return INITIAL_SERVICES_ADMIN;
+    }
+    if (db && typeof getDocs === 'function') {
+      const snapshot = await getDocs(collection(db, 'services'));
+      return snapshot.docs.map(d => ({ docId: d.id, ...d.data() }));
+    }
+    return INITIAL_SERVICES_ADMIN;
+  } catch (error) {
+    console.error('Error fetching services:', error);
+    return INITIAL_SERVICES_ADMIN;
+  }
+};
+
 export const addFirestoreService = async (serviceData) => {
+  if (!isFirebaseConfigured) return null;
   try {
     const serviceId = String(serviceData.id || `srv_${Date.now()}`);
-    const serviceDocRef = doc(db, 'services', serviceId);
-
     const newService = {
       id: serviceId,
       name: serviceData.name || 'New Service',
@@ -233,46 +1539,45 @@ export const addFirestoreService = async (serviceData) => {
       category: serviceData.category || 'Wash & Fold',
       price: Number(serviceData.price) || 150,
       turnaround: serviceData.turnaround || '1–2 days',
-      status: serviceData.status ? 'Active' : 'Inactive',
+      status: (serviceData.status === true || serviceData.status === 'Active') ? 'Active' : 'Inactive',
       icon: serviceData.icon || 'Shirt',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     };
 
-    await setDoc(serviceDocRef, newService);
+    if (rtdb) {
+      await set(ref(rtdb, `services/${serviceId}`), newService);
+    }
     return newService;
   } catch (error) {
-    console.error('Error adding service to Firestore:', error);
+    console.error('Error adding service:', error);
     throw error;
   }
 };
 
-/**
- * Toggle a service's status in Firestore
- */
 export const toggleFirestoreServiceStatus = async (serviceId, currentStatus) => {
+  const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+  if (!isFirebaseConfigured) return newStatus;
   try {
-    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
-    const serviceDocRef = doc(db, 'services', String(serviceId));
-    await updateDoc(serviceDocRef, {
-      status: newStatus,
-      updatedAt: serverTimestamp()
-    });
+    if (rtdb) {
+      await update(ref(rtdb, `services/${String(serviceId)}`), {
+        status: newStatus,
+        updatedAt: Date.now()
+      });
+    }
     return newStatus;
   } catch (error) {
-    console.error('Error toggling service status in Firestore:', error);
+    console.error('Error toggling service status:', error);
     throw error;
   }
 };
 
 // ===============================================================
-// DRIVERS COLLECTION
+// 4. DRIVERS COLLECTION (CRUD & REAL-TIME)
 // ===============================================================
 
-/**
- * Realtime subscription to Drivers
- */
 export const subscribeDrivers = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
   try {
     const driversCol = collection(db, 'drivers');
     return onSnapshot(
@@ -295,14 +1600,38 @@ export const subscribeDrivers = (callback, errorCallback) => {
   }
 };
 
+export const getFirestoreDrivers = async () => {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snapshot = await getDocs(collection(db, 'drivers'));
+    return snapshot.docs.map(d => ({ docId: d.id, ...d.data() }));
+  } catch (error) {
+    console.error('Error fetching drivers:', error);
+    return [];
+  }
+};
+
+export const updateFirestoreDriverStatus = async (driverId, status) => {
+  if (!isFirebaseConfigured || !db) return true;
+  try {
+    const driverDocRef = doc(db, 'drivers', String(driverId));
+    await updateDoc(driverDocRef, {
+      status,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating driver status:', error);
+    throw error;
+  }
+};
+
 // ===============================================================
-// FAQS & CONTENT
+// 5. FAQS COLLECTION (CRUD & REAL-TIME)
 // ===============================================================
 
-/**
- * Realtime subscription to FAQs
- */
 export const subscribeFaqs = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
   try {
     const faqsCol = collection(db, 'faqs');
     return onSnapshot(
@@ -312,6 +1641,7 @@ export const subscribeFaqs = (callback, errorCallback) => {
           docId: d.id,
           ...d.data()
         }));
+        faqList.sort((a, b) => (Number(a.displayOrder || 99) - Number(b.displayOrder || 99)));
         callback(faqList);
       },
       (err) => {
@@ -325,24 +1655,65 @@ export const subscribeFaqs = (callback, errorCallback) => {
   }
 };
 
-/**
- * Get or Save Terms & Conditions
- */
+export const getFirestoreFaqs = async () => {
+  if (!isFirebaseConfigured || !db) return INITIAL_FAQS_ADMIN;
+  try {
+    const snapshot = await getDocs(collection(db, 'faqs'));
+    if (snapshot.empty) return INITIAL_FAQS_ADMIN;
+    const list = snapshot.docs.map(d => ({ docId: d.id, ...d.data() }));
+    list.sort((a, b) => (Number(a.displayOrder || 99) - Number(b.displayOrder || 99)));
+    return list;
+  } catch (err) {
+    console.error('Error fetching FAQs:', err);
+    return INITIAL_FAQS_ADMIN;
+  }
+};
+
+export const saveFirestoreFaqs = async (faqsList) => {
+  if (!isFirebaseConfigured || !db || !Array.isArray(faqsList)) return true;
+  try {
+    for (const faq of faqsList) {
+      const faqId = String(faq.id || `faq-${Date.now()}`);
+      await setDoc(doc(db, 'faqs', faqId), {
+        ...faq,
+        id: faqId,
+        updatedAt: serverTimestamp()
+      });
+    }
+    return true;
+  } catch (error) {
+    console.error('Error saving FAQs to Firestore:', error);
+    throw error;
+  }
+};
+
+// ===============================================================
+// 6. CONTENT & TERMS (FIRESTORE)
+// ===============================================================
+
 export const getFirestoreTerms = async () => {
+  if (!isFirebaseConfigured || !db) return INITIAL_TERMS_CONTENT;
   try {
     const termsDocRef = doc(db, 'content', 'terms');
     const snapshot = await getDoc(termsDocRef);
     if (snapshot.exists()) {
       return snapshot.data();
     }
-    return null;
+    // If not exists, save default terms into Firestore
+    await setDoc(termsDocRef, {
+      ...INITIAL_TERMS_CONTENT,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return INITIAL_TERMS_CONTENT;
   } catch (error) {
     console.error('Error fetching terms:', error);
-    return null;
+    return INITIAL_TERMS_CONTENT;
   }
 };
 
 export const saveFirestoreTerms = async (termsData) => {
+  if (!isFirebaseConfigured || !db) return true;
   try {
     const termsDocRef = doc(db, 'content', 'terms');
     await setDoc(termsDocRef, {
@@ -358,27 +1729,31 @@ export const saveFirestoreTerms = async (termsData) => {
 };
 
 // ===============================================================
-// SETTINGS
+// 7. SETTINGS (FIRESTORE)
 // ===============================================================
 
-/**
- * Get or Save General Settings
- */
 export const getFirestoreSettings = async () => {
+  if (!isFirebaseConfigured || !db) return INITIAL_SETTINGS;
   try {
     const settingsDocRef = doc(db, 'settings', 'general');
     const snapshot = await getDoc(settingsDocRef);
     if (snapshot.exists()) {
       return snapshot.data();
     }
-    return null;
+    await setDoc(settingsDocRef, {
+      ...INITIAL_SETTINGS,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return INITIAL_SETTINGS;
   } catch (error) {
     console.error('Error fetching settings:', error);
-    return null;
+    return INITIAL_SETTINGS;
   }
 };
 
 export const saveFirestoreSettings = async (settingsData) => {
+  if (!isFirebaseConfigured || !db) return true;
   try {
     const settingsDocRef = doc(db, 'settings', 'general');
     await setDoc(settingsDocRef, {
@@ -393,109 +1768,373 @@ export const saveFirestoreSettings = async (settingsData) => {
 };
 
 // ===============================================================
-// SEEDING HELPER FOR INITIAL FIRST-LAUNCH
+// 8. NOTIFICATIONS & COMPLAINTS & TICKETS & USERS
+// ===============================================================
+
+export const subscribeNotifications = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
+  try {
+    const notifsCol = collection(db, 'notifications');
+    return onSnapshot(
+      notifsCol,
+      (snapshot) => {
+        const notifList = snapshot.docs.map(d => ({
+          docId: d.id,
+          ...d.data()
+        }));
+        callback(notifList);
+      },
+      (err) => {
+        console.warn('Notifications note:', err.message);
+        if (errorCallback) errorCallback(err);
+      }
+    );
+  } catch (err) {
+    console.warn('Notifications subscribe exception:', err);
+    return () => {};
+  }
+};
+
+export const getFirestoreNotifications = async () => {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snapshot = await getDocs(collection(db, 'notifications'));
+    return snapshot.docs.map(d => ({ docId: d.id, ...d.data() }));
+  } catch (err) {
+    console.error('Error fetching notifications:', err);
+    return [];
+  }
+};
+
+export const addFirestoreNotification = async (notifData) => {
+  if (!isFirebaseConfigured || !db) return null;
+  try {
+    const notifId = notifData.id || `notif_${Date.now()}`;
+    const docRef = doc(db, 'notifications', notifId);
+    const newNotif = {
+      id: notifId,
+      title: notifData.title || 'New Notification',
+      message: notifData.message || '',
+      type: notifData.type || 'info',
+      unread: true,
+      time: 'Just now',
+      createdAt: serverTimestamp()
+    };
+    await setDoc(docRef, newNotif);
+    return newNotif;
+  } catch (error) {
+    console.error('Error adding notification:', error);
+    throw error;
+  }
+};
+
+export const subscribeComplaints = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
+  try {
+    const compCol = collection(db, 'complaints');
+    return onSnapshot(
+      compCol,
+      (snapshot) => {
+        const list = snapshot.docs.map(d => ({
+          docId: d.id,
+          ...d.data()
+        }));
+        callback(list);
+      },
+      (err) => {
+        console.warn('Complaints snapshot note:', err.message);
+        if (errorCallback) errorCallback(err);
+      }
+    );
+  } catch (err) {
+    console.warn('Complaints subscribe exception:', err);
+    return () => {};
+  }
+};
+
+export const getFirestoreComplaints = async () => {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snapshot = await getDocs(collection(db, 'complaints'));
+    return snapshot.docs.map(d => ({ docId: d.id, ...d.data() }));
+  } catch (err) {
+    console.error('Error fetching complaints:', err);
+    return [];
+  }
+};
+
+export const addFirestoreComplaint = async (complaintData) => {
+  if (!isFirebaseConfigured || !db) return null;
+  try {
+    const cId = complaintData.id || `comp_${Date.now()}`;
+    const docRef = doc(db, 'complaints', cId);
+    const newComp = {
+      id: cId,
+      ticket_number: complaintData.ticket_number || `#CMP-${Math.floor(1000 + Math.random() * 9000)}`,
+      order_id: complaintData.order_id || '#FC10284',
+      customer_name: complaintData.customer_name || 'Customer',
+      issue_type: complaintData.issue_type || 'General Query',
+      description: complaintData.description || complaintData.notes || '',
+      status: complaintData.status || 'Pending',
+      priority: complaintData.priority || 'Normal',
+      created_at: new Date().toISOString(),
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(docRef, newComp);
+    return newComp;
+  } catch (err) {
+    console.error('Error adding complaint:', err);
+    throw err;
+  }
+};
+
+// ===============================================================
+// 8B. SUPPORT TICKETS
+// ===============================================================
+
+export const subscribeTickets = (callback, errorCallback) => {
+  if (!isFirebaseConfigured || !db) return () => {};
+  try {
+    const ticketsCol = collection(db, 'support_tickets');
+    return onSnapshot(
+      ticketsCol,
+      (snapshot) => {
+        const list = snapshot.docs.map(d => ({
+          docId: d.id,
+          ...d.data()
+        }));
+        callback(list);
+      },
+      (err) => {
+        console.warn('Tickets subscription note:', err.message);
+        if (errorCallback) errorCallback(err);
+      }
+    );
+  } catch (err) {
+    console.warn('Tickets subscribe exception:', err);
+    return () => {};
+  }
+};
+
+export const getFirestoreTickets = async () => {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snapshot = await getDocs(collection(db, 'support_tickets'));
+    return snapshot.docs.map(d => ({ docId: d.id, ...d.data() }));
+  } catch (err) {
+    console.error('Error fetching tickets:', err);
+    return [];
+  }
+};
+
+export const createFirestoreTicket = async (ticketData) => {
+  if (!isFirebaseConfigured || !db) return null;
+  try {
+    const ticketId = ticketData.id || `tkt_${Date.now()}`;
+    const docRef = doc(db, 'support_tickets', ticketId);
+    const newTicket = {
+      id: ticketId,
+      ticket_number: ticketData.ticket_number || `#TKT-${Math.floor(1000 + Math.random() * 9000)}`,
+      subject: ticketData.subject || ticketData.title || 'Support Request',
+      description: ticketData.description || ticketData.message || '',
+      order_id: ticketData.order_id || null,
+      status: ticketData.status || 'OPEN',
+      priority: ticketData.priority || 'MEDIUM',
+      messages: ticketData.messages || [
+        {
+          sender: 'customer',
+          text: ticketData.description || ticketData.message || 'Support Request created',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          date: new Date().toISOString()
+        }
+      ],
+      created_at: new Date().toISOString(),
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(docRef, newTicket);
+    return newTicket;
+  } catch (err) {
+    console.error('Error creating ticket:', err);
+    throw err;
+  }
+};
+
+export const replyFirestoreTicket = async (ticketId, message) => {
+  if (!isFirebaseConfigured || !db || !ticketId) return null;
+  try {
+    const docRef = doc(db, 'support_tickets', String(ticketId));
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return null;
+    const current = snap.data();
+    const messages = Array.isArray(current.messages) ? current.messages : [];
+    const newMsg = {
+      sender: message.sender || 'support',
+      text: message.text || message.message || String(message),
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: new Date().toISOString()
+    };
+    messages.push(newMsg);
+    await updateDoc(docRef, {
+      messages,
+      updatedAt: serverTimestamp()
+    });
+    return { ...current, messages };
+  } catch (err) {
+    console.error('Error replying to ticket:', err);
+    throw err;
+  }
+};
+
+export const updateFirestoreTicketStatus = async (ticketId, status) => {
+  if (!isFirebaseConfigured || !db || !ticketId) return true;
+  try {
+    const docRef = doc(db, 'support_tickets', String(ticketId));
+    await updateDoc(docRef, {
+      status,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (err) {
+    console.error('Error updating ticket status:', err);
+    throw err;
+  }
+};
+
+// ===============================================================
+// 8C. USERS (FIRESTORE)
+// ===============================================================
+
+export const getFirestoreUsers = async () => {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snapshot = await getDocs(collection(db, 'users'));
+    return snapshot.docs.map(d => ({ docId: d.id, ...d.data() }));
+  } catch (err) {
+    console.error('Error fetching users:', err);
+    return [];
+  }
+};
+
+export const createFirestoreUser = async (userData) => {
+  if (!isFirebaseConfigured || !db) return null;
+  try {
+    const userId = userData.uid || userData.id || `usr_${Date.now()}`;
+    const docRef = doc(db, 'users', userId);
+    const newUser = {
+      id: userId,
+      uid: userId,
+      email: userData.email || '',
+      fullName: userData.fullName || userData.name || `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'User',
+      phone: userData.phone || '',
+      role: (userData.role || 'customer').toLowerCase(),
+      isActive: userData.isActive !== undefined ? userData.isActive : true,
+      city: userData.city || 'Bengaluru',
+      createdAt: new Date().toISOString(),
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(docRef, newUser, { merge: true });
+    return newUser;
+  } catch (err) {
+    console.error('Error creating user:', err);
+    throw err;
+  }
+};
+
+export const updateFirestoreUser = async (userId, updateData) => {
+  if (!isFirebaseConfigured || !db || !userId) return true;
+  try {
+    const docRef = doc(db, 'users', String(userId));
+    await updateDoc(docRef, {
+      ...updateData,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (err) {
+    console.error('Error updating user:', err);
+    throw err;
+  }
+};
+
+// ===============================================================
+// 8D. SAVED ADDRESSES (FIRESTORE)
+// ===============================================================
+
+export const getUserAddresses = async (userId) => {
+  if (!isFirebaseConfigured || !rtdb || !userId) return [];
+  try {
+    const snap = await get(ref(rtdb, `users/${userId}/addresses`));
+    if (snap.exists()) {
+      return Object.values(snap.val());
+    }
+    return [];
+  } catch (err) {
+    console.error('Error fetching addresses:', err);
+    return [];
+  }
+};
+
+export const addUserAddress = async (userId, addressData) => {
+  if (!isFirebaseConfigured || !rtdb || !userId) return null;
+  try {
+    const addrId = addressData.id || `addr_${Date.now()}`;
+    const newAddr = {
+      id: addrId,
+      title: addressData.label || addressData.title || 'Home',
+      label: addressData.label || addressData.title || 'Home',
+      line1: addressData.line1 || addressData.address_line || 'Bengaluru',
+      address_line: addressData.address_line || addressData.line1 || 'Bengaluru',
+      landmark: addressData.landmark || '',
+      city: addressData.city || 'Bengaluru',
+      pincode: addressData.pincode || '560038',
+      is_default: Boolean(addressData.is_default),
+      updatedAt: Date.now()
+    };
+    await set(ref(rtdb, `users/${userId}/addresses/${addrId}`), newAddr);
+    return newAddr;
+  } catch (err) {
+    console.error('Error adding address:', err);
+    throw err;
+  }
+};
+
+export const updateUserAddress = async (userId, addressId, addressData) => {
+  if (!isFirebaseConfigured || !rtdb || !userId) return null;
+  try {
+    const snap = await get(ref(rtdb, `users/${userId}/addresses/${addressId}`));
+    const existing = snap.exists() ? snap.val() : {};
+    const updated = {
+      ...existing,
+      ...addressData,
+      id: addressId,
+      updatedAt: Date.now()
+    };
+    await set(ref(rtdb, `users/${userId}/addresses/${addressId}`), updated);
+    return updated;
+  } catch (err) {
+    console.error('Error updating address:', err);
+    throw err;
+  }
+};
+
+export const deleteUserAddress = async (userId, addressId) => {
+  if (!isFirebaseConfigured || !rtdb || !userId) return true;
+  try {
+    await set(ref(rtdb, `users/${userId}/addresses/${addressId}`), null);
+    return true;
+  } catch (err) {
+    console.error('Error deleting address:', err);
+    throw err;
+  }
+};
+
+// ===============================================================
+// 9. AUTOMATIC SEEDING ON APP STARTUP
 // ===============================================================
 
 /**
- * Seeds initial services, FAQs, sample orders and drivers if collections are empty.
+ * Legacy stub - database is powered by Firebase Realtime Database
  */
 export const seedInitialFirestoreData = async () => {
-  try {
-    // Check services
-    const servicesSnap = await getDocs(collection(db, 'services'));
-    if (servicesSnap.empty) {
-      console.log('Seeding initial services to Cloud Firestore...');
-      for (const serv of INITIAL_SERVICES_ADMIN) {
-        await setDoc(doc(db, 'services', String(serv.id)), {
-          ...serv,
-          id: String(serv.id),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    }
-
-    // Check FAQs
-    const faqsSnap = await getDocs(collection(db, 'faqs'));
-    if (faqsSnap.empty) {
-      console.log('Seeding initial FAQs to Cloud Firestore...');
-      for (const faq of INITIAL_FAQS_ADMIN) {
-        await setDoc(doc(db, 'faqs', String(faq.id)), {
-          ...faq,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    }
-
-    // Check Drivers
-    const driversSnap = await getDocs(collection(db, 'drivers'));
-    if (driversSnap.empty) {
-      console.log('Seeding initial Drivers to Cloud Firestore...');
-      for (const driver of INITIAL_DRIVERS) {
-        await setDoc(doc(db, 'drivers', driver.id), {
-          ...driver,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    }
-
-    // Check Customers
-    const customersSnap = await getDocs(collection(db, 'customers'));
-    if (customersSnap.empty) {
-      console.log('Seeding initial Customers to Cloud Firestore...');
-      for (const cust of INITIAL_CUSTOMERS) {
-        await setDoc(doc(db, 'customers', cust.id), {
-          ...cust,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    }
-
-    // Check Orders
-    const ordersSnap = await getDocs(collection(db, 'orders'));
-    if (ordersSnap.empty) {
-      console.log('Seeding initial Orders to Cloud Firestore...');
-      for (const ord of INITIAL_ORDERS) {
-        await setDoc(doc(db, 'orders', ord.id), {
-          ...ord,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      }
-    }
-
-    // Settings Doc
-    const settingsSnap = await getDoc(doc(db, 'settings', 'general'));
-    if (!settingsSnap.exists()) {
-      await setDoc(doc(db, 'settings', 'general'), {
-        name: 'Admin',
-        email: 'admin@fabricare.com',
-        phone: '+91 98765 43210',
-        role: 'Administrator',
-        supportEmail: 'support@fabricare.com',
-        supportPhone: '+91 98765 43210',
-        websiteUrl: 'https://www.fabricare.com',
-        instagram: 'https://instagram.com/fabricare',
-        facebook: 'https://facebook.com/fabricare',
-        twitter: 'https://x.com/fabricare',
-        linkedin: 'https://linkedin.com/company/fabricare',
-        notifications: {
-          newOrders: true,
-          customerMessages: true,
-          pickupDelivery: true,
-          systemAnnouncements: false
-        },
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    }
-
-    return true;
-  } catch (error) {
-    console.warn('Initial seeding note (e.g. offline/rules restricted):', error.message);
-    return false;
-  }
+  return true;
 };
+

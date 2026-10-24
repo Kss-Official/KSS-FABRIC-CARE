@@ -1,0 +1,672 @@
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { useAdmin } from '../../context/AdminContext';
+import { 
+  Calendar as CalendarIcon, 
+  X, 
+  Clock, 
+  AlertCircle, 
+  CheckCircle2, 
+  RefreshCw,
+  Info,
+  CalendarCheck
+} from 'lucide-react';
+
+const TIME_SLOTS = [
+  '10:00 AM–12:00 PM',
+  '12:00 PM–2:00 PM',
+  '2:00 PM–4:00 PM',
+  '4:00 PM–6:00 PM'
+];
+
+export const RescheduleDeliveryDrawer = () => {
+  const { 
+    isRescheduleDrawerOpen, 
+    closeRescheduleDrawer, 
+    setIsRescheduleDrawerOpen,
+    activeRescheduleComplaint,
+    rescheduleDelivery 
+  } = useAdmin();
+
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [timeSlot, setTimeSlot] = useState(TIME_SLOTS[0]);
+  const [adminNotes, setAdminNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  const handleClose = () => {
+    if (typeof closeRescheduleDrawer === 'function') {
+      closeRescheduleDrawer();
+    }
+    if (typeof setIsRescheduleDrawerOpen === 'function') {
+      setIsRescheduleDrawerOpen(false);
+    }
+  };
+
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isRescheduleDrawerOpen) {
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isRescheduleDrawerOpen, closeRescheduleDrawer, setIsRescheduleDrawerOpen]);
+
+  // Lock background scroll when Reschedule Drawer is open (matching Services & Pricing edit modal behavior)
+  useEffect(() => {
+    const wrapper = document.querySelector('.admin-main-wrapper');
+    if (isRescheduleDrawerOpen) {
+      if (wrapper) wrapper.classList.add('admin-scroll-locked');
+    } else {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    }
+    return () => {
+      if (wrapper) wrapper.classList.remove('admin-scroll-locked');
+    };
+  }, [isRescheduleDrawerOpen]);
+
+  // Set default date when complaint opens (default to tomorrow or requested date)
+  useEffect(() => {
+    if (activeRescheduleComplaint) {
+      setError('');
+      setSuccessMsg('');
+      setAdminNotes('');
+      setTimeSlot(TIME_SLOTS[0]);
+
+      // If complaint has a requested_reschedule_date, pre-fill it if in future
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+      if (activeRescheduleComplaint.requested_reschedule_date) {
+        setDeliveryDate(activeRescheduleComplaint.requested_reschedule_date);
+      } else {
+        setDeliveryDate(tomorrowStr);
+      }
+    }
+  }, [activeRescheduleComplaint, isRescheduleDrawerOpen]);
+
+  if (!isRescheduleDrawerOpen || !activeRescheduleComplaint) {
+    return null;
+  }
+
+  const handleConfirm = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    if (!deliveryDate) {
+      setError('Please select a valid new delivery date.');
+      return;
+    }
+
+    // Validate that the selected date is today or future date
+    const selected = new Date(deliveryDate + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (isNaN(selected.getTime())) {
+      setError('Invalid date format.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        delivery_date: deliveryDate,
+        new_delivery_date: deliveryDate,
+        rescheduled_date: deliveryDate,
+        delivery_time_slot: timeSlot,
+        time_slot: timeSlot,
+        rescheduled_time_slot: timeSlot,
+        notes: adminNotes,
+        admin_notes: adminNotes,
+        order_id: activeRescheduleComplaint?.order_id || activeRescheduleComplaint?.order_id_display || activeRescheduleComplaint?.id,
+        order_id_display: activeRescheduleComplaint?.order_id_display || activeRescheduleComplaint?.order_id || activeRescheduleComplaint?.id,
+        customer_name: activeRescheduleComplaint?.customer_name || 'Customer',
+        customer_phone: activeRescheduleComplaint?.customer_phone || '',
+        customer_email: activeRescheduleComplaint?.customer_email || activeRescheduleComplaint?.customerEmail || '',
+        failure_reason: activeRescheduleComplaint?.failure_reason || 'Customer unavailable'
+      };
+
+      const res = await rescheduleDelivery(
+        activeRescheduleComplaint.id || activeRescheduleComplaint.order_id_display || activeRescheduleComplaint.order_id,
+        payload
+      );
+      if (res && (res.success || res.status === 200 || res.data)) {
+        setSuccessMsg('Delivery rescheduled successfully!');
+        setTimeout(() => {
+          handleClose();
+        }, 1200);
+      } else {
+        setError(res?.detail || 'Failed to reschedule delivery.');
+      }
+    } catch (err) {
+      console.error('Error submitting reschedule:', err);
+      setError(err.response?.data?.detail || err.message || 'Failed to reschedule delivery');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const getMinDate = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
+  // Format current/requested date
+  const displayCurrentDate = activeRescheduleComplaint.formatted_reschedule_date !== '—'
+    ? activeRescheduleComplaint.formatted_reschedule_date
+    : activeRescheduleComplaint.requested_reschedule_date || '18 Oct 2025';
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div 
+      className="reschedule-backdrop animate-fade-in"
+      onClick={handleClose}
+    >
+      {/* Right-Side Reschedule Panel */}
+      <aside 
+        className="reschedule-panel-drawer animate-slide-in-right"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Panel Header */}
+        <div className="reschedule-panel-header">
+          <div className="header-title-wrap">
+            <div className="header-cal-icon-wrap">
+              <CalendarCheck size={18} className="text-[#087F8C]" />
+            </div>
+            <h2 className="header-title">Reschedule Delivery</h2>
+          </div>
+          <button 
+            type="button" 
+            className="panel-close-btn"
+            onClick={handleClose}
+            aria-label="Close reschedule panel"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Panel Scrollable Body */}
+        <div className="reschedule-panel-body">
+          {/* Order Details Card */}
+          <div className="reschedule-meta-group">
+            <div className="meta-field-row">
+              <span className="meta-field-label">Order ID</span>
+              <span className="meta-field-value font-mono font-bold text-[#0F172A]">
+                {activeRescheduleComplaint.order_id || '#FC1024'}
+              </span>
+            </div>
+
+            <div className="meta-field-row">
+              <span className="meta-field-label">Customer Name</span>
+              <span className="meta-field-value font-semibold text-[#1E293B]">
+                {activeRescheduleComplaint.customer_name || 'Rahul Sharma'}
+              </span>
+            </div>
+
+            <div className="meta-field-row">
+              <span className="meta-field-label">Failure Reason</span>
+              <span className="meta-field-value text-[#334155]">
+                {activeRescheduleComplaint.failure_reason || 'Customer Unavailable'}
+              </span>
+            </div>
+
+            <div className="meta-field-row">
+              <span className="meta-field-label">Current Reschedule Date</span>
+              <span className="meta-field-value font-medium text-[#475569]">
+                {displayCurrentDate}
+              </span>
+            </div>
+          </div>
+
+          <form onSubmit={handleConfirm} className="reschedule-form">
+            {/* Date Selection */}
+            <div className="form-input-group">
+              <label htmlFor="delivery-date-input" className="form-label">
+                Select New Delivery Date <span className="text-red-500">*</span>
+              </label>
+              
+              <div className="date-input-wrapper">
+                <input
+                  id="delivery-date-input"
+                  type="date"
+                  min={getMinDate()}
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  className="reschedule-date-input"
+                  required
+                />
+              </div>
+
+              <div className="date-helper-note">
+                <Info size={14} className="info-icon" />
+                <span>Please select a future date</span>
+              </div>
+            </div>
+
+            {/* Time Slot Selection */}
+            <div className="form-input-group">
+              <label className="form-label">
+                Select Delivery Time <span className="text-red-500">*</span>
+              </label>
+
+              <div className="time-slots-grid">
+                {TIME_SLOTS.map((slot) => {
+                  const isSelected = timeSlot === slot;
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      className={`time-slot-pill ${isSelected ? 'selected' : ''}`}
+                      onClick={() => setTimeSlot(slot)}
+                    >
+                      <Clock size={13} className="slot-clock-icon" />
+                      <span>{slot}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Admin Notes */}
+            <div className="form-input-group">
+              <label htmlFor="admin-reschedule-notes" className="form-label">
+                Admin Notes <span className="text-slate-400 font-normal">(Optional)</span>
+              </label>
+              <textarea
+                id="admin-reschedule-notes"
+                rows="3"
+                placeholder="e.g. Spoke with customer. Reattempt delivery between 10 AM and 12 PM."
+                value={adminNotes}
+                onChange={(e) => setAdminNotes(e.target.value)}
+                className="reschedule-notes-textarea"
+              />
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="reschedule-alert error animate-shake">
+                <AlertCircle size={16} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {successMsg && (
+              <div className="reschedule-alert success animate-fade-in">
+                <CheckCircle2 size={16} />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="reschedule-footer-actions">
+              <button
+                type="button"
+                className="reschedule-cancel-btn"
+                onClick={handleClose}
+                disabled={submitting}
+              >
+                Cancel
+              </button>
+              
+              <button
+                type="submit"
+                className="reschedule-confirm-btn"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <RefreshCw size={15} className="animate-spin" />
+                    <span>Rescheduling...</span>
+                  </>
+                ) : (
+                  <span>Confirm Reschedule</span>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </aside>
+
+      {/* Reschedule Drawer Styles matching Reference Image */}
+      <style>{`
+        .reschedule-backdrop {
+          position: fixed !important;
+          inset: 0 !important;
+          background: rgba(15, 23, 42, 0.45) !important;
+          backdrop-filter: blur(2px) !important;
+          -webkit-backdrop-filter: blur(2px) !important;
+          z-index: 99999 !important;
+          display: flex !important;
+          justify-content: flex-end !important;
+          overflow: hidden !important;
+          overscroll-behavior: none !important;
+          cursor: pointer;
+        }
+
+        .reschedule-panel-drawer {
+          cursor: default;
+          position: fixed !important;
+          top: 24px !important;
+          right: 24px !important;
+          bottom: 24px !important;
+          width: 400px !important;
+          max-width: calc(100vw - 32px) !important;
+          max-height: calc(100vh - 48px) !important;
+          max-height: calc(100dvh - 48px) !important;
+          background: #FFFFFF !important;
+          border-radius: 16px !important;
+          box-shadow: 0 20px 40px -8px rgba(15, 23, 42, 0.2), 0 0 1px 1px rgba(226, 232, 240, 0.8) !important;
+          z-index: 100000 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
+          overscroll-behavior: contain !important;
+          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @media (max-width: 768px) {
+          .reschedule-panel-drawer {
+            top: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            max-height: 100vh !important;
+            max-height: 100dvh !important;
+            border-radius: 0 !important;
+          }
+        }
+
+        .reschedule-panel-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px;
+          border-bottom: 1px solid #F1F5F9;
+          flex-shrink: 0 !important;
+        }
+
+        .header-title-wrap {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .header-cal-icon-wrap {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          background: #E0F2FE;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .header-title {
+          font-size: 1.05rem;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 0;
+          font-family: inherit;
+        }
+
+        .panel-close-btn {
+          background: none;
+          border: none;
+          color: #94A3B8;
+          cursor: pointer;
+          padding: 6px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.15s, color 0.15s;
+        }
+
+        .panel-close-btn:hover {
+          background: #F1F5F9;
+          color: #334155;
+        }
+
+        .reschedule-panel-body {
+          padding: 24px;
+          overflow-y: auto !important;
+          overscroll-behavior: contain !important;
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          -webkit-overflow-scrolling: touch !important;
+        }
+
+        .reschedule-meta-group {
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 10px;
+          padding: 16px 18px;
+          margin-bottom: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .meta-field-row {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .meta-field-label {
+          font-size: 0.75rem;
+          font-weight: 500;
+          color: #64748B;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+        }
+
+        .meta-field-value {
+          font-size: 0.92rem;
+        }
+
+        .reschedule-form {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        .form-input-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .form-label {
+          font-size: 0.86rem;
+          font-weight: 600;
+          color: #1E293B;
+        }
+
+        .date-input-wrapper {
+          position: relative;
+        }
+
+        .reschedule-date-input {
+          width: 100%;
+          padding: 10px 14px;
+          font-size: 0.92rem;
+          font-weight: 500;
+          color: #1E293B;
+          background: #FFFFFF;
+          border: 1.5px solid #CBD5E1;
+          border-radius: 8px;
+          outline: none;
+          box-sizing: border-box;
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .reschedule-date-input:focus {
+          border-color: #087F8C;
+          box-shadow: 0 0 0 3px rgba(8, 127, 140, 0.12);
+        }
+
+        .date-helper-note {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.78rem;
+          color: #64748B;
+          margin-top: 2px;
+        }
+
+        .date-helper-note .info-icon {
+          color: #64748B;
+        }
+
+        .time-slots-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        .time-slot-pill {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 9px 14px;
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 8px;
+          font-size: 0.85rem;
+          font-weight: 500;
+          color: #334155;
+          cursor: pointer;
+          text-align: left;
+          transition: all 0.15s ease;
+        }
+
+        .time-slot-pill:hover {
+          background: #F8FAFC;
+          border-color: #CBD5E1;
+        }
+
+        .time-slot-pill.selected {
+          background: #E6FFFA;
+          border-color: #087F8C;
+          color: #065F6B;
+          font-weight: 600;
+        }
+
+        .time-slot-pill .slot-clock-icon {
+          color: #64748B;
+        }
+
+        .time-slot-pill.selected .slot-clock-icon {
+          color: #087F8C;
+        }
+
+        .reschedule-notes-textarea {
+          width: 100%;
+          padding: 10px 14px;
+          font-size: 0.88rem;
+          color: #1E293B;
+          background: #FFFFFF;
+          border: 1.5px solid #CBD5E1;
+          border-radius: 8px;
+          outline: none;
+          box-sizing: border-box;
+          resize: vertical;
+          font-family: inherit;
+        }
+
+        .reschedule-notes-textarea:focus {
+          border-color: #087F8C;
+          box-shadow: 0 0 0 3px rgba(8, 127, 140, 0.12);
+        }
+
+        .reschedule-alert {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          border-radius: 8px;
+          font-size: 0.84rem;
+          font-weight: 500;
+        }
+
+        .reschedule-alert.error {
+          background: #FEF2F2;
+          border: 1px solid #FECACA;
+          color: #DC2626;
+        }
+
+        .reschedule-alert.success {
+          background: #ECFDF5;
+          border: 1px solid #A7F3D0;
+          color: #059669;
+        }
+
+        .reschedule-footer-actions {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 12px;
+          margin-top: 10px;
+          padding-top: 16px;
+          border-top: 1px solid #F1F5F9;
+        }
+
+        .reschedule-cancel-btn {
+          padding: 10px 20px;
+          font-size: 0.88rem;
+          font-weight: 600;
+          color: #475569;
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: background 0.15s, color 0.15s;
+        }
+
+        .reschedule-cancel-btn:hover {
+          background: #F8FAFC;
+          color: #1E293B;
+        }
+
+        .reschedule-confirm-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 22px;
+          font-size: 0.88rem;
+          font-weight: 600;
+          color: #FFFFFF;
+          background: #087F8C;
+          border: 1px solid #087F8C;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: background 0.15s, transform 0.1s;
+        }
+
+        .reschedule-confirm-btn:hover {
+          background: #066974;
+        }
+
+        .reschedule-confirm-btn:active {
+          transform: scale(0.99);
+        }
+
+        .reschedule-confirm-btn:disabled,
+        .reschedule-cancel-btn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+      `}</style>
+    </div>,
+    document.body
+  );
+};

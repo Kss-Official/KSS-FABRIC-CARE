@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
+import { useAuth } from '../context/AuthContext';
+import { subscribeCustomerOrders, cancelCustomerOrder } from '../services/customerDataService';
 import { ordersApi } from '../api/apiClient';
 import { 
   Package, 
@@ -11,59 +13,318 @@ import {
   ChevronRight, 
   AlertCircle,
   RefreshCw,
-  PlusCircle
+  PlusCircle,
+  X
 } from 'lucide-react';
+import { OrderStatusDropdown } from '../components/common/OrderStatusDropdown';
+import { formatOrderId, calculateOrderTotal } from '../utils/helpers';
 
 export const MyOrders = () => {
-  const { navigateTo, startBooking } = useBooking();
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
+  const { currentUser } = useAuth();
+  const [orders, setOrders] = useState(() => {
+    try {
+      const myUid = currentUser?.uid || currentUser?.id;
+      if (myUid) {
+        const cached = sessionStorage.getItem(`fabricare_customer_orders_${myUid}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+    } catch (_) {}
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    try {
+      const myUid = currentUser?.uid || currentUser?.id;
+      if (myUid) {
+        const cached = sessionStorage.getItem(`fabricare_customer_orders_${myUid}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return false;
+        }
+      }
+    } catch (_) {}
+    return true;
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [cancellingId, setCancellingId] = useState(null);
   const [cancelModalOrder, setCancelModalOrder] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
+  const cancelModalRef = useRef(null);
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const normalizeOrders = useCallback((rawOrders) => {
+    const seen = new Set();
+    const result = [];
+
+    (rawOrders || []).forEach(o => {
+      if (!o) return;
+      let totalInr = calculateOrderTotal(o, false);
+      if (!totalInr || totalInr === '0' || totalInr === '0.00') {
+        if (o.total_amount && o.total_amount !== '0' && o.total_amount !== '0.00') {
+          totalInr = o.total_amount;
+        } else if (o.total && Number(o.total) > 0) {
+          let t = Number(o.total);
+          if (t >= 1000 || (t >= 500 && t % 100 === 0)) t = t / 100;
+          totalInr = t % 1 === 0 ? t.toFixed(0) : t.toFixed(2);
+        } else if (o.subtotal && Number(o.subtotal) > 0) {
+          let s = Number(o.subtotal);
+          if (s >= 1000 || (s >= 500 && s % 100 === 0)) s = s / 100;
+          totalInr = s % 1 === 0 ? s.toFixed(0) : s.toFixed(2);
+        } else if (o.estimatedTotal || o.estimated_amount) {
+          totalInr = String(o.estimatedTotal || o.estimated_amount);
+        } else {
+          totalInr = '0.00';
+        }
+      }
+
+      // Normalize items list
+      let itemsList = [];
+      if (Array.isArray(o.items)) {
+        itemsList = o.items;
+      } else if (o.items && typeof o.items === 'object') {
+        itemsList = Object.entries(o.items).map(([name, qty]) => {
+          if (typeof qty === 'object' && qty !== null) {
+            return { item_name: qty.name || qty.item_name || name, quantity: qty.quantity || qty.count || 1 };
+          }
+          return { item_name: name, quantity: qty };
+        });
+      }
+
+      // Address
+      let addrStr = o.pickup_address || '';
+      if (!addrStr && o.address) {
+        if (typeof o.address === 'string') {
+          addrStr = o.address;
+        } else {
+          const parts = [o.address.flatHouse, o.address.areaColony, o.address.city, o.address.pincode].filter(Boolean);
+          addrStr = parts.join(', ');
+        }
+      }
+      if (!addrStr) addrStr = 'Bengaluru';
+
+      const formatPrettyDate = (dVal) => {
+        if (!dVal) return '';
+        try {
+          const d = new Date(dVal);
+          if (isNaN(d.getTime())) return String(dVal);
+          return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        } catch {
+          return String(dVal);
+        }
+      };
+
+      // Pickup schedule
+      let rawPickupDate = o.pickup_date || '';
+      let pickupSlot = o.pickup_time_slot || '';
+      if (o.pickup && typeof o.pickup === 'object') {
+        rawPickupDate = o.pickup.date || rawPickupDate;
+        if (o.pickup.from && o.pickup.to) {
+          pickupSlot = `${o.pickup.from} - ${o.pickup.to}`;
+        }
+      }
+
+      let deliveryDate = null;
+      if (o.delivery_date) {
+        deliveryDate = formatPrettyDate(o.delivery_date);
+      } else if (o.delivery && typeof o.delivery === 'object' && o.delivery.date) {
+        deliveryDate = formatPrettyDate(o.delivery.date);
+      }
+
+      const rawPay = String(o.paymentStatus || o.payment_status || o.payment || '').toUpperCase();
+      const rawStat = String(o.status || '').toUpperCase();
+      const isPaid = rawPay.includes('PAID') || 
+                     rawPay.includes('COMPLETED') || 
+                     rawPay.includes('SUCCESS') || 
+                     Boolean(o.is_paid) ||
+                     ['PLACED', 'PICKED_UP', 'IN_CLEANING', 'DELIVERED', 'COMPLETED', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'QUALITY_CHECK', 'PACKED', 'PENDING PICKUP'].includes(rawStat);
+
+      const isRefunded = rawPay.includes('REFUND') || rawStat === 'REFUNDED';
+      const isCancelled = (rawStat === 'CANCELLED' || rawPay.includes('CANCEL')) && !isPaid;
+
+      let paymentStatusDisplay = 'Paid';
+      if (isRefunded) paymentStatusDisplay = 'Refunded';
+      else if (isCancelled) paymentStatusDisplay = 'Cancelled';
+      else if (!isPaid && (rawStat === 'PAYMENT_PENDING' || rawPay.includes('PENDING') || rawPay.includes('UNPAID'))) paymentStatusDisplay = 'Pending';
+
+      const orderCode = o.code || o.order_number || o.id;
+      const dedupeKey = String(orderCode).trim().toLowerCase();
+      if (dedupeKey && seen.has(dedupeKey)) return;
+      if (dedupeKey) seen.add(dedupeKey);
+
+      result.push({
+        ...o,
+        id: orderCode,
+        rawId: o.id,
+        order_number: orderCode,
+        code: orderCode,
+        created_at: o.createdAt || o.created_at,
+        total_amount: totalInr,
+        pickup_address: addrStr,
+        pickup_date: formatPrettyDate(rawPickupDate) || 'Scheduled',
+        pickup_time_slot: pickupSlot || 'Standard Slot',
+        delivery_date: deliveryDate,
+        delivery_time_slot: o.delivery_time_slot || '',
+        items: itemsList,
+        isPaid,
+        is_paid: isPaid,
+        payment_status: paymentStatusDisplay
+      });
+    });
+
+    result.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.created_at || a.placedAt || 0).getTime() || 0;
+      const timeB = new Date(b.createdAt || b.created_at || b.placedAt || 0).getTime() || 0;
+      return timeB - timeA;
+    });
+
+    return result;
+  }, []);
+
+  const fetchOrdersFromApi = useCallback(async () => {
+    const uid = currentUser?.uid || currentUser?.id;
+    const email = (currentUser?.email || '').toLowerCase().trim();
+    if (!uid && !email) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
     try {
       const res = await ordersApi.getOrders();
-      const list = Array.isArray(res.data) ? res.data : res.data?.results || [];
-      setOrders(list);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
+      const myOrders = list.filter(o => {
+        if (!o) return false;
+        const oUid = String(o.customerId || o.customer_id || o.userId || '').toLowerCase().trim();
+        if (uid && oUid && oUid === String(uid).toLowerCase().trim()) return true;
+        const oEmail = String(o.customerEmail || o.customer_email || o.customer?.email || '').toLowerCase().trim();
+        if (email && oEmail && oEmail === email) return true;
+        return false;
+      });
+      const mapped = normalizeOrders(myOrders);
+      setOrders(mapped);
+      if (uid) {
+        try {
+          sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(mapped));
+        } catch (_) {}
+      }
     } catch (err) {
-      console.error('Failed to load orders:', err);
+      console.warn('Orders API fetch notice:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser?.uid, currentUser?.email, normalizeOrders]);
 
   useEffect(() => {
-    fetchOrders();
-  }, []);
+    const uid = currentUser?.uid || currentUser?.id;
+    if (!uid) {
+      setOrders([]);
+      setLoading(false);
+      fetchOrdersFromApi().finally(() => setLoading(false));
+      return;
+    }
+
+    try {
+      const cached = sessionStorage.getItem(`fabricare_customer_orders_${uid}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          setOrders(parsed);
+          setLoading(false);
+        } else {
+          setOrders([]);
+          setLoading(true);
+        }
+      } else {
+        setOrders([]);
+        setLoading(true);
+      }
+    } catch (_) {
+      setOrders([]);
+      setLoading(true);
+    }
+
+    const unsubscribe = subscribeCustomerOrders(
+      uid,
+      (liveOrders) => {
+        if (Array.isArray(liveOrders)) {
+          const norm = normalizeOrders(liveOrders);
+          setOrders(norm);
+          try {
+            sessionStorage.setItem(`fabricare_customer_orders_${uid}`, JSON.stringify(norm));
+          } catch (_) {}
+        } else {
+          setOrders([]);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Orders subscription note:', err);
+        fetchOrdersFromApi().finally(() => setLoading(false));
+      },
+      currentUser?.email
+    );
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [currentUser?.uid, currentUser?.email, normalizeOrders, fetchOrdersFromApi]);
+
+  useEffect(() => {
+    if (!cancelModalOrder) return;
+
+    const handleClickOutside = (e) => {
+      if (cancelModalRef.current && !cancelModalRef.current.contains(e.target)) {
+        setCancelModalOrder(null);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setCancelModalOrder(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [cancelModalOrder]);
 
   const handleCancelOrder = async () => {
     if (!cancelModalOrder) return;
-    setCancellingId(cancelModalOrder.id);
+    const targetId = cancelModalOrder.rawId || cancelModalOrder.id || cancelModalOrder.code || cancelModalOrder.order_number;
+    setCancellingId(targetId);
     try {
-      await ordersApi.cancelOrder(cancelModalOrder.id, cancelReason || 'Customer requested cancellation');
+      await cancelCustomerOrder(targetId, cancelReason || 'Customer requested cancellation', currentUser);
+      try {
+        await ordersApi.cancelOrder(targetId, cancelReason || 'Customer requested cancellation');
+      } catch (_) {}
       setCancelModalOrder(null);
       setCancelReason('');
-      fetchOrders();
     } catch (err) {
-      alert(err.response?.data?.error || err.message || 'Failed to cancel order');
+      alert(err.message || 'Failed to cancel order');
     } finally {
       setCancellingId(null);
     }
   };
 
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = 
-      order.order_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.pickup_address?.toLowerCase().includes(searchQuery.toLowerCase());
+    const term = (searchQuery || '').trim().toLowerCase();
+    const orderNo = (order.order_number || order.code || '').toLowerCase();
+    const formattedNo = formatOrderId(order.order_number || order.code || order.id).toLowerCase();
+    const addr = (order.pickup_address || '').toLowerCase();
+    const matchesSearch = !term || orderNo.includes(term) || formattedNo.includes(term) || addr.includes(term);
     
     if (statusFilter === 'ALL') return matchesSearch;
-    if (statusFilter === 'PENDING') return matchesSearch && ['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS'].includes(order.status);
-    if (statusFilter === 'PROCESSING') return matchesSearch && ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'QUALITY_CHECK', 'PACKING', 'PACKED'].includes(order.status);
+    if (statusFilter === 'PENDING') return matchesSearch && ['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PLACED', 'PAYMENT_PENDING'].includes(order.status);
+    if (statusFilter === 'PROCESSING') return matchesSearch && ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKING', 'PACKED', 'IN_CLEANING'].includes(order.status);
     if (statusFilter === 'DELIVERY') return matchesSearch && ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.status);
     if (statusFilter === 'COMPLETED') return matchesSearch && ['DELIVERED', 'COMPLETED'].includes(order.status);
     if (statusFilter === 'CANCELLED') return matchesSearch && order.status === 'CANCELLED';
@@ -74,7 +335,10 @@ export const MyOrders = () => {
     switch (status) {
       case 'PENDING':
       case 'PENDING_REVIEW':
-        return <span className="badge badge-warning">Booking Received</span>;
+      case 'PAYMENT_PENDING':
+        return <span className="badge badge-warning">Payment Pending</span>;
+      case 'PLACED':
+        return <span className="badge badge-info">Booking Confirmed</span>;
       case 'ACCEPTED':
       case 'PICKUP_ASSIGNED':
       case 'PICKUP_SCHEDULED':
@@ -85,14 +349,16 @@ export const MyOrders = () => {
       case 'DROPPED_OFF_AT_LAUNDRY':
       case 'RECEIVED_BY_LAUNDRY':
       case 'RECEIVED_AT_LAUNDRY':
-        return <span className="badge badge-info">Received at Hub</span>;
+      case 'RECEIVED':
+        return <span className="badge badge-primary">Received at Hub</span>;
       case 'INSPECTION':
         return <span className="badge badge-primary">Clothes Inspection</span>;
       case 'IN_PROCESS':
+      case 'IN_CLEANING':
       case 'WASHING':
       case 'DRYING':
       case 'IRONING':
-        return <span className="badge badge-primary">In Process ({status})</span>;
+        return <span className="badge badge-primary">In Cleaning</span>;
       case 'QUALITY_CHECK':
         return <span className="badge badge-primary">Quality Check</span>;
       case 'PACKING':
@@ -112,8 +378,60 @@ export const MyOrders = () => {
     }
   };
 
+  const getOrderServices = (order) => {
+    if (!order) return 'Wash & Fold';
+
+    if (Array.isArray(order.services) && order.services.length > 0) {
+      const clean = order.services.filter(Boolean);
+      if (clean.length > 0) return clean.join(', ');
+    }
+    if (Array.isArray(order.services_list) && order.services_list.length > 0) {
+      const clean = order.services_list.filter(Boolean);
+      if (clean.length > 0) return clean.join(', ');
+    }
+
+    if (typeof order.service === 'string' && order.service.trim()) {
+      return order.service.trim();
+    }
+
+    const rawItems = Array.isArray(order.items)
+      ? order.items
+      : (order.items && typeof order.items === 'object' ? Object.values(order.items) : []);
+
+    if (rawItems.length > 0) {
+      const extractedServices = new Set();
+      rawItems.forEach(item => {
+        if (!item) return;
+        if (item.service_category && item.service_category !== 'General') {
+          extractedServices.add(item.service_category);
+        } else if (item.categoryName && item.categoryName !== 'General') {
+          extractedServices.add(item.categoryName);
+        } else if (Array.isArray(item.services) && item.services.length > 0) {
+          item.services.forEach(s => s && extractedServices.add(s));
+        } else if (item.category && !['Men', 'Women', 'Household', 'Kids', 'General', 'Clothing'].includes(item.category)) {
+          extractedServices.add(item.category);
+        } else {
+          const match = String(item.name || item.item_name || '').match(/\(([^)]+)\)/);
+          if (match && match[1] && !/^\d+$/.test(match[1])) {
+            extractedServices.add(match[1].trim());
+          }
+        }
+      });
+
+      if (extractedServices.size > 0) {
+        return Array.from(extractedServices).join(', ');
+      }
+    }
+
+    if (order.isExpress) {
+      return 'Express Laundry';
+    }
+
+    return 'Wash & Fold';
+  };
+
   return (
-    <div className="portal-container">
+    <div className="portal-container" style={{ minHeight: '65vh' }}>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
@@ -122,14 +440,6 @@ export const MyOrders = () => {
           <p className="text-sm text-muted">View live order status, receipts, and track progress</p>
         </div>
         <div className="flex items-center gap-3">
-          <button 
-            onClick={fetchOrders} 
-            className="btn btn-outline-secondary btn-sm flex items-center gap-1"
-            disabled={loading}
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
-          </button>
           <button 
             onClick={() => startBooking()} 
             className="btn btn-primary btn-sm flex items-center gap-2 shadow-sm"
@@ -140,30 +450,45 @@ export const MyOrders = () => {
         </div>
       </div>
 
-      {/* Filters Bar */}
+      {/* Filters Bar: Search and Filters matching Reference Image 1 */}
       <div className="content-card mb-6">
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-3 top-3 text-slate-400" size={16} />
-            <input 
-              type="text" 
-              placeholder="Search by Order ID or Address..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="form-input pl-9 text-sm"
-            />
+        <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center justify-between">
+          <div>
+            <span className="text-sm font-semibold text-navy">All Orders</span>
+            <span className="text-xs text-muted ml-2 hidden sm:inline">Real-time status updates</span>
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
-            {['ALL', 'PENDING', 'PROCESSING', 'DELIVERY', 'COMPLETED', 'CANCELLED'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setStatusFilter(tab)}
-                className={`filter-tab ${statusFilter === tab ? 'active' : ''}`}
-              >
-                {tab === 'ALL' ? 'All Orders' : tab.charAt(0) + tab.slice(1).toLowerCase()}
-              </button>
-            ))}
+          <div className="toolbar-controls-group">
+            {/* Order Count Option next to search bar */}
+            <span className="orders-count-pill">
+              {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
+            </span>
+
+            <div className="search-input-wrapper">
+              <Search size={16} className="search-magnifier-icon" />
+              <input 
+                type="text" 
+                placeholder="Search by Order ID, customer, or s..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="search-box-field"
+              />
+              {searchQuery && (
+                <button 
+                  type="button" 
+                  onClick={() => setSearchQuery('')}
+                  className="search-clear-btn"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            <OrderStatusDropdown 
+              value={statusFilter} 
+              onChange={(newStatus) => setStatusFilter(newStatus)}
+            />
           </div>
         </div>
       </div>
@@ -198,7 +523,7 @@ export const MyOrders = () => {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-lg text-navy">{order.order_number}</span>
+                      <span className="font-mono font-bold text-lg text-navy">{formatOrderId(order.order_number || order.code || order.id)}</span>
                       {getStatusBadge(order.status)}
                     </div>
                     <span className="text-xs text-muted">
@@ -208,45 +533,66 @@ export const MyOrders = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {order.status === 'PENDING' && (
+                  {['PENDING', 'PAYMENT_PENDING', 'PLACED', 'PICKUP_SCHEDULED'].includes(order.status) && (
                     <button
                       onClick={() => setCancelModalOrder(order)}
-                      className="btn btn-outline-danger btn-sm"
+                      disabled={cancellingId === order.id}
+                      className="btn-cancel-order-action"
                     >
                       Cancel Order
                     </button>
                   )}
                   <button
-                    onClick={() => navigateTo('customer-track', order.id.toString())}
-                    className="btn btn-primary btn-sm flex items-center gap-1.5"
+                    onClick={() => {
+                      const targetTrackId = String(order.order_number || order.code || order.docId || order.id || '').trim();
+                      if (targetTrackId) {
+                        if (typeof setActiveTrackingOrderId === 'function') {
+                          setActiveTrackingOrderId(targetTrackId);
+                        }
+                        try {
+                          sessionStorage.setItem('fabricare_active_tracking_id', targetTrackId);
+                        } catch (_) {}
+                      }
+                      navigateTo('customer-track', targetTrackId || (order.id || order.code)?.toString());
+                    }}
+                    className="btn-view-order-action"
                   >
                     <span>Track Live</span>
-                    <ChevronRight size={15} />
+                    <ChevronRight size={13} />
                   </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 text-sm">
                 <div>
-                  <span className="text-xs text-muted block mb-1">Pickup Schedule</span>
-                  <div className="font-semibold text-navy">{order.pickup_date}</div>
+                  <span className="text-xs text-muted block mb-1">
+                    {order.delivery_date ? 'Schedule Details' : 'Pickup Schedule'}
+                  </span>
+                  <div className="font-semibold text-navy">Pickup: {order.pickup_date}</div>
                   <div className="text-xs text-slate-500">{order.pickup_time_slot}</div>
+                  {order.delivery_date && (
+                    <div className="mt-1.5 pt-1.5 border-t border-slate-100">
+                      <span className="text-[11px] font-semibold text-[#087F8C] block">
+                        Delivery Schedule:
+                      </span>
+                      <div className="font-semibold text-navy text-xs">
+                        {order.delivery_date} {order.delivery_time_slot ? `· ${order.delivery_time_slot}` : ''}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
-                  <span className="text-xs text-muted block mb-1">Items & Services</span>
+                  <span className="text-xs text-muted block mb-1">Services</span>
                   <div className="font-medium text-navy">
-                    {order.items && order.items.length > 0
-                      ? order.items.map(i => `${i.item_name} ×${i.quantity}`).join(', ')
-                      : 'General Laundry Service'}
+                    {getOrderServices(order)}
                   </div>
-                  <div className="text-xs text-slate-500 truncate max-w-xs">{order.pickup_address}</div>
                 </div>
 
                 <div>
                   <span className="text-xs text-muted block mb-1">Total Bill & Payment</span>
-                  <div className="text-base font-bold text-navy">₹{order.total_amount || order.estimated_amount || '0.00'}</div>
-                  <span className={`text-xs font-semibold ${order.payment_status === 'PAID' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  <div className="text-base font-bold text-navy">₹{order.total_amount || '0.00'}</div>
+                  <span className={`text-xs font-semibold ${order.payment_status === 'Paid' || order.payment_status === 'PAID' ? 'text-emerald-600' : 'text-amber-600'}`}>
                     Payment: {order.payment_status || 'Pending'}
                   </span>
                 </div>
@@ -258,11 +604,18 @@ export const MyOrders = () => {
 
       {/* Cancel Order Modal */}
       {cancelModalOrder && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in">
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setCancelModalOrder(null)}
+        >
+          <div 
+            ref={cancelModalRef}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 text-red-600 mb-3">
               <AlertCircle size={24} />
-              <h3 className="text-lg font-bold">Cancel Order {cancelModalOrder.order_number}?</h3>
+              <h3 className="text-lg font-bold">Cancel Order {formatOrderId(cancelModalOrder.order_number || cancelModalOrder.code || cancelModalOrder.id)}?</h3>
             </div>
             <p className="text-sm text-slate-600 mb-4">
               Are you sure you want to cancel this booking? This action cannot be undone once confirmed.

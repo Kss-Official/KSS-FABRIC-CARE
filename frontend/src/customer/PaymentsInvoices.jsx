@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
-import { ordersApi } from '../api/apiClient';
+import { subscribeCustomerInvoices, subscribeCustomerOrders } from '../services/customerDataService';
 import { 
   Download, 
   Printer, 
@@ -15,10 +15,14 @@ import {
   Package, 
   Shirt, 
   Check, 
-  RefreshCw,
-  Search,
-  X
+  RefreshCw, 
+  Search, 
+  X,
+  Loader2,
+  IndianRupee
 } from 'lucide-react';
+import { formatOrderId, calculateOrderTotal } from '../utils/helpers';
+import { PRICING_ITEMS, getItemBasePrice, getExpressItemPrice } from '../data/pricingData';
 
 export const PaymentsInvoices = () => {
   const { currentUser } = useAuth();
@@ -69,12 +73,14 @@ export const PaymentsInvoices = () => {
   const filteredOrders = orders.filter((ord) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
-    const ordNum = (ord.order_number || ord.order_id || `#FC${ord.id}` || '').toLowerCase();
-    const ordDate = formatOrderDate(ord.created_at || ord.pickup_date).toLowerCase();
+    const ordNum = (ord.order_number || ord.order_id || ord.code || '').toLowerCase();
+    const formattedNum = formatOrderId(ord.order_number || ord.order_id || ord.code || ord.id).toLowerCase();
+    const ordDate = formatOrderDate(ord.date || ord.created_at || ord.pickup_date).toLowerCase();
     const cleanSlot = getCleanPickupSlot(ord).toLowerCase();
     const status = (ord.status || 'paid').toLowerCase();
-    const amount = `${parseFloat(ord.total_amount || 735).toFixed(2)}`.toLowerCase();
-    const amountWithRupee = `₹${parseFloat(ord.total_amount || 735).toFixed(2)}`.toLowerCase();
+    const ordTotVal = calculateOrderTotal(ord, true) || (ord.total_amount ? parseFloat(ord.total_amount).toFixed(2) : '0.00');
+    const amount = `${ordTotVal}`.toLowerCase();
+    const amountWithRupee = `₹${ordTotVal}`.toLowerCase();
     const customerName = (ord.customer_name || ord.user_name || '').toLowerCase();
     const address = (ord.address || ord.pickup_address || '').toLowerCase();
     const serviceName = Array.isArray(ord.services)
@@ -83,6 +89,7 @@ export const PaymentsInvoices = () => {
 
     return (
       ordNum.includes(q) ||
+      formattedNum.includes(q) ||
       ordDate.includes(q) ||
       cleanSlot.includes(q) ||
       status.includes(q) ||
@@ -94,49 +101,288 @@ export const PaymentsInvoices = () => {
     );
   });
 
+  // Helper to extract first strictly positive numerical value from arguments
+  const extractPositiveNum = (...vals) => {
+    for (const v of vals) {
+      if (v !== null && v !== undefined && v !== '') {
+        const n = Number(v);
+        if (!isNaN(n) && n > 0) return n;
+      }
+    }
+    return 0;
+  };
+
+  // Helper to resolve realistic catalog price for laundry items if missing or zero in DB
+  const resolveItemPrice = (itemName = '', categoryName = '', isExpress = false) => {
+    const name = String(itemName || '').toLowerCase().trim();
+    const cat = String(categoryName || '').toLowerCase().trim();
+    const expressActive = Boolean(isExpress) || cat.includes('express') || name.includes('express');
+
+    // 1. Match against official PRICING_ITEMS catalog
+    const found = PRICING_ITEMS.find(it => {
+      const itName = it.name.toLowerCase();
+      return name === itName || name.includes(itName) || itName.includes(name);
+    });
+
+    let serviceId = 'wash-fold';
+    if (cat.includes('iron') || cat.includes('press') || name.includes('iron') || name.includes('press')) {
+      serviceId = (cat.includes('wash') || name.includes('wash')) ? 'wash-iron' : 'steam-iron';
+    } else if (cat.includes('dry') || name.includes('dry')) {
+      serviceId = 'dry-cleaning';
+    } else if (cat.includes('wash-iron') || (cat.includes('wash') && cat.includes('iron'))) {
+      serviceId = 'wash-iron';
+    } else if (cat.includes('wash') || name.includes('wash')) {
+      serviceId = 'wash-fold';
+    }
+
+    if (found) {
+      if (expressActive) {
+        return getExpressItemPrice(found, serviceId);
+      }
+      const price = getItemBasePrice(found, serviceId);
+      if (price > 0) return price;
+    }
+
+    // 2. Garment heuristics based on standard pricing
+    if (name.includes('suit') || name.includes('tuxedo')) return expressActive ? 350 : 250;
+    if (name.includes('blazer') || name.includes('coat')) return expressActive ? 300 : 200;
+    if (name.includes('saree') || name.includes('lehenga') || name.includes('sherwani')) return expressActive ? 280 : 180;
+    if (name.includes('blanket') || name.includes('quilt') || name.includes('comforter')) return expressActive ? 300 : 220;
+    if (name.includes('bedsheet') || name.includes('curtain') || name.includes('linen')) return expressActive ? 160 : 120;
+    if (name.includes('dress') || name.includes('gown') || name.includes('jacket')) return expressActive ? 220 : 160;
+    if (name.includes('jean') || name.includes('pant') || name.includes('trouser')) return expressActive ? 100 : 60;
+    if (name.includes('shirt') || name.includes('t-shirt') || name.includes('top') || name.includes('kurta')) return expressActive ? 80 : 50;
+
+    if (serviceId === 'steam-iron') return 30;
+    if (serviceId === 'dry-cleaning') return 150;
+    if (serviceId === 'wash-iron') return 70;
+    return expressActive ? 80 : 50;
+  };
+
+  const normalizeInvoiceOrder = (ord) => {
+    if (!ord) return ord;
+    const orderNum = formatOrderId(ord.code || ord.order_number || ord.order_id || ord.id || 'FC-75668');
+    const orderVerifiedTotal = parseFloat(calculateOrderTotal(ord, true)) || 0;
+    const isExpress = Boolean(ord.isExpress) || 
+      String(ord.service || '').toLowerCase().includes('express') ||
+      (Array.isArray(ord.services) && ord.services.some(s => String(s).toLowerCase().includes('express')));
+
+    // Parse items (supports both array and object map format from RTDB / Django)
+    let rawItems = [];
+    if (Array.isArray(ord.items) && ord.items.length > 0) {
+      rawItems = ord.items;
+    } else if (ord.items && typeof ord.items === 'object' && Object.keys(ord.items).length > 0) {
+      rawItems = Object.entries(ord.items).map(([k, val]) => {
+        if (typeof val === 'object' && val !== null) {
+          return { ...val, id: val.id || k, name: val.name || val.item_name || k };
+        }
+        return { name: k, item_name: k, quantity: Number(val) || 1 };
+      });
+    } else if (Array.isArray(ord.items_list) && ord.items_list.length > 0) {
+      rawItems = ord.items_list;
+    }
+
+    // If order has no granular items list, create a legitimate service line item from order service & total
+    if (rawItems.length === 0) {
+      const svcName = ord.service || (Array.isArray(ord.services) && ord.services[0]) || 'Wash & Fold';
+      const singlePrice = orderVerifiedTotal > 0 ? orderVerifiedTotal : 80;
+      rawItems = [{
+        name: svcName,
+        item_name: svcName,
+        service_name: svcName,
+        category_name: svcName,
+        quantity: 1,
+        unit_price: singlePrice,
+        total_price: singlePrice,
+        _isRupees: true
+      }];
+    }
+
+    const parsedItems = rawItems.map(it => {
+      const itemName = it.service_name || it.item_name || it.name || 'Laundry Service';
+      const categoryName = it.category_name || it.service_category || it.category || ord.service || (Array.isArray(ord.services) ? ord.services[0] : '') || '';
+      const qty = Math.max(1, Number(it.quantity || it.qty || 1));
+
+      let rawUnitPrice = it._isRupees 
+        ? Number(it.unit_price || it.price || 0)
+        : extractPositiveNum(it.unit_price, it.unitPrice, it.price, it.rate, it.effectiveUnitPrice, it.baseUnitPrice);
+
+      let rawTotal = it._isRupees
+        ? Number(it.total_price || it.lineTotal || 0)
+        : extractPositiveNum(it.total_price, it.lineTotal, it.total);
+
+      // Handle paise conversion cleanly without double-dividing
+      if (!it._isRupees) {
+        if (rawUnitPrice >= 1000 || (rawUnitPrice >= 500 && rawUnitPrice % 100 === 0)) {
+          rawUnitPrice = rawUnitPrice / 100;
+        }
+        if (rawTotal >= 1000 || (rawTotal >= 500 && rawTotal % 100 === 0)) {
+          rawTotal = rawTotal / 100;
+        }
+      }
+
+      if (rawUnitPrice <= 0 && rawTotal > 0) {
+        rawUnitPrice = rawTotal / qty;
+      }
+      if (rawUnitPrice <= 0) {
+        rawUnitPrice = resolveItemPrice(itemName, categoryName, isExpress);
+      }
+      if ((rawUnitPrice <= 0 || (rawItems.length === 1 && orderVerifiedTotal > 0)) && orderVerifiedTotal > 0) {
+        rawUnitPrice = orderVerifiedTotal / qty;
+      }
+      if (rawTotal <= 0) {
+        rawTotal = rawUnitPrice * qty;
+      }
+
+      return {
+        ...it,
+        item_name: itemName,
+        name: itemName,
+        service_name: itemName,
+        category_name: categoryName,
+        quantity: qty,
+        unit_price: rawUnitPrice,
+        total_price: rawTotal,
+        _isRupees: true
+      };
+    });
+
+    const sumParsedItems = parsedItems.reduce((acc, it) => acc + (Number(it.total_price) || 0), 0);
+    const effectiveTotal = orderVerifiedTotal > 0 ? orderVerifiedTotal : (sumParsedItems > 0 ? sumParsedItems : 80);
+    const totalInr = effectiveTotal.toFixed(2);
+
+    let addrStr = ord.pickup_address || '';
+    if (!addrStr && ord.address) {
+      if (typeof ord.address === 'string') {
+        addrStr = ord.address;
+      } else {
+        const parts = [ord.address.flatHouse, ord.address.areaColony, ord.address.city, ord.address.pincode].filter(Boolean);
+        addrStr = parts.join(', ');
+      }
+    }
+
+    return {
+      ...ord,
+      id: ord.id || ord.code,
+      order_number: orderNum,
+      order_id: orderNum,
+      code: ord.code || orderNum,
+      date: ord.createdAt ? new Date(ord.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today',
+      created_at: ord.createdAt || ord.created_at,
+      pickup_date: ord.pickup?.date || ord.pickup_date || 'Scheduled',
+      pickup_time_slot: ord.pickup ? `${ord.pickup.from || '09:00 AM'} - ${ord.pickup.to || '11:00 AM'}` : (ord.pickup_time_slot || '09:00 AM - 11:00 AM'),
+      pickup_address: addrStr,
+      total_amount: totalInr,
+      amount: totalInr,
+      total: effectiveTotal,
+      items: parsedItems,
+      status: ord.paymentStatus || ord.payment_status || (ord.status === 'PAYMENT_PENDING' ? 'Pending' : 'Paid')
+    };
+  };
+
   const fetchOrdersAndInvoices = async () => {
     setIsRefreshing(true);
     setLoading(true);
+    const uid = currentUser?.uid || currentUser?.id;
+    const email = (currentUser?.email || '').toLowerCase().trim();
+    if (!uid && !email) {
+      setOrders([]);
+      setSelectedOrder(null);
+      setLoading(false);
+      setIsRefreshing(false);
+      return;
+    }
     try {
       const res = await ordersApi.getOrders();
-      const ordList = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-      setOrders([...ordList]);
+      const rawList = Array.isArray(res.data) ? res.data : (res.data?.items || res.data?.results || []);
+      const ordList = rawList.filter(o => {
+        if (!o) return false;
+        const oUid = String(o.customerId || o.customer_id || o.userId || '').toLowerCase().trim();
+        if (uid && oUid && oUid === String(uid).toLowerCase().trim()) return true;
+        const oEmail = String(o.customerEmail || o.customer_email || o.customer?.email || '').toLowerCase().trim();
+        if (email && oEmail && oEmail === email) return true;
+        return false;
+      });
 
       if (ordList.length > 0) {
+        const mapped = ordList.map(normalizeInvoiceOrder);
+        setOrders(mapped);
+
         if (activeTrackingOrderId) {
-          const match = ordList.find(o => 
+          const match = mapped.find(o => 
             String(o.id) === String(activeTrackingOrderId) || 
             o.order_number === activeTrackingOrderId || 
-            o.order_id === activeTrackingOrderId
+            o.order_id === activeTrackingOrderId ||
+            o.code === activeTrackingOrderId
           );
           if (match) {
             setSelectedOrder(match);
           } else {
-            setSelectedOrder(ordList[0]);
+            setSelectedOrder(mapped[0]);
           }
         } else {
           setSelectedOrder(prev => {
-            if (!prev) return ordList[0];
-            return ordList.find(o => o.id === prev.id) || ordList[0];
+            if (!prev) return mapped[0];
+            return mapped.find(o => o.id === prev.id) || mapped[0];
           });
         }
+      } else {
+        setOrders([]);
+        setSelectedOrder(null);
       }
 
       setRefreshSuccess(true);
       setTimeout(() => setRefreshSuccess(false), 2000);
     } catch (err) {
       console.warn('Orders refresh notice:', err);
+      setOrders([]);
+      setSelectedOrder(null);
     } finally {
-      setTimeout(() => {
-        setIsRefreshing(false);
-        setLoading(false);
-      }, 500);
+      setIsRefreshing(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
+    const uid = currentUser?.uid || currentUser?.id;
+    const email = currentUser?.email;
+    if (!uid && !email) {
+      setOrders([]);
+      setSelectedOrder(null);
+      setLoading(false);
+      return;
+    }
+
+    setOrders([]);
+    setSelectedOrder(null);
+    setLoading(true);
+
+    const unsub = subscribeCustomerOrders(
+      uid,
+      (liveOrders) => {
+        if (Array.isArray(liveOrders) && liveOrders.length > 0) {
+          const mapped = liveOrders.map(normalizeInvoiceOrder);
+          setOrders(mapped);
+          setSelectedOrder(prev => prev ? (mapped.find(m => m.id === prev.id) || mapped[0]) : mapped[0]);
+          setLoading(false);
+        } else {
+          setOrders([]);
+          setSelectedOrder(null);
+          setLoading(false);
+        }
+      },
+      (err) => {
+        console.warn('Invoices customer orders subscribe error:', err);
+        fetchOrdersAndInvoices();
+      },
+      email
+    );
+
     fetchOrdersAndInvoices();
-  }, [activeTrackingOrderId]);
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [currentUser?.uid, currentUser?.email, activeTrackingOrderId]);
 
   // Synchronously reset modal scroll to top before browser paint
   useLayoutEffect(() => {
@@ -148,8 +394,12 @@ export const PaymentsInvoices = () => {
   // Lock background page scroll while invoice modal is open, and reset modal scroll to top every time
   useEffect(() => {
     if (isModalOpen) {
-      const prevOverflow = document.body.style.overflow;
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
       document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      document.documentElement.classList.add('modal-open');
+      document.body.classList.add('modal-open');
 
       const resetScrollToTop = () => {
         if (modalScrollRef.current) {
@@ -163,8 +413,19 @@ export const PaymentsInvoices = () => {
       const timer1 = setTimeout(resetScrollToTop, 25);
       const timer2 = setTimeout(resetScrollToTop, 80);
 
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          setIsModalOpen(false);
+        }
+      };
+      document.addEventListener('keydown', handleKeyDown);
+
       return () => {
-        document.body.style.overflow = prevOverflow || '';
+        document.body.style.overflow = prevBodyOverflow || '';
+        document.documentElement.style.overflow = prevHtmlOverflow || '';
+        document.documentElement.classList.remove('modal-open');
+        document.body.classList.remove('modal-open');
+        document.removeEventListener('keydown', handleKeyDown);
         cancelAnimationFrame(animFrame);
         clearTimeout(timer1);
         clearTimeout(timer2);
@@ -182,127 +443,161 @@ export const PaymentsInvoices = () => {
   };
 
   const getActiveOrderNumber = (ord = selectedOrder) => {
-    return ord?.order_number || ord?.order_id || '#FC8F71E';
+    return formatOrderId(ord?.order_number || ord?.order_id || ord?.id || 'FC-75668');
   };
 
   // Helper to dynamically extract complete individual order invoice details
   const getOrderInvoiceData = (ord = selectedOrder) => {
-    const orderNum = getActiveOrderNumber(ord);
+    const effectiveOrd = ord || selectedOrder || (orders && orders.length > 0 ? orders[0] : null);
+    const orderNum = getActiveOrderNumber(effectiveOrd);
 
-    // Customer info (Rohan Mehta as explicitly required)
-    const name = 'Rohan Mehta';
-    const phone = ord?.pickup_phone || '+91 98765 43210';
-    const email = 'rohan.mehta@gmail.com';
-    const address = ord?.pickup_address || '123, Shree Nagar, Ujjain';
-    const cityState = (ord?.pickup_city && ord?.pickup_pincode) 
-      ? `${ord.pickup_city} - ${ord.pickup_pincode}` 
+    // Customer info
+    const name = effectiveOrd?.customer_name || effectiveOrd?.customerName || currentUser?.full_name || currentUser?.name || currentUser?.displayName || currentUser?.fullName || 'Rohan Mehta';
+    const phone = effectiveOrd?.customer_phone || effectiveOrd?.customerPhone || effectiveOrd?.pickup_phone || currentUser?.phone || currentUser?.phoneNumber || '+91 98765 43210';
+    const email = effectiveOrd?.customer_email || effectiveOrd?.customerEmail || currentUser?.email || 'rohan.mehta@gmail.com';
+    const address = effectiveOrd?.pickup_address || '123, Shree Nagar, Ujjain';
+    const cityState = (effectiveOrd?.pickup_city && effectiveOrd?.pickup_pincode) 
+      ? `${effectiveOrd.pickup_city} - ${effectiveOrd.pickup_pincode}` 
       : 'Madhya Pradesh - 456001';
 
     // Dates
-    const invDate = formatInvoiceDate(ord?.invoice?.created_at || ord?.created_at || ord?.pickup_date);
-    const pickupSlot = getCleanPickupSlot(ord);
-    const pickupDateStr = ord?.pickup_date ? formatOrderDate(ord.pickup_date) : '12 Oct 2026';
+    const invDate = formatInvoiceDate(effectiveOrd?.invoice?.created_at || effectiveOrd?.created_at || effectiveOrd?.createdAt || effectiveOrd?.pickup_date);
+    const pickupSlot = getCleanPickupSlot(effectiveOrd);
+    const pickupDateStr = effectiveOrd?.pickup_date ? formatOrderDate(effectiveOrd.pickup_date) : '12 Oct 2026';
     const pickupDisplay = `${pickupDateStr}, ${pickupSlot}`;
 
     // Payment details
-    const paymentMethod = ord?.payment_method === 'UPI' 
+    const paymentMethod = effectiveOrd?.payment_method === 'UPI' 
       ? 'UPI (Paid)' 
-      : ord?.payment_method === 'CARD' 
+      : effectiveOrd?.payment_method === 'CARD' 
         ? 'Card (Paid)' 
-        : ord?.payment_method === 'NET_BANKING' 
+        : effectiveOrd?.payment_method === 'NET_BANKING' 
           ? 'Net Banking (Paid)' 
-          : ord?.payment_method === 'CASH_ON_DELIVERY' 
-            ? (ord?.payment_status === 'PAID' ? 'Cash on Delivery (Paid)' : 'Cash on Delivery') 
+          : effectiveOrd?.payment_method === 'CASH_ON_DELIVERY' 
+            ? (effectiveOrd?.payment_status === 'PAID' ? 'Cash on Delivery (Paid)' : 'Cash on Delivery') 
             : 'UPI (Paid)';
 
-    const txnId = ord?.invoice?.transaction_id || 
+    const txnId = effectiveOrd?.invoice?.transaction_id || 
       `UPI${orderNum.replace(/[^0-9A-Z]/g, '')}1234567890`.slice(0, 14);
 
-    // Dynamic Items for this individual order
-    let items = [];
-    if (ord?.items && Array.isArray(ord.items) && ord.items.length > 0) {
-      items = ord.items.map((it, idx) => {
-        const itemName = it.service_name || it.item_name || 'Laundry Service';
-        const isKg = itemName.toLowerCase().includes('kg');
-        const qty = it.quantity || 1;
-        const rateVal = parseFloat(it.unit_price || 0);
-        const amountVal = parseFloat(it.total_price || (qty * rateVal));
+    const isExpress = Boolean(effectiveOrd?.isExpress) || 
+      String(effectiveOrd?.service || '').toLowerCase().includes('express') ||
+      (Array.isArray(effectiveOrd?.services) && effectiveOrd.services.some(s => String(s).toLowerCase().includes('express')));
 
-        let iconType = 'shirt';
-        if (itemName.toLowerCase().includes('iron') || itemName.toLowerCase().includes('press')) {
-          iconType = 'iron';
-        } else if (itemName.toLowerCase().includes('dry') || itemName.toLowerCase().includes('suit') || itemName.toLowerCase().includes('blazer') || itemName.toLowerCase().includes('coat')) {
-          iconType = 'hanger';
+    const verifiedOrderTotal = effectiveOrd ? (parseFloat(calculateOrderTotal(effectiveOrd, true)) || 0) : 0;
+
+    // Extract raw items
+    let rawItems = [];
+    if (Array.isArray(effectiveOrd?.items) && effectiveOrd.items.length > 0) {
+      rawItems = effectiveOrd.items;
+    } else if (effectiveOrd?.items && typeof effectiveOrd.items === 'object' && Object.keys(effectiveOrd.items).length > 0) {
+      rawItems = Object.entries(effectiveOrd.items).map(([k, val]) => {
+        if (typeof val === 'object' && val !== null) {
+          return { ...val, id: val.id || k, name: val.name || val.item_name || k };
         }
-
-        let subtitle = it.category_name && it.category_name !== 'General' ? it.category_name : '';
-        if (!subtitle) {
-          if (itemName.toLowerCase().includes('wash')) subtitle = 'T-Shirts, Shirts, Pants';
-          else if (itemName.toLowerCase().includes('dry')) subtitle = 'Blazer';
-          else if (itemName.toLowerCase().includes('iron')) subtitle = 'Shirts';
-          else subtitle = 'Care & Cleaning';
-        }
-
-        return {
-          index: `${idx + 1}.`,
-          iconType,
-          name: itemName,
-          subtitle,
-          quantity: isKg ? `${qty} kg` : `${qty}`,
-          rate: isKg ? `₹ ${rateVal.toFixed(2)} / kg` : `₹ ${rateVal.toFixed(2)}`,
-          amount: `₹ ${amountVal.toFixed(2)}`,
-          amountVal
-        };
+        return { name: k, item_name: k, quantity: Number(val) || 1 };
       });
-    } else {
-      // Default reference items fallback if order has no item records
-      items = [
-        {
-          index: '1.',
-          iconType: 'shirt',
-          name: 'Wash & Fold (Regular)',
-          subtitle: 'T-Shirts, Shirts, Pants',
-          quantity: '5 kg',
-          rate: '₹ 80.00 / kg',
-          amount: '₹ 400.00',
-          amountVal: 400.00
-        },
-        {
-          index: '2.',
-          iconType: 'hanger',
-          name: 'Dry Cleaning',
-          subtitle: 'Blazer',
-          quantity: '1',
-          rate: '₹ 250.00',
-          amount: '₹ 250.00',
-          amountVal: 250.00
-        },
-        {
-          index: '3.',
-          iconType: 'iron',
-          name: 'Steam Ironing',
-          subtitle: 'Shirts',
-          quantity: '3',
-          rate: '₹ 40.00',
-          amount: '₹ 120.00',
-          amountVal: 120.00
+    } else if (Array.isArray(effectiveOrd?.items_list) && effectiveOrd.items_list.length > 0) {
+      rawItems = effectiveOrd.items_list;
+    }
+
+    if (rawItems.length === 0) {
+      const svcName = effectiveOrd?.service || (Array.isArray(effectiveOrd?.services) && effectiveOrd.services[0]) || 'Wash & Fold';
+      const singleAmount = verifiedOrderTotal > 0 ? verifiedOrderTotal : 80;
+      rawItems = [{
+        name: svcName,
+        item_name: svcName,
+        service_name: svcName,
+        category_name: svcName,
+        quantity: 1,
+        unit_price: singleAmount,
+        total_price: singleAmount,
+        _isRupees: true
+      }];
+    }
+
+    // Dynamic Items for this individual order
+    const items = rawItems.map((it, idx) => {
+      const itemName = it.service_name || it.item_name || it.name || 'Laundry Service';
+      const isKg = itemName.toLowerCase().includes('kg');
+      const qty = Math.max(1, Number(it.quantity || it.qty || 1));
+      const categoryName = it.category_name || it.service_category || it.category || effectiveOrd?.service || (Array.isArray(effectiveOrd?.services) ? effectiveOrd.services[0] : '') || '';
+
+      let rateVal = it._isRupees 
+        ? Number(it.unit_price || it.price || 0)
+        : extractPositiveNum(it.unit_price, it.unitPrice, it.price, it.rate, it.effectiveUnitPrice, it.baseUnitPrice);
+
+      let amountVal = it._isRupees
+        ? Number(it.total_price || it.lineTotal || 0)
+        : extractPositiveNum(it.total_price, it.lineTotal, it.total);
+
+      if (!it._isRupees) {
+        if (rateVal >= 1000 || (rateVal >= 500 && rateVal % 100 === 0)) {
+          rateVal = rateVal / 100;
         }
-      ];
-    }
+        if (amountVal >= 1000 || (amountVal >= 500 && amountVal % 100 === 0)) {
+          amountVal = amountVal / 100;
+        }
+      }
 
-    // Totals for this individual order
-    const totalVal = parseFloat(ord?.total_amount || (ord?.subtotal ? ord.subtotal : 735));
-    let subtotalVal = parseFloat(ord?.subtotal || 0);
-    let discountVal = parseFloat(ord?.discount_amount || 0);
-    let taxVal = parseFloat(ord?.tax_amount || 0);
+      if (rateVal <= 0 && amountVal > 0) {
+        rateVal = amountVal / qty;
+      }
+      if (rateVal <= 0) {
+        rateVal = resolveItemPrice(itemName, categoryName, isExpress);
+      }
+      if ((rateVal <= 0 || (rawItems.length === 1 && verifiedOrderTotal > 0)) && verifiedOrderTotal > 0) {
+        rateVal = verifiedOrderTotal / qty;
+      }
+      if (amountVal <= 0) {
+        amountVal = rateVal * qty;
+      }
 
-    if (subtotalVal <= 0) {
-      const sumItems = items.reduce((sum, item) => sum + (item.amountVal || 0), 0);
-      subtotalVal = sumItems > 0 ? sumItems : totalVal;
-    }
+      let iconType = 'shirt';
+      if (itemName.toLowerCase().includes('iron') || itemName.toLowerCase().includes('press')) {
+        iconType = 'iron';
+      } else if (itemName.toLowerCase().includes('dry') || itemName.toLowerCase().includes('suit') || itemName.toLowerCase().includes('blazer') || itemName.toLowerCase().includes('coat') || itemName.toLowerCase().includes('saree')) {
+        iconType = 'hanger';
+      }
 
-    if (discountVal === 0 && taxVal === 0 && subtotalVal > totalVal) {
-      discountVal = subtotalVal - totalVal;
+      let subtitle = categoryName && categoryName !== 'General' ? categoryName : '';
+      if (!subtitle) {
+        if (itemName.toLowerCase().includes('wash')) subtitle = 'T-Shirts, Shirts, Pants';
+        else if (itemName.toLowerCase().includes('dry')) subtitle = 'Blazer & Premium Wear';
+        else if (itemName.toLowerCase().includes('iron')) subtitle = 'Steam Pressed';
+        else subtitle = 'Care & Cleaning';
+      }
+
+      return {
+        index: `${idx + 1}.`,
+        iconType,
+        name: itemName,
+        subtitle,
+        quantity: isKg ? `${qty} kg` : `${qty}`,
+        rate: isKg ? `₹ ${rateVal.toFixed(2)} / kg` : `₹ ${rateVal.toFixed(2)}`,
+        amount: `₹ ${amountVal.toFixed(2)}`,
+        amountVal
+      };
+    });
+
+    // Subtotal: exact sum of actual line items (NO inflated fallbacks)
+    const sumItems = items.reduce((sum, item) => sum + (item.amountVal || 0), 0);
+    const subtotalVal = sumItems;
+
+    // Genuine discount only: only if explicitly present in order and strictly less than subtotal
+    const rawDiscount = parseFloat(effectiveOrd?.discount_amount || effectiveOrd?.discount || 0);
+    const discountVal = (rawDiscount > 0 && rawDiscount < subtotalVal) ? rawDiscount : 0;
+
+    // Minimum applicable charges: only if explicitly stored on order (NO bogus tax)
+    const rawTax = parseFloat(effectiveOrd?.tax_amount || effectiveOrd?.tax || 0);
+    const taxVal = (rawTax > 0 && rawTax < subtotalVal) ? (rawTax >= 1000 ? rawTax / 100 : rawTax) : 0;
+
+    // Final total is exact: subtotal - discount + tax (reflects real cost)
+    let finalTotal = subtotalVal - discountVal + taxVal;
+
+    // If verified order total matches or differs due to single item rounding, align cleanly
+    if (verifiedOrderTotal > 0 && Math.abs(finalTotal - verifiedOrderTotal) <= 0.05) {
+      finalTotal = verifiedOrderTotal;
     }
 
     return {
@@ -318,9 +613,9 @@ export const PaymentsInvoices = () => {
       transactionId: txnId,
       items,
       subtotal: `₹ ${subtotalVal.toFixed(2)}`,
-      discount: discountVal > 0 ? `- ₹ ${discountVal.toFixed(2)}` : `- ₹ 0.00`,
-      tax: taxVal > 0 ? `₹ ${taxVal.toFixed(2)}` : `₹ 0.00`,
-      total: `₹ ${totalVal.toFixed(2)}`
+      discount: discountVal > 0 ? `- ₹ ${discountVal.toFixed(2)}` : null,
+      tax: taxVal > 0 ? `₹ ${taxVal.toFixed(2)}` : null,
+      total: `₹ ${finalTotal.toFixed(2)}`
     };
   };
 
@@ -387,11 +682,12 @@ export const PaymentsInvoices = () => {
         {/* Top Brand & Invoice Header */}
         <div className="invoice-doc-header">
           <div className="brand-logo-stack">
-            <div className="brand-circle-logo">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-                <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-              </svg>
+            <div className="brand-circle-logo" style={{ background: 'transparent' }}>
+              <img 
+                src="/images/fabricare-logo.png" 
+                alt="FabriCare" 
+                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '10px' }} 
+              />
             </div>
             <div>
               <h2 className="brand-name">FabriCare</h2>
@@ -611,14 +907,18 @@ export const PaymentsInvoices = () => {
               <span className="total-label">Subtotal</span>
               <span className="total-val">{data.subtotal}</span>
             </div>
-            <div className="totals-row">
-              <span className="total-label">Discount</span>
-              <span className="total-val discount-val">{data.discount}</span>
-            </div>
-            <div className="totals-row">
-              <span className="total-label">GST (5%)</span>
-              <span className="total-val">{data.tax}</span>
-            </div>
+            {data.discount && (
+              <div className="totals-row">
+                <span className="total-label">Discount</span>
+                <span className="total-val discount-val">{data.discount}</span>
+              </div>
+            )}
+            {data.tax && (
+              <div className="totals-row">
+                <span className="total-label">GST (5%)</span>
+                <span className="total-val">{data.tax}</span>
+              </div>
+            )}
 
             <div className="total-grand-highlight-box">
               <span className="grand-label">Total Amount</span>
@@ -632,55 +932,41 @@ export const PaymentsInvoices = () => {
 
   return (
     <div className="invoice-page-portal animate-fade-in">
-      {/* 1. Breadcrumb and Header - Download and Print buttons removed from main listing */}
+      {/* 1. Page Header matching Customer Portal layout */}
       <div className="invoice-header-row mb-6 no-print">
         <div className="header-breadcrumbs-col">
-          <div className="breadcrumbs-nav">
-            <span 
-              onClick={() => navigateTo('home')} 
-              className="breadcrumb-link"
-            >
-              Home
-            </span>
-            <span className="breadcrumb-slash">&gt;</span>
-            <span className="breadcrumb-active">Invoices &amp; Bills</span>
-          </div>
-
           <h1 className="invoice-page-title">Invoices &amp; Bills</h1>
           <p className="invoice-page-subtitle">
-            View, download, and print official tax invoices for your laundry orders
+            View, download, and print official tax invoices for your laundry orders.
           </p>
         </div>
       </div>
 
       {/* 2. Customer Orders Table Card */}
       <div className="content-card customer-orders-invoices-card mb-3 no-print">
-        <div className="orders-card-header flex flex-col gap-3 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-3">
+        <div className="orders-card-header">
+          <div className="orders-title-wrap">
             <div className="orders-icon-circle">
-              <Receipt size={18} className="text-teal" />
+              <Receipt size={20} className="text-teal" />
             </div>
-            <div>
-              <h3 className="orders-title font-bold text-navy text-lg leading-tight">Customer Orders &amp; Invoices</h3>
-              <p className="orders-subtitle text-xs text-slate-500">
-                Click “View Invoice” on any order to view its individual tax invoice
-              </p>
-            </div>
+            <h2 className="orders-card-heading">
+              Customer Orders &amp; Invoices
+            </h2>
           </div>
 
-          <div className="orders-actions-bar flex flex-wrap items-center justify-between gap-3 pt-1">
-            <div className="flex items-center gap-2">
-              <span className="orders-count-pill font-bold text-xs px-3 py-1 rounded-full">
+          <div className="orders-actions-bar">
+            <div className="orders-toolbar-left">
+              <span className="orders-count-pill">
                 {searchQuery.trim() ? `${filteredOrders.length} of ${orders.length} Orders` : `${orders.length} ${orders.length === 1 ? 'Order' : 'Orders'}`}
               </span>
               <button 
                 type="button"
                 onClick={() => fetchOrdersAndInvoices()} 
-                className={`refresh-orders-btn flex items-center gap-1.5 text-xs ${isRefreshing ? 'loading' : ''}`}
+                className={`refresh-orders-btn ${isRefreshing ? 'loading' : ''} ${refreshSuccess ? 'success' : ''}`}
                 disabled={isRefreshing}
                 title="Refresh orders list"
               >
-                <RefreshCw size={13} className={isRefreshing ? 'animate-spin text-teal' : ''} />
+                <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
                 <span>{isRefreshing ? 'Refreshing...' : refreshSuccess ? 'Refreshed!' : 'Refresh'}</span>
               </button>
             </div>
@@ -755,7 +1041,7 @@ export const PaymentsInvoices = () => {
                       className={`order-row border-b border-slate-50 transition-colors ${isCurrent ? 'bg-teal-50/50' : 'hover:bg-slate-50/80'}`}
                     >
                       <td className="py-3 px-3">
-                        <span className="font-mono font-bold text-navy text-sm">{ordNum}</span>
+                        <span className="font-mono font-bold text-navy text-sm">{formatOrderId(ord.order_number || ord.order_id || ord.id || 'FC-75668')}</span>
                       </td>
                       <td className="py-3 px-3 text-sm text-slate-600 font-medium">
                         {ordDate}
@@ -765,7 +1051,7 @@ export const PaymentsInvoices = () => {
                         {cleanTimeSlot}
                       </td>
                       <td className="py-3 px-3 text-sm font-bold text-navy">
-                        ₹{parseFloat(ord.total_amount || 735).toFixed(2)}
+                        {getOrderInvoiceData(ord).total}
                       </td>
                       <td className="py-3 px-3">
                         <span className="order-status-pill paid">
@@ -800,7 +1086,7 @@ export const PaymentsInvoices = () => {
           <div className="invoice-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="invoice-modal-top-bar no-print">
               <div className="modal-header-title-wrap">
-                <Receipt size={18} className="text-teal" />
+                <IndianRupee size={18} className="text-teal" />
                 <span className="modal-header-title">
                   Official Tax Invoice &bull; {getOrderInvoiceData(selectedOrder).orderNum}
                 </span>
@@ -903,30 +1189,50 @@ export const PaymentsInvoices = () => {
         }
 
         .invoice-page-title {
-          font-size: 1.75rem;
+          font-size: 1.85rem;
           font-weight: 800;
-          color: #0F172A;
-          letter-spacing: -0.02em;
+          color: #1E1B4B;
           margin: 0;
+          letter-spacing: -0.025em;
+          line-height: 1.2;
         }
 
         .invoice-page-subtitle {
           font-size: 0.875rem;
           color: #64748B;
           margin-top: 4px;
+          margin-bottom: 0;
         }
 
-        /* 2. Customer Orders Table Card */
+        /* 2. Customer Orders Table Card matching Report Card */
         .customer-orders-invoices-card {
           background: #ffffff;
           border: 1.5px solid #E2E8F0;
           border-radius: 18px;
-          padding: 20px 24px;
+          padding: 22px 26px;
+          box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+          width: 100%;
+          min-height: 520px;
+          box-sizing: border-box;
+        }
+
+        .orders-card-header {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding-bottom: 20px;
+          border-bottom: 1.5px solid #F1F5F9;
+        }
+
+        .orders-title-wrap {
+          display: flex;
+          align-items: center;
+          gap: 12px;
         }
 
         .orders-icon-circle {
-          width: 36px;
-          height: 36px;
+          width: 38px;
+          height: 38px;
           border-radius: 10px;
           background: #E8FAF6;
           display: flex;
@@ -936,36 +1242,83 @@ export const PaymentsInvoices = () => {
           flex-shrink: 0;
         }
 
+        .orders-card-heading {
+          font-size: 1.15rem;
+          font-weight: 700;
+          color: #0F172A;
+          letter-spacing: -0.01em;
+          margin: 0;
+        }
+
+        .orders-actions-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 16px;
+          width: 100%;
+        }
+
+        .orders-toolbar-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
         .orders-count-pill {
           background: #E8FAF6;
           color: #0D7A75;
           border: 1px solid #BCEAE6;
+          border-radius: 999px;
+          padding: 5px 14px;
+          font-size: 0.78rem;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          white-space: nowrap;
+          height: 34px;
+          box-sizing: border-box;
         }
 
         .refresh-orders-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
           padding: 6px 14px;
+          height: 34px;
           border-radius: 999px;
           border: 1.5px solid #CBD5E1;
           background: #ffffff;
           color: #334155;
+          font-size: 0.78rem;
           font-weight: 600;
           cursor: pointer;
+          white-space: nowrap;
           transition: all 0.2s ease;
+          box-sizing: border-box;
         }
 
-        .refresh-orders-btn:hover {
+        .refresh-orders-btn:hover:not(:disabled) {
           background: #F8FAFC;
           color: #0D7A75;
           border-color: #0D7A75;
         }
 
+        .refresh-orders-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.75;
+        }
+
         .refresh-orders-btn.loading {
           border-color: #0D7A75;
           background: #F4FBFA;
+          color: #0D7A75;
         }
 
-        .orders-actions-bar {
-          width: 100%;
+        .refresh-orders-btn.success {
+          border-color: #16A34A;
+          background: #F0FDF4;
+          color: #16A34A;
         }
 
         .orders-search-wrapper {
@@ -1581,9 +1934,8 @@ export const PaymentsInvoices = () => {
           top: 0;
           left: 0;
           right: 0;
-          bottom: 0;
-          width: 100vw;
-          height: 100vh;
+          width: 100%;
+          height: 100%;
           background: rgba(15, 23, 42, 0.65);
           backdrop-filter: blur(8px);
           -webkit-backdrop-filter: blur(8px);

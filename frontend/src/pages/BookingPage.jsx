@@ -74,7 +74,9 @@ export const BookingPage = () => {
       <style>{`
         .booking-page-container {
           width: 100%;
-          min-height: 100vh;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
           background: #FAFCFC;
         }
 
@@ -129,16 +131,25 @@ export const BookingPage = () => {
           padding: 20px 0 60px;
         }
 
+        .wizard-step1-container {
+          width: 100%;
+          box-sizing: border-box;
+        }
+
         .wizard-main-card {
           background: #ffffff;
           border: 1.5px solid #E2E8F0;
           border-radius: 28px;
-          padding: 36px 40px;
+          padding: 28px 28px;
           box-shadow: 0 12px 36px rgba(13, 122, 117, 0.05);
+          box-sizing: border-box;
+          max-width: 100%;
         }
 
         .wizard-step-content {
           margin-top: 10px;
+          width: 100%;
+          box-sizing: border-box;
         }
 
         @media (max-width: 768px) {

@@ -1,0 +1,55 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+
+    "services": {
+      ".read": true,
+      ".write": "auth != null",
+      ".indexOn": ["status", "category", "price"]
+    },
+    "users": {
+      ".indexOn": ["role", "email"]
+    },
+    "roleUsers": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "agents": {
+      ".indexOn": ["isOnline"]
+    },
+    "orders": {
+      ".indexOn": ["customerId", "status", "createdAt", "pickupTaskId", "deliveryTaskId"]
+    },
+    "ordersByStatus": {
+      "$status": {
+        ".indexOn": [".value"]
+      }
+    },
+    "tasks": {
+      ".indexOn": ["agentId", "type", "status", "scheduledAt"]
+    },
+    "hubDropoffs": {
+      ".indexOn": ["orderId", "agentId", "droppedAt"]
+    },
+    "payments": {
+      ".indexOn": ["orderId", "customerId"]
+    },
+    "invoices": {
+      ".indexOn": ["orderId", "customerId"]
+    },
+    "complaints": {
+      ".indexOn": ["customerId", "status", "createdAt"]
+    },
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".indexOn": ["createdAt", "isRead"],
+        "$id": {
+          ".write": "auth != null && ((auth.uid === $uid && (!data.exists() || (newData.child('type').val() === data.child('type').val() && newData.child('title').val() === data.child('title').val() && newData.child('body').val() === data.child('body').val() && newData.child('createdAt').val() === data.child('createdAt').val()))) || (!data.exists() && newData.exists()))",
+          ".validate": "newData.hasChildren(['type', 'title', 'body', 'isRead', 'createdAt']) && newData.child('isRead').isBoolean() && newData.child('type').isString() && newData.child('title').isString() && newData.child('body').isString() && newData.child('createdAt').isNumber()"
+        }
+      }
+    }
+  }
+}

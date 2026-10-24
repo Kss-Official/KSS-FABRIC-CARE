@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { PageHeroBanner } from '../components/hero/PageHeroBanner';
 import {
@@ -242,6 +242,25 @@ const LessFreshWaterIcon = ({ size = 32, color = '#087F8C' }) => (
 export const ServicesPage = () => {
   const { startBooking } = useBooking();
   const [openFaq, setOpenFaq] = useState(0);
+  const faqListRef = useRef(null);
+
+  useEffect(() => {
+    if (openFaq === null) return;
+
+    const handleClickOutside = (event) => {
+      if (faqListRef.current && !faqListRef.current.contains(event.target)) {
+        setOpenFaq(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [openFaq]);
 
   const processSteps = [
     {
@@ -335,10 +354,12 @@ export const ServicesPage = () => {
     <div className="services-page-root">
       {/* 1. HERO BANNER WITH WHITE FADE OVERLAY & HEADINGS */}
       <PageHeroBanner
-        bgImage="/assets/services-hero.jpg"
+        bgImage="/assets/services-hero.png"
         heading="Our Services"
         subtitle="Professional Garment Care & Premium Dry Cleaning"
         altText="FabriCare Professional Garment Care and Dry Cleaning Specialist"
+        hideBlur={true}
+        fadeOpacity={0.6}
       />
 
       {/* 2. CARE THAT GOES BEYOND CLEANING */}
@@ -547,7 +568,7 @@ export const ServicesPage = () => {
             </p>
           </div>
 
-          <div className="faq-accordion-list">
+          <div className="faq-accordion-list" ref={faqListRef}>
             {faqItems.map((item, index) => {
               const isOpen = openFaq === index;
               return (
@@ -615,7 +636,9 @@ export const ServicesPage = () => {
         .services-page-root {
           width: 100%;
           background-color: #FAFCFC;
-          min-height: 100vh;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
 
         .highlight-teal {

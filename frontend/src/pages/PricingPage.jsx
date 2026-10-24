@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { PageHeroBanner } from '../components/hero/PageHeroBanner';
 import { PricingCalculator } from '../components/common/PricingCalculator';
@@ -29,8 +29,33 @@ const HangerIcon = ({ size = 20, color = '#087F8C' }) => (
 );
 
 export const PricingPage = () => {
-  const { startBooking, navigateTo } = useBooking();
+  const bookingCtx = useBooking() || {};
+  const startBooking = bookingCtx.startBooking || (() => {
+    if (typeof window !== 'undefined') window.location.hash = 'booking';
+  });
+  const navigateTo = bookingCtx.navigateTo || ((page) => {
+    if (typeof window !== 'undefined') window.location.hash = page;
+  });
   const [openFaq, setOpenFaq] = useState(0);
+  const faqListRef = useRef(null);
+
+  useEffect(() => {
+    if (openFaq === null) return;
+
+    const handleClickOutside = (event) => {
+      if (faqListRef.current && !faqListRef.current.contains(event.target)) {
+        setOpenFaq(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [openFaq]);
 
   const faqItems = [
     {
@@ -102,7 +127,7 @@ export const PricingPage = () => {
             </p>
           </div>
 
-          <div className="faq-accordion-list">
+          <div className="faq-accordion-list" ref={faqListRef}>
             {faqItems.map((item, index) => {
               const isOpen = openFaq === index;
               return (
@@ -169,7 +194,10 @@ export const PricingPage = () => {
       <style>{`
         .pricing-page-wrapper {
           background-color: #FAFCFC;
-          min-height: 100vh;
+          width: 100%;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
 
         /* ==========================================================================
@@ -375,6 +403,8 @@ export const PricingPage = () => {
           display: flex;
           align-items: center;
           justify-content: center;
+          background: #05636D url('/assets/cta-folded-clothes.jpg') center 38% / cover no-repeat fixed;
+          background-attachment: fixed;
         }
 
         .cta-banner-bg-wrapper {
@@ -383,6 +413,7 @@ export const PricingPage = () => {
           width: 100%;
           height: 100%;
           z-index: 0;
+          display: none;
         }
 
         .cta-banner-bg-img {

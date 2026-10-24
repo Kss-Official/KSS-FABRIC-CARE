@@ -1,4 +1,5 @@
 import uuid
+import random
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -52,6 +53,7 @@ class Order(models.Model):
         WASHING = 'WASHING', _('Washing in Progress')
         DRYING = 'DRYING', _('Drying in Progress')
         IRONING = 'IRONING', _('Steam Ironing in Progress')
+        FOLDING = 'FOLDING', _('Folding Clothes')
         QUALITY_CHECK = 'QUALITY_CHECK', _('Quality Inspection')
         PACKING = 'PACKING', _('Packing Clothes')
         READY_FOR_DELIVERY = 'READY_FOR_DELIVERY', _('Ready for Delivery')
@@ -128,8 +130,8 @@ class Order(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.order_id:
-            random_code = uuid.uuid4().hex[:5].upper()
-            self.order_id = f"#FC{random_code}"
+            random_code = f"{random.randint(10000, 99999)}"
+            self.order_id = f"FC-{random_code}"
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -184,6 +186,7 @@ class LaundryStageLog(models.Model):
         WASHING = 'WASHING', _('Washing')
         DRYING = 'DRYING', _('Drying')
         IRONING = 'IRONING', _('Steam Ironing')
+        FOLDING = 'FOLDING', _('Folding')
         QUALITY_CHECK = 'QUALITY_CHECK', _('Quality Check')
         PACKING = 'PACKING', _('Packing')
         READY_FOR_DELIVERY = 'READY_FOR_DELIVERY', _('Ready for Delivery')
@@ -293,20 +296,44 @@ class SupportTicket(models.Model):
         RESOLVED = 'RESOLVED', _('Resolved')
         CLOSED = 'CLOSED', _('Closed')
 
+    class Priority(models.TextChoices):
+        LOW = 'LOW', _('Low')
+        MEDIUM = 'MEDIUM', _('Medium')
+        HIGH = 'HIGH', _('High')
+
     customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='support_tickets')
     order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True)
+    ticket_number = models.CharField(max_length=50, blank=True, null=True, unique=True)
+    customer_name = models.CharField(max_length=200, blank=True, null=True)
+    customer_email = models.EmailField(blank=True, null=True)
     subject = models.CharField(max_length=200)
     message = models.TextField()
+    priority = models.CharField(max_length=20, choices=Priority.choices, default=Priority.MEDIUM)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
     admin_reply = models.TextField(blank=True, null=True)
+    admin_reply_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
 
+    def save(self, *args, **kwargs):
+        if not self.customer_name and self.customer:
+            self.customer_name = self.customer.full_name or self.customer.username
+        if not self.customer_email and self.customer:
+            self.customer_email = self.customer.email
+        if not self.ticket_number:
+            import random
+            candidate = f"#SUP-{random.randint(1050, 9999)}"
+            while SupportTicket.objects.filter(ticket_number=candidate).exists():
+                candidate = f"#SUP-{random.randint(10000, 99999)}"
+            self.ticket_number = candidate
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"Ticket #{self.id}: {self.subject} ({self.get_status_display()})"
+        return f"{self.ticket_number or f'Ticket #{self.id}'}: {self.subject} ({self.get_status_display()})"
+
 
 
 class ContentFAQ(models.Model):
@@ -331,3 +358,36 @@ class ContentPolicy(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class ComplaintReport(models.Model):
+    class Status(models.TextChoices):
+        PENDING_RESCHEDULE = 'PENDING_RESCHEDULE', _('Pending Reschedule')
+        RESCHEDULED = 'RESCHEDULED', _('Rescheduled')
+        UNDER_REVIEW = 'UNDER_REVIEW', _('Under Review')
+        DELIVERED = 'DELIVERED', _('Delivered')
+        RESOLVED = 'RESOLVED', _('Resolved')
+
+    order = models.ForeignKey(Order, on_delete=models.SET_NULL, related_name='complaints', null=True, blank=True)
+    order_id_display = models.CharField(max_length=50, blank=True, null=True, db_index=True)
+    customer_name = models.CharField(max_length=150)
+    customer_phone = models.CharField(max_length=20, blank=True, null=True)
+    failure_reason = models.CharField(max_length=255)
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='reported_complaints')
+    reported_by_name = models.CharField(max_length=150, blank=True, null=True)
+    report_date = models.DateTimeField(default=timezone.now, db_index=True)
+    requested_reschedule_date = models.DateField(null=True, blank=True)
+    rescheduled_date = models.DateField(null=True, blank=True)
+    rescheduled_time_slot = models.CharField(max_length=100, blank=True, null=True)
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.PENDING_RESCHEDULE, db_index=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-report_date', '-created_at']
+
+    def __str__(self):
+        order_code = self.order_id_display or (self.order.order_id if self.order else 'Order')
+        return f"Complaint for {order_code} - {self.customer_name} ({self.get_status_display()})"
+

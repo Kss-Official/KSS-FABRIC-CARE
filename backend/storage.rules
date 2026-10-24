@@ -1,0 +1,20 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Deny all client direct writes
+    match /{allPaths=**} {
+      allow write: if false;
+    }
+    
+    // Avatars: readable by signed-in users
+    match /avatars/{userId}/{avatarFile} {
+      allow read: if request.auth != null;
+    }
+    
+    // Invoices: private, served only via backend API
+    match /invoices/{invoiceFile} {
+      allow read: if false;
+    }
+  }
+}
