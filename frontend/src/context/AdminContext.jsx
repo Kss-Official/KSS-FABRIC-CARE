@@ -568,8 +568,8 @@ export const AdminProvider = ({ children }) => {
     setComplaintsLoading(true);
     try {
       const endpoints = [
-        'http://127.0.0.1:8001/api/admin/complaints/',
         'http://127.0.0.1:8000/api/admin/complaints/',
+        'http://127.0.0.1:8001/api/admin/complaints/',
         '/api/admin/complaints/'
       ];
       let backendComplaints = null;
@@ -1099,8 +1099,8 @@ export const AdminProvider = ({ children }) => {
     if (!isSilent) setSupportLoading(true);
     try {
       const endpoints = [
-        'http://127.0.0.1:8001/api/admin/support/tickets/',
         'http://127.0.0.1:8000/api/admin/support/tickets/',
+        'http://127.0.0.1:8001/api/admin/support/tickets/',
         '/api/admin/support/tickets/'
       ];
       let backendTickets = null;
@@ -1221,8 +1221,8 @@ export const AdminProvider = ({ children }) => {
 
       // 1. Call Django Backend Reschedule API
       const endpoints = [
-        `http://127.0.0.1:8001/api/admin/complaints/${complaintId}/reschedule/`,
         `http://127.0.0.1:8000/api/admin/complaints/${complaintId}/reschedule/`,
+        `http://127.0.0.1:8001/api/admin/complaints/${complaintId}/reschedule/`,
         `/api/admin/complaints/${complaintId}/reschedule/`
       ];
 

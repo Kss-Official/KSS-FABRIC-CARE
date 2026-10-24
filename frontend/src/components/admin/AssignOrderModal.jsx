@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
@@ -50,8 +50,6 @@ export const AssignOrderModal = () => {
   const [driverNote, setDriverNote] = useState('');
   const [validationError, setValidationError] = useState('');
 
-  if (!isAssignOrderModalOpen) return null;
-
   const formattedPickupTime = useMemo(() => {
     let p = assigningOrder?.pickupTime || (assigningOrder?.date ? `${assigningOrder.date}, ${assigningOrder.timeStart || '10:00 AM'} – ${assigningOrder.timeEnd || '12:00 PM'}` : '23 Sep 2026, 10:00 AM – 12:00 PM');
     const isoM = String(p).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
@@ -65,6 +63,8 @@ export const AssignOrderModal = () => {
     p = p.replace(/(AM|PM)\s*[-–—]\s*11:00\s*$/i, '$1');
     return p;
   }, [assigningOrder?.pickupTime, assigningOrder?.date, assigningOrder?.timeStart, assigningOrder?.timeEnd]);
+
+  if (!isAssignOrderModalOpen) return null;
 
   // Use assigningOrder if passed, otherwise default to Reference Image order FC-10289
   const currentOrder = {

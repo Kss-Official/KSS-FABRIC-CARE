@@ -37,7 +37,7 @@ export class ApiError extends Error {
   }
 }
 
-const BACKEND_BASES = ['http://127.0.0.1:8001', 'http://127.0.0.1:8000'];
+const BACKEND_BASES = ['http://127.0.0.1:8000', 'http://127.0.0.1:8001'];
 
 export const fetchBackend = async (path, options = {}) => {
   const token = (typeof localStorage !== 'undefined' ? localStorage.getItem('fabricare_token') : null) || 
@@ -47,6 +47,10 @@ export const fetchBackend = async (path, options = {}) => {
     ...(token && token !== 'demo-token' ? { 'Authorization': `Bearer ${token}` } : {}),
     ...(options.headers || {})
   };
+
+  if (options.body instanceof FormData) {
+    delete headers['Content-Type'];
+  }
 
   for (const base of BACKEND_BASES) {
     try {
@@ -523,13 +527,17 @@ export const staffApi = {
       if (snap.exists()) {
         const all = snap.val() || {};
         const items = Object.keys(all)
-          .filter(id => !id.includes('P4CbA4_8YTw7XnFWZiV'))
+          .filter(id => !id.includes('P4CbA4_8YTw7XnFWZiV') && !id.includes('75668') && !id.includes('FC-75668'))
           .map(id => normalizeOrder({
             ...all[id],
             id,
             key: id,
             order_number: all[id].code || all[id].order_number || id
           }))
+          .filter(o => {
+            const num = String(o.order_number || o.id || o.code || o.order_id || '');
+            return !num.includes('75668') && !num.includes('FC-75668');
+          })
           .filter(o => o.code || (o.items && Object.keys(o.items).length > 0) || (o.customerName && o.customerName !== 'Customer'));
         items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         return { data: { items } };
@@ -546,15 +554,22 @@ export const staffApi = {
       }
     });
 
-    const orderPromises = Array.from(orderIds).map(async id => {
-      try {
-        const oSnap = await get(ref(rtdb, `orders/${id}`));
-        return oSnap.exists() ? normalizeOrder({ ...oSnap.val(), id, key: id, order_number: oSnap.val().code || oSnap.val().order_number || id }) : null;
-      } catch (_) {
-        return null;
-      }
-    });
-    const items = (await Promise.all(orderPromises)).filter(Boolean);
+    const orderPromises = Array.from(orderIds)
+      .filter(id => !id.includes('75668') && !id.includes('FC-75668'))
+      .map(async id => {
+        try {
+          const oSnap = await get(ref(rtdb, `orders/${id}`));
+          return oSnap.exists() ? normalizeOrder({ ...oSnap.val(), id, key: id, order_number: oSnap.val().code || oSnap.val().order_number || id }) : null;
+        } catch (_) {
+          return null;
+        }
+      });
+    const items = (await Promise.all(orderPromises))
+      .filter(Boolean)
+      .filter(o => {
+        const num = String(o.order_number || o.id || o.code || o.order_id || '');
+        return !num.includes('75668') && !num.includes('FC-75668');
+      });
     return { data: { items } };
   },
 
@@ -612,6 +627,9 @@ export const staffApi = {
         const all = snap.val() || {};
         for (const [key, raw] of Object.entries(all)) {
           if (!raw || typeof raw !== 'object') continue;
+          if (key.includes('75668') || key.includes('FC-75668')) continue;
+          const rawIdStr = String(raw.order_number || raw.code || raw.id || '');
+          if (rawIdStr.includes('75668') || rawIdStr.includes('FC-75668')) continue;
           const s = String(raw.status || raw.orderStatus || raw.status_display || raw.raw_status || '').toUpperCase().trim();
           const stage = String(raw.stage || raw.processing_stage || '').toUpperCase().trim();
 
@@ -1675,6 +1693,15 @@ export const authApi = {
     const snap = await get(ref(rtdb, `users/${uid}`));
     return { data: snap.exists() ? snap.val() : null };
   },
+  updateProfile: async (data) => {
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    const res = await fetchBackend('/api/auth/me/', {
+      method: 'PATCH',
+      body: isFormData ? data : JSON.stringify(data),
+      headers: isFormData ? {} : { 'Content-Type': 'application/json' }
+    });
+    return res || { data: null };
+  }
 };
 
 export const complaintsApi = {

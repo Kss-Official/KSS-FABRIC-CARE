@@ -206,6 +206,10 @@ def _change_status_tx(
         update_fields["placed_at"] = now_iso
     elif to_status == "RECEIVED" and not order.get("received_at"):
         update_fields["received_at"] = now_iso
+    elif to_status == "READY_FOR_DELIVERY" and not order.get("ready_at"):
+        update_fields["ready_at"] = now_iso
+    elif to_status == "OUT_FOR_DELIVERY" and not order.get("out_for_delivery_at"):
+        update_fields["out_for_delivery_at"] = now_iso
     elif to_status == "DELIVERED" and not order.get("delivered_at"):
         update_fields["delivered_at"] = now_iso
 
@@ -291,6 +295,12 @@ def _change_status_tx(
             notif_data={"type": "order_update", "title": "Order in progress", "body": f"Your clothes are in {step_label}.", "order_id": order_id},
             transaction=transaction,
         )
+        if to_status == "READY_FOR_DELIVERY" and agent_id_val:
+            notification_repo.create_notification(
+                user_id=agent_id_val,
+                notif_data={"type": "new_delivery", "title": "New Delivery Task", "body": f"Delivery task assigned for order {code}.", "order_id": order_id},
+                transaction=transaction,
+            )
     elif to_status == "OUT_FOR_DELIVERY":
         notification_repo.create_notification(
             user_id=order.get("customer_id"),

@@ -766,8 +766,12 @@ export const subscribeOrders = (callback, errorCallback) => {
       }
       const data = snap.val();
       const orderList = Object.keys(data)
-        .filter(k => !k.includes('P4CbA4_8YTw7XnFWZiV'))
+        .filter(k => !k.includes('P4CbA4_8YTw7XnFWZiV') && !k.includes('75668') && !k.includes('FC-75668'))
         .map(k => normalizeFirestoreOrder(data[k], k))
+        .filter(o => {
+          const num = String(o.order_number || o.id || o.code || o.order_id || '');
+          return !num.includes('75668') && !num.includes('FC-75668');
+        })
         .filter(o => o.code || (o.items && Object.keys(o.items).length > 0) || (o.customerName && o.customerName !== 'Customer'));
       orderList.sort((a, b) => {
         const timeA = a.updatedAt || a.placedAt || a.createdAt || 0;

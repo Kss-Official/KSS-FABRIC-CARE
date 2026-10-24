@@ -8,6 +8,9 @@ import { formatOrderId } from '../utils/helpers';
 import { useNotifications } from '../hooks/useNotifications';
 import { NotificationBellDropdown } from '../components/common/NotificationBellDropdown';
 import { NotificationsPageView } from '../components/common/NotificationsPageView';
+import { ref, push, update } from 'firebase/database';
+import { rtdb } from '../config/firebase';
+import { registerRoleUser } from '../services/notificationService';
 import { 
   Truck, 
   Package, 
@@ -136,6 +139,70 @@ export const DeliveryPortal = () => {
     markAllRead: handleMarkAllNotificationsRead,
     loading: loadingNotifications
   } = useNotifications(currentUser?.uid || currentUser?.id);
+
+  // Ensure delivery agent user is continuously registered in roleUsers for real-time notifications
+  useEffect(() => {
+    const agentUid = currentUser?.uid || currentUser?.id || 'b0DHZGmo4mVuhPTS9HngWS7VulB2';
+    if (agentUid) {
+      registerRoleUser(agentUid, 'agent');
+      registerRoleUser(agentUid, 'delivery');
+      registerRoleUser(agentUid, 'driver');
+    }
+  }, [currentUser?.uid, currentUser?.id]);
+
+  // Synchronize notifications for any delivery tasks assigned to this agent that were created without notifications
+  useEffect(() => {
+    const agentUid = currentUser?.uid || currentUser?.id || 'b0DHZGmo4mVuhPTS9HngWS7VulB2';
+    if (!agentUid || !rtdb || tasks.length === 0 || loadingNotifications) return;
+
+    const deliveryTasks = tasks.filter(t => {
+      const isDel = ((t.type || t.raw_type || '').toLowerCase().includes('deliv') || t.delivery_reported || t.isDeliveryReported) && (t.type || '').toLowerCase() !== 'pickup';
+      return isDel;
+    });
+
+    if (deliveryTasks.length === 0) return;
+
+    // Check against existing notifications by order identifier to avoid duplicates
+    const existingOrderCodes = new Set(
+      notifications.map(n => String(n.orderCode || n.orderId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase())
+    );
+
+    const missingTasks = deliveryTasks.filter(dt => {
+      const code = String(dt.order_number || dt.order_id || dt.code || dt.orderId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      return code && !existingOrderCodes.has(code);
+    });
+
+    if (missingTasks.length === 0) return;
+
+    const syncMissing = async () => {
+      try {
+        const updates = {};
+        let count = 0;
+        missingTasks.forEach(mt => {
+          const code = mt.order_number || mt.order_id || mt.code || mt.orderId;
+          const area = mt.delivery_area || mt.pickup_area || mt.address_display || (typeof mt.delivery_address === 'string' ? mt.delivery_address : 'Customer Address');
+          const notifPush = push(ref(rtdb, `notifications/${agentUid}`));
+          updates[`notifications/${agentUid}/${notifPush.key}`] = {
+            type: 'new_delivery',
+            title: 'New Delivery Task',
+            body: `Delivery assigned for order ${code} at ${area}.`,
+            orderId: code,
+            orderCode: code,
+            isRead: false,
+            createdAt: mt.createdAt || Date.now()
+          };
+          count++;
+        });
+        if (count > 0) {
+          await update(ref(rtdb), updates);
+        }
+      } catch (err) {
+        console.warn('Delivery notification sync notice:', err);
+      }
+    };
+
+    syncMissing();
+  }, [tasks.length, loadingNotifications, notifications.length, currentUser?.uid, currentUser?.id]);
 
   // Modals state
   const [pickupModalOrder, setPickupModalOrder] = useState(null);
@@ -1050,6 +1117,12 @@ export const DeliveryPortal = () => {
       }
     }
 
+    // Driving Licence Validation: 15 characters (2 letters + 13 digits)
+    const rawDL = (editProfileForm.drivingLicenceNumber || '').trim().toUpperCase();
+    if (rawDL && !/^[A-Z]{2}[0-9]{13}$/.test(rawDL)) {
+      errors.drivingLicenceNumber = 'Driving Licence must be exactly 15 characters: 2 letters followed by 13 digits (e.g., DL0420110012345).';
+    }
+
     // Aadhaar Card Validation: Exactly 12 digits
     const rawAadhaar = editProfileForm.aadhaarNumber || '';
     const cleanAadhaar = rawAadhaar.replace(/[\s-]/g, '').trim();
@@ -1089,6 +1162,30 @@ export const DeliveryPortal = () => {
         } catch {}
       }
 
+      let base64Aadhaar = null;
+      if (aadhaarFile) {
+        try {
+          base64Aadhaar = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(aadhaarFile);
+          });
+        } catch {}
+      }
+
+      let base64Pan = null;
+      if (panFile) {
+        try {
+          base64Pan = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(panFile);
+          });
+        } catch {}
+      }
+
       const formData = new FormData();
       formData.append('full_name', editProfileForm.fullName.trim());
       if (editProfileForm.dob) {
@@ -1123,7 +1220,7 @@ export const DeliveryPortal = () => {
       let updated = null;
       try {
         const res = await authApi.updateProfile(formData);
-        updated = res.data;
+        updated = res?.data;
       } catch (apiErr) {
         console.warn('API updateProfile failed, falling back to local persistence:', apiErr);
       }
@@ -1136,26 +1233,35 @@ export const DeliveryPortal = () => {
       } else if (base64ProfileImg || profileImagePreview) {
         finalProfilePic = base64ProfileImg || profileImagePreview;
       } else {
-        finalProfilePic = currentUser?.profilePicture || null;
+        finalProfilePic = currentUser?.profilePicture || currentUser?.profilePictureUrl || null;
       }
+
+      const finalAadhaarDoc = updated?.aadhaar_document_url || updated?.aadhaar_document || base64Aadhaar || aadhaarPreview || currentUser?.aadhaarDocumentUrl || currentUser?.aadhaar_document_url || null;
+      const finalPanDoc = updated?.pan_document_url || updated?.pan_document || base64Pan || panPreview || currentUser?.panDocumentUrl || currentUser?.pan_document_url || null;
 
       // Update AuthContext and LocalStorage state
       const updatedProfileObj = {
         displayName: updated?.full_name || editProfileForm.fullName.trim() || currentUser?.displayName,
         fullName: updated?.full_name || editProfileForm.fullName.trim() || currentUser?.fullName,
-        dob: updated?.dob || editProfileForm.dob || currentUser?.dob,
-        drivingLicenceNumber: updated?.driving_licence_number || editProfileForm.drivingLicenceNumber || currentUser?.drivingLicenceNumber,
-        aadhaarNumber: updated?.aadhaar_number || cleanAadhaar || currentUser?.aadhaarNumber,
-        aadhaarDocumentUrl: updated?.aadhaar_document_url || currentUser?.aadhaarDocumentUrl,
-        panNumber: updated?.pan_number || cleanPan || currentUser?.panNumber,
-        panDocumentUrl: updated?.pan_document_url || currentUser?.panDocumentUrl,
+        name: updated?.full_name || editProfileForm.fullName.trim() || currentUser?.name,
+        dob: updated?.dob || editProfileForm.dob || currentUser?.dob || '',
+        drivingLicenceNumber: editProfileForm.drivingLicenceNumber || updated?.driving_licence_number || currentUser?.drivingLicenceNumber || currentUser?.driving_licence_number || '',
+        driving_licence_number: editProfileForm.drivingLicenceNumber || updated?.driving_licence_number || currentUser?.driving_licence_number || currentUser?.drivingLicenceNumber || '',
+        aadhaarNumber: cleanAadhaar || updated?.aadhaar_number || currentUser?.aadhaarNumber || currentUser?.aadhaar_number || '',
+        aadhaar_number: cleanAadhaar || updated?.aadhaar_number || currentUser?.aadhaar_number || currentUser?.aadhaarNumber || '',
+        aadhaarDocumentUrl: finalAadhaarDoc,
+        aadhaar_document_url: finalAadhaarDoc,
+        panNumber: cleanPan || updated?.pan_number || currentUser?.panNumber || currentUser?.pan_number || '',
+        pan_number: cleanPan || updated?.pan_number || currentUser?.pan_number || currentUser?.panNumber || '',
+        panDocumentUrl: finalPanDoc,
+        pan_document_url: finalPanDoc,
         profilePicture: finalProfilePic,
         profilePictureUrl: finalProfilePic,
         avatar: finalProfilePic || getAgentInitials(editProfileForm.fullName.trim())
       };
 
       if (updateCurrentUserProfile) {
-        updateCurrentUserProfile(updatedProfileObj);
+        await updateCurrentUserProfile(updatedProfileObj);
       }
       try {
         const stored = localStorage.getItem('fabricare_user');
@@ -1172,6 +1278,10 @@ export const DeliveryPortal = () => {
       setProfileImageFile(null);
       setProfileImagePreview(finalProfilePic);
       setRemoveProfileImage(false);
+      setAadhaarFile(null);
+      setAadhaarPreview(finalAadhaarDoc);
+      setPanFile(null);
+      setPanPreview(finalPanDoc);
       setCurrentSavedPhoto(finalProfilePic ? getMediaUrl(finalProfilePic) : null);
       setProfileSuccessAlert('Profile and verified documents updated successfully!');
       setTimeout(() => {
@@ -2804,6 +2914,11 @@ export const DeliveryPortal = () => {
   const deliveryTasks = tasks.filter(t => {
     if (isExcludedMockTask(t)) return false;
 
+    const taskType = String(t.type || t.taskType || t.orderData?.type || '').toLowerCase();
+    const rawSt = String(t.status || t.raw_status || '').toUpperCase();
+    const ordSt = String(t.orderStatus || t.order_status || t.orderData?.status || t.orderData?.orderStatus || '').toUpperCase();
+    const stageSt = String(t.stage || t.currentLaundryStep || t.orderData?.stage || t.orderData?.currentLaundryStep || '').toLowerCase();
+
     // A pickup task or order before laundry dispatch is NEVER in deliveryTasks
     if (taskType === 'pickup') {
       return false;
@@ -2968,23 +3083,52 @@ export const DeliveryPortal = () => {
     return !isDone && !isRep && (s === 'PACKED' || ['READY_FOR_DELIVERY', 'PACKED', 'DELIVERY_ASSIGNED'].includes(rawSt));
   }).length;
 
-  // Real-time Current Tasks for Dashboard (Dynamic active pickups & deliveries)
-  const activePickupsList = allPickupTasks.filter(t => {
+  // Consolidated helpers for unified, mathematically sound pickup lifecycle states
+  const isPickupTaskDone = (t) => {
     const s = getTaskTrackerState(t);
     const rawSt = String(t.status || t.raw_status || '').toUpperCase();
     const ordSt = String(t.orderStatus || t.order_status || t.original_status || '').toUpperCase();
     const stageSt = String(t.stage || '').toLowerCase();
-    const isPickupPendingOrActive = ['ASSIGNED', 'UNASSIGNED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PLACED', 'PAYMENT_PENDING', 'PENDING_PICKUP', 'PENDING', 'ACCEPTED', 'ON_THE_WAY', 'PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'ARRIVED'].includes(rawSt) || 
-                                    ['PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'PLACED', 'PAYMENT_PENDING'].includes(ordSt);
-    const isDone = Boolean(t.droppedAtHub || t.droppedOffAt) || 
-                   (!isPickupPendingOrActive && (
-                     s === 'AT_HUB' || 
-                     ['DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'COMPLETED', 'DELIVERED', 'IN CLEANING', 'IN_CLEANING', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'NEARBY', 'PACKED', 'DELIVERY_ASSIGNED'].includes(rawSt) ||
-                     ['DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'COMPLETED', 'DELIVERED', 'IN CLEANING', 'IN_CLEANING', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'NEARBY', 'PACKED', 'DELIVERY_ASSIGNED'].includes(ordSt) ||
-                     ['inspection', 'wash', 'washing', 'drying', 'ironing', 'folding', 'pack', 'packing', 'qc', 'ready', 'out_for_delivery', 'nearby', 'delivered'].includes(stageSt)
-                   ));
-    return !isDone;
-  });
+
+    // 1. If explicit hub drop-off timestamp exists or tracker reached AT_HUB or terminal status
+    if (Boolean(t.droppedAtHub || t.droppedOffAt) || s === 'AT_HUB' || ['DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'COMPLETED', 'DELIVERED'].includes(rawSt)) return true;
+
+    // 2. Active or pending pickup states that mean pickup is NOT yet complete
+    const isPickupPendingOrActive = ['ASSIGNED', 'UNASSIGNED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PLACED', 'PAYMENT_PENDING', 'PENDING_PICKUP', 'PENDING', 'ACCEPTED', 'ON_THE_WAY', 'PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'ARRIVED'].includes(rawSt) ||
+                                    ['ASSIGNED', 'UNASSIGNED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PLACED', 'PAYMENT_PENDING', 'PENDING_PICKUP', 'PENDING'].includes(ordSt);
+    if (isPickupPendingOrActive) return false;
+
+    // 3. Completed pickup criteria (at hub, laundry processing, or completed pickup stage)
+    return ['DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'COMPLETED', 'DELIVERED', 'IN CLEANING', 'IN_CLEANING'].includes(rawSt) ||
+           ['DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'COMPLETED', 'DELIVERED', 'IN CLEANING', 'IN_CLEANING'].includes(ordSt) ||
+           ['inspection', 'wash', 'washing', 'drying', 'ironing', 'folding', 'pack', 'packing', 'qc'].includes(stageSt);
+  };
+
+  const isPickupTaskInProgress = (t) => {
+    if (isPickupTaskDone(t)) return false;
+    const s = getTaskTrackerState(t);
+    const rawSt = String(t.status || t.raw_status || '').toUpperCase();
+    const ordSt = String(t.orderStatus || t.order_status || t.original_status || '').toUpperCase();
+    const stageSt = String(t.stage || '').toLowerCase();
+    const taskId = String(t.id || t.order_number || '');
+    const cleanId = taskId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const isTaskAccepted = Boolean(
+      t.isAccepted || t.acceptedAt || 
+      taskTrackerStatus[taskId] === 'ACCEPTED' || taskTrackerStatus[taskId + '_accepted'] ||
+      (cleanId && (taskTrackerStatus[cleanId] === 'ACCEPTED' || taskTrackerStatus[cleanId + '_accepted']))
+    );
+    return s === 'ON_THE_WAY' || s === 'ARRIVED' || s === 'COLLECTED' || s === 'ACCEPTED' || isTaskAccepted ||
+           ['PICKUP_IN_PROGRESS', 'ON_THE_WAY', 'IN_TRANSIT', 'ARRIVED', 'COLLECTED', 'PICKED_UP', 'ACCEPTED'].includes(rawSt) ||
+           ['PICKUP_IN_PROGRESS', 'ON_THE_WAY', 'IN_TRANSIT', 'ARRIVED', 'COLLECTED', 'PICKED_UP', 'ACCEPTED'].includes(ordSt) ||
+           ['driver_on_the_way', 'driver_arrived', 'picked'].includes(stageSt);
+  };
+
+  const isPickupTaskPending = (t) => {
+    return !isPickupTaskDone(t) && !isPickupTaskInProgress(t);
+  };
+
+  // Real-time Current Tasks for Dashboard (Dynamic active pickups & deliveries)
+  const activePickupsList = allPickupTasks.filter(t => !isPickupTaskDone(t));
 
   const activeDeliveriesList = allDeliveryTasks.filter(t => {
     const s = getDeliveryTrackerState(t);
@@ -3035,40 +3179,6 @@ export const DeliveryPortal = () => {
     }
     return true;
   });
-
-  // Consolidated helpers for unified, mathematically sound pickup lifecycle states
-  const isPickupTaskDone = (t) => {
-    const s = getTaskTrackerState(t);
-    const rawSt = String(t.status || t.raw_status || '').toUpperCase();
-    const ordSt = String(t.orderStatus || t.order_status || t.original_status || '').toUpperCase();
-    const stageSt = String(t.stage || '').toLowerCase();
-
-    // 1. If explicit hub drop-off timestamp exists or tracker reached AT_HUB or terminal status
-    if (Boolean(t.droppedAtHub || t.droppedOffAt) || s === 'AT_HUB' || ['DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'COMPLETED'].includes(rawSt)) return true;
-
-    // 2. Active or pending pickup states that mean pickup is NOT yet complete
-    const isPickupPendingOrActive = ['ASSIGNED', 'UNASSIGNED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PLACED', 'PAYMENT_PENDING', 'PENDING_PICKUP', 'PENDING', 'ACCEPTED', 'ON_THE_WAY', 'PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'ARRIVED'].includes(rawSt);
-    if (isPickupPendingOrActive) return false;
-
-    // 3. Completed pickup criteria (at hub, laundry processing, or completed pickup stage)
-    return ['DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'COMPLETED', 'DELIVERED', 'IN CLEANING', 'IN_CLEANING'].includes(rawSt) ||
-           ['DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'COMPLETED', 'DELIVERED', 'IN CLEANING', 'IN_CLEANING'].includes(ordSt) ||
-           ['inspection', 'wash', 'washing', 'drying', 'ironing', 'folding', 'pack', 'packing', 'qc'].includes(stageSt);
-  };
-
-  const isPickupTaskInProgress = (t) => {
-    if (isPickupTaskDone(t)) return false;
-    const s = getTaskTrackerState(t);
-    const rawSt = String(t.status || t.raw_status || '').toUpperCase();
-    const taskId = String(t.id || t.order_number || '');
-    const isTaskAccepted = Boolean(t.isAccepted || t.acceptedAt || taskTrackerStatus[taskId] === 'ACCEPTED' || taskTrackerStatus[taskId + '_accepted']);
-    return s === 'ON_THE_WAY' || s === 'ARRIVED' || s === 'COLLECTED' || s === 'ACCEPTED' || isTaskAccepted ||
-           ['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'PICKED_UP', 'COLLECTED', 'ARRIVED', 'ON_THE_WAY', 'ACCEPTED'].includes(rawSt);
-  };
-
-  const isPickupTaskPending = (t) => {
-    return !isPickupTaskDone(t) && !isPickupTaskInProgress(t);
-  };
 
   // Dynamic counts for pickup filter tabs matching Image 1
   const countCompleted = allPickupTasks.filter(isPickupTaskDone).length;
@@ -3128,7 +3238,8 @@ export const DeliveryPortal = () => {
   });
 
   // Badge counts aligned with actual real-time tasks
-  const displayPickupCount = activePickupsList.length;
+  const displayPickupCount = countPending;
+  const displayActivePickupCount = activePickupsList.length;
   const displayDropoffCount = activePickupsList.filter(t => getTaskTrackerState(t) === 'COLLECTED').length;
   const displayDeliveryCount = activeDeliveriesList.length;
   const displayCompletedCount = completedTasks.length;
@@ -3147,7 +3258,7 @@ export const DeliveryPortal = () => {
       id: 'pickups',
       label: 'Pickup Tasks',
       icon: <ClipboardList size={19} />,
-      count: displayPickupCount > 0 ? displayPickupCount : null,
+      count: displayActivePickupCount > 0 ? displayActivePickupCount : null,
       badgeColor: 'bg-slate-100 text-slate-700 font-semibold'
     },
     {
@@ -3400,8 +3511,19 @@ export const DeliveryPortal = () => {
               notifications={notifications}
               onMarkRead={handleMarkNotificationRead}
               onMarkAllRead={handleMarkAllNotificationsRead}
-              onItemClick={() => {
-                setActiveTab('notifications');
+              onItemClick={(notif) => {
+                if (notif?.id && !notif.isRead && handleMarkNotificationRead) {
+                  handleMarkNotificationRead(notif.id);
+                }
+                const notifType = String(notif?.type || '').toLowerCase();
+                const notifTitle = String(notif?.title || '').toLowerCase();
+                if (notifType.includes('pickup') || notifTitle.includes('pickup')) {
+                  setActiveTab('pickups');
+                } else if (notifType.includes('delivery') || notifTitle.includes('delivery')) {
+                  setActiveTab('deliveries');
+                } else {
+                  setActiveTab('notifications');
+                }
               }}
               onViewAll={() => setActiveTab('notifications')}
               portalName="Delivery Field Operations"
@@ -3660,8 +3782,12 @@ export const DeliveryPortal = () => {
           <div className="dash-metrics-grid cols-3" style={{ marginBottom: '22px' }}>
             {/* Card 1: Pending Pickups */}
             <div 
-              className="dash-metric-card static-metric"
-              style={{ cursor: 'default' }}
+              onClick={() => {
+                setActiveTab('pickups');
+                setPickupFilterTab('pending');
+              }}
+              className="dash-metric-card"
+              style={{ cursor: 'pointer' }}
             >
               <div className="dash-metric-left">
                 <div className="dash-metric-icon-box icon-blue">
@@ -3669,7 +3795,7 @@ export const DeliveryPortal = () => {
                 </div>
                 <div>
                   <div className="dash-metric-title">Pending Pickups</div>
-                  <div className="dash-metric-number">{displayPickupCount}</div>
+                  <div className="dash-metric-number">{countPending}</div>
                   <div className="dash-metric-subtitle">Needs your attention</div>
                 </div>
               </div>
@@ -3677,8 +3803,12 @@ export const DeliveryPortal = () => {
 
             {/* Card 2: Doorstep Deliveries */}
             <div 
-              className="dash-metric-card static-metric"
-              style={{ cursor: 'default' }}
+              onClick={() => {
+                setActiveTab('deliveries');
+                setDeliveryFilterTab('all');
+              }}
+              className="dash-metric-card"
+              style={{ cursor: 'pointer' }}
             >
               <div className="dash-metric-left">
                 <div className="dash-metric-icon-box icon-orange">
@@ -3692,17 +3822,18 @@ export const DeliveryPortal = () => {
               </div>
             </div>
 
-            {/* Card 3: Completed Today */}
+            {/* Card 3: Completed */}
             <div 
-              className="dash-metric-card static-metric"
-              style={{ cursor: 'default' }}
+              onClick={() => setActiveTab('history')}
+              className="dash-metric-card"
+              style={{ cursor: 'pointer' }}
             >
               <div className="dash-metric-left">
                 <div className="dash-metric-icon-box icon-emerald">
                   <CheckCircle2 size={24} />
                 </div>
                 <div>
-                  <div className="dash-metric-title">Completed Today</div>
+                  <div className="dash-metric-title">Completed</div>
                   <div className="dash-metric-number">{displayCompletedCount}</div>
                   <div className="dash-metric-subtitle">Tasks finished</div>
                 </div>
@@ -3817,8 +3948,14 @@ export const DeliveryPortal = () => {
             <div className="dash-metrics-grid cols-3">
               {/* Card 1: Pending Pickups */}
               <div 
-                onClick={() => setActiveTab('pickups')}
+                onClick={() => {
+                  setActiveTab('pickups');
+                  setPickupFilterTab('pending');
+                }}
                 className="dash-metric-card"
+                role="button"
+                tabIndex={0}
+                style={{ cursor: 'pointer' }}
               >
                 <div className="dash-metric-left">
                   <div className="dash-metric-icon-box icon-blue">
@@ -3826,7 +3963,7 @@ export const DeliveryPortal = () => {
                   </div>
                   <div>
                     <div className="dash-metric-title">Pending Pickups</div>
-                    <div className="dash-metric-number">{displayPickupCount}</div>
+                    <div className="dash-metric-number">{countPending}</div>
                     <div className="dash-metric-subtitle">Needs your attention</div>
                   </div>
                 </div>
@@ -3835,8 +3972,14 @@ export const DeliveryPortal = () => {
 
               {/* Card 2: Doorstep Deliveries */}
               <div 
-                onClick={() => setActiveTab('deliveries')}
+                onClick={() => {
+                  setActiveTab('deliveries');
+                  setDeliveryFilterTab('all');
+                }}
                 className="dash-metric-card"
+                role="button"
+                tabIndex={0}
+                style={{ cursor: 'pointer' }}
               >
                 <div className="dash-metric-left">
                   <div className="dash-metric-icon-box icon-orange">
@@ -3851,17 +3994,20 @@ export const DeliveryPortal = () => {
                 <ChevronRight size={18} className="dash-metric-chevron" />
               </div>
 
-              {/* Card 4: Completed Today */}
+              {/* Card 3: Completed */}
               <div 
                 onClick={() => setActiveTab('history')}
                 className="dash-metric-card"
+                role="button"
+                tabIndex={0}
+                style={{ cursor: 'pointer' }}
               >
                 <div className="dash-metric-left">
                   <div className="dash-metric-icon-box icon-emerald">
                     <CheckCircle2 size={24} />
                   </div>
                   <div>
-                    <div className="dash-metric-title">Completed Today</div>
+                    <div className="dash-metric-title">Completed</div>
                     <div className="dash-metric-number">{displayCompletedCount}</div>
                     <div className="dash-metric-subtitle">Tasks finished</div>
                   </div>
@@ -3880,7 +4026,10 @@ export const DeliveryPortal = () => {
                     <span>Current Tasks</span>
                   </div>
                   <button 
-                    onClick={() => setActiveTab('pickups')}
+                    onClick={() => {
+                      setActiveTab('pickups');
+                      setPickupFilterTab('all');
+                    }}
                     className="dash-section-link"
                   >
                     <span>View All Tasks</span>
@@ -4127,7 +4276,10 @@ export const DeliveryPortal = () => {
                   </h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <div 
-                      onClick={() => setActiveTab('pickups')}
+                      onClick={() => {
+                        setActiveTab('pickups');
+                        setPickupFilterTab('all');
+                      }}
                       className="dash-action-item"
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -4147,7 +4299,10 @@ export const DeliveryPortal = () => {
                     </div>
 
                     <div 
-                      onClick={() => setActiveTab('deliveries')}
+                      onClick={() => {
+                        setActiveTab('deliveries');
+                        setDeliveryFilterTab('all');
+                      }}
                       className="dash-action-item"
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -4922,7 +5077,7 @@ export const DeliveryPortal = () => {
                                     }}
                                     className="pickup-act-completed-pill"
                                     style={{ background: '#FFF7ED', color: '#C2410C', borderColor: '#FED7AA', cursor: 'pointer', transition: 'all 0.2s' }}
-                                    title="Rescheduled: Click to complete doorstep delivery"
+                                    title="Rescheduled: Click for doorstep delivery"
                                   >
                                     <Clock size={11} />
                                     <span>Rescheduled</span>
@@ -5680,17 +5835,48 @@ export const DeliveryPortal = () => {
                               <Truck size={14} className="text-[#0D7A75]" />
                               <span>Driving Licence</span>
                             </label>
-                            <span className="profile-field-badge role">
-                              Commercial / Two-Wheeler
+                            <span className="profile-field-badge mono">
+                              15 Characters (2 Letters + 13 Digits)
                             </span>
                           </div>
                           <input 
                             type="text" 
+                            maxLength={15}
                             value={editProfileForm.drivingLicenceNumber}
-                            onChange={(e) => setEditProfileForm(prev => ({ ...prev, drivingLicenceNumber: e.target.value.toUpperCase() }))}
-                            placeholder="e.g. KA-04-2019-0045678"
-                            className="profile-input font-mono uppercase tracking-wider"
+                            onChange={(e) => {
+                              const cleaned = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                              let letters = '';
+                              let digits = '';
+                              let letterCount = 0;
+                              for (let i = 0; i < cleaned.length; i++) {
+                                const char = cleaned[i];
+                                if (letterCount < 2) {
+                                  if (/[A-Z]/.test(char)) {
+                                    letters += char;
+                                    letterCount++;
+                                  }
+                                } else {
+                                  if (/[0-9]/.test(char) && digits.length < 13) {
+                                    digits += char;
+                                  }
+                                }
+                              }
+                              const formatted = (letters + digits).slice(0, 15);
+                              setEditProfileForm(prev => ({ ...prev, drivingLicenceNumber: formatted }));
+                              if (profileFormErrors.drivingLicenceNumber) {
+                                setProfileFormErrors(prev => {
+                                  const next = { ...prev };
+                                  delete next.drivingLicenceNumber;
+                                  return next;
+                                });
+                              }
+                            }}
+                            placeholder="e.g. DL0420110012345"
+                            className={`profile-input font-mono uppercase tracking-wider ${profileFormErrors.drivingLicenceNumber ? 'profile-input-error' : ''}`}
                           />
+                          {profileFormErrors.drivingLicenceNumber && (
+                            <p className="profile-error-msg"><AlertCircle size={12} /> {profileFormErrors.drivingLicenceNumber}</p>
+                          )}
                         </div>
 
                         {/* 2. AADHAAR CARD (12 DIGITS) */}
@@ -6122,7 +6308,7 @@ export const DeliveryPortal = () => {
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in" style={{ maxWidth: '480px', width: '100%', margin: 'auto', overscrollBehavior: 'contain' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
               <div>
-                <h3 className="text-lg font-bold text-navy mb-1">Complete Doorstep Delivery</h3>
+                <h3 className="text-lg font-bold text-navy mb-1">Doorstep Delivery</h3>
                 <p className="text-xs text-muted m-0">Record recipient details for {deliveryModalOrder.order_number || deliveryModalOrder.order_id}</p>
               </div>
               <button 
@@ -7417,15 +7603,44 @@ export const DeliveryPortal = () => {
 
       {/* MODAL: TASK DETAIL MODAL */}
       {selectedTaskDetail && (() => {
-        const isPickup = (selectedTaskDetail.type || '').toLowerCase() === 'pickup' ||
-          ['PICKUP_ASSIGNED', 'ACCEPTED', 'PICKUP_IN_PROGRESS', 'PENDING_PICKUP'].includes(selectedTaskDetail.status) ||
-          Boolean(selectedTaskDetail.pickup_address && !selectedTaskDetail.delivery_address);
+        const rawStatus = String(selectedTaskDetail.status || selectedTaskDetail.raw_status || '').toUpperCase();
+        const ordStatus = String(selectedTaskDetail.orderStatus || selectedTaskDetail.order_status || selectedTaskDetail.original_status || '').toUpperCase();
+        const taskType = String(selectedTaskDetail.type || selectedTaskDetail.raw_type || '').toLowerCase();
 
-        const isDropoff = (selectedTaskDetail.type || '').toLowerCase() === 'dropoff' ||
-          ['PICKED_UP', 'DROPOFF_PENDING', 'DROPPED_OFF'].includes(selectedTaskDetail.status);
+        const pickupDone = typeof isPickupTaskDone === 'function' ? isPickupTaskDone(selectedTaskDetail) : false;
+        const deliveryState = typeof getDeliveryTrackerState === 'function' ? getDeliveryTrackerState(selectedTaskDetail) : '';
+        const isDeliveryDone = deliveryState === 'DELIVERED' || ['DELIVERED', 'COMPLETED'].includes(rawStatus) || ['DELIVERED', 'COMPLETED'].includes(ordStatus);
 
-        const isCompleted = ['PICKED_UP', 'COMPLETED', 'DELIVERED', 'DROPPED_OFF'].includes(selectedTaskDetail.status);
-        const isInProgress = selectedTaskDetail.status === 'PICKUP_IN_PROGRESS' || selectedTaskDetail.status === 'IN_TRANSIT';
+        const isCompleted = pickupDone || isDeliveryDone ||
+          ['COMPLETED', 'DELIVERED', 'DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'DONE'].includes(rawStatus) ||
+          ['COMPLETED', 'DELIVERED', 'DROPPED_OFF', 'DROPPED_OFF_AT_LAUNDRY', 'AT_HUB', 'DONE'].includes(ordStatus) ||
+          Boolean(selectedTaskDetail.droppedAtHub || selectedTaskDetail.droppedOffAt || selectedTaskDetail.deliveredAt || selectedTaskDetail.pickup_completed_at);
+
+        const isDelivery = taskType === 'delivery' ||
+          ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'NEARBY'].includes(rawStatus) ||
+          deliveryState === 'OUT_FOR_DELIVERY' || deliveryState === 'NEARBY' ||
+          Boolean(selectedTaskDetail.delivery_address && !selectedTaskDetail.pickup_address);
+
+        const isDropoff = taskType === 'dropoff' ||
+          (!isCompleted && (
+            rawStatus === 'COLLECTED' || 
+            ordStatus === 'COLLECTED' || 
+            (typeof getTaskTrackerState === 'function' && getTaskTrackerState(selectedTaskDetail) === 'COLLECTED') ||
+            ['DROPOFF_PENDING', 'DROPPED_OFF'].includes(rawStatus)
+          ));
+
+        const isPickup = !isDelivery && (
+          taskType === 'pickup' ||
+          ['ASSIGNED', 'PICKUP_ASSIGNED', 'ACCEPTED', 'PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'ARRIVED', 'ON_THE_WAY', 'PENDING_PICKUP', 'PENDING', 'PLACED'].includes(rawStatus) ||
+          Boolean(selectedTaskDetail.pickup_address) ||
+          !isDropoff
+        );
+
+        const isInProgress = !isCompleted && (
+          ['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'ON_THE_WAY', 'ARRIVED', 'OUT_FOR_DELIVERY', 'NEARBY', 'COLLECTED'].includes(rawStatus) ||
+          (typeof isPickupTaskInProgress === 'function' && isPickupTaskInProgress(selectedTaskDetail)) ||
+          deliveryState === 'OUT_FOR_DELIVERY' || deliveryState === 'NEARBY'
+        );
 
         return (
           <div 
@@ -7751,94 +7966,6 @@ export const DeliveryPortal = () => {
                 >
                   Close
                 </button>
-                {!isCompleted && isPickup ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const taskToCollect = selectedTaskDetail;
-                      setSelectedTaskDetail(null);
-                      setPickupModalOrder(taskToCollect);
-                    }}
-                    style={{
-                      padding: '8px 20px',
-                      borderRadius: '10px',
-                      border: 'none',
-                      background: '#006B70',
-                      color: '#ffffff',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 4px rgba(0, 107, 112, 0.2)',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = '#005256'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = '#006B70'; }}
-                  >
-                    <CheckCircle2 size={15} />
-                    <span>Collect Clothes</span>
-                  </button>
-                ) : isDropoff ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const taskToDrop = selectedTaskDetail;
-                      setSelectedTaskDetail(null);
-                      setDropoffModalOrder(taskToDrop);
-                    }}
-                    style={{
-                      padding: '8px 20px',
-                      borderRadius: '10px',
-                      border: 'none',
-                      background: '#006B70',
-                      color: '#ffffff',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 4px rgba(0, 107, 112, 0.2)',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = '#005256'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = '#006B70'; }}
-                  >
-                    <Building2 size={15} />
-                    <span>Confirm Handover</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const taskToDeliver = selectedTaskDetail;
-                      setSelectedTaskDetail(null);
-                      setDeliveryModalOrder(taskToDeliver);
-                    }}
-                    style={{
-                      padding: '8px 20px',
-                      borderRadius: '10px',
-                      border: 'none',
-                      background: '#059669',
-                      color: '#ffffff',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = '#047857'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = '#059669'; }}
-                  >
-                    <Truck size={15} />
-                    <span>Complete Doorstep Delivery</span>
-                  </button>
-                )}
               </div>
             </div>
           </div>

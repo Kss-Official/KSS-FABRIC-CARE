@@ -81,8 +81,9 @@ export const NotificationBellDropdown = ({
   const renderIcon = (notif) => {
     const t = String(notif.type || '').toLowerCase();
     const c = String(notif.category || '').toLowerCase();
+    const title = String(notif.title || '').toLowerCase();
 
-    if (t.includes('delivery') || c.includes('delivery')) {
+    if (t.includes('delivery') || c.includes('delivery') || title.includes('delivery')) {
       return (
         <div className="shared-notif-icon-box" style={{ background: '#EFF6FF', color: '#2563EB' }}>
           <Truck size={14} />

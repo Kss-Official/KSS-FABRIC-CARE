@@ -125,18 +125,27 @@ export const assignPickupAgent = async (orderId, taskId, agentId, adminUser, dri
   if (!targetAgentUid || targetAgentUid.startsWith('d') || targetAgentUid === 'agent_default') {
     const agentUids = await getRoleUserIds('agent');
     if (agentUids.length > 0) targetAgentUid = agentUids[0];
+    else targetAgentUid = 'b0DHZGmo4mVuhPTS9HngWS7VulB2';
   }
+
+  const pickupOrderCode = order.code || actualOrderId;
+  const pickupAddressArea = order.address?.areaColony || order.pickup_address || 'Customer Address';
+  const pickupNotifPayload = {
+    type: 'new_pickup',
+    title: 'New Pickup Task',
+    body: `Pickup assigned for order ${pickupOrderCode} at ${pickupAddressArea}.`,
+    orderId: pickupOrderCode,
+    orderCode: pickupOrderCode,
+    createdAt: now
+  };
 
   // Agent notification
   if (targetAgentUid) {
-    addNotificationToUpdates(updates, targetAgentUid, {
-      type: 'new_pickup',
-      title: 'New Pickup Task',
-      body: `Pickup assigned for order ${order.code || actualOrderId} at ${order.address?.areaColony || order.pickup_address || 'Customer Address'}.`,
-      orderId: actualOrderId,
-      createdAt: now
-    });
+    addNotificationToUpdates(updates, targetAgentUid, pickupNotifPayload);
   }
+  await addRoleNotificationsToUpdates(updates, 'agent', pickupNotifPayload);
+  await addRoleNotificationsToUpdates(updates, 'delivery', pickupNotifPayload);
+  await addRoleNotificationsToUpdates(updates, 'driver', pickupNotifPayload);
 
   // Customer notification
   if (order.customerId) {
@@ -254,18 +263,27 @@ export const assignDeliveryAgent = async (orderId, taskId, agentId, adminUser, d
   if (!targetAgentUid || targetAgentUid.startsWith('d') || targetAgentUid === 'agent_default') {
     const agentUids = await getRoleUserIds('agent');
     if (agentUids.length > 0) targetAgentUid = agentUids[0];
+    else targetAgentUid = 'b0DHZGmo4mVuhPTS9HngWS7VulB2';
   }
+
+  const deliveryOrderCode = order.code || order.order_number || actualOrderId;
+  const deliveryAddressArea = order.address?.areaColony || order.delivery_address || 'Customer Address';
+  const deliveryNotifPayload = {
+    type: 'new_delivery',
+    title: 'New Delivery Task',
+    body: `Delivery assigned for order ${deliveryOrderCode} at ${deliveryAddressArea}.`,
+    orderId: deliveryOrderCode,
+    orderCode: deliveryOrderCode,
+    createdAt: now
+  };
 
   // Notifications (same multi-path update)
   if (targetAgentUid) {
-    addNotificationToUpdates(updates, targetAgentUid, {
-      type: 'new_delivery',
-      title: 'New Delivery Task',
-      body: `Delivery task assigned for order ${order.code || actualOrderId} to ${order.address?.areaColony || 'Customer Address'}.`,
-      orderId: actualOrderId,
-      createdAt: now
-    });
+    addNotificationToUpdates(updates, targetAgentUid, deliveryNotifPayload);
   }
+  await addRoleNotificationsToUpdates(updates, 'agent', deliveryNotifPayload);
+  await addRoleNotificationsToUpdates(updates, 'delivery', deliveryNotifPayload);
+  await addRoleNotificationsToUpdates(updates, 'driver', deliveryNotifPayload);
 
   if (order.customerId) {
     addNotificationToUpdates(updates, order.customerId, {

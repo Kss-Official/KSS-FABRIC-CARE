@@ -245,50 +245,43 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
       id: 'placed',
       title: 'Order placed',
       icon: ClipboardList,
-      targetStatus: 'Pending Pickup',
-      time: formatStepTimestamp(order?.created_at || order?.placedAt || order?.date, placedDayMonth, '9:12 AM')
+      targetStatus: 'Pending Pickup'
     },
     {
       id: 'picked',
       title: 'Picked up',
       icon: Truck,
-      targetStatus: 'Picked Up',
-      time: formatStepTimestamp(order?.pickup_completed_at, pickupDayMonth, '11:05 AM')
+      targetStatus: 'Picked Up'
     },
     {
       id: 'laundry',
       title: 'At laundry',
       icon: WashingMachine,
-      targetStatus: 'At Laundry',
-      time: formatStepTimestamp(order?.facility_received_at, pickupDayMonth, '1:30 PM')
+      targetStatus: 'At Laundry'
     },
     {
       id: 'processing',
       title: 'Processing',
       icon: Sparkles,
-      targetStatus: 'In Cleaning',
-      time: formatStepTimestamp(order?.processing_started_at, pickupDayMonth, '3:45 PM')
+      targetStatus: 'In Cleaning'
     },
     {
       id: 'ready',
       title: 'Ready',
       icon: Package,
-      targetStatus: 'Ready for Delivery',
-      time: formatStepTimestamp(order?.ready_at, deliveryDayMonth, '10:00 AM')
+      targetStatus: 'Ready for Delivery'
     },
     {
       id: 'delivery',
       title: 'Out for delivery',
       icon: Truck,
-      targetStatus: 'Out for Delivery',
-      time: formatStepTimestamp(order?.out_for_delivery_at, deliveryDayMonth, '1:15 PM')
+      targetStatus: 'Out for Delivery'
     },
     {
       id: 'delivered',
       title: 'Delivered',
       icon: Home,
-      targetStatus: 'Delivered',
-      time: formatStepTimestamp(order?.delivered_at, deliveryDayMonth, '3:00 PM')
+      targetStatus: 'Delivered'
     }
   ];
 
@@ -542,13 +535,6 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
                           <h4 className={`step-label-title ${isActive ? 'active-title' : isPending ? 'pending-title' : ''}`}>
                             {step.title}
                           </h4>
-                          <span className={`step-label-subtitle ${isCompleted ? 'time-sub' : isActive ? 'active-sub' : 'pending-sub'}`}>
-                            {isCompleted 
-                              ? step.time 
-                              : isActive 
-                                ? 'In progress' 
-                                : 'Pending'}
-                          </span>
                         </div>
                       </div>
 

@@ -122,7 +122,7 @@ export const DEMO_USERS = {
 };
 
 const tryDjangoAuth = async (email, password) => {
-  const endpoints = ['http://127.0.0.1:8001/api/auth/login/', 'http://127.0.0.1:8000/api/auth/login/'];
+  const endpoints = ['http://127.0.0.1:8000/api/auth/login/', 'http://127.0.0.1:8001/api/auth/login/'];
   for (const url of endpoints) {
     try {
       const controller = new AbortController();
@@ -321,7 +321,18 @@ export const AuthProvider = ({ children }) => {
             initials: getInitials(resolvedName),
             address: rtdbProfile.address || '',
             city: rtdbProfile.city || '',
-            pincode: rtdbProfile.pincode || ''
+            pincode: rtdbProfile.pincode || '',
+            dob: rtdbProfile.dob || '',
+            drivingLicenceNumber: rtdbProfile.drivingLicenceNumber || rtdbProfile.driving_licence_number || '',
+            driving_licence_number: rtdbProfile.driving_licence_number || rtdbProfile.drivingLicenceNumber || '',
+            aadhaarNumber: rtdbProfile.aadhaarNumber || rtdbProfile.aadhaar_number || '',
+            aadhaar_number: rtdbProfile.aadhaar_number || rtdbProfile.aadhaarNumber || '',
+            aadhaarDocumentUrl: rtdbProfile.aadhaarDocumentUrl || rtdbProfile.aadhaar_document_url || null,
+            aadhaar_document_url: rtdbProfile.aadhaar_document_url || rtdbProfile.aadhaarDocumentUrl || null,
+            panNumber: rtdbProfile.panNumber || rtdbProfile.pan_number || '',
+            pan_number: rtdbProfile.pan_number || rtdbProfile.panNumber || '',
+            panDocumentUrl: rtdbProfile.panDocumentUrl || rtdbProfile.pan_document_url || null,
+            pan_document_url: rtdbProfile.pan_document_url || rtdbProfile.panDocumentUrl || null
           };
 
           if (isMounted) {
@@ -852,7 +863,18 @@ export const AuthProvider = ({ children }) => {
           initials: getInitials(refreshedName),
           address: val.address !== undefined ? val.address : (currentUser?.address || ''),
           city: val.city !== undefined ? val.city : (currentUser?.city || ''),
-          pincode: val.pincode !== undefined ? val.pincode : (currentUser?.pincode || '')
+          pincode: val.pincode !== undefined ? val.pincode : (currentUser?.pincode || ''),
+          dob: val.dob !== undefined ? val.dob : (currentUser?.dob || ''),
+          drivingLicenceNumber: val.drivingLicenceNumber || val.driving_licence_number || currentUser?.drivingLicenceNumber || currentUser?.driving_licence_number || '',
+          driving_licence_number: val.driving_licence_number || val.drivingLicenceNumber || currentUser?.driving_licence_number || currentUser?.drivingLicenceNumber || '',
+          aadhaarNumber: val.aadhaarNumber || val.aadhaar_number || currentUser?.aadhaarNumber || currentUser?.aadhaar_number || '',
+          aadhaar_number: val.aadhaar_number || val.aadhaarNumber || currentUser?.aadhaar_number || currentUser?.aadhaarNumber || '',
+          aadhaarDocumentUrl: val.aadhaarDocumentUrl || val.aadhaar_document_url || currentUser?.aadhaarDocumentUrl || currentUser?.aadhaar_document_url || null,
+          aadhaar_document_url: val.aadhaar_document_url || val.aadhaarDocumentUrl || currentUser?.aadhaar_document_url || currentUser?.aadhaarDocumentUrl || null,
+          panNumber: val.panNumber || val.pan_number || currentUser?.panNumber || currentUser?.pan_number || '',
+          pan_number: val.pan_number || val.panNumber || currentUser?.pan_number || currentUser?.panNumber || '',
+          panDocumentUrl: val.panDocumentUrl || val.pan_document_url || currentUser?.panDocumentUrl || currentUser?.pan_document_url || null,
+          pan_document_url: val.pan_document_url || val.panDocumentUrl || currentUser?.pan_document_url || currentUser?.panDocumentUrl || null
         };
         setCurrentUser(updated);
         setUserProfile(updated);
