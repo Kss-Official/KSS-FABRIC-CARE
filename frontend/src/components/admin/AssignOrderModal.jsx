@@ -181,12 +181,31 @@ export const AssignOrderModal = () => {
           status: 'Assigned',
           assignedAt: Date.now()
         };
-        stored[currentOrder.id] = assignmentRecord;
-        if (assigningOrder?.id) stored[assigningOrder.id] = assignmentRecord;
-        if (assigningOrder?.rawId) stored[assigningOrder.rawId] = assignmentRecord;
+
+        const clean = (val) => String(val || '').replace(/^#/, '').trim().toUpperCase();
+        const keysToStore = [
+          currentOrder.id,
+          clean(currentOrder.id),
+          assigningOrder?.id,
+          clean(assigningOrder?.id),
+          assigningOrder?.rawId,
+          clean(assigningOrder?.rawId),
+          assigningOrder?.code,
+          clean(assigningOrder?.code),
+          assigningOrder?.order_number,
+          clean(assigningOrder?.order_number),
+          assigningOrder?.order_id,
+          clean(assigningOrder?.order_id)
+        ].filter(Boolean);
+
+        keysToStore.forEach(k => {
+          stored[k] = assignmentRecord;
+        });
+
         localStorage.setItem('fabricare_pickup_delivery_assignments', JSON.stringify(stored));
         window.dispatchEvent(new Event('storage'));
         window.dispatchEvent(new CustomEvent('fabricare_order_assigned', { detail: { orderId: currentOrder.id, ...assignmentRecord } }));
+        window.dispatchEvent(new CustomEvent('fabricare_pickup_delivery_updated', { detail: { orderId: currentOrder.id, ...assignmentRecord } }));
       } catch (e) {}
 
       setIsAssignOrderModalOpen(false);

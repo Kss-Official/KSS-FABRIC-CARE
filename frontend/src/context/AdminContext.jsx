@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useNotifications } from '../hooks/useNotifications';
+import { formatDisplayDate, parseFlexibleDate } from '../utils/dateFilterUtils';
 import {
   subscribeAdminOrders,
   subscribeAdminTasks,
@@ -352,21 +353,19 @@ export const mapAdminOrderRecord = (o) => {
         : ['Wash & Fold']));
 
   // Resolve and format clean pickup date & time slot
-  let cleanPickupDate = o.pickup?.date || o.pickup_date || o.date || '';
-  if (cleanPickupDate && typeof cleanPickupDate === 'string') {
-    const trimmed = cleanPickupDate.trim().replace(/^(?:Today|Tomorrow|[A-Za-z]+),\s*/i, '');
-    const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (isoMatch) {
-      const dt = new Date(parseInt(isoMatch[1], 10), parseInt(isoMatch[2], 10) - 1, parseInt(isoMatch[3], 10));
-      if (!isNaN(dt.getTime())) {
-        cleanPickupDate = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-      }
-    } else if (/^\d{1,2}\s+[A-Za-z]{3}$/.test(trimmed)) {
-      cleanPickupDate = `${trimmed} 2026`;
+  let rawPickupDate = o.pickup?.date || o.pickup_date || o.date || '';
+  let cleanPickupDate = '';
+  if (rawPickupDate) {
+    const parsed = parseFlexibleDate(rawPickupDate);
+    if (parsed) {
+      cleanPickupDate = formatDisplayDate(parsed);
+    } else {
+      cleanPickupDate = String(rawPickupDate);
     }
   }
-  if (!cleanPickupDate || cleanPickupDate === 'Today' || cleanPickupDate === 'Tomorrow') {
-    cleanPickupDate = '25 Oct 2026';
+  if (!cleanPickupDate) {
+    const fallbackParsed = parseFlexibleDate(o.createdAt || o.placedAt);
+    cleanPickupDate = fallbackParsed ? formatDisplayDate(fallbackParsed) : formatDisplayDate(new Date());
   }
 
   let cleanTimeSlot = o.pickup_time_slot || '';
@@ -784,16 +783,19 @@ export const AdminProvider = ({ children }) => {
     const task = tasks.find(t => t.orderId === targetOrderId || t.orderCode === orderId || t.orderId === order?.code);
     const taskId = task ? task.id : (taskType === 'delivery' ? order?.deliveryTaskId : order?.pickupTaskId);
 
-    if (taskType === 'delivery') {
-      await assignDeliveryAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone, options);
-    } else {
-      await assignPickupAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone, options);
-    }
-
-    // Optimistically update local orders so UI updates instantaneously
+    // Optimistically update local orders immediately so UI and cards update instantaneously in real time
     const newStatus = taskType === 'delivery' ? 'In Transit' : 'Pickup Scheduled';
+    const cleanId = String(orderId || '').replace(/^#/, '').trim().toUpperCase();
+
     setOrders(prev => (prev || []).map(o => {
-      if (o.id === orderId || o.rawId === targetOrderId || o.code === orderId || o.order_id === orderId || o.order_number === orderId) {
+      const match = 
+        o.id === orderId || o.rawId === targetOrderId || o.code === orderId || 
+        o.order_id === orderId || o.order_number === orderId ||
+        String(o.order_number || '').replace(/^#/, '').trim().toUpperCase() === cleanId ||
+        String(o.code || '').replace(/^#/, '').trim().toUpperCase() === cleanId ||
+        String(o.id || '').replace(/^#/, '').trim().toUpperCase() === cleanId;
+
+      if (match) {
         const pDate = options.pickupDate || o.pickup_date || o.pickupDate;
         const pSlot = options.pickupTimeSlot || o.pickup_time_slot;
         const pTime = pSlot ? `${pDate || ''}, ${pSlot}` : o.pickupTime;
@@ -802,6 +804,7 @@ export const AdminProvider = ({ children }) => {
           status: newStatus,
           assignedAgentName: driverName,
           assignedAgentPhone: driverPhone,
+          assigned_pickup_driver: driverName,
           driver: `${driverName} (${driverPhone})`,
           pickup_date: pDate || o.pickup_date,
           pickup_time_slot: pSlot || o.pickup_time_slot,
@@ -816,6 +819,21 @@ export const AdminProvider = ({ children }) => {
       }
       return o;
     }));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('fabricare_order_assigned', { detail: { orderId: targetOrderId, driverName, driverPhone, status: newStatus } }));
+      window.dispatchEvent(new CustomEvent('fabricare_pickup_delivery_updated', { detail: { orderId: targetOrderId } }));
+    }
+
+    try {
+      if (taskType === 'delivery') {
+        await assignDeliveryAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone, options);
+      } else {
+        await assignPickupAgent(targetOrderId, taskId, effectiveAgentId, currentUser, driverName, driverPhone, options);
+      }
+    } catch (netErr) {
+      console.warn('Background agent assignment network note:', netErr);
+    }
   };
 
   const updateOrderStatus = async (orderId, newStatus, reason = 'Admin updated order status') => {

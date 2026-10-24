@@ -13,12 +13,15 @@ import {
   SlidersHorizontal,
   Check
 } from 'lucide-react';
-import { filterMatchesDate, formatDisplayDate, getActiveDateRanges } from '../../utils/dateFilterUtils';
+import { filterMatchesDate, formatDisplayDate, getActiveDateRanges, parseFlexibleDate } from '../../utils/dateFilterUtils';
 import { formatOrderId } from '../../utils/helpers';
 
 // Dynamic real dates relative to today
 const _now = new Date();
 const _todayStr = formatDisplayDate(_now);
+const _tmDate = new Date(_now);
+_tmDate.setDate(_tmDate.getDate() + 1);
+const _tomorrowStr = formatDisplayDate(_tmDate);
 const _yDate = new Date(_now);
 _yDate.setDate(_yDate.getDate() - 1);
 const _yesterdayStr = formatDisplayDate(_yDate);
@@ -509,6 +512,11 @@ export const AdminPickupDeliveryPage = () => {
   const [selectedDateRange, setSelectedDateRange] = useState('all');
 
   const todayDateObj = useMemo(() => new Date(), []);
+  const tomorrowDateObj = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d;
+  }, []);
   const yesterdayDateObj = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
@@ -518,21 +526,33 @@ export const AdminPickupDeliveryPage = () => {
   const dateFilterOptions = useMemo(() => [
     { key: 'all', label: 'All Dates', pillLabel: 'All Dates', shortLabel: 'All Dates' },
     { key: 'today', label: `Today (${formatDisplayDate(todayDateObj)})`, pillLabel: `Today (${formatDisplayDate(todayDateObj)})`, shortLabel: 'Today' },
+    { key: 'tomorrow', label: `Tomorrow (${formatDisplayDate(tomorrowDateObj)})`, pillLabel: `Tomorrow (${formatDisplayDate(tomorrowDateObj)})`, shortLabel: 'Tomorrow' },
     { key: 'yesterday', label: `Yesterday (${formatDisplayDate(yesterdayDateObj)})`, pillLabel: `Yesterday (${formatDisplayDate(yesterdayDateObj)})`, shortLabel: 'Yesterday' },
     { key: 'last-week', label: 'Last Week', pillLabel: 'Last Week', shortLabel: 'Last Week' }
-  ], [todayDateObj, yesterdayDateObj]);
+  ], [todayDateObj, tomorrowDateObj, yesterdayDateObj]);
 
   const selectedPillLabel = useMemo(() => {
     const found = dateFilterOptions.find(o => o.key === selectedDateRange);
-    return found ? found.pillLabel : 'All Dates';
+    if (found) return found.shortLabel;
+    const parsed = parseFlexibleDate(selectedDateRange);
+    if (parsed) return formatDisplayDate(parsed);
+    return 'Select Date Range';
   }, [dateFilterOptions, selectedDateRange]);
 
   const [updateTick, setUpdateTick] = useState(0);
 
   useEffect(() => {
-    const handleStorage = () => setUpdateTick(t => t + 1);
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    const handleUpdate = () => setUpdateTick(t => t + 1);
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('fabricare_order_assigned', handleUpdate);
+    window.addEventListener('fabricare_order_updated', handleUpdate);
+    window.addEventListener('fabricare_pickup_delivery_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('fabricare_order_assigned', handleUpdate);
+      window.removeEventListener('fabricare_order_updated', handleUpdate);
+      window.removeEventListener('fabricare_pickup_delivery_updated', handleUpdate);
+    };
   }, []);
 
   // Close dropdowns on outside click
@@ -547,7 +567,7 @@ export const AdminPickupDeliveryPage = () => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // Synchronize orders with dynamic real-time updates from AdminContext (RTDB backend)
+  // Synchronize orders with dynamic real-time updates from AdminContext (RTDB backend) & local assignments
   const combinedOrders = useMemo(() => {
     let persistedMap = {};
     try {
@@ -558,13 +578,39 @@ export const AdminPickupDeliveryPage = () => {
     const sourceOrders = hasLiveOrders ? contextOrders : BASELINE_PICKUP_DELIVERY_ORDERS;
 
     return sourceOrders.map(o => {
-      if (!hasLiveOrders) {
-        return o;
-      }
-
+      const clean = (val) => String(val || '').replace(/^#/, '').trim().toUpperCase();
       const orderIdDisplay = formatOrderId(o.order_number || o.order_id || o.code || o.id);
-      let custName = o.customer_name || o.customer?.name || o.pickup_full_name || o.customerName || '';
-      let custPhone = o.customer_phone || o.customer?.phone || o.pickup_phone || o.customerPhone || '+91 98765 00000';
+      const cId = clean(o.id);
+      const cRaw = clean(o.rawId);
+      const cCode = clean(o.code);
+      const cNum = clean(o.order_number);
+      const cOrdId = clean(o.order_id);
+      const cDisp = clean(orderIdDisplay);
+
+      const persisted = 
+        persistedMap[o.id] || 
+        persistedMap[orderIdDisplay] || 
+        persistedMap[o.rawId] || 
+        persistedMap[o.code] ||
+        persistedMap[cId] ||
+        persistedMap[cRaw] ||
+        persistedMap[cCode] ||
+        persistedMap[cNum] ||
+        persistedMap[cOrdId] ||
+        persistedMap[cDisp];
+
+      const hasDriver = Boolean(
+        persisted ||
+        o.assignedAgentName ||
+        (o.driver && o.driver !== 'Not Assigned' && o.driver !== '—') ||
+        o.assigned_pickup_driver_detail ||
+        o.assigned_pickup_driver ||
+        o.assigned_delivery_driver ||
+        o.driver?.assigned
+      );
+
+      let custName = o.customer_name || o.customer?.name || o.pickup_full_name || o.customerName || (o.customer && typeof o.customer === 'object' ? o.customer.name : '') || '';
+      let custPhone = o.customer_phone || o.customer?.phone || o.pickup_phone || o.customerPhone || (o.customer && typeof o.customer === 'object' ? o.customer.phone : '') || '+91 98765 00000';
 
       const userMatch = o.customerId ? (allUsers || []).find(u => u.uid === o.customerId || u.id === o.customerId) : null;
       if (userMatch && userMatch.name) {
@@ -578,18 +624,8 @@ export const AdminPickupDeliveryPage = () => {
       const custAddress = o.pickup_address || o.customer?.address || (typeof o.address === 'object' ? `${o.address?.areaColony || ''}, ${o.address?.city || ''}` : o.address) || 'Bengaluru';
       const custInitials = String(custName || 'CU').split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'CU';
 
-      const avatarColors = getCustomerAvatarColor(custName);
+      const avatarColors = (o.customer && o.customer.avatarBg) ? { bg: o.customer.avatarBg, color: o.customer.avatarColor } : getCustomerAvatarColor(custName);
       const type = getPickupDeliveryType(o);
-
-      const persisted = persistedMap[o.id] || persistedMap[orderIdDisplay] || persistedMap[o.rawId] || persistedMap[o.code];
-      const hasDriver = Boolean(
-        persisted ||
-        o.assignedAgentName ||
-        (o.driver && o.driver !== 'Not Assigned' && o.driver !== '—') ||
-        o.assigned_pickup_driver_detail ||
-        o.assigned_pickup_driver ||
-        o.assigned_delivery_driver
-      );
 
       let driverName = 'Not Assigned';
       let driverPhone = '';
@@ -603,7 +639,11 @@ export const AdminPickupDeliveryPage = () => {
         driverName = o.assignedAgentName;
         driverPhone = o.assignedAgentPhone || '';
         driverInitials = String(driverName).split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
-      } else if (o.driver && o.driver !== 'Not Assigned' && o.driver !== '—') {
+      } else if (o.driver && typeof o.driver === 'object' && o.driver.assigned) {
+        driverName = o.driver.name || 'Assigned Driver';
+        driverPhone = o.driver.phone || '';
+        driverInitials = o.driver.initials || 'DR';
+      } else if (o.driver && typeof o.driver === 'string' && o.driver !== 'Not Assigned' && o.driver !== '—') {
         const match = String(o.driver).match(/^(.*?)\s*\((.*?)\)$/);
         driverName = match ? match[1].trim() : o.driver;
         driverPhone = match ? match[2].trim() : '';
@@ -612,28 +652,36 @@ export const AdminPickupDeliveryPage = () => {
         driverName = o.assigned_pickup_driver_detail.full_name;
         driverPhone = o.assigned_pickup_driver_detail.phone || '';
         driverInitials = String(driverName).split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
+      } else if (o.assigned_pickup_driver) {
+        driverName = typeof o.assigned_pickup_driver === 'string' ? o.assigned_pickup_driver : 'Assigned Driver';
+        driverInitials = String(driverName).split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'DR';
       }
 
-      const status = getPickupDeliveryStatus(o, hasDriver);
+      let status = persisted?.status || getPickupDeliveryStatus(o, hasDriver);
+      if (hasDriver && status.toLowerCase() === 'pending') {
+        status = 'Assigned';
+      }
 
-      let rawDate = o.pickup?.date || o.pickup_date || o.date || o.createdAt || o.placedAt;
-      let dateDisplay = 'Today';
-      if (rawDate) {
-        try {
-          const dObj = new Date(rawDate);
-          if (!isNaN(dObj.getTime())) {
-            dateDisplay = formatDisplayDate(dObj);
-          } else {
-            dateDisplay = String(rawDate);
-          }
-        } catch (_) {
+      let rawDate = persisted?.pickupDate || o.pickup?.date || o.pickup_date || o.date || o.createdAt || o.placedAt;
+      let dateDisplay = (persisted && persisted.pickupDate) ? persisted.pickupDate : (o.date || '');
+      if (rawDate && (!persisted || !persisted.pickupDate)) {
+        const parsedD = parseFlexibleDate(rawDate);
+        if (parsedD) {
+          dateDisplay = formatDisplayDate(parsedD);
+        } else {
           dateDisplay = String(rawDate);
         }
       }
+      if (!dateDisplay) {
+        dateDisplay = formatDisplayDate(new Date());
+      }
 
-      const timeSlot = o.pickup?.from 
+      let timeSlot = o.pickup?.from 
         ? `${o.pickup.from} – ${o.pickup.to || ''}` 
         : (o.pickup_time_slot || o.pickupTime || '09:00 AM – 11:00 AM');
+      if (persisted?.pickupTimeSlot) {
+        timeSlot = persisted.pickupTimeSlot;
+      }
       const timeParts = timeSlot.split(/[–—-]| to /).map(s => s.trim());
       const timestamp = o.updatedAt || o.placedAt || o.createdAt || 0;
 
@@ -643,6 +691,8 @@ export const AdminPickupDeliveryPage = () => {
         rawOrder: o,
         date: dateDisplay,
         rawDate: rawDate,
+        pickup_date: persisted?.pickupDate || o.pickup?.date || o.pickup_date || dateDisplay,
+        delivery_date: o.delivery?.date || o.delivery_date || o.rescheduled_date || null,
         timeStart: timeParts[0] || '09:00 AM',
         timeEnd: timeParts[1] || '11:00 AM',
         timestamp,
@@ -666,14 +716,61 @@ export const AdminPickupDeliveryPage = () => {
     });
   }, [contextOrders, updateTick, allUsers]);
 
-  // Exact real-time metrics calculated from live database orders
+  // 1. Scoped orders matching active Date Range and Search term
+  const scopedOrders = useMemo(() => {
+    return combinedOrders.filter(ord => {
+      // Date Range filter
+      if (!filterMatchesDate(ord, selectedDateRange, ['pickup_date', 'delivery_date', 'date', 'rawDate', 'timestamp', 'pickupTime', 'pickup_time', 'createdAt', 'placedAt'])) {
+        return false;
+      }
+
+      // Search term
+      if (searchTerm.trim()) {
+        const query = searchTerm.toLowerCase().trim();
+        const matchId = ord.id.toLowerCase().includes(query);
+        const matchName = ord.customer.name.toLowerCase().includes(query);
+        const matchPhone = ord.customer.phone.includes(query);
+        const matchAddress = ord.customer.address.toLowerCase().includes(query);
+        const matchDriver = ord.driver.name.toLowerCase().includes(query);
+        if (!matchId && !matchName && !matchPhone && !matchAddress && !matchDriver) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [combinedOrders, selectedDateRange, searchTerm]);
+
+  // 2. Orders matching Date Range, Search term, and Status filter
+  const statusFilteredOrders = useMemo(() => {
+    if (statusFilter === 'all') return scopedOrders;
+    return scopedOrders.filter(o => o.status.toLowerCase() === statusFilter.toLowerCase());
+  }, [scopedOrders, statusFilter]);
+
+  // 3. Tab counts (displayed on All, Pickups, Deliveries tabs) synchronized with active filters
+  const totalAllCount = statusFilteredOrders.length;
+  const totalPickupsCount = statusFilteredOrders.filter(o => o.type === 'Pickup').length;
+  const totalDeliveriesCount = statusFilteredOrders.filter(o => o.type === 'Delivery').length;
+
+  // 4. Final filtered list displayed in the table (applies activeTab filter)
+  const filteredList = useMemo(() => {
+    return statusFilteredOrders.filter(ord => {
+      if (activeTab === 'pickups' && ord.type !== 'Pickup') return false;
+      if (activeTab === 'deliveries' && ord.type !== 'Delivery') return false;
+      return true;
+    });
+  }, [statusFilteredOrders, activeTab]);
+
+  // 5. Exact real-time metrics calculated dynamically from the active filtered dataset
   const metrics = useMemo(() => {
     let pickups = 0;
     let deliveries = 0;
     let completed = 0;
     let pending = 0;
 
-    combinedOrders.forEach(o => {
+    const targetSet = activeTab === 'all' ? statusFilteredOrders : filteredList;
+
+    targetSet.forEach(o => {
       const s = String(o.status || '').toLowerCase();
       const t = String(o.type || '').toLowerCase();
 
@@ -694,47 +791,23 @@ export const AdminPickupDeliveryPage = () => {
       }
     });
 
+    // Provide context for counter-part when viewing a specific tab
+    if (activeTab === 'pickups') {
+      deliveries = statusFilteredOrders.filter(o => {
+        const s = String(o.status || '').toLowerCase();
+        const t = String(o.type || '').toLowerCase();
+        return t === 'delivery' && s !== 'completed' && s !== 'delivered' && s !== 'cancelled';
+      }).length;
+    } else if (activeTab === 'deliveries') {
+      pickups = statusFilteredOrders.filter(o => {
+        const s = String(o.status || '').toLowerCase();
+        const t = String(o.type || '').toLowerCase();
+        return t === 'pickup' && s !== 'completed' && s !== 'delivered' && s !== 'cancelled';
+      }).length;
+    }
+
     return { pickups, deliveries, completed, pending };
-  }, [combinedOrders]);
-
-  // Tab counts
-  const totalAllCount = combinedOrders.length;
-  const totalPickupsCount = combinedOrders.filter(o => o.type === 'Pickup').length;
-  const totalDeliveriesCount = combinedOrders.filter(o => o.type === 'Delivery').length;
-
-  // Filter logic
-  const filteredList = useMemo(() => {
-    return combinedOrders.filter(ord => {
-      // Tab filter
-      if (activeTab === 'pickups' && ord.type !== 'Pickup') return false;
-      if (activeTab === 'deliveries' && ord.type !== 'Delivery') return false;
-
-      // Dropdown status filter
-      if (statusFilter !== 'all' && ord.status.toLowerCase() !== statusFilter.toLowerCase()) {
-        return false;
-      }
-
-      // Date Range filter
-      if (!filterMatchesDate(ord, selectedDateRange, ['date', 'pickupTime', 'pickup_time', 'createdAt', 'placedAt'])) {
-        return false;
-      }
-
-      // Search term
-      if (searchTerm.trim()) {
-        const query = searchTerm.toLowerCase().trim();
-        const matchId = ord.id.toLowerCase().includes(query);
-        const matchName = ord.customer.name.toLowerCase().includes(query);
-        const matchPhone = ord.customer.phone.includes(query);
-        const matchAddress = ord.customer.address.toLowerCase().includes(query);
-        const matchDriver = ord.driver.name.toLowerCase().includes(query);
-        if (!matchId && !matchName && !matchPhone && !matchAddress && !matchDriver) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [combinedOrders, activeTab, statusFilter, selectedDateRange, searchTerm]);
+  }, [statusFilteredOrders, filteredList, activeTab]);
 
   // Pagination calculation
   const totalPages = Math.max(1, Math.ceil(filteredList.length / pageSize));
@@ -908,7 +981,15 @@ export const AdminPickupDeliveryPage = () => {
       {/* 4 Pastel Metric Summary Cards */}
       <div className="pickup-metrics-grid">
         {/* Card 1: Scheduled Pickups */}
-        <div className="pickup-metric-card card-blue">
+        <div 
+          className={`pickup-metric-card card-blue ${activeTab === 'pickups' ? 'card-active-filter' : ''}`}
+          onClick={() => {
+            setActiveTab(prev => prev === 'pickups' ? 'all' : 'pickups');
+            setCurrentPage(1);
+          }}
+          title="Click to filter by Pickups"
+          style={{ cursor: 'pointer' }}
+        >
           <div className="metric-icon-badge badge-blue">
             <Truck size={24} color="#0284C7" strokeWidth={1.8} />
           </div>
@@ -919,7 +1000,15 @@ export const AdminPickupDeliveryPage = () => {
         </div>
 
         {/* Card 2: Scheduled Deliveries */}
-        <div className="pickup-metric-card card-peach">
+        <div 
+          className={`pickup-metric-card card-peach ${activeTab === 'deliveries' ? 'card-active-filter' : ''}`}
+          onClick={() => {
+            setActiveTab(prev => prev === 'deliveries' ? 'all' : 'deliveries');
+            setCurrentPage(1);
+          }}
+          title="Click to filter by Deliveries"
+          style={{ cursor: 'pointer' }}
+        >
           <div className="metric-icon-badge badge-peach">
             <Truck size={24} color="#EA580C" strokeWidth={1.8} />
           </div>
@@ -930,7 +1019,15 @@ export const AdminPickupDeliveryPage = () => {
         </div>
 
         {/* Card 3: Total Completed */}
-        <div className="pickup-metric-card card-green">
+        <div 
+          className={`pickup-metric-card card-green ${statusFilter === 'completed' ? 'card-active-filter' : ''}`}
+          onClick={() => {
+            setStatusFilter(prev => prev === 'completed' ? 'all' : 'completed');
+            setCurrentPage(1);
+          }}
+          title="Click to filter by Completed"
+          style={{ cursor: 'pointer' }}
+        >
           <div className="metric-icon-badge badge-green">
             <Check size={24} color="#16A34A" strokeWidth={2.6} />
           </div>
@@ -941,7 +1038,15 @@ export const AdminPickupDeliveryPage = () => {
         </div>
 
         {/* Card 4: Pending */}
-        <div className="pickup-metric-card card-purple">
+        <div 
+          className={`pickup-metric-card card-purple ${statusFilter === 'pending' ? 'card-active-filter' : ''}`}
+          onClick={() => {
+            setStatusFilter(prev => prev === 'pending' ? 'all' : 'pending');
+            setCurrentPage(1);
+          }}
+          title="Click to filter by Pending"
+          style={{ cursor: 'pointer' }}
+        >
           <div className="metric-icon-badge badge-purple">
             <Clock size={24} color="#9333EA" strokeWidth={1.8} />
           </div>
@@ -1053,11 +1158,7 @@ export const AdminPickupDeliveryPage = () => {
                 type="button"
               >
                 <Calendar size={15} className="toolbar-pill-icon" />
-                <span>
-                  {selectedDateRange === 'all'
-                    ? 'Select Date Range'
-                    : (dateFilterOptions.find(o => o.key === selectedDateRange)?.shortLabel || 'Select Date Range')}
-                </span>
+                <span>{selectedPillLabel}</span>
                 <ChevronDown size={14} className="toolbar-pill-chevron" />
               </button>
 
@@ -1077,6 +1178,32 @@ export const AdminPickupDeliveryPage = () => {
                       {r.label}
                     </button>
                   ))}
+                  <div className="popover-custom-date" style={{ padding: '8px 12px', borderTop: '1px solid #E2E8F0', marginTop: '4px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748B', marginBottom: '4px' }}>
+                      Specific Date
+                    </label>
+                    <input 
+                      type="date"
+                      value={typeof selectedDateRange === 'string' && selectedDateRange.match(/^\d{4}-\d{2}-\d{2}$/) ? selectedDateRange : ''}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setSelectedDateRange(e.target.value);
+                          setCurrentPage(1);
+                          setIsDateRangeDropdownOpen(false);
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        fontSize: '12px',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: '6px',
+                        color: '#0F172A',
+                        outline: 'none',
+                        background: '#FFFFFF'
+                      }}
+                    />
+                  </div>
                   {selectedDateRange !== 'all' && (
                     <button 
                       className="popover-reset-btn"
@@ -1452,6 +1579,12 @@ export const AdminPickupDeliveryPage = () => {
         .pickup-metric-card:hover {
           transform: translateY(-2px);
           box-shadow: 0 6px 14px -3px rgba(0, 0, 0, 0.05);
+        }
+
+        .pickup-metric-card.card-active-filter {
+          outline: 2px solid #0D7A75;
+          outline-offset: -1px;
+          box-shadow: 0 4px 14px rgba(13, 122, 117, 0.2);
         }
 
         /* Card background tints */

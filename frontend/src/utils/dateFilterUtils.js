@@ -1,6 +1,6 @@
 /**
  * Date Filter Utilities for Fabricare Laundrix
- * Provides dynamic calculations and matching for real date ranges (Today, Yesterday, Last Week, etc.)
+ * Provides dynamic calculations and matching for real date ranges (Today, Tomorrow, Yesterday, Last Week, etc.)
  */
 
 export const getStartOfDay = (d = new Date()) => {
@@ -15,9 +15,84 @@ export const getEndOfDay = (d = new Date()) => {
   return date;
 };
 
+/**
+ * Robust date parser supporting ISO strings (YYYY-MM-DD), RFC strings,
+ * formatted dates (24 Oct 2026, 24-Oct-2026), relative keywords (Today, Tomorrow, Yesterday),
+ * and numeric timestamps.
+ * Crucially parses YYYY-MM-DD in LOCAL timezone to prevent UTC timezone date-shifting bugs.
+ */
+export const parseFlexibleDate = (val) => {
+  if (val == null || val === '') return null;
+
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? null : new Date(val.getTime());
+  }
+
+  if (typeof val === 'number') {
+    if (isNaN(val)) return null;
+    const d = new Date(val > 1e11 ? val : val * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  if (typeof val === 'string') {
+    const s = val.trim();
+    if (!s) return null;
+
+    const lower = s.toLowerCase();
+    if (lower === 'today') {
+      return getStartOfDay(new Date());
+    }
+    if (lower === 'tomorrow') {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      return getStartOfDay(d);
+    }
+    if (lower === 'yesterday') {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return getStartOfDay(d);
+    }
+
+    // 1. ISO format: YYYY-MM-DD (Parse strictly in local midnight to avoid UTC-offset shifts)
+    const isoDateMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+    if (isoDateMatch) {
+      const year = parseInt(isoDateMatch[1], 10);
+      const month = parseInt(isoDateMatch[2], 10) - 1;
+      const day = parseInt(isoDateMatch[3], 10);
+      const hour = isoDateMatch[4] ? parseInt(isoDateMatch[4], 10) : 0;
+      const min = isoDateMatch[5] ? parseInt(isoDateMatch[5], 10) : 0;
+      const sec = isoDateMatch[6] ? parseInt(isoDateMatch[6], 10) : 0;
+      const d = new Date(year, month, day, hour, min, sec);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    // 2. Day-Month-Year (e.g., "24 Oct 2026", "24-Oct-2026", "24 October 2026", "Saturday, 24 Oct 2026")
+    const months = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+    const dmyMatch = s.match(/(?:^|[A-Za-z]+,\s*)(\d{1,2})[\s-]+([A-Za-z]{3,9})(?:[\s-]+(\d{4}))?/i);
+    if (dmyMatch) {
+      const day = parseInt(dmyMatch[1], 10);
+      const monStr = dmyMatch[2].substring(0, 3).toLowerCase();
+      if (months[monStr] !== undefined) {
+        const month = months[monStr];
+        const year = dmyMatch[3] ? parseInt(dmyMatch[3], 10) : new Date().getFullYear();
+        const d = new Date(year, month, day, 0, 0, 0, 0);
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+
+    // 3. Fallback direct parse (RFC, standard locale string)
+    const direct = new Date(s);
+    if (!isNaN(direct.getTime()) && direct.getFullYear() > 2000) {
+      return direct;
+    }
+  }
+
+  return null;
+};
+
 export const formatDisplayDate = (d = new Date(), options = {}) => {
-  const date = new Date(d);
-  if (isNaN(date.getTime())) return '';
+  const date = d instanceof Date ? d : parseFlexibleDate(d);
+  if (!date || isNaN(date.getTime())) return '';
   const { weekday = false } = options;
   if (weekday) {
     return date.toLocaleDateString('en-GB', {
@@ -42,10 +117,22 @@ export const getActiveDateRanges = (ref = new Date()) => {
   const todayStart = getStartOfDay(now);
   const todayEnd = getEndOfDay(now);
 
+  const tomorrowRef = new Date(now);
+  tomorrowRef.setDate(tomorrowRef.getDate() + 1);
+  const tomorrowStart = getStartOfDay(tomorrowRef);
+  const tomorrowEnd = getEndOfDay(tomorrowRef);
+
   const yesterdayRef = new Date(now);
   yesterdayRef.setDate(yesterdayRef.getDate() - 1);
   const yesterdayStart = getStartOfDay(yesterdayRef);
   const yesterdayEnd = getEndOfDay(yesterdayRef);
+
+  const thisWeekStart = new Date(now);
+  thisWeekStart.setDate(thisWeekStart.getDate() - thisWeekStart.getDay());
+  thisWeekStart.setHours(0, 0, 0, 0);
+  const thisWeekEnd = new Date(thisWeekStart);
+  thisWeekEnd.setDate(thisWeekEnd.getDate() + 6);
+  thisWeekEnd.setHours(23, 59, 59, 999);
 
   const lastWeekStart = new Date(now);
   lastWeekStart.setDate(lastWeekStart.getDate() - 7);
@@ -57,63 +144,102 @@ export const getActiveDateRanges = (ref = new Date()) => {
 
   return {
     today: { start: todayStart, end: todayEnd },
+    tomorrow: { start: tomorrowStart, end: tomorrowEnd },
     yesterday: { start: yesterdayStart, end: yesterdayEnd },
+    thisWeek: { start: thisWeekStart, end: thisWeekEnd },
     lastWeek: { start: lastWeekStart, end: todayEnd },
     last30Days: { start: last30DaysStart, end: todayEnd }
   };
 };
 
 /**
- * Parse date from an entity by checking various standard date properties
+ * Parse date from an entity by checking pickup/delivery dates first, then fallback to timestamps
  */
 export const extractEntityDate = (entity, customFields = []) => {
   if (!entity) return null;
 
+  // Primary candidate fields in order of scheduling priority
   const candidateFields = [
     ...customFields,
+    'pickup_date',
+    'pickupDate',
+    'delivery_date',
+    'deliveryDate',
+    'rescheduled_date',
+    'formatted_reschedule_date',
+    'scheduled_date',
+    'report_date',
+    'rawDate',
     'date',
+    'pickupTime',
+    'pickup_time',
+    'deliveryTime',
+    'delivery_time'
+  ];
+
+  // 1. Direct fields on entity
+  for (const field of candidateFields) {
+    const val = entity[field];
+    if (val != null && val !== '') {
+      const parsed = parseFlexibleDate(val);
+      if (parsed) return parsed;
+    }
+  }
+
+  // 2. Nested objects on entity (e.g. entity.pickup?.date or entity.delivery?.date)
+  if (entity.pickup && typeof entity.pickup === 'object') {
+    if (entity.pickup.date) {
+      const p = parseFlexibleDate(entity.pickup.date);
+      if (p) return p;
+    }
+  }
+  if (entity.delivery && typeof entity.delivery === 'object') {
+    if (entity.delivery.date) {
+      const p = parseFlexibleDate(entity.delivery.date);
+      if (p) return p;
+    }
+  }
+
+  // 3. Check inside rawOrder if available
+  if (entity.rawOrder && typeof entity.rawOrder === 'object') {
+    const ro = entity.rawOrder;
+    for (const field of candidateFields) {
+      const val = ro[field];
+      if (val != null && val !== '') {
+        const parsed = parseFlexibleDate(val);
+        if (parsed) return parsed;
+      }
+    }
+    if (ro.pickup && typeof ro.pickup === 'object' && ro.pickup.date) {
+      const p = parseFlexibleDate(ro.pickup.date);
+      if (p) return p;
+    }
+    if (ro.delivery && typeof ro.delivery === 'object' && ro.delivery.date) {
+      const p = parseFlexibleDate(ro.delivery.date);
+      if (p) return p;
+    }
+  }
+
+  // 4. Fallback to order placement / creation timestamps if scheduling date was absent
+  const timestampFields = [
     'createdAt',
     'created_at',
     'placedAt',
     'placed_at',
+    'timestamp',
     'joinedAt',
     'joined_at',
     'joinDate',
     'join_date',
-    'report_date',
-    'pickupTime',
-    'pickup_time',
-    'deliveryTime',
-    'delivery_time',
-    'timestamp',
     'completedAt',
     'deliveredAt',
     'updatedAt'
   ];
-
-  for (const field of candidateFields) {
-    const val = entity[field];
-    if (val == null || val === '') continue;
-
-    // Direct timestamp number
-    if (typeof val === 'number') {
-      const d = new Date(val);
-      if (!isNaN(d.getTime())) return d;
-    }
-
-    if (typeof val === 'string') {
-      // 1. Direct parse (ISO or RFC)
-      const parsedDirect = new Date(val);
-      if (!isNaN(parsedDirect.getTime()) && parsedDirect.getFullYear() > 2000) {
-        return parsedDirect;
-      }
-
-      // 2. Extract substrings like "23 Sep 2026" or "19 Oct 2026"
-      const match = val.match(/(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})/);
-      if (match) {
-        const d = new Date(match[1]);
-        if (!isNaN(d.getTime())) return d;
-      }
+  for (const field of timestampFields) {
+    const val = entity[field] || (entity.rawOrder && entity.rawOrder[field]);
+    if (val != null && val !== '') {
+      const parsed = parseFlexibleDate(val);
+      if (parsed) return parsed;
     }
   }
 
@@ -125,10 +251,13 @@ export const extractEntityDate = (entity, customFields = []) => {
  * Supported rangeKey values:
  * - 'all' / 'ALL' / 'all-time'
  * - 'today' / 'TODAY'
+ * - 'tomorrow' / 'TOMORROW'
  * - 'yesterday' / 'YESTERDAY'
+ * - 'thisweek' / 'THIS_WEEK'
  * - 'last-week' / 'LAST_WEEK' / '7days' / '7DAYS'
  * - 'last-30' / 'this-month'
- * - Or a formatted date string matching the entity's date
+ * - Specific formatted date string like "24 Oct 2026", "2026-10-24"
+ * - Object with { start, end }
  */
 export const filterMatchesDate = (entity, rangeKey, customFields = []) => {
   if (!rangeKey || rangeKey === 'all' || rangeKey === 'ALL' || rangeKey === 'all-time') {
@@ -140,17 +269,33 @@ export const filterMatchesDate = (entity, rangeKey, customFields = []) => {
 
   const ranges = getActiveDateRanges();
   const time = entityDate.getTime();
+
+  // If rangeKey is an object with start and end
+  if (typeof rangeKey === 'object' && rangeKey !== null && (rangeKey.start || rangeKey.end)) {
+    const sStart = rangeKey.start ? getStartOfDay(parseFlexibleDate(rangeKey.start)).getTime() : 0;
+    const sEnd = rangeKey.end ? getEndOfDay(parseFlexibleDate(rangeKey.end)).getTime() : Infinity;
+    return time >= sStart && time <= sEnd;
+  }
+
   const normKey = String(rangeKey).toLowerCase().replace(/[\s_-]+/g, '');
 
   if (normKey === 'today') {
     return time >= ranges.today.start.getTime() && time <= ranges.today.end.getTime();
   }
 
+  if (normKey === 'tomorrow') {
+    return time >= ranges.tomorrow.start.getTime() && time <= ranges.tomorrow.end.getTime();
+  }
+
   if (normKey === 'yesterday') {
     return time >= ranges.yesterday.start.getTime() && time <= ranges.yesterday.end.getTime();
   }
 
-  if (normKey === 'lastweek' || normKey === '7days' || normKey === 'thisweek') {
+  if (normKey === 'thisweek') {
+    return time >= ranges.thisWeek.start.getTime() && time <= ranges.thisWeek.end.getTime();
+  }
+
+  if (normKey === 'lastweek' || normKey === '7days' || normKey === 'last7days') {
     return time >= ranges.lastWeek.start.getTime() && time <= ranges.lastWeek.end.getTime();
   }
 
@@ -158,9 +303,9 @@ export const filterMatchesDate = (entity, rangeKey, customFields = []) => {
     return time >= ranges.last30Days.start.getTime() && time <= ranges.last30Days.end.getTime();
   }
 
-  // Exact date match (e.g., specific string like "Tuesday, 23 Sep 2026" or "23 Sep 2026")
-  const specificDate = new Date(rangeKey);
-  if (!isNaN(specificDate.getTime())) {
+  // Exact date match (e.g., "2026-10-24", "24 Oct 2026", "Tuesday, 23 Sep 2026")
+  const specificDate = parseFlexibleDate(rangeKey);
+  if (specificDate) {
     const sStart = getStartOfDay(specificDate).getTime();
     const sEnd = getEndOfDay(specificDate).getTime();
     return time >= sStart && time <= sEnd;
