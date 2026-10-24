@@ -1574,7 +1574,7 @@ def customer_catalog_view(request):
             "category_id": str(s.category.id) if s.category else None,
             "price": float(s.price),
             "price_paise": int(float(s.price) * 100),
-            "turnaround_time": s.turnaround_time or '1-2 days'
+            "turnaround_time": s.turnaround_time or '2–3 days'
         })
 
     return Response({

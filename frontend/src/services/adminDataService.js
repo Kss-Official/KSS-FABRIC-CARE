@@ -628,7 +628,7 @@ export const generateAdminServicesList = () => {
     const nameLower = (item.name || '').toLowerCase();
     const itemId = item.id;
 
-    if (item.subcategory === 'household') {
+    if (item.subcategory === 'household' || itemId === 'kids-blanket' || nameLower.includes('blanket') || nameLower.includes('bedsheet')) {
       category = 'Household';
     } else if (
       itemId === 'men-suit-2pc' || 
@@ -653,10 +653,8 @@ export const generateAdminServicesList = () => {
     // Base price matching Customer Portal (Wash & Fold rate or fallback)
     const basePrice = item.prices?.['wash-fold'] || item.prices?.['wash-iron'] || 50;
 
-    // Turnaround time: 1–2 days for everyday, 2–3 days for delicate/household
-    const turnaround = (item.subcategory === 'household' || category === 'Dry Cleaning')
-      ? '2–3 days'
-      : '1–2 days';
+    // Turnaround time: 2–3 days for normal services (at least two days advance rule), 24 hours for Express
+    const turnaround = '2–3 days';
 
     // Type: Premium for sets or dry cleaning or >= 100, Standard otherwise
     const isPremium = item.unit === 'set' || basePrice >= 100 || category === 'Dry Cleaning';
@@ -768,7 +766,7 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
         subcategory: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
         subcategoryId: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
         subcatName: item.subcatName || (item.subcategory ? item.subcategory.charAt(0).toUpperCase() + item.subcategory.slice(1) : (cat === 'Household' ? 'Household' : 'Men')),
-        turnaround: item.turnaround || item.turnaround_time || '1–2 days',
+        turnaround: item.turnaround && !String(item.turnaround).includes('1') ? item.turnaround : '2–3 days',
         type: item.type || (Number(item.price) > 200 ? 'Premium' : 'Standard'),
         services: applicableServices,
         applicableServices,
@@ -844,7 +842,7 @@ export const addAdminService = async (serviceData) => {
     description: serviceData.description || '',
     category: serviceData.category || 'Wash & Fold',
     price: Number(serviceData.price) || 100,
-    turnaround: serviceData.turnaround || '1–2 days',
+    turnaround: serviceData.turnaround || '2–3 days',
     status: (serviceData.status === true || serviceData.status === 'Active') ? 'Active' : 'Inactive',
     icon: serviceData.icon || 'Shirt',
     type: serviceData.type || (Number(serviceData.price) > 200 ? 'Premium' : (String(serviceData.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard')),
@@ -1008,7 +1006,7 @@ export const fetchAdminServicesOnce = async () => {
       subcategory: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
       subcategoryId: item.subcategory || (cat === 'Household' ? 'household' : 'men'),
       subcatName: item.subcatName || (item.subcategory ? item.subcategory.charAt(0).toUpperCase() + item.subcategory.slice(1) : (cat === 'Household' ? 'Household' : 'Men')),
-      turnaround: item.turnaround || item.turnaround_time || '1–2 days',
+      turnaround: item.turnaround && !String(item.turnaround).includes('1') ? item.turnaround : '2–3 days',
       type: item.type || (Number(item.price) > 200 ? 'Premium' : 'Standard'),
       services: applicableServices,
       applicableServices,

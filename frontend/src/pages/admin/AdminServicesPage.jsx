@@ -79,11 +79,15 @@ const CurtainWindowIcon = () => (
   </svg>
 );
 
-// Turnaround helper to guarantee clean "1–2 days" format
+// Turnaround helper to guarantee clean "2–3 days" or "24 hours" format
 const formatTurnaround = (val) => {
-  if (!val) return '1–2 days';
-  return String(val)
-    .replace(/\?{1,2}|--|—/g, '–')
+  if (!val) return '2–3 days';
+  const str = String(val).trim();
+  if (str.includes('1') && (str.toLowerCase().includes('day'))) {
+    return '2–3 days';
+  }
+  return str
+    .replace(/\s*-\s*|\?{1,2}|--|—/g, '–')
     .replace(/days?/i, 'days')
     .trim();
 };
@@ -162,7 +166,7 @@ export const AdminServicesPage = () => {
     name: '',
     category: 'Wash & Fold',
     price: '',
-    turnaround: '1–2 days',
+    turnaround: '2–3 days',
     status: 'Active',
     description: '',
     image: null
@@ -235,7 +239,7 @@ export const AdminServicesPage = () => {
       return {
         category: 'Wash & Iron',
         price,
-        turnaround: service.subcategory === 'household' ? '2–3 days' : '1–2 days',
+        turnaround: '2–3 days',
         isExpress: false
       };
     }
@@ -255,7 +259,7 @@ export const AdminServicesPage = () => {
       return {
         category: 'Steam Iron',
         price,
-        turnaround: '1–2 days',
+        turnaround: '2–3 days',
         isExpress: false
       };
     }
@@ -265,7 +269,7 @@ export const AdminServicesPage = () => {
       return {
         category: 'Wash & Fold',
         price,
-        turnaround: service.subcategory === 'household' ? '2–3 days' : '1–2 days',
+        turnaround: '2–3 days',
         isExpress: false
       };
     }
