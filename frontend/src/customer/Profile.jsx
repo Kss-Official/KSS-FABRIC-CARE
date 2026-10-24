@@ -41,6 +41,20 @@ export const Profile = () => {
   const [savingProfile, setSavingProfile] = useState(false);
   const editProfileModalRef = useRef(null);
 
+  const fetchAddresses = async () => {
+    setLoadingAddresses(true);
+    try {
+      const data = await addressApi.getAddresses();
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      setAddresses(list);
+    } catch (err) {
+      console.warn('Failed to load addresses:', err);
+      setAddresses([]);
+    } finally {
+      setLoadingAddresses(false);
+    }
+  };
+
   useEffect(() => {
     fetchAddresses();
     if (typeof refreshProfile === 'function') {
@@ -124,10 +138,10 @@ export const Profile = () => {
   const email = profileUser?.email || userProfile?.email || '';
   const phone = profileUser?.phone || profileUser?.phoneNumber || userProfile?.phone || '';
   const username = profileUser?.username || (email ? email.split('@')[0] : (fullName ? fullName.toLowerCase().replace(/\s+/g, '') : 'customer'));
-  const avatarInitial = profileUser?.avatar || profileUser?.avatarUrl || 
+  const avatarInitial = 
     (fullName ? fullName[0].toUpperCase() : 
       (firstName ? firstName[0].toUpperCase() : 
-        (username ? username.substring(0, 2).toUpperCase() : 'C')));
+        (username ? username[0].toUpperCase() : 'C')));
 
   const handleOpenEditProfileModal = () => {
     setProfileForm({

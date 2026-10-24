@@ -622,7 +622,16 @@ export const normalizeFirestoreOrder = (docData, docId) => {
 
   // 3. Resolve delivery date
   let rawDeliveryDate = '';
-  if (d.delivery && typeof d.delivery === 'object' && d.delivery.date) {
+  if (d.rescheduled_date) {
+    rawDeliveryDate = formatIsoDate(d.rescheduled_date);
+  }
+  if (!rawDeliveryDate && d.formatted_reschedule_date && d.formatted_reschedule_date !== '—') {
+    rawDeliveryDate = d.formatted_reschedule_date;
+  }
+  if (!rawDeliveryDate && d.new_delivery_date) {
+    rawDeliveryDate = formatIsoDate(d.new_delivery_date);
+  }
+  if (!rawDeliveryDate && d.delivery && typeof d.delivery === 'object' && d.delivery.date) {
     rawDeliveryDate = d.delivery.date;
   }
   if (!rawDeliveryDate && d.delivery_date && d.delivery_date !== '14 Oct 2026') {
@@ -654,7 +663,10 @@ export const normalizeFirestoreOrder = (docData, docId) => {
 
   // 4. Resolve delivery time slot
   let resolvedDeliverySlot = '';
-  if (d.delivery && typeof d.delivery === 'object') {
+  if (d.rescheduled_time_slot) {
+    resolvedDeliverySlot = d.rescheduled_time_slot;
+  }
+  if (!resolvedDeliverySlot && d.delivery && typeof d.delivery === 'object') {
     if (d.delivery.time_slot || d.delivery.timeSlot) {
       resolvedDeliverySlot = d.delivery.time_slot || d.delivery.timeSlot;
     } else if (d.delivery.from && d.delivery.to) {
@@ -690,6 +702,9 @@ export const normalizeFirestoreOrder = (docData, docId) => {
     pickup_date: rawPickupDate,
     delivery_date: rawDeliveryDate,
     delivery_time_slot: resolvedDeliverySlot,
+    rescheduled_date: d.rescheduled_date || null,
+    rescheduled_time_slot: d.rescheduled_time_slot || null,
+    isRescheduled: Boolean(d.rescheduled_date || d.isRescheduled || String(d.status || '').toUpperCase() === 'RESCHEDULED'),
     pickup_address: custAddress,
     delivery_address: d.delivery_address || custAddress,
     addressTitle: custAddress,

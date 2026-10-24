@@ -69,7 +69,18 @@ export const createCustomerOrder = async (bookingData, user) => {
       to: '11:00'
     },
     pickup_date: bookingData.pickup?.date || new Date(now + 86400000).toISOString().split('T')[0],
-    pickup_time_slot: bookingData.pickup?.time_slot || (bookingData.pickup?.from ? `${bookingData.pickup.from} - ${bookingData.pickup.to}` : '09:00 AM - 11:00 AM'),
+    pickup_time_slot: bookingData.pickup?.time_slot || (bookingData.pickup?.from ? `${bookingData.pickup.from} – ${bookingData.pickup.to}` : '09:00 AM – 11:00 AM'),
+    pickupTime: (() => {
+      const pDate = bookingData.pickup?.date || new Date(now + 86400000).toISOString().split('T')[0];
+      let pDateDisplay = pDate;
+      const isoM = String(pDate).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (isoM) {
+        const dt = new Date(parseInt(isoM[1], 10), parseInt(isoM[2], 10) - 1, parseInt(isoM[3], 10));
+        if (!isNaN(dt.getTime())) pDateDisplay = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+      const pSlot = bookingData.pickup?.time_slot || (bookingData.pickup?.from ? `${bookingData.pickup.from} – ${bookingData.pickup.to}` : '09:00 AM – 11:00 AM');
+      return `${pDateDisplay}, ${pSlot}`;
+    })(),
     status: 'PAYMENT_PENDING',
     stage: 'placed',
     currentLaundryStep: null,

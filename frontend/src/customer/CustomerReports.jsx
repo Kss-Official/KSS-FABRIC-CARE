@@ -2,7 +2,10 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
+import { getComplaintSortTime } from '../context/AdminContext';
 import { complaintsApi } from '../api/apiClient';
+import { ref as dbRef, onValue, off } from 'firebase/database';
+import { rtdb } from '../config/firebase';
 import {
   FileText,
   Search,
@@ -117,22 +120,23 @@ export const CustomerReports = () => {
 
   // State
   const [reports, setReports] = useState(() => {
+    let list = [];
     const myUid = currentUser?.uid || currentUser?.id;
     if (myUid) {
       try {
         const saved = localStorage.getItem(`fabricare_customer_reports_${myUid}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
         }
       } catch (e) {}
     }
     const email = (currentUser?.email || '').toLowerCase().trim();
     const uid = String(currentUser?.uid || currentUser?.id || '').trim();
-    if (email === 'customer@fabricare.com' || email === 'rohan.mehta@gmail.com' || uid === 'Qb0mccqhzFgxSs3yoGGFkj4b76G3') {
-      return DEFAULT_REPORTS.map(r => ({ ...r }));
+    if (list.length === 0 && (email === 'customer@fabricare.com' || email === 'rohan.mehta@gmail.com' || uid === 'Qb0mccqhzFgxSs3yoGGFkj4b76G3')) {
+      list = DEFAULT_REPORTS.map(r => ({ ...r }));
     }
-    return [];
+    return [...list].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
   });
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -180,19 +184,9 @@ export const CustomerReports = () => {
     const myEmail = (currentUser?.email || '').toLowerCase().trim();
     let baseList = [];
 
-    // If live backend records are provided, filter strictly to this customer
-    if (backendData && Array.isArray(backendData)) {
-      const filtered = backendData.filter(item => {
-        if (!item) return false;
-        const cId = String(item.customer_id || item.customerId || item.user_id || '').toLowerCase().trim();
-        if (myUid && cId && cId === String(myUid).toLowerCase().trim()) return true;
-        const cEmail = String(item.customer_email || item.customerEmail || item.email || '').toLowerCase().trim();
-        if (myEmail && cEmail && cEmail === myEmail) return true;
-        return false;
-      });
-      if (filtered.length > 0) {
-        baseList = filtered.map(normalizeReport);
-      }
+    // If live backend records are provided, map and normalize them
+    if (backendData && Array.isArray(backendData) && backendData.length > 0) {
+      baseList = backendData.map(normalizeReport);
     }
 
     if (baseList.length === 0 && myUid) {
@@ -207,14 +201,8 @@ export const CustomerReports = () => {
       } catch (e) {}
     }
 
-    if (baseList.length === 0 && isDemoCustomer()) {
+    if (baseList.length === 0) {
       baseList = DEFAULT_REPORTS.map(r => normalizeReport({ ...r }));
-    }
-
-    if (myUid) {
-      try {
-        localStorage.setItem(`fabricare_customer_reports_${myUid}`, JSON.stringify(baseList));
-      } catch (e) {}
     }
 
     // Merge any live reschedules from Admin Context / Delivery Portal (fabricare_admin_complaints)
@@ -225,12 +213,13 @@ export const CustomerReports = () => {
         if (Array.isArray(adminComplaints)) {
           const adminMap = new Map();
           adminComplaints.forEach(ac => {
-            const code = String(ac.order_id_display || ac.order_id || ac.id);
+            const code = formatOrderId(ac.order_id_display || ac.order_id || ac.id);
             adminMap.set(code, ac);
           });
 
+          // 1. Update existing reports in baseList
           baseList = baseList.map(rep => {
-            const code = String(rep.order_id_display || rep.order_id || rep.id);
+            const code = formatOrderId(rep.order_id_display || rep.order_id || rep.id);
             if (adminMap.has(code)) {
               const ac = adminMap.get(code);
               return normalizeReport({
@@ -250,9 +239,33 @@ export const CustomerReports = () => {
             }
             return rep;
           });
+
+          // 2. Prepend any complaints from adminComplaints not already in baseList
+          adminComplaints.forEach(ac => {
+            const acCode = formatOrderId(ac.order_id_display || ac.order_id || ac.id);
+            const exists = baseList.some(rep => {
+              const repCode = formatOrderId(rep.order_id_display || rep.order_id || rep.id);
+              return repCode === acCode || String(rep.id) === String(ac.id);
+            });
+            if (!exists) {
+              baseList.unshift(normalizeReport({
+                ...ac,
+                order_id: acCode,
+                order_id_display: acCode
+              }));
+            }
+          });
         }
       }
     } catch (e) {}
+
+    baseList.sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
+
+    if (myUid) {
+      try {
+        localStorage.setItem(`fabricare_customer_reports_${myUid}`, JSON.stringify(baseList));
+      } catch (e) {}
+    }
 
     return baseList;
   };
@@ -405,15 +418,22 @@ export const CustomerReports = () => {
     try {
       let backendList = null;
       try {
-        const res = await complaintsApi.getReports({});
-        const data = res.data;
+        const res = await complaintsApi.getReports({
+          customer_email: currentUser?.email || '',
+          customer_name: userProfile?.displayName || currentUser?.displayName || currentUser?.name || '',
+          customer_phone: currentUser?.phone || userProfile?.phone || '',
+          customer_id: currentUser?.uid || currentUser?.id || '',
+          tab: 'complaint',
+          all: 'true'
+        });
+        const data = res?.data;
         if (data && data.results && Array.isArray(data.results) && data.results.length > 0) {
           backendList = data.results;
         } else if (Array.isArray(data) && data.length > 0) {
           backendList = data;
-        } else if (res.items && Array.isArray(res.items) && res.items.length > 0) {
+        } else if (res?.items && Array.isArray(res.items) && res.items.length > 0) {
           backendList = res.items;
-        } else if (res.results && Array.isArray(res.results) && res.results.length > 0) {
+        } else if (res?.results && Array.isArray(res.results) && res.results.length > 0) {
           backendList = res.results;
         }
       } catch (err) {
@@ -448,22 +468,40 @@ export const CustomerReports = () => {
         const saved = localStorage.getItem(`fabricare_customer_reports_${myUid}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            setReports(parsed);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setReports([...parsed].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a)));
           } else {
-            setReports(isDemoCustomer() ? DEFAULT_REPORTS.map(r => ({ ...r })) : []);
+            setReports([...DEFAULT_REPORTS].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a)));
           }
         } else {
-          setReports(isDemoCustomer() ? DEFAULT_REPORTS.map(r => ({ ...r })) : []);
+          setReports([...DEFAULT_REPORTS].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a)));
         }
       } catch (_) {
-        setReports(isDemoCustomer() ? DEFAULT_REPORTS.map(r => ({ ...r })) : []);
+        setReports([...DEFAULT_REPORTS].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a)));
       }
     } else {
-      setReports([]);
+      setReports([...DEFAULT_REPORTS].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a)));
     }
 
     fetchReports();
+
+    // RTDB listener for live complaint updates
+    let compUnsub = null;
+    try {
+      const compRef = dbRef(rtdb, 'complaints');
+      compUnsub = onValue(compRef, (snap) => {
+        if (snap.exists()) {
+          const val = snap.val();
+          const rtdbList = Object.keys(val).map(k => ({ ...val[k], id: k }));
+          try {
+            localStorage.setItem('fabricare_admin_complaints', JSON.stringify(rtdbList));
+          } catch (_) {}
+          setReports(() => syncReportsData(rtdbList));
+        }
+      });
+    } catch (err) {
+      console.warn('RTDB listener error in CustomerReports:', err);
+    }
 
     // Listen for storage changes from admin portal or delivery portal
     const handleStorageChange = (e) => {
@@ -472,30 +510,45 @@ export const CustomerReports = () => {
         setReports(synced);
       }
     };
+
+    // Real-time custom event triggered when admin confirms reschedule
+    const handleRescheduleEvent = () => {
+      fetchReports();
+    };
+
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('fabricare_complaint_rescheduled', handleRescheduleEvent);
+
+    return () => {
+      if (typeof compUnsub === 'function') compUnsub();
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('fabricare_complaint_rescheduled', handleRescheduleEvent);
+    };
   }, [currentUser?.uid, currentUser?.email]);
 
   // Filtered reports in memory for instant typing feedback
   const filteredReports = useMemo(() => {
-    if (!searchQuery.trim()) return reports;
-    const q = searchQuery.toLowerCase().trim();
-    return reports.filter((r) => {
-      const orderId = (r.order_id || r.order_id_display || '').toLowerCase();
-      const reason = (r.failure_reason || '').toLowerCase();
-      const dateStr = (r.report_date_only || r.formatted_report_date || '').toLowerCase();
-      const statusStr = (r.status || '').toLowerCase();
-      const reschedDate = (r.new_delivery_date_formatted || r.rescheduled_date || '').toLowerCase();
-      const reschedTime = (r.rescheduled_time_slot || '').toLowerCase();
-      return (
-        orderId.includes(q) ||
-        reason.includes(q) ||
-        dateStr.includes(q) ||
-        statusStr.includes(q) ||
-        reschedDate.includes(q) ||
-        reschedTime.includes(q)
-      );
-    });
+    let list = Array.isArray(reports) ? reports : [];
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((r) => {
+        const orderId = (r.order_id || r.order_id_display || '').toLowerCase();
+        const reason = (r.failure_reason || '').toLowerCase();
+        const dateStr = (r.report_date_only || r.formatted_report_date || '').toLowerCase();
+        const statusStr = (r.status || '').toLowerCase();
+        const reschedDate = (r.new_delivery_date_formatted || r.rescheduled_date || '').toLowerCase();
+        const reschedTime = (r.rescheduled_time_slot || '').toLowerCase();
+        return (
+          orderId.includes(q) ||
+          reason.includes(q) ||
+          dateStr.includes(q) ||
+          statusStr.includes(q) ||
+          reschedDate.includes(q) ||
+          reschedTime.includes(q)
+        );
+      });
+    }
+    return [...list].sort((a, b) => getComplaintSortTime(b) - getComplaintSortTime(a));
   }, [reports, searchQuery]);
 
   // Status badge renderer matching reference image exactly

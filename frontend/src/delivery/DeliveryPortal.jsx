@@ -1511,14 +1511,14 @@ export const DeliveryPortal = () => {
       return s;
     };
 
-    let schedDate = '';
-    let timeSlot = '';
+    let schedDate = t.rescheduled_date || t.orderData?.rescheduled_date || t.delivery_date || t.orderData?.delivery_date || '';
+    let timeSlot = t.rescheduled_time_slot || t.orderData?.rescheduled_time_slot || t.delivery_time_slot || t.orderData?.delivery_time_slot || '';
     const pickupObj = t.orderData?.pickup || {};
     const deliveryObj = t.orderData?.delivery || {};
-    if (pickupObj.date) {
+    if (!schedDate && pickupObj.date) {
       schedDate = pickupObj.date;
     }
-    if (pickupObj.from && pickupObj.to) {
+    if (!timeSlot && pickupObj.from && pickupObj.to) {
       timeSlot = `${to12h(pickupObj.from)} – ${to12h(pickupObj.to)}`;
     }
     if (!timeSlot && (deliveryObj.from && deliveryObj.to)) {
@@ -1526,7 +1526,7 @@ export const DeliveryPortal = () => {
     }
 
     const rawTime = t.scheduledAt || t.scheduled_at;
-    if (rawTime) {
+    if (!schedDate && rawTime) {
       const d = new Date(rawTime);
       if (!isNaN(d.getTime())) {
         if (!schedDate) schedDate = d.toISOString().split('T')[0];
@@ -1582,8 +1582,19 @@ export const DeliveryPortal = () => {
     }
 
     const rawStNormalized = String(effectiveTaskStatus || '').toUpperCase();
-    const resolvedType = isPickupType ? 'Pickup' : (isReportedDel ? 'Delivery' : ((t.type || '').toLowerCase() === 'delivery' ? 'Delivery' : 'Pickup'));
-    const resolvedStatus = (!isPickupType && (isReportedDel || rawStNormalized === 'RESCHEDULED' || rawOrdStatus === 'RESCHEDULED'))
+    const isRescheduledTask = Boolean(
+      t.rescheduled_date || t.orderData?.rescheduled_date || 
+      t.isRescheduled || t.orderData?.isRescheduled || 
+      rawOrdStatus === 'RESCHEDULED' || rawStNormalized === 'RESCHEDULED'
+    );
+    const isDeliveryType = isRescheduledTask || 
+                           (t.type || '').toLowerCase() === 'delivery' || 
+                           (t.raw_type || '').toLowerCase() === 'delivery' || 
+                           isReportedDel ||
+                           ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED', 'RESCHEDULED'].includes(rawStNormalized) ||
+                           ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED', 'RESCHEDULED'].includes(rawOrdStatus);
+    const resolvedType = isPickupType ? 'Pickup' : (isDeliveryType ? 'Delivery' : 'Pickup');
+    const resolvedStatus = (!isPickupType && !isTaskRescheduledReady && (isReportedDel || rawStNormalized === 'RESCHEDULED' || rawOrdStatus === 'RESCHEDULED'))
       ? 'RESCHEDULED'
       : (rawStNormalized === 'ASSIGNED' || rawStNormalized === 'UNASSIGNED' || rawStNormalized === 'READY_FOR_DELIVERY' || rawStNormalized === 'PACKED')
       ? (resolvedType === 'Delivery' ? 'READY_FOR_DELIVERY' : 'PICKUP_ASSIGNED')
@@ -1603,7 +1614,7 @@ export const DeliveryPortal = () => {
       customer_phone: customerPhone,
       pickup_phone: customerPhone,
       type: resolvedType,
-      raw_type: isReportedDel ? 'delivery' : (isPickupType ? 'pickup' : t.type),
+      raw_type: isPickupType ? 'pickup' : 'delivery',
       raw_status: resolvedStatus,
       status: resolvedStatus,
       isReported: !isPickupType && !isTaskRescheduledReady && Boolean(isReportedDel || resolvedStatus === 'RESCHEDULED' || t.isReported || t.delivery_reported || t.isDeliveryReported),
@@ -1614,7 +1625,7 @@ export const DeliveryPortal = () => {
       rescheduleNotes: t.rescheduleNotes || t.adminNotes || t.orderData?.rescheduleNotes || t.orderData?.adminNotes || '',
       adminNotes: t.adminNotes || t.rescheduleNotes || t.orderData?.adminNotes || t.orderData?.rescheduleNotes || '',
       rescheduledAt: t.rescheduledAt || t.orderData?.rescheduledAt || null,
-      isRescheduled: Boolean(t.isRescheduled || t.orderData?.isRescheduled || t.rescheduled_date || t.orderData?.rescheduled_date),
+      isRescheduled: Boolean(t.isRescheduled || t.orderData?.isRescheduled || t.rescheduled_date || t.orderData?.rescheduled_date || isRescheduledTask),
       rescheduled_date: t.rescheduled_date || t.orderData?.rescheduled_date || null,
       rescheduled_time_slot: t.rescheduled_time_slot || t.orderData?.rescheduled_time_slot || null,
       time_slot: timeSlot,
@@ -1737,7 +1748,7 @@ export const DeliveryPortal = () => {
           const typeSt = String(o.type || o.raw_type || '').toLowerCase();
           const trStage = String(o.tracker_stage || o.taskTrackerStatus || '').toUpperCase();
 
-          // Accurately determine if order is in Delivery phase or Pickup phase
+          const isReschedOrder = Boolean(o.rescheduled_date || o.isRescheduled || rawSt === 'RESCHEDULED' || ordSt === 'RESCHEDULED');
           const orderIdentifierCandidates = [o.id, o.docId, o.orderId, o.order_id, o.order_number, o.code].filter(Boolean);
           const hasDeliveryReport = (o.delivery_reported === true || o.isDeliveryReported === true) || (
             !o.rescheduled_date && orderIdentifierCandidates.some(c => {
@@ -1956,8 +1967,12 @@ export const DeliveryPortal = () => {
             total_amount: finalAmount,
             estimated_amount: finalAmount,
             to_collect: !o.isPrepaid ? `₹${finalAmount.toFixed(2)}` : null,
-            delivery_date: o.delivery_date || o.pickup?.date || o.pickup_date || 'Today',
+            delivery_date: o.rescheduled_date || o.formatted_reschedule_date || o.delivery_date || o.pickup?.date || o.pickup_date || 'Today',
             pickup_date: o.pickup?.date || o.pickup_date || 'Today',
+            delivery_time_slot: o.rescheduled_time_slot || o.delivery_time_slot || resolvedTimeSlot,
+            rescheduled_date: o.rescheduled_date || null,
+            rescheduled_time_slot: o.rescheduled_time_slot || null,
+            isRescheduled: isReschedOrder,
             startedAt: o.startedAt || o.started_at || o.pickup_started_at,
             arrivedAt: o.arrivedAt || o.arrived_at,
             collectedAt: o.collectedAt || o.collected_at || o.pickup_completed_at,
@@ -2221,6 +2236,52 @@ export const DeliveryPortal = () => {
     return () => {
       isSubscribed = false;
       unsub();
+    };
+  }, []);
+
+  // Real-time synchronization when admin confirms a reschedule
+  useEffect(() => {
+    const handleSyncEvent = (e) => {
+      const detail = e.detail || {};
+      const targetCode = String(detail.orderId || detail.order_id || detail.complaintId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      if (!targetCode) return;
+
+      const newDateVal = detail.newDate || detail.delivery_date || detail.rescheduled_date;
+      const newSlotVal = detail.newSlot || detail.delivery_time_slot || detail.rescheduled_time_slot;
+
+      setTasks(prev => {
+        return prev.map(t => {
+          const tCode = String(t.order_number || t.order_id || t.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          if (tCode === targetCode || (tCode && targetCode.includes(tCode)) || (targetCode && tCode.includes(targetCode))) {
+            return {
+              ...t,
+              type: 'Delivery',
+              raw_type: 'delivery',
+              isRescheduled: true,
+              rescheduled_date: newDateVal || t.rescheduled_date,
+              delivery_date: newDateVal || t.delivery_date,
+              rescheduled_time_slot: newSlotVal || t.rescheduled_time_slot,
+              delivery_time_slot: newSlotVal || t.delivery_time_slot,
+              time_slot: newSlotVal || t.time_slot,
+              status: 'READY_FOR_DELIVERY',
+              raw_status: 'RESCHEDULED',
+              updatedAt: Date.now()
+            };
+          }
+          return t;
+        });
+      });
+      fetchTasks().catch(() => {});
+    };
+
+    window.addEventListener('fabricare_delivery_task_updated', handleSyncEvent);
+    window.addEventListener('fabricare_order_updated', handleSyncEvent);
+    window.addEventListener('fabricare_complaint_rescheduled', handleSyncEvent);
+
+    return () => {
+      window.removeEventListener('fabricare_delivery_task_updated', handleSyncEvent);
+      window.removeEventListener('fabricare_order_updated', handleSyncEvent);
+      window.removeEventListener('fabricare_complaint_rescheduled', handleSyncEvent);
     };
   }, []);
 
@@ -2512,6 +2573,24 @@ export const DeliveryPortal = () => {
       }
 
       handleAdvanceDeliveryTracker(deliveryModalOrder, 'DELIVERED');
+      setReportedTasks(prev => {
+        const next = { ...prev };
+        const candidates = [
+          deliveryModalOrder.id,
+          deliveryModalOrder.orderId,
+          deliveryModalOrder.order_id,
+          deliveryModalOrder.order_number,
+          id
+        ].filter(Boolean);
+        candidates.forEach(c => {
+          delete next[c];
+          delete next[String(c).replace(/[^a-zA-Z0-9]/g, '').toLowerCase()];
+        });
+        try {
+          localStorage.setItem('fabricare_delivery_reported_tasks', JSON.stringify(next));
+        } catch (_) {}
+        return next;
+      });
       setDeliveryModalOrder(null);
       setAgentOtp('');
       setRecipientName('');
@@ -2725,11 +2804,6 @@ export const DeliveryPortal = () => {
   const deliveryTasks = tasks.filter(t => {
     if (isExcludedMockTask(t)) return false;
 
-    const taskType = (t.type || t.raw_type || '').toLowerCase();
-    const rawSt = String(t.status || t.raw_status || '').toUpperCase();
-    const ordSt = String(t.orderStatus || t.order_status || t.original_status || '').toUpperCase();
-    const stageSt = String(t.stage || '').toLowerCase();
-
     // A pickup task or order before laundry dispatch is NEVER in deliveryTasks
     if (taskType === 'pickup') {
       return false;
@@ -2745,7 +2819,8 @@ export const DeliveryPortal = () => {
     const isExplicitDelivery = taskType === 'delivery' || 
                                String(t.id || '').startsWith('task_dl_') ||
                                t.delivery_reported === true ||
-                               t.isDeliveryReported === true;
+                               t.isDeliveryReported === true ||
+                               Boolean(t.isRescheduled || t.rescheduled_date);
     const isReportedDel = isTaskIssueReported(t) && (taskType === 'delivery' || t.delivery_reported || t.isDeliveryReported);
 
     const isDeliveryStage = ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'NEARBY'].includes(rawSt) || 
@@ -2755,7 +2830,9 @@ export const DeliveryPortal = () => {
     const isCompletedDelivery = (taskType === 'delivery' || Boolean(t.deliveredAt || t.delivered_at)) &&
                                 (rawSt === 'DELIVERED' || stageSt === 'delivered' || (rawSt === 'COMPLETED' && taskType === 'delivery'));
 
-    return isExplicitDelivery || isReportedDel || isDeliveryStage || isCompletedDelivery ||
+    const isRescheduledDelivery = Boolean(t.isRescheduled || t.rescheduled_date || rawSt === 'RESCHEDULED' || ordSt === 'RESCHEDULED');
+
+    return isExplicitDelivery || isReportedDel || isDeliveryStage || isCompletedDelivery || isRescheduledDelivery ||
            ((rawSt === 'RESCHEDULED' || stageSt === 'rescheduled') && (t.delivery_reported || t.isDeliveryReported));
   });
   const getTaskSortTime = (t) => {
@@ -4419,7 +4496,7 @@ export const DeliveryPortal = () => {
                                     if (typeof task.pickup_date === 'string' && task.pickup_date !== 'Today' && task.pickup_date.trim()) {
                                       return task.pickup_date;
                                     }
-                                    return new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                                    return 'Today';
                                   })()}</span>
                                 </div>
                                 <div className="pickup-sched-slot-row">
@@ -4762,19 +4839,19 @@ export const DeliveryPortal = () => {
                                 <div className="pickup-sched-date-row">
                                   <Calendar size={12} />
                                   <span>{(() => {
-                                    const dVal = task.rescheduled_date || task.delivery_date;
-                                    if (dVal && !isNaN(new Date(dVal).getTime())) {
-                                      return new Date(dVal).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                                    const rawDate = task.rescheduled_date || task.formatted_reschedule_date || task.new_delivery_date || task.delivery_date || task.orderData?.rescheduled_date || task.orderData?.delivery_date;
+                                    if (rawDate && !isNaN(new Date(rawDate).getTime())) {
+                                      return new Date(rawDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
                                     }
-                                    if (typeof dVal === 'string' && dVal !== 'Today' && dVal.trim()) {
-                                      return dVal;
+                                    if (typeof rawDate === 'string' && rawDate !== 'Today' && rawDate.trim()) {
+                                      return rawDate;
                                     }
                                     return new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
                                   })()}</span>
                                 </div>
                                 <div className="pickup-sched-slot-row">
                                   <Clock size={11} />
-                                  <span>{task.rescheduled_time_slot || task.delivery_time_slot || task.time_slot || '02:00 PM – 04:00 PM'}</span>
+                                  <span>{task.rescheduled_time_slot || task.delivery_time_slot || task.time_slot || task.orderData?.rescheduled_time_slot || task.orderData?.delivery_time_slot || '02:00 PM – 04:00 PM'}</span>
                                 </div>
                                 {Boolean(task.isRescheduled && (task.rescheduled_date || task.rescheduled_time_slot)) && (
                                   <div style={{ marginTop: '3px' }}>
@@ -4832,10 +4909,24 @@ export const DeliveryPortal = () => {
                             <td style={{ textAlign: 'right' }}>
                               <div className="pickup-actions-group">
                                 {isReported ? (
-                                  <span className="pickup-act-completed-pill" style={{ background: '#FFF7ED', color: '#C2410C', borderColor: '#FED7AA' }} title="Issue reported and forwarded to Admin for reschedule">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (currentStatus === 'OUT_FOR_DELIVERY') {
+                                        handleAdvanceDeliveryTracker(task, 'NEARBY');
+                                      } else if (currentStatus === 'NEARBY') {
+                                        setDeliveryModalOrder(task);
+                                      } else {
+                                        setDeliveryModalOrder(task);
+                                      }
+                                    }}
+                                    className="pickup-act-completed-pill"
+                                    style={{ background: '#FFF7ED', color: '#C2410C', borderColor: '#FED7AA', cursor: 'pointer', transition: 'all 0.2s' }}
+                                    title="Rescheduled: Click to complete doorstep delivery"
+                                  >
                                     <Clock size={11} />
                                     <span>Rescheduled</span>
-                                  </span>
+                                  </button>
                                 ) : !isDelivered ? (
                                   currentStatus === 'PACKED' ? (
                                     <button
@@ -7520,7 +7611,7 @@ export const DeliveryPortal = () => {
                       <div>
                         <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '13px' }}>
                           {isPickup
-                            ? (selectedTaskDetail.pickup_date || selectedTaskDetail.scheduled_date || 'Today')
+                            ? (selectedTaskDetail.pickup_date || selectedTaskDetail.scheduled_date || '10 Oct 2026')
                             : (selectedTaskDetail.rescheduled_date 
                                 ? (!isNaN(new Date(selectedTaskDetail.rescheduled_date).getTime())
                                     ? new Date(selectedTaskDetail.rescheduled_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })

@@ -654,14 +654,16 @@ export const BookingProvider = ({ children }) => {
 
     // Current user is a real customer
     const custName = currentUser.displayName || currentUser.name || currentUser.fullName || currentUser.full_name || '';
-    const custPhone = currentUser.phoneNumber || currentUser.phone || '';
+    const rawCustPhone = currentUser.phoneNumber || currentUser.phone || '';
+    const custPhone = String(rawCustPhone).replace(/^\+?91/, '').replace(/\D/g, '').slice(0, 10);
 
     setPickupDetails(prev => {
       const isStaleStaffName = ['ravi sharma', 'administrator', 'anil verma', 'anita sharma', 'delivery agent', 'customer', 'valued customer'].includes((prev.name || '').trim().toLowerCase());
       const isStaleStaffPhone = ['+919811122233', '+91 98111 22233', '+919822233344', '+919800000000'].includes((prev.mobile || '').trim());
 
       const nextName = (userSwitched || isStaleStaffName || !prev.name) ? (custName || '') : prev.name;
-      const nextPhone = (userSwitched || isStaleStaffPhone || !prev.mobile) ? (custPhone || '') : prev.mobile;
+      const rawNextPhone = (userSwitched || isStaleStaffPhone || !prev.mobile) ? (custPhone || '') : prev.mobile;
+      const nextPhone = String(rawNextPhone || '').replace(/^\+?91/, '').replace(/\D/g, '').slice(0, 10);
 
       return {
         ...prev,
@@ -963,7 +965,15 @@ export const BookingProvider = ({ children }) => {
         addressTitle: pickupDetails.address,
         addressDetail: pickupDetails.landmark || '',
         services: serviceNames,
-        items: selectedItemsList,
+        items: selectedItemsList.map(it => {
+          const pricing = getItemPricing(it, selectedItemsList);
+          return {
+            ...it,
+            unit_price: pricing.effectiveUnitPrice,
+            total_price: pricing.lineTotal,
+            lineTotal: pricing.lineTotal
+          };
+        }),
         estimatedTotal: total,
         total_amount: (total || 0).toFixed(2).replace(/\.00$/, ''),
         total: total,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   Tag, 
@@ -24,6 +24,49 @@ export const AdminHelpSupportPage = () => {
     fetchSupportTickets = () => {},
     openSupportDrawer = () => {} 
   } = useAdmin() || {};
+
+  // 1. Initial mount fetch from backend
+  useEffect(() => {
+    fetchSupportTickets();
+  }, [fetchSupportTickets]);
+
+  // 2. Real-time background sync every 5 seconds while page is open
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchSupportTickets(true);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [fetchSupportTickets]);
+
+  // 3. Immediate cross-tab, RTDB, and in-window synchronization
+  useEffect(() => {
+    const handleImmediateSync = () => {
+      fetchSupportTickets(true);
+    };
+
+    window.addEventListener('fabricare_support_ticket_created', handleImmediateSync);
+    window.addEventListener('fabricare_support_ticket_updated', handleImmediateSync);
+    window.addEventListener('storage', handleImmediateSync);
+
+    let bc = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        bc = new BroadcastChannel('fabricare_support_channel');
+        bc.onmessage = (msg) => {
+          if (msg.data?.type === 'TICKET_CREATED' || msg.data?.type === 'TICKET_UPDATED') {
+            fetchSupportTickets(true);
+          }
+        };
+      } catch (_) {}
+    }
+
+    return () => {
+      window.removeEventListener('fabricare_support_ticket_created', handleImmediateSync);
+      window.removeEventListener('fabricare_support_ticket_updated', handleImmediateSync);
+      window.removeEventListener('storage', handleImmediateSync);
+      if (bc) bc.close();
+    };
+  }, [fetchSupportTickets]);
 
   // Filters and search state
   const [searchQuery, setSearchQuery] = useState('');
