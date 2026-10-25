@@ -846,16 +846,12 @@ export const AdminPickupDeliveryPage = () => {
   const openAssignModalForOrder = (ord) => {
     if (!ord) return;
 
-    // Guard: Only allow opening assignment modal for pending, unassigned orders
     const statusLower = String(ord.status || '').toLowerCase().trim();
     const isAlreadyAssigned = Boolean(
       (ord.driver && ord.driver.assigned && ord.driver.name !== 'Not Assigned') ||
       (statusLower === 'assigned') ||
       (!statusLower.includes('pending') && statusLower !== 'order placed')
     );
-    if (isAlreadyAssigned) {
-      return;
-    }
 
     const raw = ord.rawOrder || {};
 
@@ -911,18 +907,19 @@ export const AdminPickupDeliveryPage = () => {
       pickup_time_slot: timeSlot,
       pickupTime: `${ord.date}, ${timeSlot}`,
       customer: {
-        name: ord.customer.name,
-        phone: ord.customer.phone,
-        locality: ord.customer.address?.split(',')[0]?.trim() || 'HRBR Layout, Bengaluru',
-        address: ord.customer.address,
-        fullAddress: ord.customer.address
+        name: ord.customer?.name || 'Customer',
+        phone: ord.customer?.phone || '-',
+        locality: ord.customer?.locality || ord.customer?.address?.split(',')[0]?.trim() || 'HRBR Layout, Bengaluru',
+        address: ord.customer?.address || '',
+        fullAddress: ord.customer?.fullAddress || ord.customer?.address || ''
       },
       services,
       itemCount,
       amount,
       type: ord.type || 'Pickup',
       status: ord.status,
-      driver: ord.driver
+      driver: ord.driver,
+      isAlreadyAssigned: isAlreadyAssigned
     });
     setSelectedOrderIds([ord.id]);
     setIsAssignOrderModalOpen(true);
@@ -937,17 +934,18 @@ export const AdminPickupDeliveryPage = () => {
       return isStatusPending && isDriverUnassigned;
     };
 
-    // 1. If orders are checked in selectedOrderIds, pick the selected pending order
+    // 1. If orders are checked in selectedOrderIds, open modal for the chosen order
     if (selectedOrderIds.length > 0) {
       const selectedOrders = combinedOrders.filter(o => selectedOrderIds.includes(o.id));
-      const pendingMatch = selectedOrders.find(isPendingUnassigned);
-      if (pendingMatch) {
-        openAssignModalForOrder(pendingMatch);
+      if (selectedOrders.length > 0) {
+        // If user selected multiple orders, prefer pending unassigned, else open the selected order
+        const targetOrder = selectedOrders.find(isPendingUnassigned) || selectedOrders[0];
+        openAssignModalForOrder(targetOrder);
         return;
       }
     }
 
-    // 2. If no checkbox is selected or selected orders are already assigned, find the first pending/unassigned order in combinedOrders
+    // 2. If no checkbox is selected, find the first pending/unassigned order in combinedOrders
     const pendingOrder = combinedOrders.find(isPendingUnassigned);
     if (pendingOrder) {
       openAssignModalForOrder(pendingOrder);
@@ -1356,7 +1354,9 @@ export const AdminPickupDeliveryPage = () => {
                         {isAssigned ? (
                           <div 
                             className="driver-assigned-cell"
-                            title={`Assigned Driver: ${ord.driver.name}`}
+                            onClick={() => openAssignModalForOrder(ord)}
+                            title={`Assigned Driver: ${ord.driver.name} (Click to view form)`}
+                            style={{ cursor: 'pointer' }}
                           >
                             <div className="driver-avatar-circle dark">
                               {ord.driver.initials}

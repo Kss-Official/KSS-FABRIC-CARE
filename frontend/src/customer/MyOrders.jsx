@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { useAuth } from '../context/AuthContext';
 import { subscribeCustomerOrders, cancelCustomerOrder } from '../services/customerDataService';
@@ -16,8 +16,8 @@ import {
   PlusCircle,
   X
 } from 'lucide-react';
-import { OrderStatusDropdown } from '../components/common/OrderStatusDropdown';
-import { formatOrderId, calculateOrderTotal } from '../utils/helpers';
+import { OrderStatusDropdown, ORDER_STATUS_OPTIONS } from '../components/common/OrderStatusDropdown';
+import { formatOrderId, calculateOrderTotal, isOrderMatchingStatus } from '../utils/helpers';
 
 export const MyOrders = () => {
   const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
@@ -315,67 +315,71 @@ export const MyOrders = () => {
     }
   };
 
-  const filteredOrders = orders.filter(order => {
-    const term = (searchQuery || '').trim().toLowerCase();
-    const orderNo = (order.order_number || order.code || '').toLowerCase();
-    const formattedNo = formatOrderId(order.order_number || order.code || order.id).toLowerCase();
-    const addr = (order.pickup_address || '').toLowerCase();
-    const matchesSearch = !term || orderNo.includes(term) || formattedNo.includes(term) || addr.includes(term);
-    
-    if (statusFilter === 'ALL') return matchesSearch;
-    if (statusFilter === 'PENDING') return matchesSearch && ['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PLACED', 'PAYMENT_PENDING'].includes(order.status);
-    if (statusFilter === 'PROCESSING') return matchesSearch && ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKING', 'PACKED', 'IN_CLEANING'].includes(order.status);
-    if (statusFilter === 'DELIVERY') return matchesSearch && ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.status);
-    if (statusFilter === 'COMPLETED') return matchesSearch && ['DELIVERED', 'COMPLETED'].includes(order.status);
-    if (statusFilter === 'CANCELLED') return matchesSearch && order.status === 'CANCELLED';
-    return matchesSearch;
-  });
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      const term = (searchQuery || '').trim().toLowerCase();
+      const orderNo = String(order.order_number || order.code || '').toLowerCase();
+      const formattedNo = formatOrderId(order.order_number || order.code || order.id).toLowerCase();
+      const addr = String(order.pickup_address || '').toLowerCase();
+      const services = String(getOrderServices(order) || '').toLowerCase();
+      const custName = String(order.customer_name || order.customerName || order.customer?.name || '').toLowerCase();
+      const statusText = String(order.status || '').toLowerCase();
+      const paymentText = String(order.payment_status || '').toLowerCase();
+
+      const matchesSearch = !term || 
+        orderNo.includes(term) || 
+        formattedNo.includes(term) || 
+        addr.includes(term) ||
+        services.includes(term) ||
+        custName.includes(term) ||
+        statusText.includes(term) ||
+        paymentText.includes(term);
+
+      if (!matchesSearch) return false;
+
+      return isOrderMatchingStatus(order, statusFilter);
+    });
+  }, [orders, searchQuery, statusFilter]);
 
   const getStatusBadge = (status) => {
-    switch (status) {
-      case 'PENDING':
-      case 'PENDING_REVIEW':
-      case 'PAYMENT_PENDING':
-        return <span className="badge badge-warning">Payment Pending</span>;
-      case 'PLACED':
-        return <span className="badge badge-info">Booking Confirmed</span>;
-      case 'ACCEPTED':
-      case 'PICKUP_ASSIGNED':
-      case 'PICKUP_SCHEDULED':
-      case 'PICKUP_IN_PROGRESS':
-        return <span className="badge badge-info">Pickup Scheduled</span>;
-      case 'PICKED_UP':
-        return <span className="badge badge-info">Clothes Collected</span>;
-      case 'DROPPED_OFF_AT_LAUNDRY':
-      case 'RECEIVED_BY_LAUNDRY':
-      case 'RECEIVED_AT_LAUNDRY':
-      case 'RECEIVED':
-        return <span className="badge badge-primary">Received at Hub</span>;
-      case 'INSPECTION':
-        return <span className="badge badge-primary">Clothes Inspection</span>;
-      case 'IN_PROCESS':
-      case 'IN_CLEANING':
-      case 'WASHING':
-      case 'DRYING':
-      case 'IRONING':
-        return <span className="badge badge-primary">In Cleaning</span>;
-      case 'QUALITY_CHECK':
-        return <span className="badge badge-primary">Quality Check</span>;
-      case 'PACKING':
-      case 'PACKED':
-      case 'READY_FOR_DELIVERY':
-        return <span className="badge badge-success">Packed / Ready</span>;
-      case 'OUT_FOR_DELIVERY':
-      case 'DELIVERY_ASSIGNED':
-        return <span className="badge badge-warning">Out for Delivery</span>;
-      case 'DELIVERED':
-      case 'COMPLETED':
-        return <span className="badge badge-success">Delivered</span>;
-      case 'CANCELLED':
-        return <span className="badge badge-danger">Cancelled</span>;
-      default:
-        return <span className="badge badge-secondary">{status}</span>;
+    const s = String(status || '').toUpperCase().trim();
+    if (['PENDING', 'PENDING_REVIEW', 'PAYMENT_PENDING'].includes(s)) {
+      return <span className="badge badge-warning">Payment Pending</span>;
     }
+    if (s === 'PLACED' || s === 'BOOKING_CONFIRMED' || s === 'ORDER PLACED') {
+      return <span className="badge badge-info">Booking Confirmed</span>;
+    }
+    if (['ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PENDING PICKUP'].includes(s) || s.includes('PICKUP SCHEDULED')) {
+      return <span className="badge badge-info">Pickup Scheduled</span>;
+    }
+    if (s === 'PICKED_UP' || s === 'PICKED UP' || s === 'CLOTHES COLLECTED') {
+      return <span className="badge badge-info">Clothes Collected</span>;
+    }
+    if (['DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'HUB_RECEIVED'].includes(s) || s.includes('RECEIVED AT HUB')) {
+      return <span className="badge badge-primary">Received at Hub</span>;
+    }
+    if (s === 'INSPECTION' || s.includes('INSPECT')) {
+      return <span className="badge badge-primary">Clothes Inspection</span>;
+    }
+    if (['IN_PROCESS', 'IN_CLEANING', 'WASHING', 'DRYING', 'IRONING', 'IN CLEANING', 'PROCESSING'].includes(s) || s.includes('CLEANING') || s.includes('WASH')) {
+      return <span className="badge badge-primary">In Cleaning</span>;
+    }
+    if (s === 'QUALITY_CHECK' || s === 'QC' || s.includes('QUALITY')) {
+      return <span className="badge badge-primary">Quality Check</span>;
+    }
+    if (['PACKING', 'PACKED', 'READY_FOR_DELIVERY', 'READY', 'READY FOR DELIVERY'].includes(s)) {
+      return <span className="badge badge-success">Packed / Ready</span>;
+    }
+    if (['OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'NEARBY', 'IN_TRANSIT'].includes(s) || s.includes('OUT FOR DELIVERY')) {
+      return <span className="badge badge-warning">Out for Delivery</span>;
+    }
+    if (['DELIVERED', 'COMPLETED'].includes(s) || (s.includes('DELIVER') && !s.includes('FOR') && !s.includes('READY'))) {
+      return <span className="badge badge-success">Delivered</span>;
+    }
+    if (s === 'CANCELLED' || s === 'CANCELED' || s.includes('CANCEL')) {
+      return <span className="badge badge-danger">Cancelled</span>;
+    }
+    return <span className="badge badge-secondary">{status}</span>;
   };
 
   const getOrderServices = (order) => {
@@ -454,7 +458,11 @@ export const MyOrders = () => {
       <div className="content-card mb-6">
         <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center justify-between">
           <div>
-            <span className="text-sm font-semibold text-navy">All Orders</span>
+            <span className="text-sm font-semibold text-navy">
+              {statusFilter === 'ALL' 
+                ? 'All Orders' 
+                : `${ORDER_STATUS_OPTIONS.find(o => o.value === statusFilter)?.label || statusFilter} Orders`}
+            </span>
             <span className="text-xs text-muted ml-2 hidden sm:inline">Real-time status updates</span>
           </div>
 

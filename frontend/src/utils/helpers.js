@@ -230,3 +230,154 @@ export const getOrderNumericAmount = (order) => {
   return parseFloat(str) || 0;
 };
 
+/**
+ * Checks whether an order matches a given status filter category
+ * (e.g. 'ALL', 'PENDING', 'PROCESSING', 'DELIVERY', 'COMPLETED', 'CANCELLED')
+ * Supports multiple status fields, case-insensitivity, and varied backend/realtime conventions.
+ */
+export const isOrderMatchingStatus = (order, filterKey) => {
+  if (!order) return false;
+  if (!filterKey || filterKey === 'ALL' || filterKey === 'all') return true;
+
+  const target = String(filterKey).toUpperCase().trim();
+
+  // Extract all potential status / stage fields
+  const rawStat = String(
+    order.status || 
+    order.raw_status || 
+    order.rawStatus || 
+    order.order_status || 
+    order.orderStatus || 
+    ''
+  ).toUpperCase().trim();
+
+  const rawStage = String(
+    order.stage || 
+    order.currentLaundryStep || 
+    order.processing_stage || 
+    order.delivery_status || 
+    ''
+  ).toUpperCase().trim();
+
+  const isCancelled = Boolean(
+    order.is_cancelled || 
+    order.isCancelled || 
+    rawStat.includes('CANCEL') || 
+    rawStat.includes('REJECT')
+  );
+
+  // 1. CANCELLED
+  if (target === 'CANCELLED') {
+    return isCancelled;
+  }
+
+  // If order is cancelled, do not match any active operational category
+  if (isCancelled) return false;
+
+  // 2. COMPLETED (Delivered / Fulfilled)
+  if (target === 'COMPLETED') {
+    return (
+      rawStat === 'DELIVERED' ||
+      rawStat === 'COMPLETED' ||
+      rawStat === 'SUCCESS' ||
+      rawStat === 'FULFILLED' ||
+      rawStage === 'DELIVERED' ||
+      rawStage === 'COMPLETED' ||
+      (rawStat.includes('DELIVER') && !rawStat.includes('OUT') && !rawStat.includes('READY') && !rawStat.includes('FOR') && !rawStat.includes('ASSIGN'))
+    );
+  }
+
+  // 3. DELIVERY (Ready for delivery, assigned to delivery agent, out for delivery, in transit)
+  if (target === 'DELIVERY') {
+    return (
+      rawStat === 'READY_FOR_DELIVERY' ||
+      rawStat === 'READY' ||
+      rawStat === 'PACKED' ||
+      rawStat === 'DISPATCHED' ||
+      rawStat === 'OUT_FOR_DELIVERY' ||
+      rawStat === 'DELIVERY_ASSIGNED' ||
+      rawStat === 'DELIVERY_IN_PROGRESS' ||
+      rawStat === 'NEARBY' ||
+      rawStat === 'IN_TRANSIT' ||
+      rawStat.includes('READY') ||
+      rawStat.includes('OUT_FOR_DELIVERY') ||
+      rawStat.includes('OUT FOR DELIVERY') ||
+      rawStat.includes('DELIVERY ASSIGNED') ||
+      rawStage === 'READY' ||
+      rawStage === 'READY_FOR_DELIVERY' ||
+      rawStage === 'OUT_FOR_DELIVERY' ||
+      rawStage === 'DELIVERY'
+    );
+  }
+
+  // 4. PROCESSING (Picked up, received at hub, cleaning, washing, drying, ironing, inspecting, quality check)
+  if (target === 'PROCESSING') {
+    return (
+      rawStat === 'PICKED_UP' ||
+      rawStat === 'PICKED UP' ||
+      rawStat === 'CLOTHES COLLECTED' ||
+      rawStat === 'DROPPED_OFF_AT_LAUNDRY' ||
+      rawStat === 'RECEIVED_BY_LAUNDRY' ||
+      rawStat === 'RECEIVED_AT_LAUNDRY' ||
+      rawStat === 'RECEIVED' ||
+      rawStat === 'HUB_RECEIVED' ||
+      rawStat === 'RECEIVED AT HUB' ||
+      rawStat === 'INSPECTION' ||
+      rawStat === 'INSPECT' ||
+      rawStat === 'IN_PROCESS' ||
+      rawStat === 'IN PROCESS' ||
+      rawStat === 'IN_CLEANING' ||
+      rawStat === 'IN CLEANING' ||
+      rawStat === 'PROCESSING' ||
+      rawStat === 'WASHING' ||
+      rawStat === 'WASH' ||
+      rawStat === 'DRYING' ||
+      rawStat === 'DRY' ||
+      rawStat === 'IRONING' ||
+      rawStat === 'STEAM IRON' ||
+      rawStat === 'FOLDING' ||
+      rawStat === 'QUALITY_CHECK' ||
+      rawStat === 'QC' ||
+      rawStat === 'PACKING' ||
+      rawStat.includes('CLEAN') ||
+      rawStat.includes('WASH') ||
+      rawStat.includes('PROCESS') ||
+      rawStat.includes('INSPECT') ||
+      rawStat.includes('IRON') ||
+      rawStage === 'IN_PROCESS' ||
+      rawStage === 'CLEANING' ||
+      rawStage === 'PROCESSING' ||
+      rawStage === 'INSPECT' ||
+      rawStage === 'WASH'
+    );
+  }
+
+  // 5. PENDING (Booking placed, payment pending, awaiting pickup or pickup assigned/scheduled)
+  if (target === 'PENDING') {
+    return (
+      rawStat === 'PENDING' ||
+      rawStat === 'PENDING_REVIEW' ||
+      rawStat === 'PAYMENT_PENDING' ||
+      rawStat === 'PLACED' ||
+      rawStat === 'ORDER PLACED' ||
+      rawStat === 'BOOKING_CONFIRMED' ||
+      rawStat === 'BOOKING CONFIRMED' ||
+      rawStat === 'CONFIRMED' ||
+      rawStat === 'ACCEPTED' ||
+      rawStat === 'PICKUP_ASSIGNED' ||
+      rawStat === 'PICKUP_SCHEDULED' ||
+      rawStat === 'PICKUP_IN_PROGRESS' ||
+      rawStat === 'PENDING PICKUP' ||
+      rawStat === 'ASSIGNED' ||
+      rawStat.includes('PENDING') ||
+      rawStat.includes('PLACED') ||
+      rawStat.includes('PICKUP') ||
+      rawStage === 'PLACED' ||
+      rawStage === 'PENDING' ||
+      rawStage === 'PICKUP'
+    );
+  }
+
+  return rawStat === target;
+};
+

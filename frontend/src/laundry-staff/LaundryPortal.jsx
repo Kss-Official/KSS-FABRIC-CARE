@@ -9,6 +9,23 @@ import { rtdb } from '../config/firebase';
 import { ref, onValue } from 'firebase/database';
 
 const cleanCode = (val) => String(val || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+const getCleanOrderIdentifiers = (o) => {
+  if (!o) return [];
+  const set = new Set();
+  [o.code, o.order_number, o.order_id, o.orderId, o.id, o.key].forEach(val => {
+    if (val !== undefined && val !== null) {
+      const c = cleanCode(val);
+      if (c && c !== '-' && c !== 'order' && c !== 'fc') {
+        set.add(c);
+        if (c.startsWith('fc') && c.length > 2) {
+          set.add(c.slice(2));
+        }
+      }
+    }
+  });
+  return Array.from(set);
+};
 import { formatOrderId } from '../utils/helpers';
 import { registerRoleUser } from '../services/notificationService';
 import { NotificationBellDropdown } from '../components/common/NotificationBellDropdown';
@@ -216,15 +233,42 @@ export const isValidLaundryOrder = (o) => {
   const idStr = String(o.id || o.key || o.order_number || o.code || o.order_id || o.orderId || '');
   if (idStr.includes('P4CbA4_8YTw7XnFWZiV')) return false;
 
-  // Carefully exclude order FC-75668 from laundry staff portal
-  if (idStr.includes('75668') || idStr.includes('FC-75668')) return false;
+  // Carefully exclude specified orders from laundry staff portal: #FC0ABF3, #FC10286, #FC10287, #FCB1EBD, FC-75668, FC-43719
+  const isExcludedId = (val) => {
+    if (!val) return false;
+    const s = String(val).toLowerCase().replace(/[^a-z0-9]/g, '');
+    return (
+      s.includes('0abf3') ||
+      s.includes('10286') ||
+      s.includes('10287') ||
+      s.includes('b1ebd') ||
+      s.includes('75668') ||
+      s.includes('43719')
+    );
+  };
+
+  if (
+    isExcludedId(idStr) ||
+    isExcludedId(o.id) ||
+    isExcludedId(o.order_number) ||
+    isExcludedId(o.order_id) ||
+    isExcludedId(o.code) ||
+    isExcludedId(o.key)
+  ) {
+    return false;
+  }
+
   if (typeof formatOrderId === 'function') {
-    if (formatOrderId(idStr) === 'FC-75668') return false;
-    if (o.id && formatOrderId(o.id) === 'FC-75668') return false;
-    if (o.order_number && formatOrderId(o.order_number) === 'FC-75668') return false;
-    if (o.order_id && formatOrderId(o.order_id) === 'FC-75668') return false;
-    if (o.code && formatOrderId(o.code) === 'FC-75668') return false;
-    if (o.key && formatOrderId(o.key) === 'FC-75668') return false;
+    if (
+      isExcludedId(formatOrderId(idStr)) ||
+      isExcludedId(formatOrderId(o.id)) ||
+      isExcludedId(formatOrderId(o.order_number)) ||
+      isExcludedId(formatOrderId(o.order_id)) ||
+      isExcludedId(formatOrderId(o.code)) ||
+      isExcludedId(formatOrderId(o.key))
+    ) {
+      return false;
+    }
   }
 
   // Real items check (must have real garment items)
@@ -456,15 +500,38 @@ export const LaundryPortal = () => {
         const normalizedItems = res.data.items.map(normalizeOrder).filter(isValidLaundryOrder);
         setOrders((prev) => {
           const map = new Map();
-          prev.filter(isValidLaundryOrder).forEach((o) => {
-            const k = String(o.id || o.order_number || o.code || '');
-            if (k) map.set(k, o);
-          });
-          normalizedItems.forEach((no) => {
-            const k = String(no.id || no.order_number || no.code || '');
-            if (k) map.set(k, no);
-          });
-          return Array.from(map.values()).filter(isValidLaundryOrder);
+          const keyToCanonical = new Map();
+
+          const registerOrder = (ord) => {
+            if (!isValidLaundryOrder(ord)) return;
+            const ids = getCleanOrderIdentifiers(ord);
+            let canonicalKey = null;
+            for (const id of ids) {
+              if (keyToCanonical.has(id)) {
+                canonicalKey = keyToCanonical.get(id);
+                break;
+              }
+            }
+            if (!canonicalKey) {
+              canonicalKey = ids[0] || String(ord.id || ord.key || Math.random());
+            }
+            for (const id of ids) {
+              keyToCanonical.set(id, canonicalKey);
+            }
+            const existing = map.get(canonicalKey);
+            map.set(canonicalKey, existing ? { ...existing, ...ord } : ord);
+          };
+
+          prev.filter(isValidLaundryOrder).forEach(registerOrder);
+          normalizedItems.forEach(registerOrder);
+
+          const merged = Array.from(map.values()).filter(isValidLaundryOrder);
+          try {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('fabricare_staff_orders', JSON.stringify(merged));
+            }
+          } catch (_) {}
+          return merged;
         });
       }
     } catch (err) {
@@ -512,11 +579,12 @@ export const LaundryPortal = () => {
     }
   }, [activePage, fetchHistory]);
 
-  // Realtime active orders listener (refetches counts and metrics on order update)
+  // Realtime active orders listener (refetches orders, counts and metrics on order update)
   const handleRealtimeRefresh = useCallback(() => {
+    fetchOrders();
     fetchCounts();
     fetchDashboard(dashServicePeriod);
-  }, [fetchCounts, fetchDashboard, dashServicePeriod]);
+  }, [fetchOrders, fetchCounts, fetchDashboard, dashServicePeriod]);
 
   useStaffActiveOrdersRealtime(handleRealtimeRefresh);
 
@@ -527,20 +595,42 @@ export const LaundryPortal = () => {
         if (Array.isArray(firebaseOrders) && firebaseOrders.length > 0) {
           setOrders((prev) => {
             const map = new Map();
-            // 1. Existing orders from REST API or state
-            prev.filter(isValidLaundryOrder).forEach((o) => {
-              const k = String(o.id || o.order_number || o.code || '');
-              if (k) map.set(k, o);
-            });
-            // 2. Merge in Firebase Firestore orders
-            firebaseOrders.filter(isValidLaundryOrder).forEach((fo) => {
-              const norm = normalizeOrder(fo);
-              if (isValidLaundryOrder(norm)) {
-                const k = String(norm.id || norm.order_number || norm.code || '');
-                if (k) map.set(k, norm);
+            const keyToCanonical = new Map();
+
+            const registerOrder = (ord) => {
+              if (!isValidLaundryOrder(ord)) return;
+              const ids = getCleanOrderIdentifiers(ord);
+              let canonicalKey = null;
+              for (const id of ids) {
+                if (keyToCanonical.has(id)) {
+                  canonicalKey = keyToCanonical.get(id);
+                  break;
+                }
               }
+              if (!canonicalKey) {
+                canonicalKey = ids[0] || String(ord.id || ord.key || Math.random());
+              }
+              for (const id of ids) {
+                keyToCanonical.set(id, canonicalKey);
+              }
+              const existing = map.get(canonicalKey);
+              map.set(canonicalKey, existing ? { ...existing, ...ord } : ord);
+            };
+
+            // 1. Existing orders from REST API or state
+            prev.filter(isValidLaundryOrder).forEach(registerOrder);
+            // 2. Real-time updates from Firebase
+            firebaseOrders.filter(isValidLaundryOrder).forEach((fo) => {
+              registerOrder(normalizeOrder(fo));
             });
-            return Array.from(map.values()).filter(isValidLaundryOrder);
+
+            const merged = Array.from(map.values()).filter(isValidLaundryOrder);
+            try {
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('fabricare_staff_orders', JSON.stringify(merged));
+              }
+            } catch (_) {}
+            return merged;
           });
 
           // Synchronize order details modal in real time if open
@@ -1028,10 +1118,10 @@ export const LaundryPortal = () => {
   const isNeedsAttentionOrder = (o, dashAttention = []) => {
     if (!o) return false;
     if (Array.isArray(dashAttention) && dashAttention.length > 0) {
-      const num = String(o.order_number || o.order_id || o.code || o.id || '').toLowerCase();
+      const orderIds = getCleanOrderIdentifiers(o);
       const hasMatch = dashAttention.some(att => {
-        const attId = String(att.order_id || att.id || '').toLowerCase();
-        return attId && (num.includes(attId) || attId.includes(num));
+        const attIds = getCleanOrderIdentifiers(att);
+        return orderIds.some(oid => attIds.some(aid => oid === aid || oid.endsWith(aid) || aid.endsWith(oid)));
       });
       if (hasMatch) return true;
     }
@@ -1054,6 +1144,54 @@ export const LaundryPortal = () => {
     );
   };
 
+  // Unified Service Matcher between Dashboard and Orders Page
+  const matchesStaffService = (o, serviceKey) => {
+    if (!o) return false;
+    if (!serviceKey || serviceKey === 'all') return true;
+    if (serviceKey === 'express') return isExpressOrder(o);
+    if (serviceKey === 'multi-service') return isMultiServiceOrder(o);
+    if (serviceKey === 'needs-attention') return isNeedsAttentionOrder(o, dashboardData?.attention);
+
+    const badges = getServiceBadges(o);
+    const badgeLabels = badges.map(b => b.label.toLowerCase()).join(' ');
+    const svcStr = `${badgeLabels} ${(o.service || (Array.isArray(o.services) ? o.services.join(' ') : '') || '').toLowerCase()}`;
+
+    if (serviceKey === 'wash-fold') {
+      return (
+        svcStr.includes('wash & fold') ||
+        svcStr.includes('wash and fold') ||
+        svcStr.includes('wash-fold') ||
+        (svcStr.includes('wash') && !svcStr.includes('iron') && !svcStr.includes('dry clean')) ||
+        orderMatchesService(o, 'wash-fold') ||
+        (!svcStr.includes('iron') && !svcStr.includes('dry clean') && !svcStr.includes('steam'))
+      );
+    }
+    if (serviceKey === 'wash-iron') {
+      return (
+        svcStr.includes('wash + iron') ||
+        svcStr.includes('wash and iron') ||
+        svcStr.includes('wash & iron') ||
+        svcStr.includes('wash-iron') ||
+        (svcStr.includes('wash') && svcStr.includes('iron')) ||
+        orderMatchesService(o, 'wash-iron')
+      );
+    }
+    if (serviceKey === 'steam-iron') {
+      return (
+        svcStr.includes('steam') ||
+        orderMatchesService(o, 'steam-iron')
+      );
+    }
+    if (serviceKey === 'dry-clean') {
+      return (
+        svcStr.includes('dry clean') ||
+        svcStr.includes('dry-clean') ||
+        orderMatchesService(o, 'dry-clean')
+      );
+    }
+    return true;
+  };
+
   const getOrderTimestamp = (o) => {
     if (!o) return 0;
     const t = o.droppedAtHub || o.droppedOffAt || o.dropped_at_hub || o.receivedAt || o.intakeAt || o.updatedAt || o.placedAt || o.createdAt || o.created_at || o.date || 0;
@@ -1066,7 +1204,7 @@ export const LaundryPortal = () => {
     if (!order) return false;
     if (period === 'All' || !period) return true;
 
-    const rawDate = order.placedAt || order.created_at || order.createdAt || order.date || order.placed || order.timestamp || order.orderDate;
+    const rawDate = order.droppedAtHub || order.droppedOffAt || order.dropped_at_hub || order.placedAt || order.created_at || order.createdAt || order.date || order.placed || order.timestamp || order.orderDate || order.updatedAt;
     if (!rawDate) return false;
 
     const now = new Date();
@@ -2369,7 +2507,7 @@ export const LaundryPortal = () => {
           const mergedPercent = validOrders.length > 0 ? Math.round((mergedCount / validOrders.length) * 100) : 0;
 
           const attentionOrders = validOrders.filter(o => isNeedsAttentionOrder(o, dashboardData?.attention));
-          const attentionCount = (dashboardData?.attention && dashboardData.attention.length > 0) ? dashboardData.attention.length : attentionOrders.length;
+          const attentionCount = attentionOrders.length;
 
           // 2. Where Orders Are (Real-time counts for active in-process stages)
           const STAGE_COLORS = {
@@ -2401,7 +2539,7 @@ export const LaundryPortal = () => {
             { key: 'packing', label: 'Packing', color: STAGE_COLORS.packing, count: packingCount }
           ];
 
-          const totalOrdersInProcess = stagesConfig.reduce((acc, s) => acc + s.count, 0) || validOrders.length || 1;
+          const totalOrdersInProcess = stagesConfig.reduce((acc, s) => acc + s.count, 0);
 
           const donutList = stagesConfig.map(st => {
             const pctVal = totalOrdersInProcess > 0 ? Math.round((st.count / totalOrdersInProcess) * 100) : 0;
@@ -2438,21 +2576,11 @@ export const LaundryPortal = () => {
           const periodOrders = validOrders.filter(o => isOrderInTimeframe(o, dashServicePeriod));
           const targetServiceOrders = periodOrders;
 
-          const getOrderServiceKey = (o) => {
-            const badges = getServiceBadges(o);
-            const badgeLabels = badges.map(b => b.label.toLowerCase()).join(' ');
-            const svcStr = `${badgeLabels} ${(o.service || (Array.isArray(o.services) ? o.services.join(' ') : '') || '').toLowerCase()}`;
-            if (svcStr.includes('dry clean') || svcStr.includes('dry-clean')) return 'dry-clean';
-            if (svcStr.includes('steam')) return 'steam-iron';
-            if (svcStr.includes('wash + iron') || svcStr.includes('wash & iron') || (svcStr.includes('wash') && svcStr.includes('iron')) || svcStr.includes('wash-iron')) return 'wash-iron';
-            return 'wash-fold';
-          };
-
-          const wfCount = targetServiceOrders.filter(o => getOrderServiceKey(o) === 'wash-fold').length;
-          const wiCount = targetServiceOrders.filter(o => getOrderServiceKey(o) === 'wash-iron').length;
-          const siCount = targetServiceOrders.filter(o => getOrderServiceKey(o) === 'steam-iron').length;
-          const dcCount = targetServiceOrders.filter(o => getOrderServiceKey(o) === 'dry-clean').length;
-          const expCount = targetServiceOrders.filter(isExpressOrder).length;
+          const wfCount = targetServiceOrders.filter(o => matchesStaffService(o, 'wash-fold')).length;
+          const wiCount = targetServiceOrders.filter(o => matchesStaffService(o, 'wash-iron')).length;
+          const siCount = targetServiceOrders.filter(o => matchesStaffService(o, 'steam-iron')).length;
+          const dcCount = targetServiceOrders.filter(o => matchesStaffService(o, 'dry-clean')).length;
+          const expCount = targetServiceOrders.filter(o => matchesStaffService(o, 'express')).length;
 
           const serviceStats = [
             { service: 'Wash & Fold', filterKey: 'wash-fold', count: wfCount, color: '#0f766e' },
@@ -2545,6 +2673,7 @@ export const LaundryPortal = () => {
                   onClick={() => goToOrdersWithFilter('all', '', 'all')}
                   role="button"
                   tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToOrdersWithFilter('all', '', 'all'); } }}
                   style={{ cursor: 'pointer' }}
                   title="Click to view all incoming orders on Orders page"
                 >
@@ -2569,6 +2698,7 @@ export const LaundryPortal = () => {
                   onClick={() => goToOrdersWithFilter('all', '', 'express')}
                   role="button"
                   tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToOrdersWithFilter('all', '', 'express'); } }}
                   style={{ cursor: 'pointer' }}
                   title="Click to view Express order requests on Orders page"
                 >
@@ -2593,6 +2723,7 @@ export const LaundryPortal = () => {
                   onClick={() => goToOrdersWithFilter('all', '', 'multi-service')}
                   role="button"
                   tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToOrdersWithFilter('all', '', 'multi-service'); } }}
                   style={{ cursor: 'pointer' }}
                   title="Click to view Multi Service order requests on Orders page"
                 >
@@ -2617,6 +2748,7 @@ export const LaundryPortal = () => {
                   onClick={() => goToOrdersWithFilter('all', '', 'needs-attention')}
                   role="button"
                   tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToOrdersWithFilter('all', '', 'needs-attention'); } }}
                   style={{ cursor: 'pointer' }}
                   title="Click to view Needs Attention requests on Orders page"
                 >
@@ -2667,10 +2799,12 @@ export const LaundryPortal = () => {
                                 strokeDashoffset={slice.dashOffset}
                                 transform="rotate(-90 115 115)"
                                 className="donut-slice-circle"
+                                style={{ cursor: 'pointer', transition: 'stroke-width 0.2s ease, opacity 0.2s ease' }}
                                 onMouseEnter={() => setHoveredDonutKey(slice.key)}
                                 onMouseLeave={() => setHoveredDonutKey(null)}
+                                onClick={() => goToOrdersWithFilter(slice.key)}
                               >
-                                <title>{slice.label}: {slice.count} orders ({slice.pct})</title>
+                                <title>{slice.label}: {slice.count} orders ({slice.pct}) - Click to view</title>
                               </circle>
                             );
                           })}
@@ -2715,6 +2849,11 @@ export const LaundryPortal = () => {
                             onMouseEnter={() => setHoveredDonutKey(item.key)}
                             onMouseLeave={() => setHoveredDonutKey(null)}
                             onClick={() => goToOrdersWithFilter(item.key)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToOrdersWithFilter(item.key); } }}
+                            style={{ cursor: 'pointer' }}
+                            title={`Click to view ${item.label} orders on Orders page`}
                           >
                             <div className="donut-legend-left">
                               <span 
@@ -2737,7 +2876,7 @@ export const LaundryPortal = () => {
                   <div className="where-orders-footer">
                     <button 
                       type="button"
-                      onClick={() => navigateToRoute('orders')}
+                      onClick={() => goToOrdersWithFilter('all', '', 'all')}
                       className="dash-footer-link"
                     >
                       Open Orders &gt;
@@ -3003,21 +3142,7 @@ export const LaundryPortal = () => {
 
           // Compute counts for all chips matching real orders (scoped to service filter if active)
           const validOrders = orders.filter(isValidLaundryOrder);
-          const scopedServiceOrders = validOrders.filter(o => {
-            if (ordersServiceFilter === 'all') return true;
-            if (ordersServiceFilter === 'express') return isExpressOrder(o);
-            if (ordersServiceFilter === 'multi-service') return isMultiServiceOrder(o);
-            if (ordersServiceFilter === 'needs-attention') return isNeedsAttentionOrder(o, dashboardData?.attention);
-
-            const badges = getServiceBadges(o);
-            const badgeLabels = badges.map(b => b.label.toLowerCase()).join(' ');
-            const svcStr = `${badgeLabels} ${(o.service || (Array.isArray(o.services) ? o.services.join(' ') : '') || '').toLowerCase()}`;
-            if (ordersServiceFilter === 'wash-fold') return svcStr.includes('wash & fold') || svcStr.includes('wash and fold') || svcStr.includes('wash-fold') || (svcStr.includes('wash') && !svcStr.includes('iron') && !svcStr.includes('dry clean'));
-            if (ordersServiceFilter === 'wash-iron') return svcStr.includes('wash + iron') || svcStr.includes('wash and iron') || svcStr.includes('wash & iron') || svcStr.includes('wash-iron') || (svcStr.includes('wash') && svcStr.includes('iron'));
-            if (ordersServiceFilter === 'steam-iron') return svcStr.includes('steam');
-            if (ordersServiceFilter === 'dry-clean') return svcStr.includes('dry clean') || svcStr.includes('dry-clean');
-            return true;
-          });
+          const scopedServiceOrders = validOrders.filter(o => matchesStaffService(o, ordersServiceFilter));
 
           const chipCounts = {
             all: scopedServiceOrders.length,
@@ -3028,7 +3153,7 @@ export const LaundryPortal = () => {
             ironing: scopedServiceOrders.filter(o => ['ironing', 'folding'].includes(normalizeStatusKey(getOrderTargetStatus(o)))).length,
             folding: scopedServiceOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'folding').length,
             quality: scopedServiceOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'quality').length,
-            packing: scopedServiceOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'packing').length,
+            packing: scopedServiceOrders.filter(o => ['packing', 'delivery'].includes(normalizeStatusKey(getOrderTargetStatus(o)))).length,
             delivery: scopedServiceOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'delivery').length,
             delivered: scopedServiceOrders.filter(o => normalizeStatusKey(getOrderTargetStatus(o)) === 'delivered').length,
           };
@@ -3152,6 +3277,8 @@ export const LaundryPortal = () => {
               const statusKey = normalizeStatusKey(statusTarget);
               if (ordersActiveChip === 'ironing') {
                 if (statusKey !== 'ironing' && statusKey !== 'folding') return false;
+              } else if (ordersActiveChip === 'packing') {
+                if (statusKey !== 'packing' && statusKey !== 'delivery') return false;
               } else {
                 if (statusKey !== ordersActiveChip) return false;
               }
@@ -3245,7 +3372,7 @@ export const LaundryPortal = () => {
                           {ordersServiceFilter === 'needs-attention' && '⚠️ Needs Attention'}
                           {ordersServiceFilter === 'wash-fold' && 'Wash & Fold'}
                           {ordersServiceFilter === 'wash-iron' && 'Wash + Iron'}
-                          {ordersServiceFilter === 'steam-iron' && 'Steam Iron'}
+                          {ordersServiceFilter === 'steam-iron' && 'Steam + Iron'}
                           {ordersServiceFilter === 'dry-clean' && 'Dry Clean'}
                           <button
                             type="button"
@@ -3382,12 +3509,20 @@ export const LaundryPortal = () => {
                         ? (rawId.startsWith('FC-') || rawId.startsWith('#') ? rawId : `FC-${rawId}`)
                         : (idx === 5 ? 'FC-88307' : `FC-104${idx + 20}`);
 
-                      // Carefully filter out request FC-75668
+                      // Carefully filter out excluded orders: #FC0ABF3, #FC10286, #FC10287, #FCB1EBD, FC-75668, FC-43719
+                      const checkTarget = (str) => {
+                        if (!str) return false;
+                        const s = String(str).toLowerCase().replace(/[^a-z0-9]/g, '');
+                        return s.includes('0abf3') || s.includes('10286') || s.includes('10287') || s.includes('b1ebd') || s.includes('75668') || s.includes('43719');
+                      };
+
                       if (
-                        orderIdStr === 'FC-75668' ||
-                        orderIdStr === '#FC-75668' ||
-                        String(rawId).includes('75668') ||
-                        (typeof formatOrderId === 'function' && formatOrderId(rawId) === 'FC-75668')
+                        checkTarget(orderIdStr) ||
+                        checkTarget(rawId) ||
+                        checkTarget(order?.id) ||
+                        checkTarget(order?.order_number) ||
+                        checkTarget(order?.order_id) ||
+                        (typeof formatOrderId === 'function' && checkTarget(formatOrderId(rawId)))
                       ) {
                         return null;
                       }

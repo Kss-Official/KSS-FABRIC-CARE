@@ -425,6 +425,7 @@ const BASELINE_DELIVERY = [
 export const AdminUsersPage = () => {
   const { 
     allUsers: contextAllUsers = [], 
+    deletedUserKeys: contextDeletedUserKeys = [],
     orders: contextOrders = [], 
     setIsAddUserModalOpen = () => {},
     updateUser = async () => {},
@@ -442,6 +443,13 @@ export const AdminUsersPage = () => {
     try {
       setIsRefreshing(true);
       setRefreshError(null);
+      try {
+        const stored = localStorage.getItem('fabricare_deleted_users');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setDeletedUserIds(prev => Array.from(new Set([...prev, ...parsed])));
+        }
+      } catch (_) {}
       if (refreshUsers) {
         await refreshUsers();
       }
@@ -470,8 +478,58 @@ export const AdminUsersPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  // Track locally deleted user IDs so they disappear instantly even for baseline users
-  const [deletedUserIds, setDeletedUserIds] = useState([]);
+  // Track permanently deleted user IDs across sessions, baseline seeds, and page refreshes
+  const [deletedUserIds, setDeletedUserIds] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('fabricare_deleted_users');
+        return stored ? JSON.parse(stored) : [];
+      }
+    } catch (_) {}
+    return [];
+  });
+
+  // Sync deleted user keys from realtime DB context
+  useEffect(() => {
+    if (contextDeletedUserKeys && contextDeletedUserKeys.length > 0) {
+      setDeletedUserIds(prev => {
+        const merged = Array.from(new Set([...prev, ...contextDeletedUserKeys]));
+        try {
+          localStorage.setItem('fabricare_deleted_users', JSON.stringify(merged));
+        } catch (_) {}
+        return merged;
+      });
+    }
+  }, [contextDeletedUserKeys]);
+
+  // Robust check to determine if any user record was marked deleted
+  const isUserDeleted = useCallback((u) => {
+    if (!u) return false;
+    const id = u.id ? String(u.id).toLowerCase().trim() : '';
+    const idNoHash = id.replace(/^#/, '');
+    const uid = u.uid ? String(u.uid).toLowerCase().trim() : '';
+    const email = u.email ? String(u.email).toLowerCase().trim() : '';
+    const phone = u.phone ? String(u.phone).replace(/\s+/g, '') : '';
+    const name = (u.fullName || u.name) ? String(u.fullName || u.name).toLowerCase().trim() : '';
+
+    return deletedUserIds.some(deleted => {
+      const d = String(deleted || '').toLowerCase().trim();
+      if (!d) return false;
+      const dNoHash = d.replace(/^#/, '');
+      const dSanitized = d.replace(/[.#$[\]/]/g, '_');
+      return (
+        d === id ||
+        d === idNoHash ||
+        dNoHash === id ||
+        dNoHash === idNoHash ||
+        d === uid ||
+        dSanitized === uid ||
+        (email && d === email) ||
+        (phone && (d === phone || d.replace(/\s+/g, '') === phone)) ||
+        (name && d === name)
+      );
+    });
+  }, [deletedUserIds]);
 
   // Ref for detecting clicks outside the action popover
   const popoverRef = useRef(null);
@@ -523,14 +581,21 @@ export const AdminUsersPage = () => {
   const mergedUsers = useMemo(() => {
     const userMap = new Map();
 
-    // 1. Seed baseline records
-    BASELINE_CUSTOMERS.forEach(c => userMap.set(c.id, { ...c }));
-    BASELINE_STAFF.forEach(s => userMap.set(s.id, { ...s }));
-    BASELINE_DELIVERY.forEach(d => userMap.set(d.id, { ...d }));
+    // 1. Seed baseline records (excluding any deleted records)
+    BASELINE_CUSTOMERS.forEach(c => {
+      if (!isUserDeleted(c)) userMap.set(c.id, { ...c });
+    });
+    BASELINE_STAFF.forEach(s => {
+      if (!isUserDeleted(s)) userMap.set(s.id, { ...s });
+    });
+    BASELINE_DELIVERY.forEach(d => {
+      if (!isUserDeleted(d)) userMap.set(d.id, { ...d });
+    });
 
     // 2. Merge live database users from contextAllUsers
     if (contextAllUsers && contextAllUsers.length > 0) {
       contextAllUsers.forEach((u) => {
+        if (isUserDeleted(u)) return;
         const emailLower = (u.email || '').toLowerCase().trim();
         const role = u.role || 'customer';
         const isDelivery = role === 'agent' || role === 'delivery';
@@ -584,10 +649,10 @@ export const AdminUsersPage = () => {
       });
     }
 
-    // 3. Filter out locally deleted users so they disappear immediately
+    // 3. Filter out deleted users so they disappear permanently
     const allUsers = Array.from(userMap.values());
-    return allUsers.filter(u => !deletedUserIds.includes(u.uid) && !deletedUserIds.includes(u.id));
-  }, [contextAllUsers, deletedUserIds]);
+    return allUsers.filter(u => !isUserDeleted(u));
+  }, [contextAllUsers, deletedUserIds, isUserDeleted]);
 
   // Dynamic Metrics depending on active tab
   const metrics = useMemo(() => {
@@ -770,21 +835,32 @@ export const AdminUsersPage = () => {
   const handleDeleteUser = async (user) => {
     setActiveMenuId(null);
     if (!window.confirm(`Are you sure you want to delete ${user.fullName || user.name}?`)) return;
-    // Optimistically remove from UI immediately
-    const uid = user.uid || user.id;
-    if (uid) {
-      setDeletedUserIds(prev => [...prev, uid]);
-    }
+
+    const identifiers = [
+      user.uid,
+      user.id,
+      user.id && String(user.id).replace(/^#/, ''),
+      user.email && String(user.email).toLowerCase().trim(),
+      user.phone,
+      user.phone && String(user.phone).replace(/\s+/g, ''),
+      user.fullName || user.name
+    ].filter(Boolean);
+
+    // Optimistically remove from UI and persist to localStorage immediately
+    setDeletedUserIds(prev => {
+      const next = Array.from(new Set([...prev, ...identifiers]));
+      try {
+        localStorage.setItem('fabricare_deleted_users', JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+
     try {
-      if (deleteUser && uid) {
-        await deleteUser(uid);
+      if (deleteUser) {
+        await deleteUser(user);
       }
     } catch (err) {
       console.error('Failed to delete user:', err);
-      // Revert optimistic removal on failure
-      if (uid) {
-        setDeletedUserIds(prev => prev.filter(id => id !== uid));
-      }
     }
   };
 
@@ -963,26 +1039,6 @@ export const AdminUsersPage = () => {
             <ChevronDown size={14} className="select-chevron-icon" />
           </div>
 
-          {/* Areas / Hubs Select */}
-          <div className="filter-select-container">
-            <select 
-              className="filter-styled-select"
-              value={areaFilter}
-              onChange={(e) => { setAreaFilter(e.target.value); setCurrentPage(1); }}
-              aria-label="Filter by Area or Hub"
-            >
-              <option value="all">All Localities & Hubs</option>
-              <option value="Banaswadi">Banaswadi</option>
-              <option value="HRBR Layout">HRBR Layout</option>
-              <option value="Indiranagar">Indiranagar</option>
-              <option value="Whitefield">Whitefield</option>
-              <option value="Marathahalli">Marathahalli</option>
-              <option value="HSR Layout">HSR Layout</option>
-              <option value="Koramangala">Koramangala</option>
-              <option value="Central">Central Hub</option>
-            </select>
-            <ChevronDown size={14} className="select-chevron-icon" />
-          </div>
 
           {/* Join Date Dropdown Button */}
           <div className="filter-dropdown-pill-wrapper">

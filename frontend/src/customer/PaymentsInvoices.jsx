@@ -959,16 +959,6 @@ export const PaymentsInvoices = () => {
               <span className="orders-count-pill">
                 {searchQuery.trim() ? `${filteredOrders.length} of ${orders.length} Orders` : `${orders.length} ${orders.length === 1 ? 'Order' : 'Orders'}`}
               </span>
-              <button 
-                type="button"
-                onClick={() => fetchOrdersAndInvoices()} 
-                className={`refresh-orders-btn ${isRefreshing ? 'loading' : ''} ${refreshSuccess ? 'success' : ''}`}
-                disabled={isRefreshing}
-                title="Refresh orders list"
-              >
-                <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
-                <span>{isRefreshing ? 'Refreshing...' : refreshSuccess ? 'Refreshed!' : 'Refresh'}</span>
-              </button>
             </div>
 
             <div className="orders-search-wrapper">

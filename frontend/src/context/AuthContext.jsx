@@ -138,6 +138,10 @@ const tryDjangoAuth = async (email, password) => {
         const data = await res.json();
         return data;
       }
+      if (res.status === 400 || res.status === 401 || res.status === 403) {
+        // Port 8000 is online and rejected credentials, don't attempt fallback ports
+        break;
+      }
     } catch (_) {}
   }
   return null;

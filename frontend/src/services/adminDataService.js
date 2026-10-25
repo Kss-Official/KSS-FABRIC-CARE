@@ -604,11 +604,52 @@ export const toggleAdminUserStatus = async (uid, currentStatus) => {
 /**
  * Admin deletes a user
  */
-export const deleteAdminUser = async (uid) => {
-  const cleanUid = String(uid).trim();
-  await set(ref(rtdb, `users/${cleanUid}`), null);
-  await set(ref(rtdb, `agents/${cleanUid}`), null).catch(() => {});
+export const deleteAdminUser = async (uid, extraIdentifiers = []) => {
+  const cleanUid = String(uid || '').trim();
+  if (cleanUid) {
+    await set(ref(rtdb, `users/${cleanUid}`), null).catch(() => {});
+    await set(ref(rtdb, `agents/${cleanUid}`), null).catch(() => {});
+  }
+
+  // Persist all deleted identifiers in RTDB under deleted_users
+  const allIds = [cleanUid, ...extraIdentifiers].filter(Boolean);
+  for (const id of allIds) {
+    const rawStr = String(id).trim();
+    if (!rawStr) continue;
+    const sanitized = rawStr.replace(/[.#$[\]/]/g, '_').toLowerCase();
+    await set(ref(rtdb, `deleted_users/${sanitized}`), true).catch(() => {});
+  }
+
+  // Also sync delete to Django backend if applicable
+  for (const id of allIds) {
+    if (typeof id === 'string' && id.includes('@')) {
+      fetch(`http://127.0.0.1:8000/api/admin/users?email=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+    } else if (String(id).match(/^\d+$/)) {
+      fetch(`http://127.0.0.1:8000/api/admin/users/${id}/`, { method: 'DELETE' }).catch(() => {});
+    }
+  }
+
   return true;
+};
+
+/**
+ * Subscribe to permanently deleted users in RTDB
+ */
+export const subscribeAdminDeletedUsers = (onDeletedUsersUpdated, onError) => {
+  const delRef = ref(rtdb, 'deleted_users');
+  const unsub = onValue(delRef, (snap) => {
+    if (!snap.exists()) {
+      onDeletedUsersUpdated([]);
+      return;
+    }
+    const val = snap.val() || {};
+    onDeletedUsersUpdated(Object.keys(val));
+  }, (err) => {
+    console.warn('Deleted users listener error:', err);
+    if (onError) onError(err);
+  });
+
+  return () => off(delRef, 'value', unsub);
 };
 
 export const subscribeAdminDashboardStats = (onStatsUpdated, onError) => {

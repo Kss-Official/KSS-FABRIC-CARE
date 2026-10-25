@@ -47,48 +47,96 @@ export const isStatusMatchingCategory = (orderStatus, categoryKey) => {
   const s = String(orderStatus || '').toLowerCase().trim();
   const cat = String(categoryKey).toLowerCase().trim();
 
-  // Pending Pickup category (all incoming/pending pickup orders, including driver-assigned/scheduled)
-  if (cat === 'pending' || cat === 'pending pickup' || cat === 'pickup scheduled') {
+  // Specific Pickup Scheduled filter (driver assigned / scheduled pickup)
+  if (cat === 'pickup scheduled' || cat === 'pickup schedule' || cat === 'scheduled') {
+    return (
+      s === 'pickup scheduled' ||
+      s === 'pickup_scheduled' ||
+      s === 'pickup assigned' ||
+      s === 'pickup_assigned' ||
+      s === 'scheduled' ||
+      s.includes('pickup scheduled') ||
+      s.includes('pickup_scheduled') ||
+      s.includes('scheduled') ||
+      (s.includes('pickup') && (s.includes('assign') || s.includes('sched')))
+    );
+  }
+
+  // Pending Pickup category (strictly pending pickup requests only, excluding scheduled / assigned)
+  if (cat === 'pending' || cat === 'pending pickup') {
+    const isScheduledOrAssigned = 
+      s === 'pickup scheduled' ||
+      s === 'pickup_scheduled' ||
+      s === 'pickup assigned' ||
+      s === 'pickup_assigned' ||
+      s.includes('scheduled') ||
+      (s.includes('pickup') && (s.includes('assign') || s.includes('sched')));
+
+    if (isScheduledOrAssigned) return false;
+
     return (
       s === 'pending pickup' ||
-      s === 'pickup scheduled' ||
-      s === 'pickup assigned' ||
+      s === 'pending_pickup' ||
+      s === 'pending' ||
       s === 'order placed' ||
       s === 'placed' ||
       s === 'pending_review' ||
       s === 'payment_pending' ||
-      s.includes('pickup') ||
-      s.includes('pending')
+      s === 'booked' ||
+      s.includes('pending') ||
+      s.includes('placed') ||
+      s.includes('book') ||
+      (s.includes('pickup') && !isScheduledOrAssigned)
     );
   }
 
-  // In Cleaning category (processing, washing, cleaning)
+  // In Cleaning category (processing, washing, cleaning, drying, ironing, folding, store intake)
   if (cat === 'cleaning' || cat === 'in cleaning') {
     return (
       s === 'in cleaning' ||
       s === 'cleaning' ||
       s === 'washing' ||
       s === 'processing' ||
-      s === 'picked up'
+      s === 'picked up' ||
+      s.includes('clean') ||
+      s.includes('wash') ||
+      s.includes('dry') ||
+      s.includes('iron') ||
+      s.includes('fold') ||
+      s.includes('inspect') ||
+      s.includes('process') ||
+      s.includes('store') ||
+      s.includes('hub') ||
+      s === 'at_store' ||
+      s === 'in_store'
     );
   }
 
-  // Ready for Delivery category (ready, out for delivery, in transit)
+  // Ready for Delivery category (ready, out for delivery, in transit, packing, dispatch)
   if (cat === 'ready' || cat === 'ready for delivery') {
     return (
       s === 'ready for delivery' ||
       s === 'ready' ||
       s === 'in transit' ||
       s === 'out for delivery' ||
-      s === 'delivery assigned'
+      s === 'delivery assigned' ||
+      s.includes('ready') ||
+      s.includes('pack') ||
+      s.includes('transit') ||
+      s.includes('out_for_delivery') ||
+      s.includes('out for delivery') ||
+      s.includes('dispatch')
     );
   }
 
   // Completed category (completed, delivered)
   if (cat === 'completed' || cat === 'delivered') {
     return (
-      s === 'completed' ||
-      s === 'delivered'
+      (s.includes('complet') || s.includes('deliver')) &&
+      !s.includes('out for delivery') &&
+      !s.includes('out_for_delivery') &&
+      !s.includes('ready for delivery') &&
+      !s.includes('delivery assigned')
     );
   }
 
@@ -471,17 +519,21 @@ export const AdminOrdersPage = () => {
   const [refreshError, setRefreshError] = useState(null);
   const [updateTick, setUpdateTick] = useState(0);
 
-  // Real-time synchronization across events (assignment, updates, storage)
+  // Real-time synchronization across events (assignment, updates, storage, new orders)
   useEffect(() => {
     const handleSync = () => setUpdateTick(t => t + 1);
     window.addEventListener('storage', handleSync);
     window.addEventListener('fabricare_order_assigned', handleSync);
     window.addEventListener('fabricare_order_updated', handleSync);
+    window.addEventListener('fabricare_order_status_updated', handleSync);
+    window.addEventListener('fabricare_new_order_placed', handleSync);
     window.addEventListener('fabricare_pickup_delivery_updated', handleSync);
     return () => {
       window.removeEventListener('storage', handleSync);
       window.removeEventListener('fabricare_order_assigned', handleSync);
       window.removeEventListener('fabricare_order_updated', handleSync);
+      window.removeEventListener('fabricare_order_status_updated', handleSync);
+      window.removeEventListener('fabricare_new_order_placed', handleSync);
       window.removeEventListener('fabricare_pickup_delivery_updated', handleSync);
     };
   }, []);
@@ -597,10 +649,16 @@ export const AdminOrdersPage = () => {
       };
     };
 
+    const isExcludedOrder = (ord) => {
+      if (!ord) return true;
+      const id = String(ord.id || ord.order_number || ord.order_id || ord.code || ord.rawId || '');
+      return id.includes('43719') || id.includes('FC-43719');
+    };
+
     if (orders && orders.length > 0) {
-      return orders.map(sanitizeOrder);
+      return orders.filter(o => !isExcludedOrder(o)).map(sanitizeOrder);
     }
-    return BASELINE_ADMIN_ORDERS.map(sanitizeOrder);
+    return BASELINE_ADMIN_ORDERS.filter(o => !isExcludedOrder(o)).map(sanitizeOrder);
   }, [orders, allUsers, updateTick]);
 
   // Exact order metrics dynamically updated and guaranteed 1:1 with filtered lists
@@ -630,6 +688,11 @@ export const AdminOrdersPage = () => {
     setStatusFilter(val);
     if (val === 'all') setActiveTab('all');
     else if (val === 'Pending Pickup') setActiveTab('pending');
+    else if (val === 'Pickup Scheduled') {
+      if (activeTab !== 'all' && activeTab !== 'pending') {
+        setActiveTab('pending');
+      }
+    }
     else if (val === 'In Cleaning') setActiveTab('cleaning');
     else if (val === 'Ready for Delivery') setActiveTab('ready');
     else if (val === 'Completed') setActiveTab('completed');
@@ -660,11 +723,10 @@ export const AdminOrdersPage = () => {
     const idStr = String(o.id || o.order_number || o.order_id || '');
 
     // Synchronized status filtering matching the active category
-    if (activeTab !== 'all') {
-      if (!isStatusMatchingCategory(o.status, activeTab)) return false;
-    }
     if (statusFilter !== 'all') {
       if (!isStatusMatchingCategory(o.status, statusFilter)) return false;
+    } else if (activeTab !== 'all') {
+      if (!isStatusMatchingCategory(o.status, activeTab)) return false;
     }
     if (serviceFilter !== 'all') {
       const allOrderServices = new Set();
@@ -849,10 +911,17 @@ export const AdminOrdersPage = () => {
         </div>
       </div>
 
-      {/* 5 Metric Cards */}
+      {/* 5 Metric Cards (Clickable Top Filter Buttons working Real-Time) */}
       <div className="orders-metric-cards-row">
         {/* Total Orders */}
-        <div className="orders-metric-pill-card">
+        <div 
+          className={`orders-metric-pill-card ${activeTab === 'all' ? 'active' : ''}`}
+          onClick={() => handleTabClick('all')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabClick('all'); } }}
+          title="Click to view All Orders"
+        >
           <div className="metric-badge-box cyan">
             <ShoppingBag size={20} color="#0D7A75" strokeWidth={2} />
           </div>
@@ -863,7 +932,14 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* Pending Pickup */}
-        <div className="orders-metric-pill-card">
+        <div 
+          className={`orders-metric-pill-card ${activeTab === 'pending' ? 'active' : ''}`}
+          onClick={() => handleTabClick(activeTab === 'pending' ? 'all' : 'pending')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabClick(activeTab === 'pending' ? 'all' : 'pending'); } }}
+          title="Click to filter by Pending Pickup"
+        >
           <div className="metric-badge-box orange">
             <Truck size={20} color="#EA580C" strokeWidth={2} />
           </div>
@@ -874,7 +950,14 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* In Cleaning */}
-        <div className="orders-metric-pill-card">
+        <div 
+          className={`orders-metric-pill-card ${activeTab === 'cleaning' ? 'active' : ''}`}
+          onClick={() => handleTabClick(activeTab === 'cleaning' ? 'all' : 'cleaning')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabClick(activeTab === 'cleaning' ? 'all' : 'cleaning'); } }}
+          title="Click to filter by In Cleaning"
+        >
           <div className="metric-badge-box yellow">
             <WasherIcon size={20} color="#D97706" />
           </div>
@@ -885,7 +968,14 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* Ready for Delivery */}
-        <div className="orders-metric-pill-card">
+        <div 
+          className={`orders-metric-pill-card ${activeTab === 'ready' ? 'active' : ''}`}
+          onClick={() => handleTabClick(activeTab === 'ready' ? 'all' : 'ready')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabClick(activeTab === 'ready' ? 'all' : 'ready'); } }}
+          title="Click to filter by Ready for Delivery"
+        >
           <div className="metric-badge-box purple">
             <ShoppingBag size={20} color="#9333EA" strokeWidth={2} />
           </div>
@@ -896,7 +986,14 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* Completed */}
-        <div className="orders-metric-pill-card">
+        <div 
+          className={`orders-metric-pill-card ${activeTab === 'completed' ? 'active' : ''}`}
+          onClick={() => handleTabClick(activeTab === 'completed' ? 'all' : 'completed')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabClick(activeTab === 'completed' ? 'all' : 'completed'); } }}
+          title="Click to filter by Completed"
+        >
           <div className="metric-badge-box green">
             <CheckCircle2 size={20} color="#16A34A" strokeWidth={2} />
           </div>
@@ -930,6 +1027,7 @@ export const AdminOrdersPage = () => {
             >
               <option value="all">All Status</option>
               <option value="Pending Pickup">Pending Pickup</option>
+              <option value="Pickup Scheduled">Pickup Scheduled</option>
               <option value="In Cleaning">In Cleaning</option>
               <option value="Ready for Delivery">Ready for Delivery</option>
               <option value="Completed">Completed</option>
@@ -1437,12 +1535,21 @@ export const AdminOrdersPage = () => {
           align-items: center;
           gap: 14px;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-          transition: transform 0.15s ease, box-shadow 0.15s ease;
+          transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+          cursor: pointer;
+          user-select: none;
         }
 
         .orders-metric-pill-card:hover {
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+          transform: translateY(-2px);
+          border-color: #CBD5E1;
+        }
+
+        .orders-metric-pill-card.active {
+          border-color: #087F77;
+          background: #F0FDFA;
+          box-shadow: 0 4px 14px rgba(8, 127, 119, 0.12);
         }
 
         .metric-badge-box {

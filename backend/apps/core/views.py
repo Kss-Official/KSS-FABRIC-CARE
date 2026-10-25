@@ -1490,21 +1490,19 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
 
-        all_tickets = SupportTicket.objects.all()
-        actual_total = all_tickets.count()
-        actual_open = all_tickets.filter(status=SupportTicket.Status.OPEN).count()
-        actual_in_progress = all_tickets.filter(status=SupportTicket.Status.IN_PROGRESS).count()
-        actual_resolved = all_tickets.filter(status__in=[SupportTicket.Status.RESOLVED, SupportTicket.Status.CLOSED]).count()
+        has_date_filter = bool(self.request.query_params.get('date_range') or self.request.query_params.get('date_filter'))
+        target_qs = queryset if has_date_filter else SupportTicket.objects.all()
+
+        actual_total = target_qs.count()
+        actual_open = target_qs.filter(status=SupportTicket.Status.OPEN).count()
+        actual_in_progress = target_qs.filter(status=SupportTicket.Status.IN_PROGRESS).count()
+        actual_resolved = target_qs.filter(status__in=[SupportTicket.Status.RESOLVED, SupportTicket.Status.CLOSED]).count()
 
         summary = {
             'total_tickets': actual_total,
-            'total_tickets_change': '↑ 12%',
             'open': actual_open,
-            'open_change': '↑ 5%',
             'in_progress': actual_in_progress,
-            'in_progress_change': '↑ 8%',
             'resolved': actual_resolved,
-            'resolved_change': '↑ 15%',
             'actual_counts': {
                 'total': actual_total,
                 'open': actual_open,
@@ -1788,6 +1786,16 @@ class AdminUsersView(APIView):
             'is_active': user.is_active
         }, status=status.HTTP_201_CREATED)
 
+    def delete(self, request):
+        email = request.query_params.get('email') or request.data.get('email')
+        uid = request.query_params.get('id') or request.data.get('id')
+        deleted_count = 0
+        if email:
+            deleted_count += User.objects.filter(email__iexact=str(email).strip()).delete()[0]
+        if uid and str(uid).isdigit():
+            deleted_count += User.objects.filter(id=int(uid)).delete()[0]
+        return Response({'detail': f'Deleted {deleted_count} user(s)'}, status=status.HTTP_200_OK)
+
 
 class AdminUserDetailView(APIView):
     permission_classes = (permissions.AllowAny,)
@@ -1808,6 +1816,14 @@ class AdminUserDetailView(APIView):
             user.phone = request.data['phone']
         user.save()
         return Response({'id': user.id, 'name': user.full_name, 'is_active': user.is_active})
+
+    def delete(self, request, pk):
+        try:
+            user = User.objects.get(pk=pk)
+            user.delete()
+            return Response({'detail': 'User deleted successfully'}, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class AdminUserStatusView(APIView):

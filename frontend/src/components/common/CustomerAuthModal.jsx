@@ -55,10 +55,14 @@ export const CustomerAuthModal = () => {
       if (authModalMode === 'login') {
         await login(email, password);
       } else if (authModalMode === 'register') {
+        const cleanPhone = (phone || '').replace(/\D/g, '');
+        if (cleanPhone && cleanPhone.length !== 10) {
+          throw new Error('Please enter a valid 10-digit mobile number.');
+        }
         if (password.length < 6) {
           throw new Error('Password must be at least 6 characters long.');
         }
-        await register({ email, password, fullName, phone });
+        await register({ email, password, fullName, phone: cleanPhone ? `+91 ${cleanPhone}` : '' });
       } else if (authModalMode === 'forgot') {
         await sendPasswordReset(email);
         setResetSuccess(true);
@@ -140,11 +144,13 @@ export const CustomerAuthModal = () => {
                     <Phone size={16} className="input-icon" />
                     <input 
                       type="tel" 
+                      inputMode="numeric"
                       required 
                       className="form-input" 
-                      placeholder="+91 98765 43210"
+                      placeholder="Enter 10-digit mobile number"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      maxLength={10}
+                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     />
                   </div>
                 </div>

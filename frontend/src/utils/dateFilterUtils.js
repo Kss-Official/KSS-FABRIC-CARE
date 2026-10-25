@@ -39,21 +39,29 @@ export const parseFlexibleDate = (val) => {
     if (!s) return null;
 
     const lower = s.toLowerCase();
-    if (lower === 'today') {
+    if (lower.startsWith('today')) {
       return getStartOfDay(new Date());
     }
-    if (lower === 'tomorrow') {
+    if (lower.startsWith('tomorrow')) {
       const d = new Date();
       d.setDate(d.getDate() + 1);
       return getStartOfDay(d);
     }
-    if (lower === 'yesterday') {
+    if (lower.startsWith('yesterday')) {
       const d = new Date();
       d.setDate(d.getDate() - 1);
       return getStartOfDay(d);
     }
 
-    // 1. ISO format: YYYY-MM-DD (Parse strictly in local midnight to avoid UTC-offset shifts)
+    // 1. ISO string with explicit timezone offset or Zulu indicator (e.g., 2026-10-23T18:09:32.495981+05:30 or 2026-10-22 20:30:00Z)
+    // Supports either 'T' or space as time separator, and preserves native browser timezone translation
+    if (/^\d{4}-\d{1,2}-\d{1,2}[T\s][^\s]+(?:Z|[+-]\d{2}(?::?\d{2})?)$/i.test(s)) {
+      const d = new Date(s.replace(' ', 'T'));
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    // 2. ISO format without timezone: YYYY-MM-DD or YYYY-MM-DD[T\s]HH:mm:ss
+    // Parse strictly in local timezone to avoid UTC midnight date-shifting bugs on date-only strings
     const isoDateMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
     if (isoDateMatch) {
       const year = parseInt(isoDateMatch[1], 10);
@@ -66,21 +74,62 @@ export const parseFlexibleDate = (val) => {
       if (!isNaN(d.getTime())) return d;
     }
 
-    // 2. Day-Month-Year (e.g., "24 Oct 2026", "24-Oct-2026", "24 October 2026", "Saturday, 24 Oct 2026")
+    // 3. Day-Month-Year with month name (e.g., "23 Oct 2026 12:39 PM", "24-Oct-2026", "24 October 2026")
     const months = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
-    const dmyMatch = s.match(/(?:^|[A-Za-z]+,\s*)(\d{1,2})[\s-]+([A-Za-z]{3,9})(?:[\s-]+(\d{4}))?/i);
+    const dmyMatch = s.match(/(?:^|[A-Za-z]+,\s*)(\d{1,2})[\s-]+([A-Za-z]{3,9})(?:[\s-]+(\d{4}))?(?:[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:\s*(am|pm))?)?/i);
     if (dmyMatch) {
       const day = parseInt(dmyMatch[1], 10);
       const monStr = dmyMatch[2].substring(0, 3).toLowerCase();
       if (months[monStr] !== undefined) {
         const month = months[monStr];
         const year = dmyMatch[3] ? parseInt(dmyMatch[3], 10) : new Date().getFullYear();
-        const d = new Date(year, month, day, 0, 0, 0, 0);
+        let hour = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
+        const min = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+        const sec = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
+        const ampm = dmyMatch[7]?.toLowerCase();
+        if (ampm === 'pm' && hour < 12) hour += 12;
+        if (ampm === 'am' && hour === 12) hour = 0;
+        const d = new Date(year, month, day, hour, min, sec);
         if (!isNaN(d.getTime())) return d;
       }
     }
 
-    // 3. Fallback direct parse (RFC, standard locale string)
+    // 4. Month-Day-Year with month name (e.g., "Oct 23, 2026 02:30 PM", "October 23, 2026")
+    const mdyMatch = s.match(/^([A-Za-z]{3,9})[\s-]+(\d{1,2})(?:,?\s+(\d{4}))?(?:[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:\s*(am|pm))?)?/i);
+    if (mdyMatch) {
+      const monStr = mdyMatch[1].substring(0, 3).toLowerCase();
+      if (months[monStr] !== undefined) {
+        const month = months[monStr];
+        const day = parseInt(mdyMatch[2], 10);
+        const year = mdyMatch[3] ? parseInt(mdyMatch[3], 10) : new Date().getFullYear();
+        let hour = mdyMatch[4] ? parseInt(mdyMatch[4], 10) : 0;
+        const min = mdyMatch[5] ? parseInt(mdyMatch[5], 10) : 0;
+        const sec = mdyMatch[6] ? parseInt(mdyMatch[6], 10) : 0;
+        const ampm = mdyMatch[7]?.toLowerCase();
+        if (ampm === 'pm' && hour < 12) hour += 12;
+        if (ampm === 'am' && hour === 12) hour = 0;
+        const d = new Date(year, month, day, hour, min, sec);
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+
+    // 5. Numeric Day-Month-Year (e.g. "23-10-2026", "23/10/2026 03:45 PM")
+    const dmyNumeric = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:\s*(am|pm))?)?/i);
+    if (dmyNumeric) {
+      const day = parseInt(dmyNumeric[1], 10);
+      const month = parseInt(dmyNumeric[2], 10) - 1;
+      const year = parseInt(dmyNumeric[3], 10);
+      let hour = dmyNumeric[4] ? parseInt(dmyNumeric[4], 10) : 0;
+      const min = dmyNumeric[5] ? parseInt(dmyNumeric[5], 10) : 0;
+      const sec = dmyNumeric[6] ? parseInt(dmyNumeric[6], 10) : 0;
+      const ampm = dmyNumeric[7]?.toLowerCase();
+      if (ampm === 'pm' && hour < 12) hour += 12;
+      if (ampm === 'am' && hour === 12) hour = 0;
+      const d = new Date(year, month, day, hour, min, sec);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    // 6. Fallback direct parse (RFC, standard locale string)
     const direct = new Date(s);
     if (!isNaN(direct.getTime()) && direct.getFullYear() > 2000) {
       return direct;
@@ -502,15 +551,33 @@ export const filterMatchesDate = (entity, rangeKey, customFields = []) => {
   const normKey = String(rangeKey).toLowerCase().replace(/[\s_-]+/g, '');
 
   if (normKey === 'today') {
-    return time >= ranges.today.start.getTime() && time <= ranges.today.end.getTime();
+    if (time >= ranges.today.start.getTime() && time <= ranges.today.end.getTime()) return true;
+    const tStart = ranges.today.start;
+    return (
+      entityDate.getFullYear() === tStart.getFullYear() &&
+      entityDate.getMonth() === tStart.getMonth() &&
+      entityDate.getDate() === tStart.getDate()
+    );
   }
 
   if (normKey === 'tomorrow') {
-    return time >= ranges.tomorrow.start.getTime() && time <= ranges.tomorrow.end.getTime();
+    if (time >= ranges.tomorrow.start.getTime() && time <= ranges.tomorrow.end.getTime()) return true;
+    const tmStart = ranges.tomorrow.start;
+    return (
+      entityDate.getFullYear() === tmStart.getFullYear() &&
+      entityDate.getMonth() === tmStart.getMonth() &&
+      entityDate.getDate() === tmStart.getDate()
+    );
   }
 
   if (normKey === 'yesterday') {
-    return time >= ranges.yesterday.start.getTime() && time <= ranges.yesterday.end.getTime();
+    if (time >= ranges.yesterday.start.getTime() && time <= ranges.yesterday.end.getTime()) return true;
+    const yStart = ranges.yesterday.start;
+    return (
+      entityDate.getFullYear() === yStart.getFullYear() &&
+      entityDate.getMonth() === yStart.getMonth() &&
+      entityDate.getDate() === yStart.getDate()
+    );
   }
 
   if (normKey === 'thisweek') {

@@ -13,7 +13,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { ref, onValue, off, get, set, update, push } from 'firebase/database';
-import { db, rtdb, isFirebaseConfigured } from '../config/firebase.js';
+import { db, rtdb, auth, isFirebaseConfigured } from '../config/firebase.js';
 import { DEFAULT_SERVICES } from './adminDataService.js';
 
 // Standard uniform order ID formatter
@@ -190,84 +190,6 @@ export const INITIAL_ORDERS = [
       { item_name: 'Cotton Shirt', quantity: 3, unit_price: 60, total_price: 180 },
       { item_name: 'Denim Trousers', quantity: 2, unit_price: 90, total_price: 180 },
       { item_name: 'Steam Iron Shirt', quantity: 3, unit_price: 60, total_price: 180 }
-    ]
-  },
-  {
-    id: 'FC-10286',
-    order_number: 'FC-10286',
-    order_id: 'FC-10286',
-    customerId: 'usr-cust-01',
-    date: '17 Oct 2026',
-    customer: {
-      name: 'Pratiksha Sharma',
-      phone: '+91 98765 43220',
-      email: 'customer@fabricare.com',
-      avatar: 'PS',
-      address: '100ft Road, Indiranagar, Bengaluru - 560038'
-    },
-    customer_name: 'Pratiksha Sharma',
-    customer_phone: '+91 98765 43220',
-    pickup_full_name: 'Pratiksha Sharma',
-    pickup_phone: '+91 98765 43220',
-    pickup_address: '100ft Road, Indiranagar, Bengaluru - 560038',
-    delivery_address: '100ft Road, Indiranagar, Bengaluru - 560038',
-    services: ['Dry Cleaning'],
-    services_list: ['Dry Cleaning'],
-    pickupTime: '16 Oct 2026, 02:00 PM – 04:00 PM',
-    pickup_time_slot: '02:00 PM – 04:00 PM',
-    pickup_date: '2026-10-16',
-    amount: 660,
-    total_amount: 660,
-    status: 'In Cleaning',
-    status_display: 'In Cleaning',
-    payment: 'Paid',
-    payment_status: 'PAID',
-    type: 'Processing',
-    driver: 'Arjun Singh',
-    stage: 'washing',
-    laundryNotes: 'Inspection passed, loaded in machine #2',
-    items: [
-      { item_name: 'Blazer Suit', quantity: 1, unit_price: 350, total_price: 350 },
-      { item_name: 'Silk Saree', quantity: 1, unit_price: 310, total_price: 310 }
-    ]
-  },
-  {
-    id: 'FC-10287',
-    order_number: 'FC-10287',
-    order_id: 'FC-10287',
-    customerId: 'usr-cust-03',
-    date: '16 Oct 2026',
-    customer: {
-      name: 'Pooja Hegde',
-      phone: '+91 91234 56780',
-      email: 'pooja.h@gmail.com',
-      avatar: 'PH',
-      address: '5th Block, Koramangala, Bengaluru - 560034'
-    },
-    customer_name: 'Pooja Hegde',
-    customer_phone: '+91 91234 56780',
-    pickup_full_name: 'Pooja Hegde',
-    pickup_phone: '+91 91234 56780',
-    pickup_address: '5th Block, Koramangala, Bengaluru - 560034',
-    delivery_address: '5th Block, Koramangala, Bengaluru - 560034',
-    services: ['Wash & Iron'],
-    services_list: ['Wash & Iron'],
-    pickupTime: '15 Oct 2026, 10:00 AM – 12:00 PM',
-    pickup_time_slot: '10:00 AM – 12:00 PM',
-    pickup_date: '2026-10-15',
-    amount: 480,
-    total_amount: 480,
-    status: 'Ready for Delivery',
-    status_display: 'Ready for Delivery',
-    payment: 'Paid',
-    payment_status: 'PAID',
-    type: 'Delivery',
-    driver: 'Suresh Kumar',
-    stage: 'ready',
-    laundryNotes: 'QC passed, packed in protective dust cover',
-    items: [
-      { item_name: 'Casual Shirts', quantity: 4, unit_price: 60, total_price: 240 },
-      { item_name: 'Cotton Pants', quantity: 2, unit_price: 120, total_price: 240 }
     ]
   }
 ];
@@ -754,7 +676,7 @@ export const normalizeFirestoreOrder = (docData, docId) => {
  * Realtime subscription to all orders in Firestore
  */
 export const subscribeOrders = (callback, errorCallback) => {
-  if (!isFirebaseConfigured) return () => {};
+  if (!isFirebaseConfigured || !auth?.currentUser) return () => {};
   try {
     const targetDb = rtdb || db;
     if (!targetDb) return () => {};
@@ -765,12 +687,16 @@ export const subscribeOrders = (callback, errorCallback) => {
         return;
       }
       const data = snap.val();
+      const isExcludedOrder = (val) => {
+        const s = String(val || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        return s.includes('75668') || s.includes('43719') || s.includes('0abf3') || s.includes('10286') || s.includes('10287') || s.includes('b1ebd');
+      };
       const orderList = Object.keys(data)
-        .filter(k => !k.includes('P4CbA4_8YTw7XnFWZiV') && !k.includes('75668') && !k.includes('FC-75668'))
+        .filter(k => !k.includes('P4CbA4_8YTw7XnFWZiV') && !isExcludedOrder(k))
         .map(k => normalizeFirestoreOrder(data[k], k))
         .filter(o => {
           const num = String(o.order_number || o.id || o.code || o.order_id || '');
-          return !num.includes('75668') && !num.includes('FC-75668');
+          return !isExcludedOrder(num) && !isExcludedOrder(o.id) && !isExcludedOrder(o.code);
         })
         .filter(o => o.code || (o.items && Object.keys(o.items).length > 0) || (o.customerName && o.customerName !== 'Customer'));
       orderList.sort((a, b) => {

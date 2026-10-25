@@ -44,6 +44,11 @@ export const SignupPage = () => {
     }
   }, [isAuthenticated, navigateTo]);
 
+  const handlePhoneChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+    setPhone(digits);
+  };
+
   const handleRegister = async (e) => {
     if (e) e.preventDefault();
     setErrorMessage(null);
@@ -59,8 +64,13 @@ export const SignupPage = () => {
       setErrorMessage('Please enter a valid email address.');
       return;
     }
-    if (!phone.trim()) {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (!cleanPhone) {
       setErrorMessage('Please enter your mobile number.');
+      return;
+    }
+    if (cleanPhone.length !== 10) {
+      setErrorMessage('Mobile number must be exactly 10 digits.');
       return;
     }
     if (!password || password.length < 6) {
@@ -70,7 +80,7 @@ export const SignupPage = () => {
 
     setIsSubmitting(true);
     try {
-      const fullPhoneNumber = phone.startsWith('+') ? phone : `${countryCode} ${phone.trim()}`;
+      const fullPhoneNumber = phone.startsWith('+') ? phone : `${countryCode} ${cleanPhone}`;
       await register({
         fullName: fullName.trim(),
         email: email.trim().toLowerCase(),
@@ -266,11 +276,13 @@ export const SignupPage = () => {
                   <div className="phone-input-split">
                     <input
                       type="tel"
+                      inputMode="numeric"
                       required
                       className="auth-input-control"
                       placeholder="Enter your mobile number"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={handlePhoneChange}
+                      maxLength={10}
                       disabled={isSubmitting}
                       autoComplete="tel"
                     />

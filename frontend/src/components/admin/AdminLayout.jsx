@@ -79,7 +79,7 @@ export const AdminLayout = ({ children }) => {
   useEffect(() => {
     const handleProfileUpdate = (e) => {
       if (e?.detail && e.detail.photoUrl !== undefined) {
-        setLocalHeaderPhoto(e.detail.photoUrl);
+        setLocalHeaderPhoto(prev => (prev === e.detail.photoUrl ? prev : e.detail.photoUrl));
         setHeaderPhotoVersion(Date.now());
       }
     };

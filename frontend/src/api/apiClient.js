@@ -524,10 +524,14 @@ export const staffApi = {
   getOrders: async () => {
     try {
       const snap = await get(ref(rtdb, 'orders'));
+      const isExcludedOrder = (val) => {
+        const s = String(val || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        return s.includes('75668') || s.includes('43719') || s.includes('0abf3') || s.includes('10286') || s.includes('10287') || s.includes('b1ebd');
+      };
       if (snap.exists()) {
         const all = snap.val() || {};
         const items = Object.keys(all)
-          .filter(id => !id.includes('P4CbA4_8YTw7XnFWZiV') && !id.includes('75668') && !id.includes('FC-75668'))
+          .filter(id => !id.includes('P4CbA4_8YTw7XnFWZiV') && !id.includes('P49mbrcJdg3RjrnLWfq') && !isExcludedOrder(id))
           .map(id => normalizeOrder({
             ...all[id],
             id,
@@ -536,7 +540,7 @@ export const staffApi = {
           }))
           .filter(o => {
             const num = String(o.order_number || o.id || o.code || o.order_id || '');
-            return !num.includes('75668') && !num.includes('FC-75668');
+            return !isExcludedOrder(num) && !isExcludedOrder(o.id) && !isExcludedOrder(o.code);
           })
           .filter(o => o.code || (o.items && Object.keys(o.items).length > 0) || (o.customerName && o.customerName !== 'Customer'));
         items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -544,6 +548,10 @@ export const staffApi = {
       }
     } catch (_) { }
 
+    const isExcludedOrder = (val) => {
+      const s = String(val || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return s.includes('75668') || s.includes('43719') || s.includes('0abf3') || s.includes('10286') || s.includes('10287') || s.includes('b1ebd');
+    };
     const statuses = ['DROPPED_OFF_AT_LAUNDRY', 'DROPPED_OFF', 'PICKED_UP', 'RECEIVED', 'IN_CLEANING', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERED'];
     const promises = statuses.map(st => get(ref(rtdb, `ordersByStatus/${st}`)).catch(() => null));
     const snaps = await Promise.all(promises);
@@ -555,7 +563,7 @@ export const staffApi = {
     });
 
     const orderPromises = Array.from(orderIds)
-      .filter(id => !id.includes('75668') && !id.includes('FC-75668'))
+      .filter(id => !isExcludedOrder(id))
       .map(async id => {
         try {
           const oSnap = await get(ref(rtdb, `orders/${id}`));
@@ -568,7 +576,7 @@ export const staffApi = {
       .filter(Boolean)
       .filter(o => {
         const num = String(o.order_number || o.id || o.code || o.order_id || '');
-        return !num.includes('75668') && !num.includes('FC-75668');
+        return !isExcludedOrder(num) && !isExcludedOrder(o.id) && !isExcludedOrder(o.code);
       });
     return { data: { items } };
   },
@@ -621,15 +629,20 @@ export const staffApi = {
     try {
       const itemsMap = new Map();
 
+      const isExcludedOrder = (val) => {
+        const s = String(val || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        return s.includes('75668') || s.includes('43719') || s.includes('0abf3') || s.includes('10286') || s.includes('10287') || s.includes('b1ebd');
+      };
+
       // 1. Fetch from main RTDB orders node
       const snap = await get(ref(rtdb, 'orders'));
       if (snap.exists()) {
         const all = snap.val() || {};
         for (const [key, raw] of Object.entries(all)) {
           if (!raw || typeof raw !== 'object') continue;
-          if (key.includes('75668') || key.includes('FC-75668')) continue;
+          if (isExcludedOrder(key)) continue;
           const rawIdStr = String(raw.order_number || raw.code || raw.id || '');
-          if (rawIdStr.includes('75668') || rawIdStr.includes('FC-75668')) continue;
+          if (isExcludedOrder(rawIdStr)) continue;
           const s = String(raw.status || raw.orderStatus || raw.status_display || raw.raw_status || '').toUpperCase().trim();
           const stage = String(raw.stage || raw.processing_stage || '').toUpperCase().trim();
 

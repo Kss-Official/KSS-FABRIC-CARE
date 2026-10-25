@@ -174,53 +174,6 @@ class Command(BaseCommand):
             OrderItem.objects.create(order=o2, service_name='Silk Saree / Lehenga', category_name='Dry Cleaning', quantity=2, unit_price=220.00, total_price=440.00)
             Invoice.objects.create(order=o2, subtotal=440.00, total_payable=440.00, payment_status=Order.PaymentStatus.PAID, payment_method=Order.PaymentMethod.CARD)
 
-            # Order 3: Laundry Processing
-            o3 = Order.objects.create(
-                order_id='#FC10286',
-                customer=customer_user,
-                pickup_full_name='Arjun Nair',
-                pickup_phone='+91 91234 56789',
-                pickup_address='Whitefield, Bengaluru - 560066',
-                pickup_city='Bengaluru',
-                pickup_pincode='560066',
-                pickup_date=today,
-                pickup_time_slot='11:00 AM – 01:00 PM',
-                status=Order.Status.WASHING,
-                assigned_pickup_driver=delivery_user,
-                assigned_laundry_staff=laundry_user,
-                subtotal=520.00,
-                total_amount=520.00,
-                payment_status=Order.PaymentStatus.PAID,
-                payment_method=Order.PaymentMethod.UPI
-            )
-            OrderItem.objects.create(order=o3, service_name='Jeans (Wash & Fold)', category_name='Wash & Fold', quantity=3, unit_price=120.00, total_price=360.00)
-            OrderItem.objects.create(order=o3, service_name='Bedsheet (Single / Double)', category_name='Steam Ironing', quantity=1, unit_price=90.00, total_price=90.00)
-            OrderItem.objects.create(order=o3, service_name='T-Shirt (Wash & Fold)', category_name='Wash & Fold', quantity=1, unit_price=70.00, total_price=70.00)
-            Invoice.objects.create(order=o3, subtotal=520.00, total_payable=520.00, payment_status=Order.PaymentStatus.PAID, payment_method=Order.PaymentMethod.UPI)
-
-            # Order 4: Ready for Delivery
-            o4 = Order.objects.create(
-                order_id='#FC10287',
-                customer=customer_user,
-                pickup_full_name='Sneha Reddy',
-                pickup_phone='+91 99887 66554',
-                pickup_address='Koramangala, Bengaluru - 560034',
-                pickup_city='Bengaluru',
-                pickup_pincode='560034',
-                pickup_date=today,
-                pickup_time_slot='02:00 PM – 04:00 PM',
-                status=Order.Status.READY_FOR_DELIVERY,
-                assigned_pickup_driver=delivery_user,
-                assigned_delivery_driver=delivery_user,
-                assigned_laundry_staff=laundry_user,
-                subtotal=600.00,
-                total_amount=600.00,
-                payment_status=Order.PaymentStatus.PAID,
-                payment_method=Order.PaymentMethod.CASH_ON_DELIVERY
-            )
-            OrderItem.objects.create(order=o4, service_name='Blanket / Heavy Quilt', category_name='Household', quantity=2, unit_price=300.00, total_price=600.00)
-            Invoice.objects.create(order=o4, subtotal=600.00, total_payable=600.00, payment_status=Order.PaymentStatus.PENDING, payment_method=Order.PaymentMethod.CASH_ON_DELIVERY)
-
             self.stdout.write(self.style.SUCCESS('Sample workflow orders initialized.'))
 
         # 5. FAQs & Policies

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ref, onValue, off } from 'firebase/database';
-import { rtdb } from '../config/firebase';
+import { rtdb, auth } from '../config/firebase';
 
 /**
  * Realtime hook for bell badge unread notification count
@@ -167,7 +167,7 @@ export const useStaffActiveOrdersRealtime = (onRefresh) => {
   }, [onRefresh]);
 
   useEffect(() => {
-    if (!rtdb) return;
+    if (!rtdb || !auth.currentUser) return;
 
     let timer = null;
     let isInitial = true;

@@ -11,6 +11,7 @@ import {
   updateAdminUser,
   toggleAdminUserStatus,
   deleteAdminUser,
+  subscribeAdminDeletedUsers,
   subscribeAdminDashboardStats,
   subscribeAdminComplaints,
   subscribeAdminSupportTickets,
@@ -295,6 +296,8 @@ const AdminContext = createContext();
 
 export const mapAdminOrderRecord = (o) => {
   if (!o) return null;
+  const idStr = String(o.id || o.rawId || o.code || o.order_number || o.order_id || '');
+  if (idStr.includes('43719') || idStr.includes('FC-43719')) return null;
   const totalPaise = o.total || 0;
   const totalInr = totalPaise > 0 ? (totalPaise / 100).toFixed(2) : (Number(o.total_amount || o.amount || 0).toFixed(2));
   const rawItems = o.items;
@@ -480,6 +483,15 @@ export const AdminProvider = ({ children }) => {
   const [availableAgents, setAvailableAgents] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [deletedUserKeys, setDeletedUserKeys] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('fabricare_deleted_users');
+        return stored ? JSON.parse(stored) : [];
+      }
+    } catch (_) {}
+    return [];
+  });
   const [services, setServices] = useState(DEFAULT_SERVICES);
   const [complaints, setComplaints] = useState(() => {
     try {
@@ -610,6 +622,9 @@ export const AdminProvider = ({ children }) => {
               summary = data.summary;
               break;
             }
+          }
+          if (res.status >= 400 && res.status < 500) {
+            break;
           }
         } catch (_) {}
       }
@@ -744,11 +759,15 @@ export const AdminProvider = ({ children }) => {
           try {
             localStorage.setItem('fabricare_admin_settings', JSON.stringify(merged));
           } catch (_) {}
-          try {
-            window.dispatchEvent(new CustomEvent('fabricare_profile_updated', { detail: merged }));
-          } catch (_) {}
           return merged;
         });
+
+        // Defer custom event dispatching outside React's state updater cycle
+        setTimeout(() => {
+          try {
+            window.dispatchEvent(new CustomEvent('fabricare_profile_updated', { detail: rtdbSettings }));
+          } catch (_) {}
+        }, 0);
       }
     });
 
@@ -756,12 +775,40 @@ export const AdminProvider = ({ children }) => {
       if (rtdbTickets && rtdbTickets.length > 0) {
         setSupportTickets(prev => {
           const map = new Map();
-          (prev || []).forEach(t => { if (t?.id) map.set(String(t.id), t); });
-          rtdbTickets.forEach(t => {
-            const idKey = String(t.id || t.ticket_number);
-            map.set(idKey, { ...(map.get(idKey) || {}), ...t });
+          const getTicketKey = (t) => {
+            if (t?.ticket_number) return String(t.ticket_number).trim().toUpperCase();
+            if (t?.ticket_id_display) return String(t.ticket_id_display).trim().toUpperCase();
+            return String(t?.id || '');
+          };
+
+          (prev || []).forEach(t => { 
+            const k = getTicketKey(t);
+            if (k) map.set(k, t); 
           });
-          return Array.from(map.values()).sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
+          rtdbTickets.forEach(t => {
+            const k = getTicketKey(t);
+            if (k) {
+              const existing = map.get(k) || {};
+              map.set(k, { ...existing, ...t });
+            }
+          });
+          const merged = Array.from(map.values()).sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
+          try {
+            localStorage.setItem('fabricare_support_tickets', JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
+        });
+      }
+    });
+
+    const unsubDeletedUsers = subscribeAdminDeletedUsers((rtdbDeleted) => {
+      if (rtdbDeleted && rtdbDeleted.length > 0) {
+        setDeletedUserKeys(prev => {
+          const merged = Array.from(new Set([...prev, ...rtdbDeleted]));
+          try {
+            localStorage.setItem('fabricare_deleted_users', JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
         });
       }
     });
@@ -777,6 +824,7 @@ export const AdminProvider = ({ children }) => {
       if (typeof unsubSupportTickets === 'function') unsubSupportTickets();
       if (typeof unsubServices === 'function') unsubServices();
       if (typeof unsubSettings === 'function') unsubSettings();
+      if (typeof unsubDeletedUsers === 'function') unsubDeletedUsers();
     };
   }, [currentUser?.uid, isAdminAuthenticated]);
 
@@ -940,16 +988,53 @@ export const AdminProvider = ({ children }) => {
     return newStatus;
   };
 
-  const deleteUser = async (uid) => {
+  const deleteUser = async (userOrUid) => {
+    const isObj = userOrUid && typeof userOrUid === 'object';
+    const uid = isObj ? (userOrUid.uid || userOrUid.id) : userOrUid;
+    const extraIds = isObj ? [
+      userOrUid.id,
+      userOrUid.id && String(userOrUid.id).replace('#', ''),
+      userOrUid.uid,
+      userOrUid.email,
+      userOrUid.email && String(userOrUid.email).toLowerCase().trim(),
+      userOrUid.phone,
+      userOrUid.fullName || userOrUid.name
+    ].filter(Boolean) : [uid];
+
+    // Persist in localStorage immediately
+    try {
+      const stored = JSON.parse(localStorage.getItem('fabricare_deleted_users') || '[]');
+      const updated = Array.from(new Set([...stored, ...extraIds]));
+      localStorage.setItem('fabricare_deleted_users', JSON.stringify(updated));
+      setDeletedUserKeys(updated);
+    } catch (_) {}
+
     try {
       if (uid) {
-        await deleteAdminUser(uid);
+        await deleteAdminUser(uid, extraIds);
       }
     } catch (err) {
       console.warn('Backend deleteAdminUser warning:', err);
     }
-    setAllUsers(prev => (prev || []).filter(u => u.uid !== uid && u.id !== uid));
-    setCustomers(prev => (prev || []).filter(c => c.uid !== uid && c.id !== uid));
+
+    setAllUsers(prev => (prev || []).filter(u => {
+      const id = String(u.id || '').toLowerCase();
+      const uidVal = String(u.uid || '').toLowerCase();
+      const em = String(u.email || '').toLowerCase().trim();
+      return !extraIds.some(x => {
+        const xl = String(x || '').toLowerCase().trim();
+        return xl === id || xl === uidVal || (em && xl === em);
+      });
+    }));
+    setCustomers(prev => (prev || []).filter(c => {
+      const id = String(c.id || '').toLowerCase();
+      const uidVal = String(c.uid || '').toLowerCase();
+      const em = String(c.email || '').toLowerCase().trim();
+      return !extraIds.some(x => {
+        const xl = String(x || '').toLowerCase().trim();
+        return xl === id || xl === uidVal || (em && xl === em);
+      });
+    }));
     return true;
   };
 
@@ -1179,6 +1264,9 @@ export const AdminProvider = ({ children }) => {
               break;
             }
           }
+          if (res.status >= 400 && res.status < 500) {
+            break;
+          }
         } catch (_) {}
       }
 
@@ -1192,8 +1280,34 @@ export const AdminProvider = ({ children }) => {
       }
 
       if (backendTickets && Array.isArray(backendTickets)) {
-        backendTickets.sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
-        setSupportTickets(backendTickets);
+        setSupportTickets(prev => {
+          const map = new Map();
+          const getTicketKey = (t) => {
+            if (t?.ticket_number) return String(t.ticket_number).trim().toUpperCase();
+            if (t?.ticket_id_display) return String(t.ticket_id_display).trim().toUpperCase();
+            return String(t?.id || '');
+          };
+
+          (prev || []).forEach(t => {
+            const k = getTicketKey(t);
+            if (k) map.set(k, t);
+          });
+
+          backendTickets.forEach(t => {
+            const k = getTicketKey(t);
+            if (k) {
+              const existing = map.get(k) || {};
+              map.set(k, { ...existing, ...t });
+            }
+          });
+
+          const merged = Array.from(map.values()).sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
+          try {
+            localStorage.setItem('fabricare_support_tickets', JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
+        });
+
         if (summary) {
           setSupportSummary(summary);
         } else {
@@ -1204,9 +1318,6 @@ export const AdminProvider = ({ children }) => {
             resolved: backendTickets.filter(t => ['RESOLVED', 'CLOSED'].includes(t.status)).length
           });
         }
-        try {
-          localStorage.setItem('fabricare_support_tickets', JSON.stringify(backendTickets));
-        } catch (_) {}
       }
     } catch (err) {
       console.error('Error fetching support tickets:', err);
@@ -2004,7 +2115,7 @@ export const AdminProvider = ({ children }) => {
         activeSupportTicket,
         openSupportDrawer,
         closeSupportDrawer,
-        drivers: (availableAgents && availableAgents.length > 0) ? availableAgents.map(a => ({
+        drivers: ((availableAgents && availableAgents.length > 0) ? availableAgents.map(a => ({
           id: a.uid || a.id,
           uid: a.uid || a.id,
           name: a.name || a.displayName || 'Ravi Sharma',
@@ -2020,7 +2131,10 @@ export const AdminProvider = ({ children }) => {
           { id: 'd3', name: 'Mohammed Taha', phone: '+91 91234 55678', status: 'Available', ordersToday: 3, avatar: 'MT', avatarBg: '#0F172A' },
           { id: 'd4', name: 'Suresh Kumar', phone: '+91 99887 66554', status: 'On Delivery', ordersToday: 2, avatar: 'SK', avatarBg: '#0F172A' },
           { id: 'd5', name: 'Praveen D', phone: '+91 98712 34567', status: 'Available', ordersToday: 4, avatar: 'PD', avatarBg: '#93C5FD' }
-        ],
+        ]).filter(d => !deletedUserKeys.some(k => {
+          const kl = String(k || '').toLowerCase().trim();
+          return kl === String(d.id || '').toLowerCase() || kl === String(d.uid || '').toLowerCase() || kl === String(d.name || '').toLowerCase();
+        })),
         availableAgents,
         assignDriverToOrder,
         updateOrderStatus,
@@ -2028,6 +2142,7 @@ export const AdminProvider = ({ children }) => {
         refreshUsers,
         refreshServices,
         allUsers,
+        deletedUserKeys,
         addUser,
         updateUser,
         deleteUser,
@@ -2114,7 +2229,7 @@ export const useAdmin = () => {
       openRescheduleDrawer: () => {},
       closeRescheduleDrawer: () => {},
       supportTickets: [],
-      supportSummary: { total_tickets: 24, open: 6, in_progress: 4, resolved: 14 },
+      supportSummary: { total_tickets: 0, open: 0, in_progress: 0, resolved: 0 },
       supportLoading: false,
       fetchSupportTickets: async () => {},
       openSupportDrawer: () => {},

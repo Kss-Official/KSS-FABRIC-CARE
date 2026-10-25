@@ -14,12 +14,14 @@ import {
   Search
 } from 'lucide-react';
 import { SupportTicketDrawer } from '../../components/admin/SupportTicketDrawer';
-import { filterMatchesDate } from '../../utils/dateFilterUtils';
+import { filterMatchesDate, formatDisplayDate } from '../../utils/dateFilterUtils';
+import { rtdb } from '../../config/firebase';
+import { ref, onValue } from 'firebase/database';
 
 export const AdminHelpSupportPage = () => {
   const { 
     supportTickets = [], 
-    supportSummary = { total_tickets: 24, open: 6, in_progress: 4, resolved: 14 }, 
+    supportSummary = { total_tickets: 0, open: 0, in_progress: 0, resolved: 0 }, 
     supportLoading = false, 
     fetchSupportTickets = () => {},
     openSupportDrawer = () => {} 
@@ -65,6 +67,25 @@ export const AdminHelpSupportPage = () => {
       window.removeEventListener('fabricare_support_ticket_updated', handleImmediateSync);
       window.removeEventListener('storage', handleImmediateSync);
       if (bc) bc.close();
+    };
+  }, [fetchSupportTickets]);
+
+  // 4. Real-time Firebase RTDB listener on support_tickets
+  useEffect(() => {
+    let unsub = null;
+    try {
+      if (rtdb) {
+        const supportRef = ref(rtdb, 'support_tickets');
+        unsub = onValue(supportRef, () => {
+          fetchSupportTickets(true);
+        }, (err) => {
+          console.warn('Realtime support listener notice:', err);
+        });
+      }
+    } catch (_) {}
+
+    return () => {
+      if (typeof unsub === 'function') unsub();
     };
   }, [fetchSupportTickets]);
 
@@ -132,8 +153,8 @@ export const AdminHelpSupportPage = () => {
         if (itemS !== statusFilter) return false;
       }
 
-      // Date Range Filter
-      if (!filterMatchesDate(item, dateRangeFilter, ['created_at', 'createdAt', 'formatted_created_at', 'updated_at', 'submitted_at', 'date'])) {
+      // Date Range Filter (filters strictly by ticket submission / creation date matching the table column)
+      if (!filterMatchesDate(item, dateRangeFilter, ['created_at', 'createdAt', 'formatted_created_at', 'submitted_at', 'submitted_date', 'submittedDate', 'date', 'report_date'])) {
         return false;
       }
 
@@ -153,6 +174,49 @@ export const AdminHelpSupportPage = () => {
     }
   };
 
+  // Dynamic Real-time Summary Cards
+  // Calculated directly from the real tickets and active date range filter
+  const dateFilteredTickets = useMemo(() => {
+    return (supportTickets || []).filter((item) => {
+      return filterMatchesDate(item, dateRangeFilter, ['created_at', 'createdAt', 'formatted_created_at', 'submitted_at', 'submitted_date', 'submittedDate', 'date', 'report_date']);
+    });
+  }, [supportTickets, dateRangeFilter]);
+
+  const liveStats = useMemo(() => {
+    const list = dateFilteredTickets;
+    const total = list.length;
+    const openCount = list.filter(t => String(t.status || '').toUpperCase() === 'OPEN').length;
+    const inProgressCount = list.filter(t => String(t.status || '').toUpperCase() === 'IN_PROGRESS').length;
+    const resolvedCount = list.filter(t => ['RESOLVED', 'CLOSED'].includes(String(t.status || '').toUpperCase())).length;
+
+    let trendContext = 'total';
+    if (dateRangeFilter === 'TODAY') {
+      trendContext = 'today';
+    } else if (dateRangeFilter === 'YESTERDAY') {
+      trendContext = 'yesterday';
+    } else if (dateRangeFilter === 'LAST_WEEK') {
+      trendContext = 'last week';
+    } else {
+      trendContext = 'all-time';
+    }
+
+    return {
+      total,
+      open: openCount,
+      inProgress: inProgressCount,
+      resolved: resolvedCount,
+      trendLabel: trendContext,
+      totalTrend: `${total} tickets`,
+      totalArrow: '•',
+      openTrend: `${openCount} open`,
+      openArrow: '•',
+      inProgressTrend: `${inProgressCount} active`,
+      inProgressArrow: '•',
+      resolvedTrend: `${resolvedCount} resolved`,
+      resolvedArrow: '•'
+    };
+  }, [dateFilteredTickets, dateRangeFilter]);
+
   return (
     <div className="hs-page-container animate-fade-in">
       {/* 1. Header matching Reference Image 4 */}
@@ -163,7 +227,7 @@ export const AdminHelpSupportPage = () => {
         </p>
       </div>
 
-      {/* 2. Four Summary Stat Cards matching Reference Image 4 */}
+      {/* 2. Four Summary Stat Cards matching Reference Image 4 with Live Dynamic Numbers */}
       <div className="hs-summary-grid">
         {/* Card 1: Total Tickets */}
         <div className="hs-stat-card">
@@ -173,11 +237,11 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Total Tickets</span>
-              <span className="stat-number">{supportSummary?.total_tickets ?? (supportTickets || []).length ?? 0}</span>
+              <span className="stat-number">{liveStats.total}</span>
               <div className="stat-trend trend-up">
-                <span className="trend-arrow">&uarr;</span>
-                <span>12%</span>
-                <span className="trend-context">vs. last 7 days</span>
+                <span className="trend-arrow">{liveStats.totalArrow}</span>
+                <span>{liveStats.totalTrend}</span>
+                <span className="trend-context">{liveStats.trendLabel}</span>
               </div>
             </div>
           </div>
@@ -191,11 +255,11 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Open</span>
-              <span className="stat-number">{supportSummary?.open ?? ((supportTickets || []).filter(t => t.status === 'OPEN').length || 0)}</span>
+              <span className="stat-number">{liveStats.open}</span>
               <div className="stat-trend trend-up">
-                <span className="trend-arrow">&uarr;</span>
-                <span>5%</span>
-                <span className="trend-context">vs. last 7 days</span>
+                <span className="trend-arrow">{liveStats.openArrow}</span>
+                <span>{liveStats.openTrend}</span>
+                <span className="trend-context">{liveStats.trendLabel}</span>
               </div>
             </div>
           </div>
@@ -209,11 +273,11 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">In Progress</span>
-              <span className="stat-number">{supportSummary?.in_progress ?? ((supportTickets || []).filter(t => t.status === 'IN_PROGRESS').length || 0)}</span>
+              <span className="stat-number">{liveStats.inProgress}</span>
               <div className="stat-trend trend-up">
-                <span className="trend-arrow">&uarr;</span>
-                <span>8%</span>
-                <span className="trend-context">vs. last 7 days</span>
+                <span className="trend-arrow">{liveStats.inProgressArrow}</span>
+                <span>{liveStats.inProgressTrend}</span>
+                <span className="trend-context">{liveStats.trendLabel}</span>
               </div>
             </div>
           </div>
@@ -227,11 +291,11 @@ export const AdminHelpSupportPage = () => {
             </div>
             <div className="stat-text-stack">
               <span className="stat-label">Resolved</span>
-              <span className="stat-number">{supportSummary?.resolved ?? ((supportTickets || []).filter(t => t.status === 'RESOLVED').length || 0)}</span>
+              <span className="stat-number">{liveStats.resolved}</span>
               <div className="stat-trend trend-up">
-                <span className="trend-arrow">&uarr;</span>
-                <span>15%</span>
-                <span className="trend-context">vs. last 7 days</span>
+                <span className="trend-arrow">{liveStats.resolvedArrow}</span>
+                <span>{liveStats.resolvedTrend}</span>
+                <span className="trend-context">{liveStats.trendLabel}</span>
               </div>
             </div>
           </div>
@@ -354,8 +418,20 @@ export const AdminHelpSupportPage = () => {
                 <tr>
                   <td colSpan="7" className="hs-table-empty">
                     <FileText size={32} className="text-slate-300 mb-2" />
-                    <p className="text-slate-600 font-medium">No tickets found</p>
-                    <p className="text-xs text-slate-400">Try adjusting your priority or status filters.</p>
+                    <p className="text-slate-600 font-medium">
+                      {dateRangeFilter === 'TODAY' 
+                        ? 'No support tickets submitted today' 
+                        : (dateRangeFilter === 'YESTERDAY' 
+                            ? 'No support tickets submitted yesterday' 
+                            : 'No tickets found')}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {dateRangeFilter === 'TODAY'
+                        ? 'New tickets submitted by customers will appear here in real-time.'
+                        : (dateRangeFilter === 'YESTERDAY'
+                            ? 'Tickets submitted yesterday will appear here in real-time.'
+                            : 'Try adjusting your filters or search query.')}
+                    </p>
                   </td>
                 </tr>
               ) : (
@@ -393,7 +469,7 @@ export const AdminHelpSupportPage = () => {
                       {/* Submitted Date */}
                       <td className="hs-cell-date">
                         <span className="date-text text-slate-700">
-                          {ticket.formatted_created_at || '16 Oct 2026 10:24 AM'}
+                          {ticket.formatted_created_at || (ticket.created_at ? formatDisplayDate(ticket.created_at) : (ticket.createdAt ? formatDisplayDate(ticket.createdAt) : '—'))}
                         </span>
                       </td>
 

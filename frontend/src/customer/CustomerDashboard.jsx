@@ -22,7 +22,7 @@ import {
   X
 } from 'lucide-react';
 import { OrderStatusDropdown } from '../components/common/OrderStatusDropdown';
-import { formatOrderId, calculateOrderTotal } from '../utils/helpers';
+import { formatOrderId, calculateOrderTotal, isOrderMatchingStatus } from '../utils/helpers';
 
 export const CustomerDashboard = () => {
   const { currentUser } = useAuth();
@@ -285,17 +285,12 @@ export const CustomerDashboard = () => {
     const matchesSearch = !term || orderNo.includes(term) || formattedNo.includes(term) || addr.includes(term);
 
     if (!matchesSearch) return false;
-    if (activeTab === 'ALL' || activeTab === 'all') return true;
-    if (activeTab === 'PENDING') return ['PENDING', 'PENDING_REVIEW', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PLACED', 'PAYMENT_PENDING'].includes(order.status);
-    if (activeTab === 'PROCESSING') return ['PICKED_UP', 'DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'IN_PROCESS', 'INSPECTION', 'WASHING', 'DRYING', 'IRONING', 'FOLDING', 'QUALITY_CHECK', 'PACKING', 'PACKED', 'IN_CLEANING'].includes(order.status);
-    if (activeTab === 'DELIVERY') return ['READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.status);
-    if (activeTab === 'COMPLETED') return ['DELIVERED', 'COMPLETED'].includes(order.status);
-    if (activeTab === 'CANCELLED') return order.status === 'CANCELLED';
-    return true;
+    return isOrderMatchingStatus(order, activeTab);
   });
 
   const getStatusBadge = (status) => {
-    switch (status) {
+    const s = String(status || '').toUpperCase().trim();
+    switch (s) {
       case 'PENDING':
       case 'PAYMENT_PENDING':
         return <span className="badge badge-warning">Pending Approval</span>;

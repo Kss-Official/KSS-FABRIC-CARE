@@ -1,7 +1,7 @@
 import os
 import sys
 import django
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.dev')
 django.setup()
@@ -417,58 +417,62 @@ def seed_all():
     print(f"Complaint reports seeded: {ComplaintReport.objects.count()}")
 
     # 2. SEED SUPPORT TICKETS FOR HELP & SUPPORT (Matching Reference Image 4)
-    SupportTicket.objects.all().delete()
+    # Real customer support tickets matching Firebase RTDB
+    dt_poobi_yesterday = datetime(2026, 10, 24, 18, 9, 32, 495981, tzinfo=tz)
+    dt_kuhu_1 = datetime(2026, 10, 23, 18, 23, 54, 630421, tzinfo=tz)
+    dt_kuhu_2 = datetime(2026, 10, 23, 19, 9, 23, 27442, tzinfo=tz)
+
+    poobi_user, _ = User.objects.get_or_create(
+        email='poobi@gmail.com',
+        defaults={'username': 'poobi', 'first_name': 'Poobi', 'role': User.Role.CUSTOMER}
+    )
+    kuhu_user, _ = User.objects.get_or_create(
+        email='kuhu890@gamil.com',
+        defaults={'username': 'kuhu', 'first_name': 'Kuhu', 'role': User.Role.CUSTOMER}
+    )
 
     tickets_data = [
         {
-            "ticket_number": "#SUP-1048",
-            "customer_name": "Priya Sharma",
-            "customer_email": "priya.sharma@example.com",
-            "subject": "Delayed pickup for laundry",
-            "priority": SupportTicket.Priority.HIGH,
+            "customer": poobi_user,
+            "ticket_number": "#SUP-5361",
+            "customer_name": "Poobi",
+            "customer_email": "poobi@gmail.com",
+            "subject": "helooooooo",
+            "priority": SupportTicket.Priority.MEDIUM,
             "status": SupportTicket.Status.OPEN,
-            "message": "Hi,\nMy order #FC1024 was supposed to be picked up yesterday at 5 PM, but no one came. I'm not sure if there was an issue with the address or the schedule. Please look into this and let me know when the pickup will happen. Thanks!",
-            "created_at": datetime(2026, 10, 16, 10, 24, tzinfo=timezone.get_current_timezone()),
+            "message": "fghjkfd",
+            "created_at": dt_poobi_yesterday,
             "admin_reply": None
         },
         {
-            "ticket_number": "#SUP-1047",
-            "customer_name": "Rahul Mehta",
-            "customer_email": "rahul.mehta@example.com",
-            "subject": "Question about silk care",
-            "priority": SupportTicket.Priority.MEDIUM,
-            "status": SupportTicket.Status.IN_PROGRESS,
-            "message": "I have two pure silk shirts that require gentle dry cleaning. Could you confirm which detergents and pressing techniques you use for delicate silk fabrics?",
-            "created_at": datetime(2026, 10, 16, 9, 15, tzinfo=timezone.get_current_timezone()),
-            "admin_reply": "Our laundry specialist is checking the detergent composition for delicate silks and will update you shortly."
-        },
-        {
-            "ticket_number": "#SUP-1046",
-            "customer_name": "Ananya Rao",
-            "customer_email": "ananya.rao@example.com",
-            "subject": "Payment confirmation",
-            "priority": SupportTicket.Priority.LOW,
-            "status": SupportTicket.Status.RESOLVED,
-            "message": "I made a payment through UPI for order #FC1019, but the portal still showed payment pending. Please verify and confirm receipt.",
-            "created_at": datetime(2026, 10, 15, 16, 32, tzinfo=timezone.get_current_timezone()),
-            "admin_reply": "Payment has been verified and confirmed in our payment gateway. Your order is now marked as Confirmed."
-        },
-        {
-            "ticket_number": "#SUP-1045",
-            "customer_name": "Vikram Singh",
-            "customer_email": "vikram.singh@example.com",
-            "subject": "Order delivery concern",
+            "customer": kuhu_user,
+            "ticket_number": "#SUP-3068",
+            "customer_name": "Kuhu",
+            "customer_email": "kuhu890@gamil.com",
+            "subject": "FC-46555 ertyui",
             "priority": SupportTicket.Priority.HIGH,
             "status": SupportTicket.Status.OPEN,
-            "message": "The delivery agent marked customer unavailable even though I was at home the entire evening. Kindly reschedule delivery for tomorrow morning.",
-            "created_at": datetime(2026, 10, 15, 11, 20, tzinfo=timezone.get_current_timezone()),
+            "message": "asdfghj",
+            "created_at": dt_kuhu_2,
+            "admin_reply": None
+        },
+        {
+            "customer": kuhu_user,
+            "ticket_number": "#SUP-1280",
+            "customer_name": "Kuhu",
+            "customer_email": "kuhu890@gamil.com",
+            "subject": "FC-46655 , delay",
+            "priority": SupportTicket.Priority.MEDIUM,
+            "status": SupportTicket.Status.OPEN,
+            "message": "cvbn",
+            "created_at": dt_kuhu_1,
             "admin_reply": None
         }
     ]
 
     for td in tickets_data:
         t = SupportTicket(
-            customer=customer,
+            customer=td["customer"],
             ticket_number=td["ticket_number"],
             customer_name=td["customer_name"],
             customer_email=td["customer_email"],
@@ -482,7 +486,7 @@ def seed_all():
         # Override auto_now_add
         SupportTicket.objects.filter(pk=t.pk).update(created_at=td["created_at"])
 
-    print(f"Support tickets seeded: {SupportTicket.objects.count()}")
+    print(f"Real support tickets in database: {SupportTicket.objects.count()}")
     print("Done!")
 
 if __name__ == "__main__":

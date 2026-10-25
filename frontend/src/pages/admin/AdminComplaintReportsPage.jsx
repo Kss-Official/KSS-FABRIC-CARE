@@ -103,7 +103,7 @@ export const AdminComplaintReportsPage = () => {
       }
 
       // Date Range Filter
-      if (!filterMatchesDate(item, dateRangeFilter, ['report_date', 'report_date_only', 'formatted_report_date', 'created_at', 'createdAt', 'updatedAt', 'date'])) {
+      if (!filterMatchesDate(item, dateRangeFilter, ['report_date', 'report_date_only', 'formatted_report_date', 'created_at', 'createdAt', 'date'])) {
         return false;
       }
 

@@ -99,10 +99,17 @@ export const AssignOrderModal = () => {
       datePart = assigningOrder?.date || 'Today';
     }
     const slotPart = pickupTimeSlot || '09:00 AM – 11:00 AM';
-    return `${datePart}, ${slotPart}`;
   }, [pickupDate, pickupTimeSlot, assigningOrder?.date]);
 
   if (!isAssignOrderModalOpen) return null;
+
+  const statusLower = String(assigningOrder?.status || '').toLowerCase().trim();
+  const isAlreadyAssigned = Boolean(
+    assigningOrder?.isAlreadyAssigned ||
+    (assigningOrder?.driver && assigningOrder.driver.assigned && assigningOrder.driver.name !== 'Not Assigned') ||
+    (statusLower === 'assigned') ||
+    (!statusLower.includes('pending') && statusLower !== 'order placed' && statusLower !== '')
+  );
 
   // Use assigningOrder if passed, otherwise default to Reference Image order FC-10289
   const currentOrder = {
@@ -230,12 +237,16 @@ export const AssignOrderModal = () => {
               <Truck size={22} color="#0D7A75" strokeWidth={1.8} />
             </div>
             <div className="modal-header-titles">
-              <h2 className="modal-header-main-title">Assign Order</h2>
-              <p className="modal-header-subtitle">Assign a driver for pickup or delivery.</p>
+              <h2 className="modal-header-main-title">
+                {isAlreadyAssigned ? 'Order Details' : 'Assign Order'}
+              </h2>
+              <p className="modal-header-subtitle">
+                {isAlreadyAssigned ? 'Assigned pickup and delivery details.' : 'Assign a driver for pickup or delivery.'}
+              </p>
             </div>
           </div>
           <button 
-            type="button"
+            type="button" 
             className="modal-close-icon-btn"
             onClick={() => setIsAssignOrderModalOpen(false)}
             aria-label="Close modal"
@@ -318,7 +329,9 @@ export const AssignOrderModal = () => {
                 <div className="schedule-header-icon">
                   <Calendar size={14} color="#0D7A75" strokeWidth={2.2} />
                 </div>
-                <span className="schedule-header-title">Confirm Pickup Schedule</span>
+                <span className="schedule-header-title">
+                  {isAlreadyAssigned ? 'Scheduled Pickup Details' : 'Confirm Pickup Schedule'}
+                </span>
               </div>
               <div className="schedule-inputs-grid">
                 <div className="schedule-field-wrap">
@@ -328,6 +341,8 @@ export const AssignOrderModal = () => {
                     className="schedule-date-input"
                     value={pickupDate}
                     onChange={(e) => setPickupDate(e.target.value)}
+                    disabled={isAlreadyAssigned}
+                    style={isAlreadyAssigned ? { opacity: 0.95, backgroundColor: '#F8FAFC', cursor: 'default' } : {}}
                   />
                 </div>
                 <div className="schedule-field-wrap">
@@ -336,6 +351,8 @@ export const AssignOrderModal = () => {
                     className="schedule-slot-select"
                     value={pickupTimeSlot}
                     onChange={(e) => setPickupTimeSlot(e.target.value)}
+                    disabled={isAlreadyAssigned}
+                    style={isAlreadyAssigned ? { opacity: 0.95, backgroundColor: '#F8FAFC', cursor: 'default' } : {}}
                   >
                     <option value="09:00 AM – 11:00 AM">09:00 AM – 11:00 AM</option>
                     <option value="10:00 AM – 12:00 PM">10:00 AM – 12:00 PM</option>
@@ -349,100 +366,160 @@ export const AssignOrderModal = () => {
             </div>
           </div>
 
-          {/* Section 2: Select Driver */}
-          <div className="select-driver-section">
-            <h3 className="driver-section-heading">Select Driver</h3>
-
-            <div className="driver-search-field-wrap">
-              <Search size={15} className="driver-search-magnifier" />
-              <input 
-                type="text"
-                placeholder="Search driver by name or phone..."
-                value={driverSearch}
-                onChange={(e) => setDriverSearch(e.target.value)}
-                className="driver-search-input"
-              />
-            </div>
-
-            {validationError && (
-              <div className="driver-validation-error-msg">{validationError}</div>
-            )}
-
-            <div className="drivers-cards-list">
-              {filteredDrivers.map((driver) => {
-                const isSelected = selectedDriverId === driver.id;
-                const isAvailable = driver.status === 'Available';
-
-                return (
+          {/* Section 2: Driver Section */}
+          {isAlreadyAssigned ? (
+            <div className="select-driver-section">
+              <h3 className="driver-section-heading">Assigned Driver</h3>
+              <div 
+                className="driver-selectable-card"
+                style={{ 
+                  cursor: 'default', 
+                  borderColor: '#0D7A75', 
+                  backgroundColor: '#F0FDFA' 
+                }}
+              >
+                <div className="driver-card-left-info">
                   <div 
-                    key={driver.id}
-                    className={`driver-selectable-card ${isSelected ? 'selected' : ''}`}
-                    onClick={() => {
-                      setSelectedDriverId(driver.id);
-                      setValidationError('');
-                    }}
+                    className="driver-initials-avatar"
+                    style={{ backgroundColor: assigningOrder?.driver?.avatarBg || '#0F172A', color: '#FFFFFF' }}
                   >
-                    <div className="driver-card-left-info">
-                      <div 
-                        className="driver-initials-avatar"
-                        style={{ backgroundColor: driver.avatarBg || '#0F172A' }}
-                      >
-                        {driver.avatar}
-                      </div>
-                      <div className="driver-name-phone-block">
-                        <span className="driver-fullname">{driver.name}</span>
-                        <span className="driver-contact">{driver.phone}</span>
-                      </div>
-                    </div>
-
-                    <div className="driver-card-right-status">
-                      <div className="driver-availability-stack">
-                        <span className={`driver-status-dot-pill ${isAvailable ? 'available' : 'on-delivery'}`}>
-                          ● {driver.status}
-                        </span>
-                        <span className="driver-orders-count-text">{driver.ordersToday} orders today</span>
-                      </div>
-
-                      {/* Radio button circle */}
-                      <div className={`driver-radio-indicator ${isSelected ? 'checked' : ''}`}>
-                        {isSelected && <div className="driver-radio-inner-dot" />}
-                      </div>
-                    </div>
+                    {assigningOrder?.driver?.initials || (assigningOrder?.driver?.name ? assigningOrder.driver.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'RS')}
                   </div>
-                );
-              })}
+                  <div className="driver-name-phone-block">
+                    <span className="driver-fullname">{assigningOrder?.driver?.name || 'Assigned Driver'}</span>
+                    <span className="driver-contact">{assigningOrder?.driver?.phone || '-'}</span>
+                  </div>
+                </div>
+
+                <div className="driver-card-right-status">
+                  <div className="driver-availability-stack">
+                    <span 
+                      className="driver-status-dot-pill"
+                      style={{ 
+                        backgroundColor: '#DCFCE7', 
+                        color: '#166534', 
+                        fontWeight: 600, 
+                        padding: '4px 10px', 
+                        borderRadius: '9999px', 
+                        fontSize: '12px' 
+                      }}
+                    >
+                      ● Assigned
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="select-driver-section">
+              <h3 className="driver-section-heading">Select Driver</h3>
+
+              <div className="driver-search-field-wrap">
+                <Search size={15} className="driver-search-magnifier" />
+                <input 
+                  type="text"
+                  placeholder="Search driver by name or phone..."
+                  value={driverSearch}
+                  onChange={(e) => setDriverSearch(e.target.value)}
+                  className="driver-search-input"
+                />
+              </div>
+
+              {validationError && (
+                <div className="driver-validation-error-msg">{validationError}</div>
+              )}
+
+              <div className="drivers-cards-list">
+                {filteredDrivers.map((driver) => {
+                  const isSelected = selectedDriverId === driver.id;
+                  const isAvailable = driver.status === 'Available';
+
+                  return (
+                    <div 
+                      key={driver.id}
+                      className={`driver-selectable-card ${isSelected ? 'selected' : ''}`}
+                      onClick={() => {
+                        setSelectedDriverId(driver.id);
+                        setValidationError('');
+                      }}
+                    >
+                      <div className="driver-card-left-info">
+                        <div 
+                          className="driver-initials-avatar"
+                          style={{ backgroundColor: driver.avatarBg || '#0F172A' }}
+                        >
+                          {driver.avatar}
+                        </div>
+                        <div className="driver-name-phone-block">
+                          <span className="driver-fullname">{driver.name}</span>
+                          <span className="driver-contact">{driver.phone}</span>
+                        </div>
+                      </div>
+
+                      <div className="driver-card-right-status">
+                        <div className="driver-availability-stack">
+                          <span className={`driver-status-dot-pill ${isAvailable ? 'available' : 'on-delivery'}`}>
+                            ● {driver.status}
+                          </span>
+                          <span className="driver-orders-count-text">{driver.ordersToday} orders today</span>
+                        </div>
+
+                        {/* Radio button circle */}
+                        <div className={`driver-radio-indicator ${isSelected ? 'checked' : ''}`}>
+                          {isSelected && <div className="driver-radio-inner-dot" />}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Section 3: Note (Optional) */}
           <div className="note-optional-section">
             <label className="note-section-label">Note (Optional)</label>
             <textarea 
               rows="3"
-              placeholder="Add any special instructions for the driver..."
+              placeholder={isAlreadyAssigned ? 'No special instructions recorded.' : 'Add any special instructions for the driver...'}
               value={driverNote}
               onChange={(e) => setDriverNote(e.target.value)}
               className="note-textarea-field"
+              disabled={isAlreadyAssigned}
+              style={isAlreadyAssigned ? { opacity: 0.95, backgroundColor: '#F8FAFC', cursor: 'default' } : {}}
             />
           </div>
 
           {/* Section 4: Modal Actions */}
-          <div className="assign-modal-actions-row">
-            <button 
-              type="button" 
-              className="btn-modal-cancel"
-              onClick={() => setIsAssignOrderModalOpen(false)}
-            >
-              Cancel
-            </button>
-            <button 
-              type="button" 
-              className="btn-modal-submit"
-              onClick={handleAssign}
-            >
-              Assign Order
-            </button>
-          </div>
+          {isAlreadyAssigned ? (
+            <div className="assign-modal-actions-row" style={{ justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                className="btn-modal-cancel"
+                style={{ minWidth: '120px' }}
+                onClick={() => setIsAssignOrderModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+          ) : (
+            <div className="assign-modal-actions-row">
+              <button 
+                type="button" 
+                className="btn-modal-cancel"
+                onClick={() => setIsAssignOrderModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="btn-modal-submit"
+                onClick={handleAssign}
+              >
+                Assign Order
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -439,12 +439,22 @@ class SupportTicketSerializer(serializers.ModelSerializer):
     def get_formatted_created_at(self, obj):
         if not obj.created_at:
             return ""
-        return obj.created_at.strftime("%d %b %Y %I:%M %p")
+        try:
+            from django.utils import timezone
+            dt = timezone.localtime(obj.created_at)
+            return dt.strftime("%d %b %Y %I:%M %p")
+        except Exception:
+            return obj.created_at.strftime("%d %b %Y %I:%M %p")
 
     def get_formatted_admin_reply_at(self, obj):
         if not obj.admin_reply_at:
             return ""
-        return obj.admin_reply_at.strftime("%d %b %Y %I:%M %p")
+        try:
+            from django.utils import timezone
+            dt = timezone.localtime(obj.admin_reply_at)
+            return dt.strftime("%d %b %Y %I:%M %p")
+        except Exception:
+            return obj.admin_reply_at.strftime("%d %b %Y %I:%M %p")
 
 
 
