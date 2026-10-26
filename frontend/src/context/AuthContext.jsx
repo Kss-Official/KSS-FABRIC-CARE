@@ -305,6 +305,46 @@ export const AuthProvider = ({ children }) => {
           const username = rtdbProfile.username || (cleanEmail ? cleanEmail.split('@')[0] : resolvedName.toLowerCase().replace(/\s+/g, ''));
           const cleanPhone = rtdbProfile.phone || rtdbProfile.phoneNumber || fbUser.phoneNumber || '';
 
+          let cachedUser = null;
+          try {
+            const raw = localStorage.getItem('fabricare_user');
+            if (raw) cachedUser = JSON.parse(raw);
+          } catch (_) {}
+
+          let agentDocs = {};
+          try {
+            const rawDocs = localStorage.getItem(`fabricare_agent_docs_${fbUser.uid}`) || localStorage.getItem(`fabricare_agent_docs_${cleanEmail}`);
+            if (rawDocs) agentDocs = JSON.parse(rawDocs);
+          } catch (_) {}
+
+          const resolvedDL = rtdbProfile.drivingLicenceNumber || rtdbProfile.driving_licence_number || cachedUser?.drivingLicenceNumber || cachedUser?.driving_licence_number || agentDocs.drivingLicenceNumber || agentDocs.driving_licence_number || '';
+          const resolvedAadhaar = rtdbProfile.aadhaarNumber || rtdbProfile.aadhaar_number || cachedUser?.aadhaarNumber || cachedUser?.aadhaar_number || agentDocs.aadhaarNumber || agentDocs.aadhaar_number || '';
+          const resolvedAadhaarDoc = rtdbProfile.aadhaarDocumentUrl || rtdbProfile.aadhaar_document_url || cachedUser?.aadhaarDocumentUrl || cachedUser?.aadhaar_document_url || agentDocs.aadhaarDocumentUrl || agentDocs.aadhaar_document_url || null;
+          const resolvedPan = rtdbProfile.panNumber || rtdbProfile.pan_number || cachedUser?.panNumber || cachedUser?.pan_number || agentDocs.panNumber || agentDocs.pan_number || '';
+          const resolvedPanDoc = rtdbProfile.panDocumentUrl || rtdbProfile.pan_document_url || cachedUser?.panDocumentUrl || cachedUser?.pan_document_url || agentDocs.panDocumentUrl || agentDocs.pan_document_url || null;
+          const resolvedDob = rtdbProfile.dob || cachedUser?.dob || agentDocs.dob || '';
+
+          const storedAgentPhoto = localStorage.getItem(`fabricare_agent_photo_${fbUser.uid}`) ||
+                                   localStorage.getItem(`fabricare_agent_photo_${cleanEmail}`) ||
+                                   localStorage.getItem('fabricare_delivery_photo') ||
+                                   agentDocs.profilePictureUrl ||
+                                   agentDocs.profilePicture ||
+                                   agentDocs.avatarUrl ||
+                                   null;
+          const resolvedPhoto = rtdbProfile.profilePicture ||
+                                rtdbProfile.profilePictureUrl ||
+                                rtdbProfile.avatarUrl ||
+                                rtdbProfile.avatar_url ||
+                                rtdbProfile.avatar ||
+                                rtdbProfile.photoUrl ||
+                                rtdbProfile.photoURL ||
+                                cachedUser?.profilePicture ||
+                                cachedUser?.profilePictureUrl ||
+                                cachedUser?.avatarUrl ||
+                                cachedUser?.avatar ||
+                                storedAgentPhoto ||
+                                null;
+
           const cleanProfile = {
             uid: fbUser.uid,
             id: fbUser.uid,
@@ -320,52 +360,49 @@ export const AuthProvider = ({ children }) => {
             phoneNumber: cleanPhone,
             role,
             rawRole: rtdbProfile.role,
-            avatarUrl: rtdbProfile.avatarUrl || null,
-            avatar_url: rtdbProfile.avatarUrl || null,
+            avatarUrl: resolvedPhoto,
+            avatar_url: resolvedPhoto,
+            profilePicture: resolvedPhoto,
+            profilePictureUrl: resolvedPhoto,
+            avatar: resolvedPhoto,
+            photoUrl: resolvedPhoto,
+            photoURL: resolvedPhoto,
             initials: getInitials(resolvedName),
             address: rtdbProfile.address || '',
             city: rtdbProfile.city || '',
             pincode: rtdbProfile.pincode || '',
-            dob: rtdbProfile.dob || '',
-            drivingLicenceNumber: rtdbProfile.drivingLicenceNumber || rtdbProfile.driving_licence_number || '',
-            driving_licence_number: rtdbProfile.driving_licence_number || rtdbProfile.drivingLicenceNumber || '',
-            aadhaarNumber: rtdbProfile.aadhaarNumber || rtdbProfile.aadhaar_number || '',
-            aadhaar_number: rtdbProfile.aadhaar_number || rtdbProfile.aadhaarNumber || '',
-            aadhaarDocumentUrl: rtdbProfile.aadhaarDocumentUrl || rtdbProfile.aadhaar_document_url || null,
-            aadhaar_document_url: rtdbProfile.aadhaar_document_url || rtdbProfile.aadhaarDocumentUrl || null,
-            panNumber: rtdbProfile.panNumber || rtdbProfile.pan_number || '',
-            pan_number: rtdbProfile.pan_number || rtdbProfile.panNumber || '',
-            panDocumentUrl: rtdbProfile.panDocumentUrl || rtdbProfile.pan_document_url || null,
-            pan_document_url: rtdbProfile.pan_document_url || rtdbProfile.panDocumentUrl || null
+            dob: resolvedDob,
+            drivingLicenceNumber: resolvedDL,
+            driving_licence_number: resolvedDL,
+            aadhaarNumber: resolvedAadhaar,
+            aadhaar_number: resolvedAadhaar,
+            aadhaarDocumentUrl: resolvedAadhaarDoc,
+            aadhaar_document_url: resolvedAadhaarDoc,
+            panNumber: resolvedPan,
+            pan_number: resolvedPan,
+            panDocumentUrl: resolvedPanDoc,
+            pan_document_url: resolvedPanDoc
           };
 
+          if (fbUser.uid && (!rtdbProfile.drivingLicenceNumber && resolvedDL || !rtdbProfile.aadhaarNumber && resolvedAadhaar || !rtdbProfile.panNumber && resolvedPan)) {
+            update(ref(rtdb, `users/${fbUser.uid}`), {
+              drivingLicenceNumber: resolvedDL,
+              driving_licence_number: resolvedDL,
+              aadhaarNumber: resolvedAadhaar,
+              aadhaar_number: resolvedAadhaar,
+              aadhaarDocumentUrl: resolvedAadhaarDoc,
+              aadhaar_document_url: resolvedAadhaarDoc,
+              panNumber: resolvedPan,
+              pan_number: resolvedPan,
+              panDocumentUrl: resolvedPanDoc,
+              pan_document_url: resolvedPanDoc,
+              dob: resolvedDob
+            }).catch(() => {});
+          }
+
           if (isMounted) {
-            setCurrentUser(prev => {
-              if (
-                prev &&
-                prev.uid === cleanProfile.uid &&
-                prev.role === cleanProfile.role &&
-                prev.name === cleanProfile.name &&
-                prev.email === cleanProfile.email &&
-                prev.phone === cleanProfile.phone
-              ) {
-                return prev;
-              }
-              return cleanProfile;
-            });
-            setUserProfile(prev => {
-              if (
-                prev &&
-                prev.uid === cleanProfile.uid &&
-                prev.role === cleanProfile.role &&
-                prev.name === cleanProfile.name &&
-                prev.email === cleanProfile.email &&
-                prev.phone === cleanProfile.phone
-              ) {
-                return prev;
-              }
-              return cleanProfile;
-            });
+            setCurrentUser(cleanProfile);
+            setUserProfile(cleanProfile);
             localStorage.setItem('fabricare_user', JSON.stringify(cleanProfile));
           }
         } catch (err) {
@@ -532,7 +569,18 @@ export const AuthProvider = ({ children }) => {
           initials: getInitials(resolvedName),
           address: rtdbData.address || '',
           city: rtdbData.city || '',
-          pincode: rtdbData.pincode || ''
+          pincode: rtdbData.pincode || '',
+          dob: rtdbData.dob || '',
+          drivingLicenceNumber: rtdbData.drivingLicenceNumber || rtdbData.driving_licence_number || '',
+          driving_licence_number: rtdbData.driving_licence_number || rtdbData.drivingLicenceNumber || '',
+          aadhaarNumber: rtdbData.aadhaarNumber || rtdbData.aadhaar_number || '',
+          aadhaar_number: rtdbData.aadhaar_number || rtdbData.aadhaarNumber || '',
+          aadhaarDocumentUrl: rtdbData.aadhaarDocumentUrl || rtdbData.aadhaar_document_url || null,
+          aadhaar_document_url: rtdbData.aadhaar_document_url || rtdbData.aadhaarDocumentUrl || null,
+          panNumber: rtdbData.panNumber || rtdbData.pan_number || '',
+          pan_number: rtdbData.pan_number || rtdbData.panNumber || '',
+          panDocumentUrl: rtdbData.panDocumentUrl || rtdbData.pan_document_url || null,
+          pan_document_url: rtdbData.pan_document_url || rtdbData.panDocumentUrl || null
         };
 
         setCurrentUser(profileData);
@@ -575,7 +623,18 @@ export const AuthProvider = ({ children }) => {
           initials: getInitials(djUser.full_name || djUser.first_name || demoMatch?.name || 'User'),
           address: djUser.address || '',
           city: djUser.city || 'Bengaluru',
-          pincode: djUser.pincode || ''
+          pincode: djUser.pincode || '',
+          dob: djUser.dob || '',
+          drivingLicenceNumber: djUser.driving_licence_number || '',
+          driving_licence_number: djUser.driving_licence_number || '',
+          aadhaarNumber: djUser.aadhaar_number || '',
+          aadhaar_number: djUser.aadhaar_number || '',
+          aadhaarDocumentUrl: djUser.aadhaar_document_url || null,
+          aadhaar_document_url: djUser.aadhaar_document_url || null,
+          panNumber: djUser.pan_number || '',
+          pan_number: djUser.pan_number || '',
+          panDocumentUrl: djUser.pan_document_url || null,
+          pan_document_url: djUser.pan_document_url || null
         };
 
         setCurrentUser(profileData);
@@ -597,6 +656,12 @@ export const AuthProvider = ({ children }) => {
       const demoUser = DEMO_USERS[cleanEmail] || DEMO_USERS[email];
       if (demoUser && VALID_DEMO_PASSWORDS.includes(cleanPwd)) {
         const role = normalizeRole(demoUser.role);
+        let savedAgentDocs = {};
+        try {
+          const raw = localStorage.getItem(`fabricare_agent_docs_${demoUser.id}`) || localStorage.getItem(`fabricare_agent_docs_${cleanEmail}`);
+          if (raw) savedAgentDocs = JSON.parse(raw);
+        } catch (_) {}
+
         const profileData = {
           uid: demoUser.id || 'demo-user',
           id: demoUser.id || 'demo-user',
@@ -611,7 +676,18 @@ export const AuthProvider = ({ children }) => {
           avatarUrl: null,
           avatar_url: null,
           initials: getInitials(demoUser.name),
-          city: 'Bengaluru'
+          city: 'Bengaluru',
+          dob: savedAgentDocs.dob || '',
+          drivingLicenceNumber: savedAgentDocs.drivingLicenceNumber || savedAgentDocs.driving_licence_number || '',
+          driving_licence_number: savedAgentDocs.driving_licence_number || savedAgentDocs.drivingLicenceNumber || '',
+          aadhaarNumber: savedAgentDocs.aadhaarNumber || savedAgentDocs.aadhaar_number || '',
+          aadhaar_number: savedAgentDocs.aadhaar_number || savedAgentDocs.aadhaarNumber || '',
+          aadhaarDocumentUrl: savedAgentDocs.aadhaarDocumentUrl || savedAgentDocs.aadhaar_document_url || null,
+          aadhaar_document_url: savedAgentDocs.aadhaar_document_url || savedAgentDocs.aadhaarDocumentUrl || null,
+          panNumber: savedAgentDocs.panNumber || savedAgentDocs.pan_number || '',
+          pan_number: savedAgentDocs.pan_number || savedAgentDocs.panNumber || '',
+          panDocumentUrl: savedAgentDocs.panDocumentUrl || savedAgentDocs.pan_document_url || null,
+          pan_document_url: savedAgentDocs.pan_document_url || savedAgentDocs.panDocumentUrl || null
         };
         setCurrentUser(profileData);
         setUserProfile(profileData);
@@ -846,7 +922,24 @@ export const AuthProvider = ({ children }) => {
         const lastName = val.last_name || nameParts.slice(1).join(' ') || '';
         const cleanEmail = (val.email || currentUser?.email || '').toLowerCase().trim();
         const username = val.username || (cleanEmail ? cleanEmail.split('@')[0] : refreshedName.toLowerCase().replace(/\s+/g, ''));
-        const cleanPhone = val.phone !== undefined ? val.phone : (currentUser?.phone || '');
+        const storedPhoto = currentUser?.uid 
+          ? (localStorage.getItem(`fabricare_agent_photo_${currentUser.uid}`) || (cleanEmail ? localStorage.getItem(`fabricare_agent_photo_${cleanEmail}`) : null) || localStorage.getItem('fabricare_delivery_photo'))
+          : (cleanEmail ? localStorage.getItem(`fabricare_agent_photo_${cleanEmail}`) : localStorage.getItem('fabricare_delivery_photo'));
+        const refreshedPhoto = val.profilePicture !== undefined ? val.profilePicture : (
+          val.profilePictureUrl !== undefined ? val.profilePictureUrl : (
+            val.avatarUrl !== undefined ? val.avatarUrl : (
+              val.avatar_url !== undefined ? val.avatar_url : (
+                val.avatar !== undefined ? val.avatar : (
+                  val.photoUrl !== undefined ? val.photoUrl : (
+                    val.photoURL !== undefined ? val.photoURL : (
+                      currentUser?.profilePicture || currentUser?.profilePictureUrl || currentUser?.avatarUrl || currentUser?.avatar || storedPhoto || ''
+                    )
+                  )
+                )
+              )
+            )
+          )
+        );
 
         const updated = {
           ...currentUser,
@@ -862,10 +955,13 @@ export const AuthProvider = ({ children }) => {
           phoneNumber: cleanPhone,
           role: normalizeRole(val.role || currentUser?.role || 'customer'),
           rawRole: val.role || currentUser?.rawRole,
-          avatarUrl: val.avatarUrl !== undefined ? val.avatarUrl : (val.avatar_url !== undefined ? val.avatar_url : (val.photoUrl !== undefined ? val.photoUrl : (val.photoURL !== undefined ? val.photoURL : (currentUser?.avatarUrl || '')))),
-          avatar_url: val.avatarUrl !== undefined ? val.avatarUrl : (val.avatar_url !== undefined ? val.avatar_url : (val.photoUrl !== undefined ? val.photoUrl : (val.photoURL !== undefined ? val.photoURL : (currentUser?.avatar_url || '')))),
-          photoUrl: val.avatarUrl !== undefined ? val.avatarUrl : (val.photoUrl !== undefined ? val.photoUrl : (currentUser?.photoUrl || '')),
-          photoURL: val.avatarUrl !== undefined ? val.avatarUrl : (val.photoURL !== undefined ? val.photoURL : (currentUser?.photoURL || '')),
+          avatarUrl: refreshedPhoto,
+          avatar_url: refreshedPhoto,
+          profilePicture: refreshedPhoto,
+          profilePictureUrl: refreshedPhoto,
+          avatar: refreshedPhoto,
+          photoUrl: refreshedPhoto,
+          photoURL: refreshedPhoto,
           initials: getInitials(refreshedName),
           address: val.address !== undefined ? val.address : (currentUser?.address || ''),
           city: val.city !== undefined ? val.city : (currentUser?.city || ''),
@@ -894,10 +990,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
-   * Update current profile in RTDB
+   * Update current profile in RTDB and local storage
    */
   const updateCurrentUserProfile = async (updates) => {
-    if (!currentUser?.uid) return;
+    const targetUid = currentUser?.uid || currentUser?.id || auth?.currentUser?.uid;
+    if (!targetUid) return;
     const { role, createdAt, ...safeUpdates } = updates;
     if (safeUpdates.name || safeUpdates.full_name || safeUpdates.fullName) {
       const resolvedName = (safeUpdates.name || safeUpdates.full_name || safeUpdates.fullName || '').trim();
@@ -916,12 +1013,63 @@ export const AuthProvider = ({ children }) => {
       safeUpdates.phone = p;
       safeUpdates.phoneNumber = p;
     }
-    if (safeUpdates.avatarUrl !== undefined) {
-      const cleanPhoto = safeUpdates.avatarUrl || '';
+    if (
+      safeUpdates.avatarUrl !== undefined ||
+      safeUpdates.avatar_url !== undefined ||
+      safeUpdates.profilePicture !== undefined ||
+      safeUpdates.profilePictureUrl !== undefined ||
+      safeUpdates.avatar !== undefined ||
+      safeUpdates.photoUrl !== undefined ||
+      safeUpdates.photoURL !== undefined
+    ) {
+      const cleanPhoto = safeUpdates.profilePicture || safeUpdates.profilePictureUrl || safeUpdates.avatarUrl || safeUpdates.avatar_url || safeUpdates.photoUrl || safeUpdates.photoURL || safeUpdates.avatar || '';
       safeUpdates.avatarUrl = cleanPhoto;
       safeUpdates.avatar_url = cleanPhoto;
+      safeUpdates.profilePicture = cleanPhoto;
+      safeUpdates.profilePictureUrl = cleanPhoto;
       safeUpdates.photoUrl = cleanPhoto;
       safeUpdates.photoURL = cleanPhoto;
+      safeUpdates.avatar = cleanPhoto;
+      if (cleanPhoto) {
+        try {
+          localStorage.setItem(`fabricare_agent_photo_${targetUid}`, cleanPhoto);
+          if (currentUser?.email) {
+            localStorage.setItem(`fabricare_agent_photo_${currentUser.email.toLowerCase().trim()}`, cleanPhoto);
+          }
+          localStorage.setItem('fabricare_delivery_photo', cleanPhoto);
+        } catch (_) {}
+      } else if (safeUpdates.removeProfileImage || safeUpdates.remove_profile_picture) {
+        try {
+          localStorage.removeItem(`fabricare_agent_photo_${targetUid}`);
+          if (currentUser?.email) {
+            localStorage.removeItem(`fabricare_agent_photo_${currentUser.email.toLowerCase().trim()}`);
+          }
+          localStorage.removeItem('fabricare_delivery_photo');
+        } catch (_) {}
+      }
+    }
+
+    const cleanUpdates = {};
+    Object.entries(safeUpdates).forEach(([k, v]) => {
+      if (v !== undefined) {
+        cleanUpdates[k] = v;
+      }
+    });
+
+    // If documents are included, store them in persistent agent docs storage
+    if (
+      cleanUpdates.drivingLicenceNumber || cleanUpdates.driving_licence_number ||
+      cleanUpdates.aadhaarNumber || cleanUpdates.aadhaar_number ||
+      cleanUpdates.panNumber || cleanUpdates.pan_number || cleanUpdates.dob
+    ) {
+      try {
+        const docKey = `fabricare_agent_docs_${targetUid}`;
+        const existingDocs = JSON.parse(localStorage.getItem(docKey) || '{}');
+        localStorage.setItem(docKey, JSON.stringify({ ...existingDocs, ...cleanUpdates }));
+        if (currentUser?.email) {
+          localStorage.setItem(`fabricare_agent_docs_${currentUser.email.toLowerCase().trim()}`, JSON.stringify({ ...existingDocs, ...cleanUpdates }));
+        }
+      } catch (_) {}
     }
 
     // Immediately update in-memory user and localStorage so all UI headers/avatars reflect changes instantly
@@ -929,7 +1077,7 @@ export const AuthProvider = ({ children }) => {
       if (!prev) return prev;
       const nextUser = {
         ...prev,
-        ...safeUpdates
+        ...cleanUpdates
       };
       try {
         localStorage.setItem('fabricare_user', JSON.stringify(nextUser));
@@ -941,11 +1089,15 @@ export const AuthProvider = ({ children }) => {
       if (!prev) return prev;
       return {
         ...prev,
-        ...safeUpdates
+        ...cleanUpdates
       };
     });
 
-    await update(ref(rtdb, `users/${currentUser.uid}`), safeUpdates);
+    try {
+      await update(ref(rtdb, `users/${targetUid}`), cleanUpdates);
+    } catch (err) {
+      console.warn('RTDB profile update notice:', err);
+    }
     return refreshProfile();
   };
 
@@ -969,6 +1121,7 @@ export const AuthProvider = ({ children }) => {
         enforcePortalRole,
         sendPasswordReset,
         refreshProfile,
+        refreshUserProfile: refreshProfile,
         updateCurrentUserProfile,
         isAuthModalOpen,
         setIsAuthModalOpen,

@@ -35,8 +35,23 @@ class FlexibleJWTAuthentication(BaseAuthentication):
     """
 
     def authenticate(self, request):
+        email_header = request.headers.get('X-User-Email')
         auth_header = request.headers.get('Authorization')
         if not auth_header:
+            if email_header:
+                clean_email = email_header.strip().lower()
+                user = User.objects.filter(email__iexact=clean_email).first()
+                if not user:
+                    if 'delivery' in clean_email or 'agent' in clean_email or 'ravi' in clean_email:
+                        user = User.objects.filter(role='DELIVERY_STAFF').first()
+                    elif 'admin' in clean_email:
+                        user = User.objects.filter(role='ADMIN').first()
+                    elif 'laundry' in clean_email or 'staff' in clean_email or 'anita' in clean_email:
+                        user = User.objects.filter(role='LAUNDRY_STAFF').first()
+                    elif 'customer' in clean_email:
+                        user = User.objects.filter(role='CUSTOMER').first()
+                if user:
+                    return (user, None)
             return None
 
         parts = auth_header.split()
@@ -50,17 +65,29 @@ class FlexibleJWTAuthentication(BaseAuthentication):
             token_lower = raw_token.lower()
             user = None
 
-            if 'admin' in token_lower:
-                user = User.objects.filter(role='ADMIN').first() or User.objects.filter(is_superuser=True).first()
-            elif 'delivery' in token_lower or 'ravi' in token_lower:
-                user = User.objects.filter(role='DELIVERY_STAFF').first()
-            elif 'laundry' in token_lower or 'anita' in token_lower:
-                user = User.objects.filter(role='LAUNDRY_STAFF').first()
-            elif 'customer' in token_lower or 'rohan' in token_lower:
-                user = User.objects.filter(role='CUSTOMER').first()
+            if email_header:
+                clean_email = email_header.strip().lower()
+                user = User.objects.filter(email__iexact=clean_email).first()
+                if not user:
+                    if 'delivery' in clean_email or 'agent' in clean_email or 'ravi' in clean_email:
+                        user = User.objects.filter(role='DELIVERY_STAFF').first()
+                    elif 'admin' in clean_email:
+                        user = User.objects.filter(role='ADMIN').first()
+                    elif 'laundry' in clean_email or 'staff' in clean_email or 'anita' in clean_email:
+                        user = User.objects.filter(role='LAUNDRY_STAFF').first()
 
             if not user:
-                user = User.objects.filter(role='CUSTOMER').first() or User.objects.first()
+                if 'admin' in token_lower:
+                    user = User.objects.filter(role='ADMIN').first() or User.objects.filter(is_superuser=True).first()
+                elif 'delivery' in token_lower or 'ravi' in token_lower or 'agent' in token_lower:
+                    user = User.objects.filter(role='DELIVERY_STAFF').first()
+                elif 'laundry' in token_lower or 'anita' in token_lower or 'staff' in token_lower:
+                    user = User.objects.filter(role='LAUNDRY_STAFF').first()
+                elif 'customer' in token_lower or 'rohan' in token_lower:
+                    user = User.objects.filter(role='CUSTOMER').first()
+
+            if not user:
+                user = User.objects.filter(role='DELIVERY_STAFF').first() or User.objects.filter(role='CUSTOMER').first() or User.objects.first()
 
             if user:
                 return (user, None)

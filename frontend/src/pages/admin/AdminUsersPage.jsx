@@ -1080,18 +1080,6 @@ export const AdminUsersPage = () => {
             )}
           </div>
 
-          {/* Single Refresh Button (replacing Reset button in the same position) */}
-          <button 
-            type="button" 
-            id="users-filter-refresh-btn"
-            className="filter-refresh-action-btn" 
-            onClick={handleRefreshUsers}
-            disabled={isRefreshing}
-            title="Refresh users from database"
-          >
-            <RotateCcw size={14} className={isRefreshing ? 'spin-animation' : ''} />
-            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-          </button>
         </div>
       </div>
 

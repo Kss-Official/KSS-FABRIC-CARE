@@ -645,54 +645,104 @@ export const EXPRESS_SERVICES = [
  */
 export const isItemApplicableToService = (item, serviceId) => {
   if (!item) return false;
-  const id = item.id;
+
+  const targetService = String(serviceId || '').toLowerCase().trim();
+
+  // 1. Check if item has an applicableServices or services array
+  const servicesList = Array.isArray(item.applicableServices) 
+    ? item.applicableServices 
+    : (Array.isArray(item.services) ? item.services : null);
+
+  if (servicesList && servicesList.length > 0) {
+    const hasExplicitMatch = servicesList.some(s => {
+      const sLower = String(s || '').toLowerCase().trim();
+      if (sLower === 'all' || sLower === 'all services' || sLower.includes('all')) return true;
+      if (sLower === targetService) return true;
+      if (targetService.includes('fold') && sLower.includes('fold')) return true;
+      if (targetService.includes('iron') && targetService.includes('wash') && sLower.includes('iron') && sLower.includes('wash')) return true;
+      if (targetService.includes('dry') && sLower.includes('dry')) return true;
+      if (targetService.includes('steam') && (sLower.includes('steam') || (sLower.includes('iron') && !sLower.includes('wash')))) return true;
+      if (targetService.includes('shoe') && sLower.includes('shoe')) return true;
+      if (targetService.includes('express') && sLower.includes('express')) return true;
+      return false;
+    });
+    if (hasExplicitMatch) return true;
+  }
+
+  // 2. Direct check: If item has prices map with this service explicitly set to a number
+  if (item.prices && typeof item.prices === 'object') {
+    if (item.prices[serviceId] !== undefined && item.prices[serviceId] !== null) {
+      return true;
+    }
+  }
+
+  // 3. Check category or service property on item
+  const cat = String(item.category || item.service || '').toLowerCase().trim();
+  if (cat.includes('all')) return true;
+  if (cat && (cat === targetService || 
+      (targetService.includes('fold') && cat.includes('fold')) ||
+      (targetService.includes('wash') && targetService.includes('iron') && cat.includes('wash') && cat.includes('iron')) ||
+      (targetService.includes('dry') && cat.includes('dry')) ||
+      (targetService.includes('steam') && (cat.includes('steam') || (cat.includes('iron') && !cat.includes('wash'))))
+  )) {
+    return true;
+  }
+
+  // 4. Safely extract string ID or code
+  const rawId = item.code || item.slug || (typeof item.id === 'string' ? item.id : (item.id != null ? String(item.id) : ''));
+  const id = String(rawId || '').toLowerCase().trim();
+  const name = String(item.name || '').toLowerCase().trim();
+  const subcategory = String(item.subcategory || item.subcategoryId || '').toLowerCase().trim();
+  const category = String(item.category || '').toLowerCase().trim();
 
   // Shoe laundry only accepts shoe items
-  if (serviceId === 'shoe-laundry') {
-    return id.startsWith('shoe-');
+  if (targetService === 'shoe-laundry') {
+    return id.startsWith('shoe-') || name.includes('shoe') || subcategory === 'shoe';
   }
 
   // Home Care only accepts household items
-  if (serviceId === 'home-care') {
-    return item.subcategory === 'household';
+  if (targetService === 'home-care') {
+    return subcategory === 'household' || category === 'household';
   }
 
   // Other standard clothing services should not include shoes
-  if (id.startsWith('shoe-')) {
+  if (id.startsWith('shoe-') || name.includes('shoe') || subcategory === 'shoe') {
     return false;
   }
 
-  if (serviceId === 'wash-fold') {
+  if (targetService === 'wash-fold') {
     // Structured formal 2pc suits/blazers are dry clean only
-    if (id === 'men-suit-2pc' || id === 'men-blazer') return false;
+    if (id === 'men-suit-2pc' || id === 'men-blazer' || name.includes('blazer') || (name.includes('suit') && !name.includes('salwar'))) return false;
     return true;
   }
 
-  if (serviceId === 'wash-iron') {
+  if (targetService === 'wash-iron') {
     // Exclude items that are never ironed (undergarments, socks, mats, heavy suits)
-    if (id === 'men-undergarments' || id === 'men-socks') return false;
-    if (id === 'hh-bath-mat' || id === 'hh-doormat' || id === 'hh-kitchen-towel') return false;
-    if (id === 'men-suit-2pc' || id === 'men-blazer') return false;
+    if (id === 'men-undergarments' || id === 'men-socks' || name.includes('undergarment') || name.includes('sock')) return false;
+    if (id === 'hh-bath-mat' || id === 'hh-doormat' || id === 'hh-kitchen-towel' || name.includes('mat') || name.includes('kitchen towel')) return false;
+    if (id === 'men-suit-2pc' || id === 'men-blazer' || name.includes('blazer') || (name.includes('suit') && !name.includes('salwar'))) return false;
     return true;
   }
 
-  if (serviceId === 'dry-cleaning') {
+  if (targetService === 'dry-cleaning') {
     // Delicate, formal, wool, ethnic garments and heavy linens
     // Exclude everyday undergarments, basic socks, casual shorts, bath mats, doormats, towels
     if (id === 'men-undergarments' || id === 'men-socks' || id === 'men-shorts') return false;
     if (id === 'women-nightwear' || id === 'women-leggings') return false;
     if (id === 'kids-romper' || id === 'kids-baby-clothes') return false;
     if (id === 'hh-bath-mat' || id === 'hh-doormat' || id === 'hh-kitchen-towel' || id === 'hh-hand-towel') return false;
+    if (name.includes('undergarment') || name.includes('sock') || name.includes('doormat') || name.includes('bath mat')) return false;
     return true;
   }
 
-  if (serviceId === 'steam-iron') {
+  if (targetService === 'steam-iron') {
     // Items that can be pressed with high temperature steam
     // Exclude undergarments, socks, thick bedding/quilts/duvets, mats, towels
     if (id === 'men-undergarments' || id === 'men-socks') return false;
     if (id === 'women-leggings' || id === 'women-nightwear') return false;
     if (id === 'kids-baby-clothes' || id === 'kids-romper') return false;
     if (id === 'hh-blanket' || id === 'hh-comforter' || id === 'hh-quilt' || id === 'hh-duvet' || id === 'hh-bath-mat' || id === 'hh-doormat' || id === 'hh-bath-towel') return false;
+    if (name.includes('undergarment') || name.includes('sock') || name.includes('blanket') || name.includes('quilt') || name.includes('comforter') || name.includes('mat')) return false;
     return true;
   }
 

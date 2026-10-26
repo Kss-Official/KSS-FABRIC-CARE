@@ -18,7 +18,8 @@ import {
   ArrowRight,
   FileText,
   Sparkles,
-  Loader2
+  Loader2,
+  HelpCircle
 } from 'lucide-react';
 import { formatOrderId } from '../utils/helpers';
 
@@ -104,7 +105,10 @@ export const normalizeNotification = (notif) => {
   let type = notif.type || 'info';
 
   const text = `${notif.title || ''} ${notif.body || notif.message || ''}`.toLowerCase();
-  if (text.includes('reschedul')) {
+  if (text.includes('support') || text.includes('ticket') || notif.type?.includes('support') || notif.type?.includes('complaint')) {
+    category = 'Support';
+    type = 'support';
+  } else if (text.includes('reschedul')) {
     category = 'Rescheduled';
     type = 'rescheduled';
   } else if (text.includes('out for delivery')) {
@@ -148,6 +152,7 @@ export const normalizeNotification = (notif) => {
     title: notif.title || 'Notification Update',
     message: notif.body || notif.message || 'You have an update on your laundry order.',
     orderId: notif.orderId || notif.order_id || null,
+    ticketId: notif.ticketId || notif.ticketNumber || (notif.title?.match(/#SUP-\d+/i)?.[0] || null),
     formattedDate: notif.formattedDate || formattedDate,
     isRead: Boolean(notif.isRead)
   };
@@ -219,7 +224,9 @@ export const Notifications = () => {
 
   // Navigate to appropriate section based on notification type
   const handleActionClick = (notif) => {
-    if (notif.actionType === 'report' || notif.type === 'rescheduled' || notif.type === 'review') {
+    if (notif.type === 'support' || notif.category === 'Support' || notif.ticketId) {
+      navigateTo('customer-support');
+    } else if (notif.actionType === 'report' || notif.type === 'rescheduled' || notif.type === 'review') {
       navigateTo('customer-reports');
     } else if (notif.actionType === 'invoice' || notif.type === 'payment') {
       navigateTo('customer-invoices');
@@ -231,6 +238,13 @@ export const Notifications = () => {
   // Render Category Badge
   const renderCategoryBadge = (category, type) => {
     switch (type) {
+      case 'support':
+        return (
+          <span className="notif-pill notif-pill-support" style={{ background: '#F3E8FF', color: '#7E22CE', border: '1px solid #E9D5FF' }}>
+            <HelpCircle size={11} strokeWidth={2.5} />
+            <span>{category || 'Support'}</span>
+          </span>
+        );
       case 'rescheduled':
         return (
           <span className="notif-pill notif-pill-rescheduled">
@@ -293,6 +307,12 @@ export const Notifications = () => {
   // Render Icon Box
   const renderIconBox = (type) => {
     switch (type) {
+      case 'support':
+        return (
+          <div className="notif-icon-box notif-icon-support" style={{ background: '#F3E8FF', color: '#7E22CE' }}>
+            <HelpCircle size={18} strokeWidth={2.2} />
+          </div>
+        );
       case 'rescheduled':
         return (
           <div className="notif-icon-box notif-icon-rescheduled">
@@ -538,6 +558,19 @@ export const Notifications = () => {
                             title={`View details for ${formatOrderId(notif.orderId)}`}
                           >
                             <span className="font-mono font-bold">{formatOrderId(notif.orderId)}</span>
+                            <ArrowRight size={12} className="btn-arrow" />
+                          </button>
+                        )}
+
+                        {notif.ticketId && !notif.orderId && (
+                          <button
+                            type="button"
+                            className="btn-card-action"
+                            onClick={() => handleActionClick(notif)}
+                            title={`View support ticket ${notif.ticketId}`}
+                            style={{ borderColor: '#E9D5FF', color: '#7E22CE', background: '#FAF5FF' }}
+                          >
+                            <span className="font-mono font-bold">{notif.ticketId}</span>
                             <ArrowRight size={12} className="btn-arrow" />
                           </button>
                         )}

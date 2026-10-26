@@ -15,6 +15,7 @@ import {
   ChevronDown,
   Edit3
 } from 'lucide-react';
+import { formatIndianPhoneNumber, isValidIndianPhoneNumber } from '../../utils/helpers';
 
 export const AdminSettingsPage = () => {
   const { settings, updateSettings } = useAdmin();
@@ -337,6 +338,9 @@ export const AdminSettingsPage = () => {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       errs.email = 'Invalid email address';
     }
+    if (form.phone && form.phone.trim() && !isValidIndianPhoneNumber(form.phone)) {
+      errs.phone = 'Phone number must be 10 digits starting with 6–9';
+    }
     if (Object.keys(errs).length > 0) {
       setErrors(prev => ({ ...prev, ...errs }));
       return;
@@ -372,7 +376,7 @@ export const AdminSettingsPage = () => {
       ...prev,
       ...savedContactValues
     }));
-    setErrors(prev => ({ ...prev, supportEmail: '' }));
+    setErrors(prev => ({ ...prev, supportEmail: '', supportPhone: '' }));
     setIsEditingContact(false);
   };
 
@@ -382,6 +386,9 @@ export const AdminSettingsPage = () => {
       errs.supportEmail = 'Email address is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.supportEmail.trim())) {
       errs.supportEmail = 'Invalid email address';
+    }
+    if (form.supportPhone && form.supportPhone.trim() && !isValidIndianPhoneNumber(form.supportPhone)) {
+      errs.supportPhone = 'Phone number must be 10 digits starting with 6–9';
     }
     if (Object.keys(errs).length > 0) {
       setErrors(prev => ({ ...prev, ...errs }));
@@ -709,10 +716,21 @@ export const AdminSettingsPage = () => {
                   <input 
                     type="tel" 
                     disabled={!isEditingProfile}
-                    className="as-input"
+                    className={`as-input ${errors.phone ? 'as-input-error' : ''}`}
+                    placeholder="+91 98765 43210"
+                    maxLength={15}
                     value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    onChange={(e) => {
+                      const formatted = formatIndianPhoneNumber(e.target.value);
+                      setForm({ ...form, phone: formatted });
+                      if (formatted && !isValidIndianPhoneNumber(formatted)) {
+                        setErrors(prev => ({ ...prev, phone: 'Phone must be 10 digits starting with 6–9' }));
+                      } else {
+                        setErrors(prev => ({ ...prev, phone: '' }));
+                      }
+                    }}
                   />
+                  {errors.phone && <span className="as-error-hint">{errors.phone}</span>}
                 </div>
 
                 {/* Role */}
@@ -799,10 +817,21 @@ export const AdminSettingsPage = () => {
                 <input 
                   type="tel" 
                   disabled={!isEditingContact}
-                  className="as-input"
+                  className={`as-input ${errors.supportPhone ? 'as-input-error' : ''}`}
+                  placeholder="+91 98765 43210"
+                  maxLength={15}
                   value={form.supportPhone}
-                  onChange={(e) => setForm({ ...form, supportPhone: e.target.value })}
+                  onChange={(e) => {
+                    const formatted = formatIndianPhoneNumber(e.target.value);
+                    setForm({ ...form, supportPhone: formatted });
+                    if (formatted && !isValidIndianPhoneNumber(formatted)) {
+                      setErrors(prev => ({ ...prev, supportPhone: 'Phone must be 10 digits starting with 6–9' }));
+                    } else {
+                      setErrors(prev => ({ ...prev, supportPhone: '' }));
+                    }
+                  }}
                 />
+                {errors.supportPhone && <span className="as-error-hint">{errors.supportPhone}</span>}
               </div>
 
               {/* Website URL */}

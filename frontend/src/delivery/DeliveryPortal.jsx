@@ -70,13 +70,54 @@ import {
 
 export const getMediaUrl = (url) => {
   if (!url) return '';
-  return url;
+  if (typeof url !== 'string') return url;
+  if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  const clean = url.startsWith('/') ? url : `/${url}`;
+  return `http://127.0.0.1:8000${clean}`;
 };
 
 export const DeliveryPortal = () => {
-  const { currentUser, logout, updateCurrentUserProfile, refreshUserProfile } = useAuth();
+  const { currentUser, logout, updateCurrentUserProfile, refreshProfile, refreshUserProfile } = useAuth();
   const { navigateTo } = useBooking();
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'pickups' | 'dropoff' | 'deliveries' | 'history' | 'notifications' | 'profile'
+
+  const agentUid = currentUser?.uid || currentUser?.id || 'b0DHZGmo4mVuhPTS9HngWS7VulB2';
+  const agentEmail = (currentUser?.email || 'delivery@fabricare.com').toLowerCase().trim();
+
+  // Persistent document & compliance state that survives page refreshes even if session reloads
+  const agentDocs = useMemo(() => {
+    let localDocs = {};
+    try {
+      const raw = localStorage.getItem(`fabricare_agent_docs_${agentUid}`) || 
+                  localStorage.getItem(`fabricare_agent_docs_${agentEmail}`) ||
+                  localStorage.getItem('fabricare_delivery_documents');
+      if (raw) localDocs = JSON.parse(raw);
+    } catch (_) {}
+    let storedPhoto = null;
+    try {
+      storedPhoto = localStorage.getItem(`fabricare_agent_photo_${agentUid}`) ||
+                    localStorage.getItem(`fabricare_agent_photo_${agentEmail}`) ||
+                    localStorage.getItem('fabricare_delivery_photo') ||
+                    localDocs.profilePictureUrl || localDocs.profilePicture || localDocs.avatar || null;
+    } catch (_) {}
+    return {
+      dob: currentUser?.dob || localDocs.dob || '',
+      drivingLicenceNumber: currentUser?.drivingLicenceNumber || currentUser?.driving_licence_number || localDocs.drivingLicenceNumber || localDocs.driving_licence_number || '',
+      driving_licence_number: currentUser?.driving_licence_number || currentUser?.drivingLicenceNumber || localDocs.driving_licence_number || localDocs.drivingLicenceNumber || '',
+      aadhaarNumber: currentUser?.aadhaarNumber || currentUser?.aadhaar_number || localDocs.aadhaarNumber || localDocs.aadhaar_number || '',
+      aadhaar_number: currentUser?.aadhaar_number || currentUser?.aadhaarNumber || localDocs.aadhaar_number || localDocs.aadhaarNumber || '',
+      aadhaarDocumentUrl: currentUser?.aadhaarDocumentUrl || currentUser?.aadhaar_document_url || localDocs.aadhaarDocumentUrl || localDocs.aadhaar_document_url || null,
+      aadhaar_document_url: currentUser?.aadhaar_document_url || currentUser?.aadhaarDocumentUrl || localDocs.aadhaar_document_url || localDocs.aadhaarDocumentUrl || null,
+      panNumber: currentUser?.panNumber || currentUser?.pan_number || localDocs.panNumber || localDocs.pan_number || '',
+      pan_number: currentUser?.pan_number || currentUser?.panNumber || localDocs.pan_number || localDocs.panNumber || '',
+      panDocumentUrl: currentUser?.panDocumentUrl || currentUser?.pan_document_url || localDocs.panDocumentUrl || localDocs.pan_document_url || null,
+      pan_document_url: currentUser?.pan_document_url || currentUser?.panDocumentUrl || localDocs.pan_document_url || localDocs.panDocumentUrl || null,
+      profilePictureUrl: currentUser?.profilePictureUrl || currentUser?.profilePicture || storedPhoto || null,
+      profilePicture: currentUser?.profilePicture || currentUser?.profilePictureUrl || storedPhoto || null
+    };
+  }, [currentUser, agentUid, agentEmail]);
 
   // Dynamic initials calculation: First Name first letter + Last Name first letter
   const getAgentInitials = (name) => {
@@ -101,12 +142,20 @@ export const DeliveryPortal = () => {
     if (currentUser?.avatar && (currentUser.avatar.startsWith('http') || currentUser.avatar.startsWith('/media') || currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('blob:'))) {
       return getMediaUrl(currentUser.avatar);
     }
+    if (agentDocs?.profilePictureUrl) {
+      return getMediaUrl(agentDocs.profilePictureUrl);
+    }
     try {
+      const direct = localStorage.getItem(`fabricare_agent_photo_${agentUid}`) ||
+                     localStorage.getItem(`fabricare_agent_photo_${agentEmail}`) ||
+                     localStorage.getItem('fabricare_delivery_photo');
+      if (direct) return getMediaUrl(direct);
+
       const stored = localStorage.getItem('fabricare_user');
       if (stored) {
         const u = JSON.parse(stored);
-        const pic = u.profilePictureUrl || u.profilePicture;
-        if (pic) return getMediaUrl(pic);
+        const pic = u.profilePictureUrl || u.profilePicture || u.avatar || u.avatarUrl;
+        if (pic && !String(pic).includes('ui-avatars.com')) return getMediaUrl(pic);
       }
     } catch {}
     return null;
@@ -119,7 +168,7 @@ export const DeliveryPortal = () => {
     if (p !== undefined) {
       setCurrentSavedPhoto(p);
     }
-  }, [currentUser?.profilePicture, currentUser?.profilePictureUrl, currentUser?.avatar]);
+  }, [currentUser?.profilePicture, currentUser?.profilePictureUrl, currentUser?.avatar, agentDocs?.profilePictureUrl]);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -849,7 +898,16 @@ export const DeliveryPortal = () => {
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [removeProfileImage, setRemoveProfileImage] = useState(false);
 
-  const hasActivePhoto = !removeProfileImage && Boolean(profileImagePreview || currentUser?.profilePicture || currentUser?.profilePictureUrl);
+  const hasActivePhoto = !removeProfileImage && Boolean(
+    profileImagePreview || 
+    currentSavedPhoto || 
+    agentPhoto || 
+    currentUser?.profilePicture || 
+    currentUser?.profilePictureUrl || 
+    currentUser?.avatar ||
+    currentUser?.avatarUrl ||
+    agentDocs?.profilePictureUrl
+  );
   const activeSavedPhoto = currentSavedPhoto !== undefined ? currentSavedPhoto : agentPhoto;
   const displayAvatarPhoto = isEditingProfile 
     ? (removeProfileImage ? null : (profileImagePreview ? getMediaUrl(profileImagePreview) : activeSavedPhoto))
@@ -859,6 +917,22 @@ export const DeliveryPortal = () => {
     setProfileImageFile(null);
     setProfileImagePreview(null);
     setRemoveProfileImage(true);
+    setCurrentSavedPhoto(null);
+    try {
+      localStorage.removeItem(`fabricare_agent_photo_${agentUid}`);
+      localStorage.removeItem(`fabricare_agent_photo_${agentEmail}`);
+      localStorage.removeItem('fabricare_delivery_photo');
+      const docKey = `fabricare_agent_docs_${agentUid}`;
+      const existingDocs = JSON.parse(localStorage.getItem(docKey) || '{}');
+      delete existingDocs.profilePictureUrl;
+      delete existingDocs.profilePicture;
+      delete existingDocs.photoUrl;
+      delete existingDocs.avatar;
+      localStorage.setItem(docKey, JSON.stringify(existingDocs));
+      if (agentEmail) {
+        localStorage.setItem(`fabricare_agent_docs_${agentEmail}`, JSON.stringify(existingDocs));
+      }
+    } catch (_) {}
     setProfileFormErrors(prev => {
       const n = { ...prev };
       delete n.profileImage;
@@ -1000,24 +1074,24 @@ export const DeliveryPortal = () => {
     const activeUser = currentUser || {};
     setEditProfileForm({
       fullName: activeUser.fullName || activeUser.displayName || activeUser.full_name || '',
-      dob: activeUser.dob || '',
-      drivingLicenceNumber: activeUser.drivingLicenceNumber || activeUser.driving_licence_number || '',
-      aadhaarNumber: activeUser.aadhaarNumber || activeUser.aadhaar_number || '',
-      panNumber: activeUser.panNumber || activeUser.pan_number || '',
+      dob: activeUser.dob || agentDocs.dob || '',
+      drivingLicenceNumber: activeUser.drivingLicenceNumber || activeUser.driving_licence_number || agentDocs.drivingLicenceNumber || '',
+      aadhaarNumber: activeUser.aadhaarNumber || activeUser.aadhaar_number || agentDocs.aadhaarNumber || '',
+      panNumber: activeUser.panNumber || activeUser.pan_number || agentDocs.panNumber || '',
     });
     setProfileImageFile(null);
-    setProfileImagePreview(activeUser.profilePictureUrl || activeUser.profilePicture || null);
+    setProfileImagePreview(activeSavedPhoto || activeUser.profilePictureUrl || activeUser.profilePicture || activeUser.avatar || agentDocs.profilePictureUrl || null);
     setRemoveProfileImage(false);
 
     setAadhaarFile(null);
-    const existingAadhaarUrl = activeUser.aadhaarDocumentUrl || activeUser.aadhaar_document_url || null;
+    const existingAadhaarUrl = activeUser.aadhaarDocumentUrl || activeUser.aadhaar_document_url || agentDocs.aadhaarDocumentUrl || null;
     setAadhaarPreview(existingAadhaarUrl);
     setAadhaarFileType(
       (existingAadhaarUrl || '').toLowerCase().includes('.pdf') ? 'pdf' : 'image'
     );
 
     setPanFile(null);
-    const existingPanUrl = activeUser.panDocumentUrl || activeUser.pan_document_url || null;
+    const existingPanUrl = activeUser.panDocumentUrl || activeUser.pan_document_url || agentDocs.panDocumentUrl || null;
     setPanPreview(existingPanUrl);
     setPanFileType(
       (existingPanUrl || '').toLowerCase().includes('.pdf') ? 'pdf' : 'image'
@@ -1228,12 +1302,27 @@ export const DeliveryPortal = () => {
       let finalProfilePic = null;
       if (removeProfileImage) {
         finalProfilePic = null;
+        try {
+          localStorage.removeItem(`fabricare_agent_photo_${agentUid}`);
+          localStorage.removeItem(`fabricare_agent_photo_${agentEmail}`);
+          localStorage.removeItem('fabricare_delivery_photo');
+        } catch (_) {}
       } else if (updated?.profile_picture_url || updated?.profile_picture) {
-        finalProfilePic = updated.profile_picture_url || updated.profile_picture;
-      } else if (base64ProfileImg || profileImagePreview) {
-        finalProfilePic = base64ProfileImg || profileImagePreview;
+        finalProfilePic = getMediaUrl(updated.profile_picture_url || updated.profile_picture);
+      } else if (base64ProfileImg) {
+        finalProfilePic = base64ProfileImg;
+      } else if (profileImagePreview && !profileImagePreview.startsWith('blob:')) {
+        finalProfilePic = profileImagePreview;
       } else {
-        finalProfilePic = currentUser?.profilePicture || currentUser?.profilePictureUrl || null;
+        finalProfilePic = currentUser?.profilePicture || currentUser?.profilePictureUrl || agentDocs?.profilePictureUrl || null;
+      }
+
+      if (finalProfilePic && !removeProfileImage) {
+        try {
+          localStorage.setItem(`fabricare_agent_photo_${agentUid}`, finalProfilePic);
+          localStorage.setItem(`fabricare_agent_photo_${agentEmail}`, finalProfilePic);
+          localStorage.setItem('fabricare_delivery_photo', finalProfilePic);
+        } catch (_) {}
       }
 
       const finalAadhaarDoc = updated?.aadhaar_document_url || updated?.aadhaar_document || base64Aadhaar || aadhaarPreview || currentUser?.aadhaarDocumentUrl || currentUser?.aadhaar_document_url || null;
@@ -1257,26 +1346,97 @@ export const DeliveryPortal = () => {
         pan_document_url: finalPanDoc,
         profilePicture: finalProfilePic,
         profilePictureUrl: finalProfilePic,
+        photoUrl: finalProfilePic,
+        avatarUrl: finalProfilePic,
+        avatar_url: finalProfilePic,
         avatar: finalProfilePic || getAgentInitials(editProfileForm.fullName.trim())
       };
 
+      // 1. Immediately write to dedicated agent documents storage (both agentUid and agentEmail keys)
+      const agentDocsData = {
+        dob: updatedProfileObj.dob,
+        drivingLicenceNumber: updatedProfileObj.drivingLicenceNumber,
+        driving_licence_number: updatedProfileObj.driving_licence_number,
+        aadhaarNumber: updatedProfileObj.aadhaarNumber,
+        aadhaar_number: updatedProfileObj.aadhaar_number,
+        aadhaarDocumentUrl: updatedProfileObj.aadhaarDocumentUrl,
+        panNumber: updatedProfileObj.panNumber,
+        pan_number: updatedProfileObj.pan_number,
+        panDocumentUrl: updatedProfileObj.panDocumentUrl,
+        profilePictureUrl: finalProfilePic,
+        profilePicture: finalProfilePic,
+        photoUrl: finalProfilePic
+      };
+      try {
+        localStorage.setItem(`fabricare_agent_docs_${agentUid}`, JSON.stringify(agentDocsData));
+        localStorage.setItem(`fabricare_agent_docs_${agentEmail}`, JSON.stringify(agentDocsData));
+        localStorage.setItem('fabricare_delivery_documents', JSON.stringify(agentDocsData));
+      } catch (_) {}
+
+      // 2. Direct Firebase RTDB update with fallback
+      try {
+        if (agentUid && rtdb) {
+          const rtdbUpdates = {
+            [`users/${agentUid}/drivingLicenceNumber`]: updatedProfileObj.drivingLicenceNumber,
+            [`users/${agentUid}/driving_licence_number`]: updatedProfileObj.driving_licence_number,
+            [`users/${agentUid}/aadhaarNumber`]: updatedProfileObj.aadhaarNumber,
+            [`users/${agentUid}/aadhaar_number`]: updatedProfileObj.aadhaar_number,
+            [`users/${agentUid}/panNumber`]: updatedProfileObj.panNumber,
+            [`users/${agentUid}/pan_number`]: updatedProfileObj.pan_number,
+            [`users/${agentUid}/dob`]: updatedProfileObj.dob,
+            [`users/${agentUid}/name`]: updatedProfileObj.fullName,
+            [`users/${agentUid}/full_name`]: updatedProfileObj.fullName,
+            [`users/${agentUid}/fullName`]: updatedProfileObj.fullName,
+            [`users/${agentUid}/displayName`]: updatedProfileObj.fullName
+          };
+          if (finalAadhaarDoc) {
+            rtdbUpdates[`users/${agentUid}/aadhaarDocumentUrl`] = finalAadhaarDoc;
+            rtdbUpdates[`users/${agentUid}/aadhaar_document_url`] = finalAadhaarDoc;
+          }
+          if (finalPanDoc) {
+            rtdbUpdates[`users/${agentUid}/panDocumentUrl`] = finalPanDoc;
+            rtdbUpdates[`users/${agentUid}/pan_document_url`] = finalPanDoc;
+          }
+          if (finalProfilePic) {
+            rtdbUpdates[`users/${agentUid}/avatarUrl`] = finalProfilePic;
+            rtdbUpdates[`users/${agentUid}/profilePictureUrl`] = finalProfilePic;
+            rtdbUpdates[`users/${agentUid}/profilePicture`] = finalProfilePic;
+            rtdbUpdates[`users/${agentUid}/photoUrl`] = finalProfilePic;
+            rtdbUpdates[`users/${agentUid}/avatar`] = finalProfilePic;
+          } else if (removeProfileImage) {
+            rtdbUpdates[`users/${agentUid}/avatarUrl`] = null;
+            rtdbUpdates[`users/${agentUid}/profilePictureUrl`] = null;
+            rtdbUpdates[`users/${agentUid}/profilePicture`] = null;
+            rtdbUpdates[`users/${agentUid}/photoUrl`] = null;
+            rtdbUpdates[`users/${agentUid}/avatar`] = null;
+          }
+          await update(ref(rtdb), rtdbUpdates).catch(() => {});
+        }
+      } catch (_) {}
+
+      // 3. Update AuthContext profile
       if (updateCurrentUserProfile) {
-        await updateCurrentUserProfile(updatedProfileObj);
+        try {
+          await updateCurrentUserProfile(updatedProfileObj);
+        } catch (_) {}
       }
+
+      // 4. Update fabricare_user in localStorage
       try {
         const stored = localStorage.getItem('fabricare_user');
         const parsed = stored ? JSON.parse(stored) : {};
         localStorage.setItem('fabricare_user', JSON.stringify({ ...parsed, ...updatedProfileObj }));
-      } catch {}
+      } catch (_) {}
 
-      if (refreshUserProfile) {
+      const refFn = refreshUserProfile || refreshProfile;
+      if (refFn) {
         try {
-          await refreshUserProfile();
-        } catch {}
+          await refFn();
+        } catch (_) {}
       }
 
       setProfileImageFile(null);
-      setProfileImagePreview(finalProfilePic);
+      setProfileImagePreview(finalProfilePic ? getMediaUrl(finalProfilePic) : null);
       setRemoveProfileImage(false);
       setAadhaarFile(null);
       setAadhaarPreview(finalAadhaarDoc);
@@ -3547,6 +3707,12 @@ export const DeliveryPortal = () => {
                       src={displayAvatarPhoto} 
                       alt={agentDisplayName} 
                       className="profile-chip-img"
+                      onLoad={(e) => {
+                        e.currentTarget.style.display = 'block';
+                        if (e.currentTarget.nextElementSibling) {
+                          e.currentTarget.nextElementSibling.style.display = 'none';
+                        }
+                      }}
                       onError={(e) => {
                         e.currentTarget.style.display = 'none';
                         if (e.currentTarget.nextElementSibling) {
@@ -5289,6 +5455,11 @@ export const DeliveryPortal = () => {
                             src={displayAvatarPhoto} 
                             alt={agentDisplayName} 
                             className="profile-avatar-img"
+                            onLoad={(e) => {
+                              e.currentTarget.style.display = 'block';
+                              const fb = e.currentTarget.nextElementSibling;
+                              if (fb) fb.style.display = 'none';
+                            }}
                             onError={(e) => {
                               e.currentTarget.style.display = 'none';
                               const fb = e.currentTarget.nextElementSibling;
@@ -5400,8 +5571,8 @@ export const DeliveryPortal = () => {
                           <div className="info-tile-value flex items-center gap-2">
                             <Calendar size={15} className="text-[#0D7A75] shrink-0" />
                             <span>
-                              {currentUser?.dob 
-                                ? new Date(currentUser.dob).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) 
+                              {(currentUser?.dob || agentDocs.dob) 
+                                ? new Date(currentUser?.dob || agentDocs.dob).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) 
                                 : 'Not provided'}
                             </span>
                           </div>
@@ -5417,7 +5588,7 @@ export const DeliveryPortal = () => {
                           </div>
                           <div className="info-tile-value flex items-center gap-2">
                             <Mail size={15} className="text-[#0D7A75] shrink-0" />
-                            <span className="truncate">{currentUser?.email || 'ravi.kumar@fabricare.com'}</span>
+                            <span className="truncate">{currentUser?.email || 'delivery@fabricare.com'}</span>
                           </div>
                         </div>
 
@@ -5428,7 +5599,7 @@ export const DeliveryPortal = () => {
                           </div>
                           <div className="info-tile-value flex items-center gap-2">
                             <Phone size={15} className="text-[#0D7A75] shrink-0" />
-                            <span>{currentUser?.phoneNumber || currentUser?.phone || '+91 98765 43210'}</span>
+                            <span>{currentUser?.phoneNumber || currentUser?.phone || '+91 98111 22233'}</span>
                           </div>
                         </div>
                       </div>
@@ -5469,11 +5640,11 @@ export const DeliveryPortal = () => {
                             <div>
                               <span className="doc-name-label">DRIVING LICENCE</span>
                               <div className="doc-number-val font-mono">
-                                {currentUser?.drivingLicenceNumber || currentUser?.driving_licence_number || 'Not provided'}
+                                {currentUser?.drivingLicenceNumber || currentUser?.driving_licence_number || agentDocs.drivingLicenceNumber || 'Not provided'}
                               </div>
                             </div>
                           </div>
-                          {currentUser?.drivingLicenceNumber || currentUser?.driving_licence_number ? (
+                          {currentUser?.drivingLicenceNumber || currentUser?.driving_licence_number || agentDocs.drivingLicenceNumber ? (
                             <span className="badge-pill-verified">Valid DL</span>
                           ) : (
                             <span className="badge-pill-pending">Pending</span>
@@ -5491,15 +5662,15 @@ export const DeliveryPortal = () => {
                             <div>
                               <span className="doc-name-label">AADHAAR CARD (12 DIGITS)</span>
                               <div className="doc-number-val font-mono">
-                                {currentUser?.aadhaarNumber 
-                                  ? (currentUser.aadhaarNumber.length === 12 
-                                      ? `•••• •••• ${currentUser.aadhaarNumber.slice(8)}` 
-                                      : currentUser.aadhaarNumber)
+                                {(currentUser?.aadhaarNumber || currentUser?.aadhaar_number || agentDocs.aadhaarNumber)
+                                  ? (((currentUser?.aadhaarNumber || currentUser?.aadhaar_number || agentDocs.aadhaarNumber).length === 12)
+                                      ? `•••• •••• ${(currentUser?.aadhaarNumber || currentUser?.aadhaar_number || agentDocs.aadhaarNumber).slice(8)}` 
+                                      : (currentUser?.aadhaarNumber || currentUser?.aadhaar_number || agentDocs.aadhaarNumber))
                                   : 'Not provided'}
                               </div>
                             </div>
                           </div>
-                          {currentUser?.aadhaarNumber ? (
+                          {currentUser?.aadhaarNumber || currentUser?.aadhaar_number || agentDocs.aadhaarNumber ? (
                             <span className="badge-pill-verified">
                               <CheckCircle2 size={11} /> Verified
                             </span>
@@ -5510,10 +5681,10 @@ export const DeliveryPortal = () => {
 
                         <div className="doc-card-bottom">
                           <span className="doc-attached-label">Attached Document:</span>
-                          {currentUser?.aadhaarDocumentUrl || currentUser?.aadhaar_document_url ? (
+                          {currentUser?.aadhaarDocumentUrl || currentUser?.aadhaar_document_url || agentDocs.aadhaarDocumentUrl ? (
                             <button
                               type="button"
-                              onClick={() => openDocViewer('Aadhaar Card Document', currentUser.aadhaarDocumentUrl || currentUser.aadhaar_document_url)}
+                              onClick={() => openDocViewer('Aadhaar Card Document', currentUser?.aadhaarDocumentUrl || currentUser?.aadhaar_document_url || agentDocs.aadhaarDocumentUrl)}
                               className="doc-preview-button"
                             >
                               <Eye size={13} />
@@ -5535,11 +5706,11 @@ export const DeliveryPortal = () => {
                             <div>
                               <span className="doc-name-label">PAN CARD</span>
                               <div className="doc-number-val font-mono">
-                                {currentUser?.panNumber || currentUser?.pan_number || 'Not provided'}
+                                {currentUser?.panNumber || currentUser?.pan_number || agentDocs.panNumber || 'Not provided'}
                               </div>
                             </div>
                           </div>
-                          {currentUser?.panNumber ? (
+                          {currentUser?.panNumber || currentUser?.pan_number || agentDocs.panNumber ? (
                             <span className="badge-pill-verified">
                               <CheckCircle2 size={11} /> Verified
                             </span>
@@ -5550,10 +5721,10 @@ export const DeliveryPortal = () => {
 
                         <div className="doc-card-bottom">
                           <span className="doc-attached-label">Attached Document:</span>
-                          {currentUser?.panDocumentUrl || currentUser?.pan_document_url ? (
+                          {currentUser?.panDocumentUrl || currentUser?.pan_document_url || agentDocs.panDocumentUrl ? (
                             <button
                               type="button"
-                              onClick={() => openDocViewer('PAN Card Document', currentUser.panDocumentUrl || currentUser.pan_document_url)}
+                              onClick={() => openDocViewer('PAN Card Document', currentUser?.panDocumentUrl || currentUser?.pan_document_url || agentDocs.panDocumentUrl)}
                               className="doc-preview-button"
                             >
                               <Eye size={13} />
@@ -5601,6 +5772,11 @@ export const DeliveryPortal = () => {
                               src={displayAvatarPhoto} 
                               alt="Preview" 
                               className="profile-avatar-img"
+                              onLoad={(e) => {
+                                e.currentTarget.style.display = 'block';
+                                const fb = e.currentTarget.nextElementSibling;
+                                if (fb) fb.style.display = 'none';
+                              }}
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
                                 const fb = e.currentTarget.nextElementSibling;

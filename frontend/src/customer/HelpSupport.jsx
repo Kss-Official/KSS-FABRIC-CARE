@@ -203,13 +203,16 @@ export const HelpSupport = () => {
     try {
       const custName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || 'Customer';
       const custEmail = currentUser?.email || 'customer@fabricare.com';
+      const custUid = currentUser?.uid || auth.currentUser?.uid;
 
       const ticketPayload = {
         subject: subject.trim(),
         message: message.trim(),
         priority,
         customer_name: custName,
-        customer_email: custEmail
+        customer_email: custEmail,
+        customer_id: custUid,
+        customerId: custUid
       };
 
       // Submit to Django backend SupportTicket API

@@ -64,6 +64,17 @@ export const Navbar = () => {
       markRead(notif.id);
     }
     setNotifDropdownOpen(false);
+    const type = String(notif.type || '').toLowerCase();
+    const category = String(notif.category || '').toLowerCase();
+    const title = String(notif.title || '').toLowerCase();
+    if (type.includes('support') || type.includes('complaint') || type.includes('ticket') || category.includes('support') || title.includes('support') || title.includes('ticket')) {
+      if (isAdmin) {
+        navigateTo('admin-help-support');
+      } else {
+        navigateTo('customer-support');
+      }
+      return;
+    }
     navigateTo('customer-notifications');
   };
 
@@ -74,30 +85,39 @@ export const Navbar = () => {
   };
 
   const renderNotifIcon = (notif) => {
-    const type = notif.type || '';
-    const category = notif.category || '';
-    if (type === 'delivery' || category === 'Out for Delivery') {
+    const type = String(notif.type || '').toLowerCase();
+    const category = String(notif.category || '').toLowerCase();
+    const title = String(notif.title || '').toLowerCase();
+
+    if (type.includes('support') || type.includes('complaint') || type.includes('ticket') || category.includes('support') || title.includes('support') || title.includes('ticket')) {
+      return (
+        <div className="notif-item-icon-box" style={{ background: '#F3E8FF', color: '#7E22CE' }}>
+          <HelpCircle size={14} />
+        </div>
+      );
+    }
+    if (type === 'delivery' || category === 'out for delivery') {
       return (
         <div className="notif-item-icon-box" style={{ background: '#EFF6FF', color: '#2563EB' }}>
           <Truck size={14} />
         </div>
       );
     }
-    if (type === 'completed' || category === 'Delivered') {
+    if (type === 'completed' || category === 'delivered') {
       return (
         <div className="notif-item-icon-box" style={{ background: '#ECFDF5', color: '#059669' }}>
           <CheckCircle2 size={14} />
         </div>
       );
     }
-    if (type === 'rescheduled' || category === 'Rescheduled') {
+    if (type === 'rescheduled' || category === 'rescheduled') {
       return (
         <div className="notif-item-icon-box" style={{ background: '#FFFBEB', color: '#D97706' }}>
           <Clock size={14} />
         </div>
       );
     }
-    if (type === 'payment' || category === 'Payment') {
+    if (type === 'payment' || category === 'payment') {
       return (
         <div className="notif-item-icon-box" style={{ background: '#F0FDF4', color: '#16A34A' }}>
           <CreditCard size={14} />
@@ -275,6 +295,11 @@ export const Navbar = () => {
                                 {notif.orderId && (
                                   <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#0D7A75', background: '#F0FDFB', padding: '1px 6px', borderRadius: 4 }}>
                                     {notif.orderId}
+                                  </span>
+                                )}
+                                {(notif.ticketId || notif.ticketNumber) && !notif.orderId && (
+                                  <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#7E22CE', background: '#F3E8FF', padding: '1px 6px', borderRadius: 4 }}>
+                                    {notif.ticketId || notif.ticketNumber}
                                   </span>
                                 )}
                               </div>

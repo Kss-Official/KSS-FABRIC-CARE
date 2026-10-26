@@ -17,7 +17,7 @@ import {
   X
 } from 'lucide-react';
 import { OrderStatusDropdown, ORDER_STATUS_OPTIONS } from '../components/common/OrderStatusDropdown';
-import { formatOrderId, calculateOrderTotal, isOrderMatchingStatus } from '../utils/helpers';
+import { formatOrderId, calculateOrderTotal, isOrderMatchingStatus, matchesOrderSearch } from '../utils/helpers';
 
 export const MyOrders = () => {
   const { navigateTo, startBooking, setActiveTrackingOrderId } = useBooking();
@@ -315,73 +315,6 @@ export const MyOrders = () => {
     }
   };
 
-  const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      const term = (searchQuery || '').trim().toLowerCase();
-      const orderNo = String(order.order_number || order.code || '').toLowerCase();
-      const formattedNo = formatOrderId(order.order_number || order.code || order.id).toLowerCase();
-      const addr = String(order.pickup_address || '').toLowerCase();
-      const services = String(getOrderServices(order) || '').toLowerCase();
-      const custName = String(order.customer_name || order.customerName || order.customer?.name || '').toLowerCase();
-      const statusText = String(order.status || '').toLowerCase();
-      const paymentText = String(order.payment_status || '').toLowerCase();
-
-      const matchesSearch = !term || 
-        orderNo.includes(term) || 
-        formattedNo.includes(term) || 
-        addr.includes(term) ||
-        services.includes(term) ||
-        custName.includes(term) ||
-        statusText.includes(term) ||
-        paymentText.includes(term);
-
-      if (!matchesSearch) return false;
-
-      return isOrderMatchingStatus(order, statusFilter);
-    });
-  }, [orders, searchQuery, statusFilter]);
-
-  const getStatusBadge = (status) => {
-    const s = String(status || '').toUpperCase().trim();
-    if (['PENDING', 'PENDING_REVIEW', 'PAYMENT_PENDING'].includes(s)) {
-      return <span className="badge badge-warning">Payment Pending</span>;
-    }
-    if (s === 'PLACED' || s === 'BOOKING_CONFIRMED' || s === 'ORDER PLACED') {
-      return <span className="badge badge-info">Booking Confirmed</span>;
-    }
-    if (['ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PENDING PICKUP'].includes(s) || s.includes('PICKUP SCHEDULED')) {
-      return <span className="badge badge-info">Pickup Scheduled</span>;
-    }
-    if (s === 'PICKED_UP' || s === 'PICKED UP' || s === 'CLOTHES COLLECTED') {
-      return <span className="badge badge-info">Clothes Collected</span>;
-    }
-    if (['DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'HUB_RECEIVED'].includes(s) || s.includes('RECEIVED AT HUB')) {
-      return <span className="badge badge-primary">Received at Hub</span>;
-    }
-    if (s === 'INSPECTION' || s.includes('INSPECT')) {
-      return <span className="badge badge-primary">Clothes Inspection</span>;
-    }
-    if (['IN_PROCESS', 'IN_CLEANING', 'WASHING', 'DRYING', 'IRONING', 'IN CLEANING', 'PROCESSING'].includes(s) || s.includes('CLEANING') || s.includes('WASH')) {
-      return <span className="badge badge-primary">In Cleaning</span>;
-    }
-    if (s === 'QUALITY_CHECK' || s === 'QC' || s.includes('QUALITY')) {
-      return <span className="badge badge-primary">Quality Check</span>;
-    }
-    if (['PACKING', 'PACKED', 'READY_FOR_DELIVERY', 'READY', 'READY FOR DELIVERY'].includes(s)) {
-      return <span className="badge badge-success">Packed / Ready</span>;
-    }
-    if (['OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'NEARBY', 'IN_TRANSIT'].includes(s) || s.includes('OUT FOR DELIVERY')) {
-      return <span className="badge badge-warning">Out for Delivery</span>;
-    }
-    if (['DELIVERED', 'COMPLETED'].includes(s) || (s.includes('DELIVER') && !s.includes('FOR') && !s.includes('READY'))) {
-      return <span className="badge badge-success">Delivered</span>;
-    }
-    if (s === 'CANCELLED' || s === 'CANCELED' || s.includes('CANCEL')) {
-      return <span className="badge badge-danger">Cancelled</span>;
-    }
-    return <span className="badge badge-secondary">{status}</span>;
-  };
-
   const getOrderServices = (order) => {
     if (!order) return 'Wash & Fold';
 
@@ -434,6 +367,55 @@ export const MyOrders = () => {
     return 'Wash & Fold';
   };
 
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      const matchesSearch = matchesOrderSearch(order, searchQuery, getOrderServices(order));
+      if (!matchesSearch) return false;
+      return isOrderMatchingStatus(order, statusFilter);
+    });
+  }, [orders, searchQuery, statusFilter]);
+
+  const getStatusBadge = (status) => {
+    const s = String(status || '').toUpperCase().trim();
+    if (['PENDING', 'PENDING_REVIEW', 'PAYMENT_PENDING'].includes(s)) {
+      return <span className="badge badge-warning">Payment Pending</span>;
+    }
+    if (s === 'PLACED' || s === 'BOOKING_CONFIRMED' || s === 'ORDER PLACED') {
+      return <span className="badge badge-info">Booking Confirmed</span>;
+    }
+    if (['ACCEPTED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'PICKUP_IN_PROGRESS', 'PENDING PICKUP'].includes(s) || s.includes('PICKUP SCHEDULED')) {
+      return <span className="badge badge-info">Pickup Scheduled</span>;
+    }
+    if (s === 'PICKED_UP' || s === 'PICKED UP' || s === 'CLOTHES COLLECTED') {
+      return <span className="badge badge-info">Clothes Collected</span>;
+    }
+    if (['DROPPED_OFF_AT_LAUNDRY', 'RECEIVED_BY_LAUNDRY', 'RECEIVED_AT_LAUNDRY', 'RECEIVED', 'HUB_RECEIVED'].includes(s) || s.includes('RECEIVED AT HUB')) {
+      return <span className="badge badge-primary">Received at Hub</span>;
+    }
+    if (s === 'INSPECTION' || s.includes('INSPECT')) {
+      return <span className="badge badge-primary">Clothes Inspection</span>;
+    }
+    if (['IN_PROCESS', 'IN_CLEANING', 'WASHING', 'DRYING', 'IRONING', 'IN CLEANING', 'PROCESSING'].includes(s) || s.includes('CLEANING') || s.includes('WASH')) {
+      return <span className="badge badge-primary">In Cleaning</span>;
+    }
+    if (s === 'QUALITY_CHECK' || s === 'QC' || s.includes('QUALITY')) {
+      return <span className="badge badge-primary">Quality Check</span>;
+    }
+    if (['PACKING', 'PACKED', 'READY_FOR_DELIVERY', 'READY', 'READY FOR DELIVERY'].includes(s)) {
+      return <span className="badge badge-success">Packed / Ready</span>;
+    }
+    if (['OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED', 'NEARBY', 'IN_TRANSIT'].includes(s) || s.includes('OUT FOR DELIVERY')) {
+      return <span className="badge badge-warning">Out for Delivery</span>;
+    }
+    if (['DELIVERED', 'COMPLETED'].includes(s) || (s.includes('DELIVER') && !s.includes('FOR') && !s.includes('READY'))) {
+      return <span className="badge badge-success">Delivered</span>;
+    }
+    if (s === 'CANCELLED' || s === 'CANCELED' || s.includes('CANCEL')) {
+      return <span className="badge badge-danger">Cancelled</span>;
+    }
+    return <span className="badge badge-secondary">{status}</span>;
+  };
+
   return (
     <div className="portal-container" style={{ minHeight: '65vh' }}>
       {/* Header */}
@@ -476,7 +458,7 @@ export const MyOrders = () => {
               <Search size={16} className="search-magnifier-icon" />
               <input 
                 type="text" 
-                placeholder="Search by Order ID, customer, or s..."
+                placeholder="Search by Order ID, date, or services..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="search-box-field"

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ref, query, limitToLast, onValue, update } from 'firebase/database';
+import { ref, query, limitToLast, onValue, update, get, push } from 'firebase/database';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, rtdb } from '../config/firebase';
 import { formatOrderId } from '../utils/helpers';
@@ -92,15 +92,21 @@ export const useNotifications = (uid) => {
                   }
                 }
 
+                const ticketId = val.ticketId || val.ticketNumber || (val.type?.includes('support') ? (titleText.match(/#SUP-\d+/i)?.[0] || null) : null);
+                const category = val.category || (val.type?.includes('support') || val.type?.includes('complaint') ? 'Support' : null);
+
                 acc.push({
                   id: key,
                   type: val.type || 'general',
+                  category: category || val.category,
                   title: titleText,
                   body: bodyText,
                   message: bodyText,
                   desc: bodyText,
                   orderId: rawOrderId,
                   orderCode: resolvedOrderCode || (rawOrderId ? formatOrderId(rawOrderId) : null),
+                  ticketId: ticketId,
+                  ticketNumber: ticketId,
                   isRead,
                   is_read: isRead,
                   unread: !isRead,
@@ -149,6 +155,111 @@ export const useNotifications = (uid) => {
 
     // Attach real-time listener immediately
     attachListener();
+
+    // Gently sync any missing support ticket notifications from Django / RTDB
+    const syncSupportTickets = async () => {
+      if (!uid || !rtdb) return;
+      const curUser = auth.currentUser;
+      const email = (curUser?.email || '').toLowerCase().trim();
+      if (!email) return;
+
+      try {
+        const notifSnap = await get(ref(rtdb, `notifications/${uid}`));
+        const existingData = notifSnap.exists() ? notifSnap.val() : {};
+        const existingKeys = new Set();
+        Object.values(existingData || {}).forEach(n => {
+          const tNum = n.ticketId || n.ticketNumber || '';
+          const tType = n.type || '';
+          const tMsg = n.body || n.message || '';
+          if (tNum) existingKeys.add(`${tNum}_${tType}`.toLowerCase());
+          if (tMsg) existingKeys.add(tMsg.trim().toLowerCase());
+        });
+
+        // Query Django backend for this customer's support tickets
+        let tickets = [];
+        try {
+          const res = await fetch(`http://127.0.0.1:8000/api/admin/support/tickets/?customer_email=${encodeURIComponent(email)}`);
+          if (res.ok) {
+            const data = await res.json();
+            tickets = data.results || data.items || [];
+          }
+        } catch (_) {}
+
+        // Supplementary RTDB support_tickets check
+        try {
+          const rtdbSupSnap = await get(ref(rtdb, 'support_tickets'));
+          if (rtdbSupSnap.exists()) {
+            const allSup = rtdbSupSnap.val() || {};
+            Object.values(allSup).forEach(st => {
+              if (st && (String(st.customer_email || '').toLowerCase() === email || String(st.customerId || st.customer_id) === String(uid))) {
+                if (!tickets.some(t => String(t.id) === String(st.id) || String(t.ticket_number) === String(st.ticket_number))) {
+                  tickets.push(st);
+                }
+              }
+            });
+          }
+        } catch (_) {}
+
+        if (!Array.isArray(tickets) || tickets.length === 0) return;
+
+        const updates = {};
+        let addedCount = 0;
+
+        for (const t of tickets) {
+          const ticketNum = t.ticket_number || `#SUP-${t.id}`;
+          const reply = t.admin_reply;
+          const isResolved = t.status === 'RESOLVED' || t.status === 'CLOSED';
+
+          if (reply) {
+            const replyLookupKey = `${ticketNum}_support_reply`.toLowerCase();
+            const replyMsgKey = reply.trim().toLowerCase();
+            if (!existingKeys.has(replyLookupKey) && !existingKeys.has(replyMsgKey)) {
+              const pushKey = push(ref(rtdb, `notifications/${uid}`)).key;
+              updates[`notifications/${uid}/${pushKey}`] = {
+                type: 'support_reply',
+                category: 'Support',
+                title: `Support Ticket Response: ${ticketNum}`,
+                body: reply,
+                ticketId: ticketNum,
+                ticketNumber: ticketNum,
+                isRead: false,
+                createdAt: new Date(t.admin_reply_at || t.updated_at || Date.now()).getTime()
+              };
+              existingKeys.add(replyLookupKey);
+              existingKeys.add(replyMsgKey);
+              addedCount++;
+            }
+          }
+
+          if (isResolved) {
+            const resLookupKey = `${ticketNum}_support_resolved`.toLowerCase();
+            if (!existingKeys.has(resLookupKey)) {
+              const pushKey = push(ref(rtdb, `notifications/${uid}`)).key;
+              updates[`notifications/${uid}/${pushKey}`] = {
+                type: 'support_resolved',
+                category: 'Support',
+                title: `Support Ticket Resolved: ${ticketNum}`,
+                body: reply ? `Your ticket ${ticketNum} was resolved: "${reply}"` : `Your support ticket ${ticketNum} has been marked as resolved.`,
+                ticketId: ticketNum,
+                ticketNumber: ticketNum,
+                isRead: false,
+                createdAt: new Date(t.updated_at || Date.now()).getTime()
+              };
+              existingKeys.add(resLookupKey);
+              addedCount++;
+            }
+          }
+        }
+
+        if (addedCount > 0 && Object.keys(updates).length > 0) {
+          await update(ref(rtdb), updates);
+        }
+      } catch (e) {
+        console.warn('[useNotifications] syncSupportTickets notice:', e);
+      }
+    };
+
+    syncSupportTickets();
 
     // Listen to auth changes to reconnect or hydrate token seamlessly.
     // Only re-attach if no listener is currently active (activeUnsubRef.current is null).

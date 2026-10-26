@@ -381,3 +381,187 @@ export const isOrderMatchingStatus = (order, filterKey) => {
   return rawStat === target;
 };
 
+/**
+ * Clean & format Indian phone number:
+ * 1. Strictly max 10 digits
+ * 2. Starts with 6, 7, 8, or 9
+ * 3. Strips non-digits
+ * 4. Strips leading +91 or 91 if present
+ * 5. Returns formatted string e.g. "+91 98765 43210" or empty
+ */
+export const formatIndianPhoneNumber = (val) => {
+  if (!val) return '';
+  let raw = String(val).trim();
+  if (raw.startsWith('+91')) {
+    raw = raw.slice(3).trim();
+  } else if (raw.startsWith('+')) {
+    raw = raw.slice(1).trim();
+  } else if (raw.startsWith('91') && raw.length > 10) {
+    raw = raw.slice(2).trim();
+  }
+
+  let digits = raw.replace(/\D/g, '');
+  if (digits.length > 0 && !/^[6-9]/.test(digits)) {
+    digits = digits.replace(/^[^6-9]+/, '');
+  }
+  digits = digits.slice(0, 10);
+
+  if (!digits) return '';
+  if (digits.length > 5) {
+    return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+  }
+  return `+91 ${digits}`;
+};
+
+/**
+ * Validates if the phone number is a complete 10-digit number starting with 6-9
+ */
+export const isValidIndianPhoneNumber = (val) => {
+  if (!val) return false;
+  let raw = String(val).trim();
+  if (raw.startsWith('+91')) {
+    raw = raw.slice(3).trim();
+  } else if (raw.startsWith('+')) {
+    raw = raw.slice(1).trim();
+  } else if (raw.startsWith('91') && raw.length > 10) {
+    raw = raw.slice(2).trim();
+  }
+  const digits = raw.replace(/\D/g, '');
+  return /^[6-9]\d{9}$/.test(digits);
+};
+
+/**
+ * Universal order search matching helper across:
+ * - Order ID / Number / Code (FC-XXXXX or raw ID)
+ * - Dates (created_at, pickup_date, delivery_date in any locale/format: 28 Oct 2026, 10/26/2026, 26/10/2026, Oct, 2026, etc.)
+ * - Time slots (pickup_time_slot, delivery_time_slot)
+ * - Services (Wash & Fold, Dry Cleaning, etc.)
+ * - Customer details & address
+ * - Total amount / Price
+ * - Payment status & Order status
+ */
+export const matchesOrderSearch = (order, searchQuery, servicesString = '') => {
+  if (!order) return false;
+  const term = (searchQuery || '').trim().toLowerCase();
+  if (!term) return true;
+
+  // 1. Order ID & Code
+  const rawId = String(order.order_number || order.code || order.order_id || order.id || '').toLowerCase();
+  const formattedId = formatOrderId(order.order_number || order.code || order.order_id || order.id).toLowerCase();
+  if (rawId.includes(term) || formattedId.includes(term)) return true;
+
+  // 2. Services
+  const services = String(servicesString || order.service || '').toLowerCase();
+  if (services.includes(term)) return true;
+
+  // 3. Customer name & address
+  const custName = String(order.customer_name || order.customerName || order.customer?.name || '').toLowerCase();
+  const addr = String(order.pickup_address || (typeof order.address === 'string' ? order.address : '') || '').toLowerCase();
+  if (custName.includes(term) || addr.includes(term)) return true;
+
+  // 4. Status & Payment
+  const status = String(order.status || '').toLowerCase();
+  const payment = String(order.payment_status || (order.isPaid ? 'paid' : 'pending') || '').toLowerCase();
+  if (status.includes(term) || payment.includes(term)) return true;
+
+  // 5. Amount
+  const amount = String(order.total_amount || order.estimated_amount || order.total || order.amount || '').toLowerCase();
+  if (amount && (amount.includes(term) || `₹${amount}`.includes(term))) return true;
+
+  // 6. Dates Matching (Searchable date strings)
+  const dateStrings = [];
+
+  // Add raw string fields directly
+  const rawFields = [
+    order.pickup_date,
+    order.pickupDate,
+    order.delivery_date,
+    order.deliveryDate,
+    order.pickup_time_slot,
+    order.pickup_slot,
+    order.pickupTime,
+    order.delivery_time_slot,
+    order.delivery_slot,
+    order.deliveryTime
+  ];
+  rawFields.forEach(f => {
+    if (f && typeof f === 'string') {
+      dateStrings.push(f.toLowerCase().trim());
+    }
+  });
+
+  // Collect potential date sources for comprehensive parsing
+  const dateSources = [
+    order.created_at,
+    order.createdAt,
+    order.placedAt,
+    order.pickup_date,
+    order.pickupDate,
+    order.delivery_date,
+    order.deliveryDate
+  ];
+
+  dateSources.forEach(val => {
+    if (!val) return;
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const monthNum = d.getMonth() + 1;
+      const monthPadded = String(monthNum).padStart(2, '0');
+      const dayNum = d.getDate();
+      const dayPadded = String(dayNum).padStart(2, '0');
+      const monthShort = d.toLocaleString('en-US', { month: 'short' }).toLowerCase();
+      const monthLong = d.toLocaleString('en-US', { month: 'long' }).toLowerCase();
+
+      dateStrings.push(d.toLocaleDateString().toLowerCase()); // default locale
+      dateStrings.push(d.toLocaleDateString('en-GB').toLowerCase()); // 26/10/2026
+      dateStrings.push(d.toLocaleDateString('en-US').toLowerCase()); // 10/26/2026
+      dateStrings.push(d.toLocaleDateString('en-IN').toLowerCase()); // 26/10/2026
+
+      dateStrings.push(`${dayNum} ${monthShort} ${year}`); // 26 oct 2026
+      dateStrings.push(`${dayPadded} ${monthShort} ${year}`); // 26 oct 2026
+      dateStrings.push(`${dayNum} ${monthShort}`); // 26 oct
+      dateStrings.push(`${monthShort} ${dayNum}`); // oct 26
+      dateStrings.push(`${monthShort} ${year}`); // oct 2026
+      dateStrings.push(`${dayNum} ${monthLong} ${year}`); // 26 october 2026
+      dateStrings.push(`${monthLong} ${dayNum}`); // october 26
+      dateStrings.push(monthLong); // october
+      dateStrings.push(monthShort); // oct
+
+      dateStrings.push(`${dayPadded}/${monthPadded}/${year}`);
+      dateStrings.push(`${monthPadded}/${dayPadded}/${year}`);
+      dateStrings.push(`${dayNum}/${monthNum}/${year}`);
+      dateStrings.push(`${monthNum}/${dayNum}/${year}`);
+      dateStrings.push(`${year}-${monthPadded}-${dayPadded}`);
+      dateStrings.push(`${dayPadded}-${monthPadded}-${year}`);
+      dateStrings.push(`${monthPadded}-${dayPadded}-${year}`);
+      dateStrings.push(`${dayPadded}/${monthPadded}`);
+      dateStrings.push(`${monthPadded}/${dayPadded}`);
+      dateStrings.push(`${dayPadded}-${monthPadded}`);
+      dateStrings.push(`${monthPadded}-${dayPadded}`);
+    }
+  });
+
+  // Test date matching
+  // Direct inclusion
+  if (dateStrings.some(dStr => dStr && dStr.includes(term))) return true;
+
+  // Normalized slashes/dashes
+  const normalizedTerm = term.replace(/[\-.,]/g, '/');
+  if (dateStrings.some(dStr => dStr && dStr.replace(/[\-.,]/g, '/').includes(normalizedTerm))) return true;
+
+  // Token matching (e.g. "28 Oct" or "Oct 28" or "28 10")
+  const cleanTerm = term.replace(/[\-.,/]/g, ' ').replace(/\s+/g, ' ').trim();
+  const termTokens = cleanTerm.split(' ').filter(Boolean);
+  if (termTokens.length > 0) {
+    const isMatched = dateStrings.some(dStr => {
+      const cleanD = dStr.replace(/[\-.,/]/g, ' ').replace(/\s+/g, ' ');
+      return termTokens.every(tok => cleanD.includes(tok));
+    });
+    if (isMatched) return true;
+  }
+
+  return false;
+};
+
+
