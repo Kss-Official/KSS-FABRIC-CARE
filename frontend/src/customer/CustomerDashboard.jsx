@@ -382,9 +382,9 @@ export const CustomerDashboard = () => {
   };
 
   return (
-    <div className="portal-container">
-      {/* Header Banner */}
-      <div className="dashboard-welcome-card">
+    <div className="portal-container customer-dashboard-portal">
+      {/* Header Banner - shown on desktop, hidden on mobile to avoid double banner with CustomerAccountLayout */}
+      <div className="dashboard-welcome-card desktop-only-block">
         <div className="welcome-text">
           <div className="badge-pill mb-2">Customer Hub</div>
           <h1 className="text-2xl font-bold text-navy">Welcome back, {currentUser?.full_name || currentUser?.name || currentUser?.displayName || currentUser?.fullName || currentUser?.first_name || 'Valued Customer'}!</h1>
@@ -404,25 +404,21 @@ export const CustomerDashboard = () => {
       </div>
 
       {/* Active Orders Section */}
-      <div className="content-card mt-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-4 mb-4 gap-4">
-          <div>
+      <div className="content-card customer-orders-card mt-6">
+        <div className="dashboard-section-header-row">
+          <div className="section-title-wrap">
             <h2 className="text-lg font-bold text-navy">Recent Orders</h2>
             <p className="text-xs text-muted">Real-time status updates directly from our laundry hub</p>
           </div>
           
           {/* Right Controls: Order count pill next to search bar & filters */}
           <div className="toolbar-controls-group">
-            {/* Order Count Option */}
-            <span className="orders-count-pill">
-              {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
-            </span>
             {/* Search Input Box */}
             <div className="search-input-wrapper">
               <Search size={16} className="search-magnifier-icon" />
               <input 
                 type="text" 
-                placeholder="Search by Order ID, customer, or s..."
+                placeholder="Search by Order ID, date, or services..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="search-box-field"
@@ -439,11 +435,18 @@ export const CustomerDashboard = () => {
               )}
             </div>
 
-            {/* Filters Dropdown */}
-            <OrderStatusDropdown 
-              value={activeTab} 
-              onChange={(newTab) => setActiveTab(newTab)}
-            />
+            <div className="toolbar-sub-controls-row">
+              {/* Order Count Option */}
+              <span className="orders-count-pill">
+                {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
+              </span>
+
+              {/* Filters Dropdown */}
+              <OrderStatusDropdown 
+                value={activeTab} 
+                onChange={(newTab) => setActiveTab(newTab)}
+              />
+            </div>
           </div>
         </div>
 
@@ -466,75 +469,409 @@ export const CustomerDashboard = () => {
             </button>
           </div>
         ) : (
-          <div className="orders-table-wrapper">
-            <table className="portal-table">
-              <thead>
-                <tr>
-                  <th>Order #</th>
-                  <th>Pickup Slot</th>
-                  <th>Services</th>
-                  <th>Total Amount</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrders.map(order => (
-                  <tr key={order.order_number || order.code || order.id}>
-                    <td>
-                      <span className="font-mono font-bold text-primary">{formatOrderId(order.order_number || order.code || order.id)}</span>
-                      <span className="text-xs text-muted block">{order.created_at || order.createdAt ? new Date(order.created_at || order.createdAt).toLocaleDateString() : ''}</span>
-                    </td>
-                    <td>
-                      <div className="text-sm font-medium text-navy">{order.pickup_date}</div>
-                      <div className="text-xs text-muted">{order.pickup_time_slot}</div>
-                    </td>
-                    <td>
-                      <div className="text-sm font-medium text-navy">
-                        {getOrderServices(order)}
+          <>
+            {/* Desktop Table View (Only for screens > 768px) */}
+            <div className="orders-table-wrapper desktop-only-table">
+              <table className="portal-table">
+                <thead>
+                  <tr>
+                    <th>Order #</th>
+                    <th>Pickup Slot</th>
+                    <th>Services</th>
+                    <th>Total Amount</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.map(order => (
+                    <tr key={order.order_number || order.code || order.id}>
+                      <td>
+                        <span className="font-mono font-bold text-primary">{formatOrderId(order.order_number || order.code || order.id)}</span>
+                        <span className="text-xs text-muted block">{order.created_at || order.createdAt ? new Date(order.created_at || order.createdAt).toLocaleDateString() : ''}</span>
+                      </td>
+                      <td>
+                        <div className="text-sm font-medium text-navy">{order.pickup_date}</div>
+                        <div className="text-xs text-muted">{order.pickup_time_slot}</div>
+                      </td>
+                      <td>
+                        <div className="text-sm font-medium text-navy">
+                          {getOrderServices(order)}
+                        </div>
+                      </td>
+                      <td>
+                        <span className="font-bold text-navy">₹{order.total_amount || order.estimated_amount || '0.00'}</span>
+                        <span className={`text-xs block ${
+                          order.isPaid || order.payment_status === 'PAID'
+                            ? 'text-emerald-600 font-semibold'
+                            : order.payment_status === 'REFUNDED'
+                            ? 'text-purple-600 font-semibold'
+                            : order.payment_status === 'CANCELLED'
+                            ? 'text-rose-600 font-medium'
+                            : 'text-amber-600 font-medium'
+                        }`}>
+                          {order.payment_status || (order.isPaid ? 'PAID' : 'PENDING')}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => {
+                            const targetTrackId = String(order.order_number || order.code || order.docId || order.id || '').trim();
+                            if (targetTrackId) {
+                              if (typeof setActiveTrackingOrderId === 'function') {
+                                setActiveTrackingOrderId(targetTrackId);
+                              }
+                              try {
+                                sessionStorage.setItem('fabricare_active_tracking_id', targetTrackId);
+                              } catch (_) {}
+                            }
+                            navigateTo('customer-track', targetTrackId || order.id?.toString());
+                          }}
+                          className="btn-view-order-action"
+                          title={`Track order ${formatOrderId(order.order_number || order.code || order.id)}`}
+                        >
+                          <span>Track</span>
+                          <ChevronRight size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Order Cards View (Only for screens <= 768px) */}
+            <div className="customer-mobile-orders-cards mobile-only-block">
+              {filteredOrders.map(order => (
+                <div key={order.order_number || order.code || order.id} className="customer-order-mobile-card">
+                  {/* Top: Order ID & Status Badge */}
+                  <div className="mobile-card-top-row">
+                    <div>
+                      <span className="mobile-order-code font-mono font-bold">{formatOrderId(order.order_number || order.code || order.id)}</span>
+                      <span className="mobile-order-date-text">
+                        {order.created_at || order.createdAt ? new Date(order.created_at || order.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                      </span>
+                    </div>
+                    <div className="mobile-card-badge-wrap">
+                      {getStatusBadge(order.status)}
+                    </div>
+                  </div>
+
+                  {/* Middle Info Details */}
+                  <div className="mobile-card-details-grid">
+                    <div className="mobile-detail-cell">
+                      <span className="mobile-detail-heading">Pickup Slot</span>
+                      <div className="mobile-detail-content">
+                        <Calendar size={13} className="text-teal shrink-0" />
+                        <span className="mobile-detail-val">{order.pickup_date} &bull; {order.pickup_time_slot}</span>
                       </div>
-                    </td>
-                    <td>
-                      <span className="font-bold text-navy">₹{order.total_amount || order.estimated_amount || '0.00'}</span>
-                      <span className={`text-xs block ${
-                        order.isPaid || order.payment_status === 'PAID'
-                          ? 'text-emerald-600 font-semibold'
-                          : order.payment_status === 'REFUNDED'
-                          ? 'text-purple-600 font-semibold'
-                          : order.payment_status === 'CANCELLED'
-                          ? 'text-rose-600 font-medium'
-                          : 'text-amber-600 font-medium'
+                    </div>
+                    <div className="mobile-detail-cell">
+                      <span className="mobile-detail-heading">Services</span>
+                      <div className="mobile-detail-content">
+                        <Sparkles size={13} className="text-teal shrink-0" />
+                        <span className="mobile-detail-val">{getOrderServices(order)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Row: Total Amount & Track Order Action */}
+                  <div className="mobile-card-footer-row">
+                    <div className="mobile-price-stack">
+                      <div className="mobile-total-val">₹{order.total_amount || order.estimated_amount || '0.00'}</div>
+                      <span className={`mobile-payment-pill ${
+                        order.isPaid || order.payment_status === 'PAID' ? 'paid' : 'pending'
                       }`}>
                         {order.payment_status || (order.isPaid ? 'PAID' : 'PENDING')}
                       </span>
-                    </td>
-                    <td>
-                      <button
-                        onClick={() => {
-                          const targetTrackId = String(order.order_number || order.code || order.docId || order.id || '').trim();
-                          if (targetTrackId) {
-                            if (typeof setActiveTrackingOrderId === 'function') {
-                              setActiveTrackingOrderId(targetTrackId);
-                            }
-                            try {
-                              sessionStorage.setItem('fabricare_active_tracking_id', targetTrackId);
-                            } catch (_) {}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        const targetTrackId = String(order.order_number || order.code || order.docId || order.id || '').trim();
+                        if (targetTrackId) {
+                          if (typeof setActiveTrackingOrderId === 'function') {
+                            setActiveTrackingOrderId(targetTrackId);
                           }
-                          navigateTo('customer-track', targetTrackId || order.id?.toString());
-                        }}
-                        className="btn-view-order-action"
-                        title={`Track order ${formatOrderId(order.order_number || order.code || order.id)}`}
-                      >
-                        <span>Track</span>
-                        <ChevronRight size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          try {
+                            sessionStorage.setItem('fabricare_active_tracking_id', targetTrackId);
+                          } catch (_) {}
+                        }
+                        navigateTo('customer-track', targetTrackId || order.id?.toString());
+                      }}
+                      className="mobile-track-btn"
+                    >
+                      <span>Track Order</span>
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
+
+      <style>{`
+        .customer-dashboard-portal {
+          width: 100%;
+        }
+
+        .dashboard-section-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1.5px solid #F1F5F9;
+          padding-bottom: 16px;
+          margin-bottom: 16px;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+
+        .toolbar-controls-group {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .toolbar-sub-controls-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .text-teal {
+          color: #0D7A75 !important;
+        }
+
+        .mobile-only-block {
+          display: none;
+        }
+
+        .desktop-only-table,
+        .desktop-only-block {
+          display: block;
+        }
+
+        /* Mobile Order Cards Styles */
+        .customer-mobile-orders-cards {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-top: 8px;
+        }
+
+        .customer-order-mobile-card {
+          background: #ffffff;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 16px;
+          padding: 16px;
+          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .customer-order-mobile-card:active {
+          transform: scale(0.99);
+        }
+
+        .mobile-card-top-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .mobile-order-code {
+          font-size: 0.95rem;
+          color: #0D7A75;
+          letter-spacing: -0.01em;
+          display: block;
+        }
+
+        .mobile-order-date-text {
+          font-size: 0.75rem;
+          color: #64748B;
+          margin-top: 1px;
+          display: block;
+        }
+
+        .mobile-card-badge-wrap .badge {
+          font-size: 0.72rem;
+          padding: 4px 10px;
+          border-radius: 20px;
+          font-weight: 700;
+        }
+
+        .mobile-card-details-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 8px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 10px 12px;
+          margin-bottom: 14px;
+        }
+
+        .mobile-detail-cell {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .mobile-detail-heading {
+          font-size: 0.6875rem;
+          font-weight: 700;
+          color: #64748B;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .mobile-detail-content {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .mobile-detail-val {
+          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #1E293B;
+          line-height: 1.3;
+        }
+
+        .mobile-card-footer-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding-top: 4px;
+        }
+
+        .mobile-price-stack {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .mobile-total-val {
+          font-size: 1.05rem;
+          font-weight: 800;
+          color: #0F172A;
+          letter-spacing: -0.02em;
+        }
+
+        .mobile-payment-pill {
+          font-size: 0.6875rem;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 999px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .mobile-payment-pill.paid {
+          background: #E6FBF2;
+          color: #059669;
+        }
+
+        .mobile-payment-pill.pending {
+          background: #FEF3C7;
+          color: #D97706;
+        }
+
+        .mobile-track-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 8px 16px;
+          background: #0D7A75;
+          color: #ffffff;
+          border: none;
+          border-radius: 10px;
+          font-size: 0.8125rem;
+          font-weight: 700;
+          cursor: pointer;
+          box-shadow: 0 3px 10px rgba(13, 122, 117, 0.25);
+          transition: background 0.15s ease, transform 0.15s ease;
+        }
+
+        .mobile-track-btn:hover {
+          background: #0B6561;
+        }
+
+        @media (max-width: 768px) {
+          .desktop-only-table,
+          .desktop-only-block {
+            display: none !important;
+          }
+
+          .mobile-only-block {
+            display: flex !important;
+          }
+
+          .customer-orders-card {
+            padding: 16px 14px !important;
+            border-radius: 16px !important;
+            margin-top: 12px !important;
+          }
+
+          .dashboard-section-header-row {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+          }
+
+          .toolbar-controls-group {
+            width: 100%;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+          }
+
+          .search-input-wrapper {
+            width: 100%;
+          }
+
+          .search-box-field {
+            width: 100% !important;
+            height: 40px !important;
+            font-size: 14px !important;
+            box-sizing: border-box;
+          }
+
+          .toolbar-sub-controls-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            gap: 8px;
+          }
+
+          .orders-count-pill {
+            flex-shrink: 0;
+            height: 36px;
+            padding: 0 12px;
+            font-size: 0.75rem;
+            display: inline-flex;
+            align-items: center;
+          }
+
+          .toolbar-dropdown-wrapper {
+            flex: 1;
+          }
+
+          .toolbar-pill-btn {
+            width: 100%;
+            height: 36px;
+            justify-content: space-between;
+            font-size: 0.75rem;
+          }
+        }
+      `}</style>
     </div>
   );
 };

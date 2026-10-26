@@ -362,7 +362,9 @@ export const Step3ChooseTime = () => {
               </div>
             )}
 
-            {/* Date Selector Row */}
+            {/* Date Selector Section */}
+            <h3 className="select-date-heading">Select a date</h3>
+
             <div className="date-pills-row">
               {dateOptions.map((opt) => {
                 const isSelected = pickupSchedule.dateLabel === opt.full || pickupSchedule.dateValue === opt.isoDate;
@@ -380,20 +382,23 @@ export const Step3ChooseTime = () => {
                     <div className="date-pill-top">
                       <span className="date-day-label">{opt.label}</span>
                       {!isExpressBooking && isWithinTwoDays && (
-                        <span className="date-pill-rule-badge" title="Express Laundry required">⚡ Express</span>
+                        <span className="date-pill-rule-badge desktop-only-badge" title="Express Laundry required">⚡ Express</span>
                       )}
                       {isExpressBooking && isNextDay && (
-                        <span className="date-pill-rule-badge express-ok" title="Next-day pickup available">Next-Day</span>
+                        <span className="date-pill-rule-badge express-ok desktop-only-badge" title="Next-day pickup available">Next-Day</span>
                       )}
                     </div>
                     <span className="date-day-val">{opt.date}</span>
                   </button>
                 );
               })}
+            </div>
 
+            {/* Pick a Date full button matching Screenshot 3 */}
+            <div className="pick-a-date-btn-wrapper">
               <button 
                 type="button" 
-                className={`date-pill-btn calendar-custom-pill ${pickupSchedule.dateValue && !dateOptions.some(o => o.isoDate === pickupSchedule.dateValue) ? 'selected' : ''}`}
+                className={`pick-a-date-full-btn ${pickupSchedule.dateValue && !dateOptions.some(o => o.isoDate === pickupSchedule.dateValue) ? 'selected' : ''}`}
                 onClick={() => {
                   if (dateInputRef.current) {
                     if (typeof dateInputRef.current.showPicker === 'function') {
@@ -404,14 +409,12 @@ export const Step3ChooseTime = () => {
                   }
                 }}
               >
-                <div className="pick-date-inner">
-                  <Calendar size={16} className="calendar-icon" />
-                  <span className="date-day-val pick-text">
-                    {pickupSchedule.dateValue && !dateOptions.some(o => o.isoDate === pickupSchedule.dateValue)
-                      ? pickupSchedule.dateValue
-                      : 'Pick a date'}
-                  </span>
-                </div>
+                <Calendar size={18} color="#087F8C" />
+                <span>
+                  {pickupSchedule.dateValue && !dateOptions.some(o => o.isoDate === pickupSchedule.dateValue)
+                    ? pickupSchedule.dateValue
+                    : 'Pick a date'}
+                </span>
                 <input
                   ref={dateInputRef}
                   type="date"
@@ -425,7 +428,7 @@ export const Step3ChooseTime = () => {
             {/* Time Slot Heading */}
             <h3 className="time-slots-heading">Select a time slot</h3>
 
-            {/* Time Slots 3x2 Grid */}
+            {/* Time Slots 2-Col Grid */}
             <div className="time-slots-grid">
               {timeSlots.map((ts) => {
                 const isSelected = pickupSchedule.timeSlot === ts.slot;
@@ -448,8 +451,8 @@ export const Step3ChooseTime = () => {
             </div>
           </div>
 
-          {/* Pagination Row inside parent card */}
-          <div className="card-pagination-row">
+          {/* Desktop Pagination Row inside parent card */}
+          <div className="card-pagination-row desktop-only-pagination">
             <button
               className="pagination-circle-btn"
               onClick={() => setCurrentStep(2)}
@@ -472,6 +475,45 @@ export const Step3ChooseTime = () => {
               disabled={!pickupSchedule.dateLabel || !pickupSchedule.timeSlot}
             >
               <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* Mobile Bottom Navigation */}
+          <div className="mobile-step3-bottom-bar mobile-only-bar">
+            <div className="card-pagination-row">
+              <button
+                className="pagination-circle-btn"
+                onClick={() => setCurrentStep(2)}
+                aria-label="Previous step"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              <div className="pagination-dots">
+                <span className="dot" onClick={() => setCurrentStep(1)}></span>
+                <span className="dot" onClick={() => setCurrentStep(2)}></span>
+                <span className="dot active"></span>
+                <span className="dot" onClick={() => setCurrentStep(4)}></span>
+              </div>
+
+              <button
+                className="pagination-circle-btn"
+                onClick={handleProceedNext}
+                aria-label="Next step"
+                disabled={!pickupSchedule.dateLabel || !pickupSchedule.timeSlot}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="mobile-full-next-btn"
+              onClick={handleProceedNext}
+              disabled={!pickupSchedule.dateLabel || !pickupSchedule.timeSlot}
+            >
+              <span>Next</span>
+              <ArrowRight size={18} />
             </button>
           </div>
         </div>
@@ -1376,24 +1418,281 @@ export const Step3ChooseTime = () => {
           cursor: not-allowed;
         }
 
+        .mobile-only-bar {
+          display: none;
+        }
+
+        .pick-a-date-btn-wrapper {
+          margin: 12px 0 20px;
+          width: 100%;
+        }
+
+        .pick-a-date-full-btn {
+          width: 100%;
+          height: 44px;
+          background: #FFFFFF;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          font-family: 'Poppins', sans-serif;
+          font-size: 0.9rem;
+          font-weight: 700;
+          color: #12263A;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .pick-a-date-full-btn:hover {
+          border-color: #087F8C;
+        }
+
+        .select-date-heading {
+          font-family: 'Poppins', sans-serif;
+          font-size: 0.95rem;
+          font-weight: 700;
+          color: #12263A;
+          margin: 0 0 10px 0;
+          text-align: left;
+        }
+
         @media (max-width: 960px) {
           .booking-layout-grid {
             grid-template-columns: 1fr;
           }
-          .date-pills-row {
-            grid-template-columns: repeat(3, 1fr);
-          }
-          .time-slots-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
         }
 
-        @media (max-width: 600px) {
-          .date-pills-row {
-            grid-template-columns: repeat(2, 1fr);
+        @media (max-width: 768px) {
+          .summary-sidebar-container,
+          .desktop-only-pagination,
+          .desktop-only-badge,
+          .booking-service-rule-banner {
+            display: none !important;
           }
+
+          .time-parent-card {
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+          }
+
+          .step-header {
+            margin-bottom: 22px;
+            text-align: left;
+          }
+
+          .step-count {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #8492A6;
+            margin-bottom: 6px;
+            display: inline-block;
+          }
+
+          .step-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 1.65rem;
+            font-weight: 800;
+            color: #12263A;
+            margin: 0 0 6px 0;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+          }
+
+          .step-subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            color: #718096;
+            margin: 0 0 18px 0;
+          }
+
+          .date-pills-row {
+            display: grid !important;
+            grid-template-columns: repeat(5, 1fr) !important;
+            gap: 6px !important;
+            width: 100% !important;
+          }
+
+          .date-pill-btn {
+            background: #FFFFFF !important;
+            border: 1.5px solid #E2E8F0 !important;
+            border-radius: 14px !important;
+            padding: 8px 4px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            min-height: 58px !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+          }
+
+          .date-pill-btn.selected {
+            border: 2px solid #087F8C !important;
+            background: #FFFFFF !important;
+          }
+
+          .date-pill-btn.selected .date-day-label,
+          .date-pill-btn.selected .date-day-val {
+            color: #087F8C !important;
+          }
+
+          .date-day-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.68rem;
+            color: #718096;
+            margin-bottom: 2px;
+          }
+
+          .date-day-val {
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #12263A;
+          }
+
+          .time-slots-heading {
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #12263A;
+            margin: 0 0 12px 0;
+            text-align: left;
+          }
+
           .time-slots-grid {
-            grid-template-columns: 1fr;
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 10px !important;
+            width: 100% !important;
+          }
+
+          .time-slot-card {
+            background: #FFFFFF !important;
+            border: 1.5px solid #E2E8F0 !important;
+            border-radius: 14px !important;
+            padding: 12px 10px !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 10px !important;
+            min-height: 64px !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+            box-sizing: border-box !important;
+          }
+
+          .time-slot-card.selected {
+            border: 2px solid #087F8C !important;
+            background: #F4FBFB !important;
+          }
+
+          .radio-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 1.5px solid #CBD5E1;
+            background: #FFFFFF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+          }
+
+          .radio-dot.checked {
+            border-color: #087F8C;
+          }
+
+          .radio-dot.checked .inner-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #087F8C;
+          }
+
+          .slot-info {
+            text-align: left;
+          }
+
+          .slot-time-text {
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #12263A;
+            line-height: 1.25;
+            margin-bottom: 2px;
+          }
+
+          .slot-subtitle-text {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.68rem;
+            color: #718096;
+            line-height: 1.3;
+          }
+
+          .mobile-step3-bottom-bar.mobile-only-bar {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 18px !important;
+            margin-top: 24px !important;
+            width: 100% !important;
+          }
+
+          .mobile-step3-bottom-bar .card-pagination-row {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 16px !important;
+            width: 100% !important;
+          }
+
+          .mobile-step3-bottom-bar .pagination-dots {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+          }
+
+          .mobile-step3-bottom-bar .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #CBD5E1;
+            transition: all 0.2s;
+            cursor: pointer;
+          }
+
+          .mobile-step3-bottom-bar .dot.active {
+            background: #087F8C;
+            width: 9px;
+            height: 9px;
+          }
+
+          .mobile-full-next-btn {
+            width: 100% !important;
+            height: 48px !important;
+            background: #087F8C !important;
+            color: #FFFFFF !important;
+            border-radius: 999px !important;
+            font-size: 1rem !important;
+            font-weight: 700 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            border: none !important;
+            box-shadow: 0 4px 14px rgba(8, 127, 140, 0.25) !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+          }
+
+          .mobile-full-next-btn:disabled {
+            opacity: 0.5 !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
           }
         }
       `}</style>

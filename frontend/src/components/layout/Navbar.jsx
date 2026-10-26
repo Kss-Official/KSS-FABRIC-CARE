@@ -1124,9 +1124,51 @@ export const Navbar = () => {
           }
         }
 
+        @media (max-width: 768px) {
+          .navbar-wrapper {
+            height: 68px;
+          }
+          .navbar-spacer {
+            height: 68px;
+          }
+          .mobile-menu-overlay {
+            top: 68px;
+          }
+          .nav-container {
+            padding: 0 16px;
+          }
+        }
+
         @media (max-width: 680px) {
           .nav-auth-buttons {
             display: none;
+          }
+          .nav-user-name {
+            display: none;
+          }
+          .user-profile-btn {
+            padding: 3px;
+          }
+          .nav-bell-btn {
+            width: 34px;
+            height: 34px;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .logo-text {
+            font-size: 1.25rem;
+          }
+          .navbar-brand-logo-img {
+            width: 28px;
+            height: 28px;
+            margin-right: 6px;
+          }
+          .nav-cta-btn {
+            display: none;
+          }
+          .nav-actions {
+            gap: 8px;
           }
         }
       `}</style>

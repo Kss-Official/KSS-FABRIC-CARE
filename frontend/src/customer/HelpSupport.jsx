@@ -1882,6 +1882,68 @@ export const HelpSupport = () => {
           justify-content: center;
           text-align: center;
         }
+
+        @media (max-width: 768px) {
+          .help-support-portal {
+            padding: 8px 0 16px 0 !important;
+          }
+
+          .help-main-title {
+            font-size: 1.45rem !important;
+          }
+
+          .help-main-subtitle {
+            font-size: 0.8125rem !important;
+          }
+
+          .content-card.raise-request-card,
+          .content-card.recent-tickets-card,
+          .content-card.faq-section-card {
+            padding: 16px 14px !important;
+            border-radius: 16px !important;
+          }
+
+          .support-category-grid {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
+          }
+
+          .category-pill-btn {
+            padding: 8px 10px !important;
+            font-size: 0.75rem !important;
+          }
+
+          /* Modal Responsive */
+          .modal-overlay {
+            padding: 8px 6px !important;
+          }
+
+          .modal-container {
+            width: 100% !important;
+            height: calc(100vh - 16px) !important;
+            max-height: calc(100vh - 16px) !important;
+            border-radius: 14px !important;
+          }
+
+          .modal-top-bar {
+            padding: 10px 12px !important;
+          }
+
+          .modal-search-wrapper {
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+
+          .modal-filter-pills {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            padding-bottom: 4px !important;
+          }
+
+          .modal-filter-pill {
+            flex-shrink: 0 !important;
+          }
+        }
       `}</style>
     </div>
   );

@@ -1006,67 +1006,116 @@ export const PaymentsInvoices = () => {
             </button>
           </div>
         ) : (
-          <div className="orders-table-wrapper overflow-x-auto mt-3">
-            <table className="orders-table w-full text-left">
-              <thead>
-                <tr className="border-b border-slate-100 text-xs text-slate-400 font-semibold uppercase">
-                  <th className="py-2.5 px-3">Order ID</th>
-                  <th className="py-2.5 px-3">Date</th>
-                  <th className="py-2.5 px-3">Pickup Slot</th>
-                  <th className="py-2.5 px-3">Total Amount</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3 text-right">Invoice Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrders.map((ord) => {
-                  const isCurrent = (selectedOrder?.id === ord.id) || 
-                                    (!selectedOrder && (ord.order_number === '#FC8F71E' || ord.order_id === '#FC8F71E'));
-                  const ordNum = ord.order_number || ord.order_id || `#FC${ord.id}`;
-                  const ordDate = formatOrderDate(ord.created_at || ord.pickup_date);
-                  const cleanTimeSlot = getCleanPickupSlot(ord);
-                  return (
-                    <tr 
-                      key={ord.id || ordNum}
-                      className={`order-row border-b border-slate-50 transition-colors ${isCurrent ? 'bg-teal-50/50' : 'hover:bg-slate-50/80'}`}
-                    >
-                      <td className="py-3 px-3">
-                        <span className="font-mono font-bold text-navy text-sm">{formatOrderId(ord.order_number || ord.order_id || ord.id || 'FC-75668')}</span>
-                      </td>
-                      <td className="py-3 px-3 text-sm text-slate-600 font-medium">
-                        {ordDate}
-                      </td>
-                      {/* Date removed from Pickup column as requested */}
-                      <td className="py-3 px-3 text-sm text-slate-600 font-medium">
-                        {cleanTimeSlot}
-                      </td>
-                      <td className="py-3 px-3 text-sm font-bold text-navy">
-                        {getOrderInvoiceData(ord).total}
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className="order-status-pill paid">
-                          <Check size={10} strokeWidth={3} />
-                          <span>Paid</span>
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        {/* Each order has its own View Invoice button */}
-                        <button
-                          type="button"
-                          onClick={() => handleViewInvoiceClick(ord)}
-                          className="btn-view-invoice-action"
-                          title={`View Tax Invoice for ${ordNum}`}
-                        >
-                          <FileText size={13} />
-                          <span>View Invoice</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Desktop Table View */}
+            <div className="orders-table-wrapper desktop-only-table overflow-x-auto mt-3">
+              <table className="orders-table w-full text-left">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs text-slate-400 font-semibold uppercase">
+                    <th className="py-2.5 px-3">Order ID</th>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Pickup Slot</th>
+                    <th className="py-2.5 px-3">Total Amount</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Invoice Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.map((ord) => {
+                    const isCurrent = (selectedOrder?.id === ord.id) || 
+                                      (!selectedOrder && (ord.order_number === '#FC8F71E' || ord.order_id === '#FC8F71E'));
+                    const ordNum = ord.order_number || ord.order_id || `#FC${ord.id}`;
+                    const ordDate = formatOrderDate(ord.created_at || ord.pickup_date);
+                    const cleanTimeSlot = getCleanPickupSlot(ord);
+                    return (
+                      <tr 
+                        key={ord.id || ordNum}
+                        className={`order-row border-b border-slate-50 transition-colors ${isCurrent ? 'bg-teal-50/50' : 'hover:bg-slate-50/80'}`}
+                      >
+                        <td className="py-3 px-3">
+                          <span className="font-mono font-bold text-navy text-sm">{formatOrderId(ord.order_number || ord.order_id || ord.id || 'FC-75668')}</span>
+                        </td>
+                        <td className="py-3 px-3 text-sm text-slate-600 font-medium">
+                          {ordDate}
+                        </td>
+                        {/* Date removed from Pickup column as requested */}
+                        <td className="py-3 px-3 text-sm text-slate-600 font-medium">
+                          {cleanTimeSlot}
+                        </td>
+                        <td className="py-3 px-3 text-sm font-bold text-navy">
+                          {getOrderInvoiceData(ord).total}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="order-status-pill paid">
+                            <Check size={10} strokeWidth={3} />
+                            <span>Paid</span>
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          {/* Each order has its own View Invoice button */}
+                          <button
+                            type="button"
+                            onClick={() => handleViewInvoiceClick(ord)}
+                            className="btn-view-invoice-action"
+                            title={`View Tax Invoice for ${ordNum}`}
+                          >
+                            <FileText size={13} />
+                            <span>View Invoice</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Invoice Cards View */}
+            <div className="customer-mobile-invoice-cards mobile-only-block">
+              {filteredOrders.map((ord) => {
+                const ordNum = ord.order_number || ord.order_id || `#FC${ord.id}`;
+                const ordDate = formatOrderDate(ord.created_at || ord.pickup_date);
+                const cleanTimeSlot = getCleanPickupSlot(ord);
+                const invData = getOrderInvoiceData(ord);
+                return (
+                  <div key={ord.id || ordNum} className="customer-invoice-mobile-card">
+                    <div className="mobile-inv-top-row">
+                      <div>
+                        <span className="mobile-inv-code font-mono font-bold">{formatOrderId(ord.order_number || ord.order_id || ord.id || 'FC-75668')}</span>
+                        <span className="mobile-inv-date">{ordDate}</span>
+                      </div>
+                      <span className="order-status-pill paid">
+                        <Check size={10} strokeWidth={3} />
+                        <span>Paid</span>
+                      </span>
+                    </div>
+
+                    <div className="mobile-inv-details-grid">
+                      <div className="mobile-inv-cell">
+                        <span className="mobile-inv-label">Pickup Slot</span>
+                        <span className="mobile-inv-val">{cleanTimeSlot}</span>
+                      </div>
+                      <div className="mobile-inv-cell">
+                        <span className="mobile-inv-label">Total Amount</span>
+                        <span className="mobile-inv-val font-bold text-navy">{invData.total}</span>
+                      </div>
+                    </div>
+
+                    <div className="mobile-inv-actions-row">
+                      <button
+                        type="button"
+                        onClick={() => handleViewInvoiceClick(ord)}
+                        className="mobile-btn-view-invoice"
+                      >
+                        <FileText size={14} />
+                        <span>View Tax Invoice</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
@@ -2435,6 +2484,270 @@ export const PaymentsInvoices = () => {
             color: #059669 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+          }
+        }
+
+        /* Mobile Invoice Cards and Responsive Styles */
+        .mobile-only-block {
+          display: none;
+        }
+
+        .desktop-only-table {
+          display: block;
+        }
+
+        .customer-mobile-invoice-cards {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-top: 10px;
+        }
+
+        .customer-invoice-mobile-card {
+          background: #ffffff;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 16px;
+          padding: 16px;
+          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+        }
+
+        .mobile-inv-top-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .mobile-inv-code {
+          font-size: 0.95rem;
+          color: #0D7A75;
+          letter-spacing: -0.01em;
+          display: block;
+        }
+
+        .mobile-inv-date {
+          font-size: 0.75rem;
+          color: #64748B;
+          margin-top: 1px;
+          display: block;
+        }
+
+        .mobile-inv-details-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
+        }
+
+        .mobile-inv-cell {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .mobile-inv-label {
+          font-size: 0.6875rem;
+          font-weight: 700;
+          color: #64748B;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .mobile-inv-val {
+          font-size: 0.8125rem;
+          font-weight: 600;
+          color: #1E293B;
+        }
+
+        .mobile-inv-actions-row {
+          display: flex;
+          align-items: center;
+        }
+
+        .mobile-btn-view-invoice {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 9px 16px;
+          background: #E8FAF6;
+          color: #0D7A75;
+          border: 1.5px solid #BCEAE6;
+          border-radius: 10px;
+          font-size: 0.8125rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .mobile-btn-view-invoice:hover {
+          background: #0D7A75;
+          color: #ffffff;
+        }
+
+        @media (max-width: 768px) {
+          .desktop-only-table {
+            display: none !important;
+          }
+
+          .mobile-only-block {
+            display: flex !important;
+          }
+
+          .invoice-page-portal {
+            padding: 8px 0 16px 0 !important;
+          }
+
+          .invoice-page-title {
+            font-size: 1.45rem !important;
+          }
+
+          .invoice-page-subtitle {
+            font-size: 0.8125rem !important;
+          }
+
+          .customer-orders-invoices-card {
+            padding: 16px 14px !important;
+            border-radius: 16px !important;
+            min-height: auto !important;
+          }
+
+          .orders-card-header {
+            gap: 12px !important;
+            padding-bottom: 12px !important;
+          }
+
+          .orders-actions-bar {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+          }
+
+          .orders-toolbar-left {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+          }
+
+          .orders-search-wrapper {
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+
+          .orders-search-input {
+            width: 100% !important;
+            height: 40px !important;
+            font-size: 14px !important;
+            box-sizing: border-box;
+          }
+
+          /* Invoice Modal Mobile Experience */
+          .invoice-modal-overlay {
+            padding: 8px 6px !important;
+          }
+
+          .invoice-modal-container {
+            width: 100% !important;
+            height: calc(100vh - 16px) !important;
+            max-height: calc(100vh - 16px) !important;
+            border-radius: 14px !important;
+          }
+
+          .invoice-modal-top-bar {
+            padding: 10px 12px !important;
+            min-height: auto !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+          }
+
+          .modal-header-title-wrap {
+            width: 100%;
+            justify-content: space-between;
+          }
+
+          .modal-header-title {
+            font-size: 0.8125rem !important;
+          }
+
+          .invoice-modal-actions {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 6px !important;
+          }
+
+          .modal-action-pill {
+            flex: 1;
+            justify-content: center;
+            padding: 6px 10px !important;
+            font-size: 0.72rem !important;
+          }
+
+          .tax-invoice-document-card {
+            padding: 16px 12px !important;
+            border-radius: 14px !important;
+          }
+
+          .invoice-doc-header {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 12px !important;
+            padding-bottom: 16px !important;
+          }
+
+          .brand-name {
+            font-size: 1.25rem !important;
+          }
+
+          .tax-order-number {
+            font-size: 1.15rem !important;
+          }
+
+          .bill-to-meta-grid {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+            padding: 14px 0 !important;
+          }
+
+          .invoice-details-grid {
+            grid-template-columns: 1fr !important;
+            gap: 8px !important;
+          }
+
+          .invoice-bottom-split-grid {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+
+          .care-instructions-card,
+          .totals-breakdown-card {
+            padding: 14px 14px !important;
+          }
+
+          .thank-you-mint-banner {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 8px !important;
+            padding: 12px 14px !important;
+            margin-bottom: 18px !important;
+          }
+
+          .invoice-doc-table-wrapper {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+          }
+
+          .invoice-doc-table th,
+          .invoice-doc-table td {
+            padding: 10px 6px !important;
+            font-size: 0.78rem !important;
           }
         }
       `}</style>

@@ -101,6 +101,7 @@ export const PricingPage = () => {
       {/* 1. HERO BANNER WITH WHITE FADE OVERLAY & HEADINGS */}
       <PageHeroBanner
         bgImage="/assets/pricing-hero.png"
+        eyebrow="OUR PRICING"
         heading="Pricing Plans"
         subtitle="Transparent, Simple & Affordable Per-Piece Rates"
         altText="FabriCare Transparent Pricing"
@@ -482,10 +483,6 @@ export const PricingPage = () => {
         }
 
         @media (max-width: 640px) {
-          .pricing-hero-pure-img {
-            max-height: 280px;
-            object-position: top center;
-          }
           .faq-question-btn {
             padding: 16px 18px;
           }

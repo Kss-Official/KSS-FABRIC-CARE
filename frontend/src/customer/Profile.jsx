@@ -172,17 +172,17 @@ export const Profile = () => {
   };
 
   return (
-    <div className="portal-container">
+    <div className="portal-container customer-profile-portal">
       {/* Header */}
-      <div className="mb-6">
-        <div className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Account & Security</div>
-        <h1 className="text-2xl font-bold text-navy">Customer Profile</h1>
+      <div className="profile-page-header-row mb-6">
+        <div className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Account &amp; Security</div>
+        <h1 className="profile-page-main-title text-2xl font-bold text-navy">Customer Profile</h1>
         <p className="text-sm text-muted">Manage your personal credentials and contact settings</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Avatar & Summary */}
-        <div className="content-card text-center self-start">
+        <div className="content-card profile-avatar-card text-center self-start">
           <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 text-white font-black text-3xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-purple-500/20">
             {avatarInitial}
           </div>
@@ -534,6 +534,32 @@ export const Profile = () => {
           </div>
         </div>
       )}
+
+      {/* Responsive Styles */}
+      <style>{`
+        @media (max-width: 768px) {
+          .customer-profile-portal .profile-page-main-title {
+            font-size: 1.4rem !important;
+          }
+
+          .customer-profile-portal .content-card {
+            padding: 16px 14px !important;
+            border-radius: 16px !important;
+          }
+
+          .profile-avatar-card {
+            padding: 20px 16px !important;
+          }
+
+          .animate-scale-in {
+            max-width: calc(100vw - 24px) !important;
+            max-height: 90vh !important;
+            overflow-y: auto !important;
+            padding: 18px 16px !important;
+            border-radius: 16px !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };

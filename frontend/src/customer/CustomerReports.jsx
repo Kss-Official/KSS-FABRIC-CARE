@@ -696,18 +696,92 @@ export const CustomerReports = () => {
               )}
             </div>
           ) : (
-            <table className="customer-reports-table">
-              <thead>
-                <tr>
-                  <th className="th-order-id">ORDER ID</th>
-                  <th className="th-report-date">REPORT DATE</th>
-                  <th className="th-failure-reason">FAILURE REASON</th>
-                  <th className="th-rescheduled">RESCHEDULED DATE &amp; TIME</th>
-                  <th className="th-status">STATUS</th>
-                  <th className="th-action">REPORT ACTION</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              {/* Desktop Table View */}
+              <table className="customer-reports-table desktop-only-table">
+                <thead>
+                  <tr>
+                    <th className="th-order-id">ORDER ID</th>
+                    <th className="th-report-date">REPORT DATE</th>
+                    <th className="th-failure-reason">FAILURE REASON</th>
+                    <th className="th-rescheduled">RESCHEDULED DATE &amp; TIME</th>
+                    <th className="th-status">STATUS</th>
+                    <th className="th-action">REPORT ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredReports.map((report) => {
+                    const orderCode =
+                      report.order_id ||
+                      report.order_id_display ||
+                      `#FC${report.id}`;
+                    const reportDate =
+                      report.report_date_only ||
+                      (report.report_date ? report.report_date.split('T')[0] : '16 Oct 2026');
+
+                    const isRescheduled = Boolean(
+                      report.rescheduled_date || report.new_delivery_date_formatted
+                    );
+
+                    return (
+                      <tr key={report.id || orderCode} className="reports-table-row">
+                        {/* 1. Order ID */}
+                        <td className="td-order-id">
+                          <span className="report-order-code font-mono font-bold">{formatOrderId(orderCode)}</span>
+                        </td>
+
+                        {/* 2. Report Date */}
+                        <td className="td-report-date">
+                          <span className="report-date-text">{reportDate}</span>
+                        </td>
+
+                        {/* 3. Failure Reason */}
+                        <td className="td-failure-reason">
+                          <span className="report-reason-text">
+                            {report.failure_reason || 'Customer Unavailable'}
+                          </span>
+                        </td>
+
+                        {/* 4. Rescheduled Date & Time */}
+                        <td className="td-rescheduled">
+                          {isRescheduled ? (
+                            <div className="resched-cell-stack">
+                              <span className="resched-date">
+                                {report.new_delivery_date_formatted || report.rescheduled_date}
+                              </span>
+                              <span className="resched-time">
+                                {report.rescheduled_time_slot || '10:00 AM – 12:00 PM'}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="resched-dash">—</span>
+                          )}
+                        </td>
+
+                        {/* 5. Status Badge */}
+                        <td className="td-status">
+                          {renderStatusBadge(report.status)}
+                        </td>
+
+                        {/* 6. Report Action Button */}
+                        <td className="td-action">
+                          <button
+                            type="button"
+                            className="btn-view-report-action"
+                            onClick={() => handleViewReportClick(report)}
+                          >
+                            <FileText size={14} className="btn-doc-icon" />
+                            <span>View Report</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {/* Mobile Report Cards View */}
+              <div className="customer-mobile-report-cards mobile-only-block">
                 {filteredReports.map((report) => {
                   const orderCode =
                     report.order_id ||
@@ -716,67 +790,52 @@ export const CustomerReports = () => {
                   const reportDate =
                     report.report_date_only ||
                     (report.report_date ? report.report_date.split('T')[0] : '16 Oct 2026');
-
                   const isRescheduled = Boolean(
                     report.rescheduled_date || report.new_delivery_date_formatted
                   );
 
                   return (
-                    <tr key={report.id || orderCode} className="reports-table-row">
-                      {/* 1. Order ID */}
-                      <td className="td-order-id">
-                        <span className="report-order-code font-mono font-bold">{formatOrderId(orderCode)}</span>
-                      </td>
+                    <div key={report.id || orderCode} className="customer-report-mobile-card">
+                      <div className="mobile-rep-top-row">
+                        <div>
+                          <span className="mobile-rep-code font-mono font-bold">{formatOrderId(orderCode)}</span>
+                          <span className="mobile-rep-date">{reportDate}</span>
+                        </div>
+                        <div>
+                          {renderStatusBadge(report.status)}
+                        </div>
+                      </div>
 
-                      {/* 2. Report Date */}
-                      <td className="td-report-date">
-                        <span className="report-date-text">{reportDate}</span>
-                      </td>
+                      <div className="mobile-rep-details-grid">
+                        <div className="mobile-rep-cell">
+                          <span className="mobile-rep-label">Issue Reason</span>
+                          <span className="mobile-rep-val text-rose-600 font-semibold">{report.failure_reason || 'Customer Unavailable'}</span>
+                        </div>
+                        <div className="mobile-rep-cell">
+                          <span className="mobile-rep-label">Rescheduled Slot</span>
+                          <span className="mobile-rep-val">
+                            {isRescheduled 
+                              ? `${report.new_delivery_date_formatted || report.rescheduled_date} (${report.rescheduled_time_slot || '10:00 AM - 12:00 PM'})`
+                              : 'Pending reschedule'}
+                          </span>
+                        </div>
+                      </div>
 
-                      {/* 3. Failure Reason */}
-                      <td className="td-failure-reason">
-                        <span className="report-reason-text">
-                          {report.failure_reason || 'Customer Unavailable'}
-                        </span>
-                      </td>
-
-                      {/* 4. Rescheduled Date & Time */}
-                      <td className="td-rescheduled">
-                        {isRescheduled ? (
-                          <div className="resched-cell-stack">
-                            <span className="resched-date">
-                              {report.new_delivery_date_formatted || report.rescheduled_date}
-                            </span>
-                            <span className="resched-time">
-                              {report.rescheduled_time_slot || '10:00 AM – 12:00 PM'}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="resched-dash">—</span>
-                        )}
-                      </td>
-
-                      {/* 5. Status Badge */}
-                      <td className="td-status">
-                        {renderStatusBadge(report.status)}
-                      </td>
-
-                      {/* 6. Report Action Button */}
-                      <td className="td-action">
+                      <div className="mobile-rep-actions-row">
                         <button
                           type="button"
-                          className="btn-view-report-action"
+                          className="mobile-btn-view-report"
                           onClick={() => handleViewReportClick(report)}
                         >
-                          <FileText size={14} className="btn-doc-icon" />
-                          <span>View Report</span>
+                          <FileText size={14} />
+                          <span>View Official Report</span>
                         </button>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -2006,6 +2065,232 @@ export const CustomerReports = () => {
             padding: 0 !important;
             box-shadow: none !important;
             border: none !important;
+          }
+        }
+
+        /* Mobile Report Cards and Responsive Styles */
+        .mobile-only-block {
+          display: none;
+        }
+
+        .desktop-only-table {
+          display: table;
+        }
+
+        .customer-mobile-report-cards {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-top: 10px;
+        }
+
+        .customer-report-mobile-card {
+          background: #ffffff;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 16px;
+          padding: 16px;
+          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+        }
+
+        .mobile-rep-top-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .mobile-rep-code {
+          font-size: 0.95rem;
+          color: #0D7A75;
+          letter-spacing: -0.01em;
+          display: block;
+        }
+
+        .mobile-rep-date {
+          font-size: 0.75rem;
+          color: #64748B;
+          margin-top: 1px;
+          display: block;
+        }
+
+        .mobile-rep-details-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 12px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
+        }
+
+        .mobile-rep-cell {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .mobile-rep-label {
+          font-size: 0.6875rem;
+          font-weight: 700;
+          color: #64748B;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .mobile-rep-val {
+          font-size: 0.8125rem;
+          color: #1E293B;
+          line-height: 1.35;
+        }
+
+        .mobile-rep-actions-row {
+          display: flex;
+          align-items: center;
+        }
+
+        .mobile-btn-view-report {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 9px 16px;
+          background: #E8FAF6;
+          color: #0D7A75;
+          border: 1.5px solid #BCEAE6;
+          border-radius: 10px;
+          font-size: 0.8125rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .mobile-btn-view-report:hover {
+          background: #0D7A75;
+          color: #ffffff;
+        }
+
+        @media (max-width: 768px) {
+          .desktop-only-table {
+            display: none !important;
+          }
+
+          .mobile-only-block {
+            display: flex !important;
+          }
+
+          .customer-reports-portal {
+            padding: 8px 0 16px 0 !important;
+          }
+
+          .reports-page-title {
+            font-size: 1.45rem !important;
+          }
+
+          .reports-page-subtitle {
+            font-size: 0.8125rem !important;
+          }
+
+          .reports-table-card {
+            padding: 16px 14px !important;
+            border-radius: 16px !important;
+          }
+
+          .reports-card-header {
+            gap: 12px !important;
+            padding-bottom: 12px !important;
+          }
+
+          .reports-actions-bar {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+          }
+
+          .reports-toolbar-left {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+          }
+
+          .reports-search-wrapper {
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+
+          .reports-search-input {
+            width: 100% !important;
+            height: 40px !important;
+            font-size: 14px !important;
+            box-sizing: border-box;
+          }
+
+          /* Report Modal Mobile Experience */
+          .invoice-modal-overlay {
+            padding: 8px 6px !important;
+          }
+
+          .invoice-modal-container {
+            width: 100% !important;
+            height: calc(100vh - 16px) !important;
+            max-height: calc(100vh - 16px) !important;
+            border-radius: 14px !important;
+          }
+
+          .invoice-modal-top-bar {
+            padding: 10px 12px !important;
+            min-height: auto !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+          }
+
+          .modal-header-title-wrap {
+            width: 100%;
+            justify-content: space-between;
+          }
+
+          .modal-header-title {
+            font-size: 0.8125rem !important;
+          }
+
+          .invoice-modal-actions {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 6px !important;
+          }
+
+          .modal-action-pill {
+            flex: 1;
+            justify-content: center;
+            padding: 6px 10px !important;
+            font-size: 0.72rem !important;
+          }
+
+          .tax-invoice-document-card {
+            padding: 16px 12px !important;
+            border-radius: 14px !important;
+          }
+
+          .invoice-doc-header {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 12px !important;
+            padding-bottom: 16px !important;
+          }
+
+          .bill-to-meta-grid {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+            padding: 14px 0 !important;
+          }
+
+          .invoice-details-grid {
+            grid-template-columns: 1fr !important;
+            gap: 8px !important;
           }
         }
       `}</style>

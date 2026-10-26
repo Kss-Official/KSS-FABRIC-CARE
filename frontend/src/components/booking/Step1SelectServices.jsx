@@ -193,10 +193,85 @@ export const Step1SelectServices = () => {
             <path d="M4 17h16a1 1 0 0 0 1-1c0-4-3-6-7-6H9a5 5 0 0 0-5 5v2z" /><path d="M9 10V6h7v4" />
           </svg>
         );
+      case 'shoe-laundry':
+        return (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3.5 15.5h17a1 1 0 0 1 1 1v1a1.5 1.5 0 0 1-1.5 1.5h-16A1.5 1.5 0 0 1 2.5 17.5v-1a1 1 0 0 1 1-1z" />
+            <path d="M5 15.5c.5-2.5 2-4.5 5-5.5l4 .5 4 3 3 2" /><path d="M10 10.5 8 9" />
+          </svg>
+        );
+      case 'home-care':
+        return (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="4" y="5" width="16" height="3" rx="1.5" /><rect x="4" y="10.5" width="16" height="3" rx="1.5" /><rect x="4" y="16" width="16" height="3" rx="1.5" />
+          </svg>
+        );
       case 'express-laundry':
         return <Zap size={22} strokeWidth={2.2} />;
       default:
         return <Shirt size={22} strokeWidth={1.8} />;
+    }
+  };
+
+  const MOBILE_BOOKING_SERVICES = [
+    {
+      id: 'wash-fold',
+      name: 'Wash & Fold',
+      desc: 'Everyday essentials fresh and clean.',
+      price: 120
+    },
+    {
+      id: 'wash-iron',
+      name: 'Wash & Iron',
+      desc: 'Clean clothes, ready to wear.',
+      price: 140
+    },
+    {
+      id: 'dry-cleaning',
+      name: 'Dry Cleaning',
+      desc: 'For your delicate and premium wear.',
+      price: 180
+    },
+    {
+      id: 'steam-iron',
+      name: 'Steam Iron',
+      desc: 'Crisp and perfectly pressed.',
+      price: 60
+    },
+    {
+      id: 'shoe-laundry',
+      name: 'Shoe Laundry',
+      desc: 'Clean shoes, step brighter.',
+      price: 150
+    },
+    {
+      id: 'home-care',
+      name: 'Home Care',
+      desc: 'Curtains, bed sheets and more.',
+      price: 200
+    }
+  ];
+
+  const handleToggleMobileService = (service) => {
+    const isSel = selectedServices.includes(service.id) || isCategorySelected(service.id);
+    if (isSel) {
+      const keysToRemove = selectedItemsList
+        .filter(it => it.categoryId === service.id)
+        .map(it => it.key);
+      keysToRemove.forEach(k => removeItem(k));
+      if (typeof toggleService === 'function') {
+        toggleService(service.id);
+      }
+    } else {
+      addItem(
+        { id: `${service.id}-item`, name: service.name, price: service.price },
+        service.id,
+        'men',
+        1
+      );
+      if (typeof toggleService === 'function' && !selectedServices.includes(service.id)) {
+        toggleService(service.id);
+      }
     }
   };
 
@@ -305,8 +380,12 @@ export const Step1SelectServices = () => {
         setActiveExpressService(existingExpressItem.expressService);
       }
     }
-    setActiveSubcategory('men');
-    setIsItemsOpen(false);
+    if (catId === 'home-care') {
+      setActiveSubcategory('household');
+    } else {
+      setActiveSubcategory('men');
+    }
+    setIsItemsOpen(true);
     setItemSearchQuery('');
     setCategoryValidationError(null);
   };
@@ -394,8 +473,8 @@ export const Step1SelectServices = () => {
                   <p className="step-subtitle">Choose one or more services</p>
                 </div>
 
-                {/* 3-Column Grid matching reference image */}
-                <div className="service-cards-grid-3col">
+                {/* Desktop 3-Column Grid matching reference image */}
+                <div className="service-cards-grid-3col desktop-only-grid">
                   {PRICING_CATEGORIES.map(category => {
                     const isSelected = isCategorySelected(category.id);
                     const catCount = selectedItemsList
@@ -440,8 +519,63 @@ export const Step1SelectServices = () => {
                   })}
                 </div>
 
-                {/* Bottom Pagination Dots & Next Arrow Circle */}
-                <div className="card-bottom-row">
+                {/* Mobile 2-Column Grid (6 Services matching Screenshot 1) */}
+                <div className="mobile-services-grid-2col mobile-only-grid">
+                  {MOBILE_BOOKING_SERVICES.map(service => {
+                    const isSelected = selectedServices.includes(service.id) || isCategorySelected(service.id);
+                    const catCount = selectedItemsList
+                      .filter(it => it.categoryId === service.id)
+                      .reduce((s, it) => s + it.quantity, 0);
+
+                    return (
+                      <div
+                        key={service.id}
+                        className={`mobile-booking-card ${isSelected ? 'selected' : ''}`}
+                        onClick={() => handleCategoryCardClick(service.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleCategoryCardClick(service.id);
+                          }
+                        }}
+                      >
+                        <div className="mobile-card-top">
+                          <div className="mobile-service-icon">
+                            {renderServiceIcon(service.id)}
+                          </div>
+                          <div 
+                            className={`mobile-checkbox ${isSelected ? 'checked' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isSelected) {
+                                handleRemoveService(service.id);
+                              } else {
+                                handleCategoryCardClick(service.id);
+                              }
+                            }}
+                          >
+                            {isSelected && <Check size={14} strokeWidth={3} color="#ffffff" />}
+                          </div>
+                        </div>
+
+                        <div className="mobile-card-bottom">
+                          <div className="mobile-card-title-row">
+                            <h3 className="mobile-card-title">{service.name}</h3>
+                            {catCount > 0 && (
+                              <span className="mobile-card-items-badge">{catCount} items</span>
+                            )}
+                          </div>
+                          <p className="mobile-card-desc">{service.desc}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Bottom Pagination Dots & Next Arrow Circle for Desktop */}
+                <div className="card-bottom-row desktop-only-row">
                   <div className="pagination-dots">
                     <span className="dot active" />
                     <span className="dot" />
@@ -457,6 +591,26 @@ export const Step1SelectServices = () => {
                     aria-label="Next step"
                   >
                     <ChevronRight size={18} strokeWidth={2.4} />
+                  </button>
+                </div>
+
+                {/* Bottom Navigation for Mobile */}
+                <div className="mobile-step1-bottom-bar mobile-only-bar">
+                  <div className="pagination-dots">
+                    <span className="dot active" />
+                    <span className="dot" onClick={() => hasSelections && setCurrentStep(2)} />
+                    <span className="dot" onClick={() => hasSelections && setCurrentStep(3)} />
+                    <span className="dot" onClick={() => hasSelections && setCurrentStep(4)} />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="mobile-full-next-btn"
+                    onClick={handleNextStep}
+                    disabled={!hasSelections}
+                  >
+                    <span>Next</span>
+                    <ArrowRight size={18} />
                   </button>
                 </div>
               </div>
@@ -527,7 +681,9 @@ export const Step1SelectServices = () => {
                   </div>
                   <div className="category-header-text">
                     <h2 className="step-title">
-                      {PRICING_CATEGORIES.find(c => c.id === activeCategory)?.name || 'Wash & Iron'}
+                      {PRICING_CATEGORIES.find(c => c.id === activeCategory)?.name ||
+                       MOBILE_BOOKING_SERVICES.find(s => s.id === activeCategory)?.name ||
+                       'Wash & Fold'}
                     </h2>
                     <p className="step-subtitle">
                       Choose a subcategory and adjust quantities for your clothes.
@@ -786,6 +942,37 @@ export const Step1SelectServices = () => {
                   <img src="/assets/subcat_leaf_decor.png" alt="" className="leaf-banner-decor-img" />
                 </div>
               )}
+
+              {/* Mobile View 2 Bottom Actions Bar */}
+              <div className="mobile-view2-bottom-bar mobile-only-bar">
+                <div className="mobile-view2-summary">
+                  <span className="mobile-view2-count">
+                    {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'items'} selected
+                  </span>
+                  <span className="mobile-view2-price">
+                    ₹{calculateTotal()}
+                  </span>
+                </div>
+                <div className="mobile-view2-actions">
+                  <button
+                    type="button"
+                    className="mobile-btn-back-services"
+                    onClick={handleBackToCategories}
+                  >
+                    <ArrowLeft size={15} strokeWidth={2.4} />
+                    <span>Other Services</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="mobile-btn-proceed-next"
+                    onClick={handleNextStep}
+                    disabled={selectedItemsList.length === 0}
+                  >
+                    <span>Next</span>
+                    <ArrowRight size={16} strokeWidth={2.4} />
+                  </button>
+                </div>
+              </div>
             </div>
           )}
           </div>
@@ -2846,6 +3033,14 @@ export const Step1SelectServices = () => {
           transform: none;
         }
 
+        .mobile-only-grid {
+          display: none;
+        }
+
+        .mobile-only-bar {
+          display: none;
+        }
+
         @media (max-width: 1024px) {
           .select-services-columns {
             grid-template-columns: 1fr;
@@ -2854,37 +3049,305 @@ export const Step1SelectServices = () => {
           .selected-services-side-column {
             width: 100%;
           }
-          .service-cards-grid-3col {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-          .service-cards-grid-3col .booking-service-card:nth-child(1),
-          .service-cards-grid-3col .booking-service-card:nth-child(2),
-          .service-cards-grid-3col .booking-service-card:nth-child(3),
-          .service-cards-grid-3col .booking-service-card:nth-child(4) {
-            grid-column: span 1;
-          }
-          .service-cards-grid-3col .booking-service-card:nth-child(5) {
-            grid-column: span 2;
-          }
         }
 
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
+          .desktop-only-grid,
+          .desktop-only-row,
+          .selected-services-side-column {
+            display: none !important;
+          }
+
           .service-categories-main-card {
-            padding: 20px 16px;
-            border-radius: 20px;
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            box-shadow: none !important;
           }
-          .selected-services-card {
-            padding: 18px 14px;
-            border-radius: 20px;
+
+          .step-header {
+            margin-bottom: 22px;
+            text-align: left;
           }
-          .service-cards-grid-3col {
-            grid-template-columns: 1fr;
+
+          .step-count-label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #8492A6;
+            margin-bottom: 6px;
+            display: inline-block;
           }
-          .service-cards-grid-3col .booking-service-card:nth-child(n) {
-            grid-column: span 1;
-          }
+
           .step-title {
-            font-size: 1.5rem;
+            font-family: 'Poppins', sans-serif;
+            font-size: 1.65rem;
+            font-weight: 800;
+            color: #12263A;
+            margin: 0 0 6px 0;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+          }
+
+          .step-subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            color: #718096;
+            margin: 0;
+          }
+
+          .mobile-services-grid-2col.mobile-only-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 12px !important;
+            margin-bottom: 24px !important;
+          }
+
+          .mobile-booking-card {
+            background: #FFFFFF;
+            border: 1.5px solid #E2E8F0;
+            border-radius: 18px;
+            padding: 16px 14px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 145px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            box-sizing: border-box;
+          }
+
+          .mobile-booking-card.selected {
+            border: 2px solid #087F8C;
+            background: #FFFFFF;
+          }
+
+          .mobile-card-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            width: 100%;
+          }
+
+          .mobile-service-icon {
+            color: #087F8C;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .mobile-checkbox {
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            border: 1.5px solid #CBD5E1;
+            background: #FFFFFF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+          }
+
+          .mobile-checkbox.checked {
+            background: #087F8C;
+            border-color: #087F8C;
+          }
+
+          .mobile-card-bottom {
+            margin-top: 18px;
+            text-align: left;
+          }
+
+          .mobile-card-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #12263A;
+            margin: 0 0 4px 0;
+            line-height: 1.25;
+          }
+
+          .mobile-card-desc {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.72rem;
+            color: #64748B;
+            line-height: 1.4;
+            margin: 0;
+          }
+
+          .mobile-card-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            margin-bottom: 4px;
+          }
+
+          .mobile-card-items-badge {
+            background: #E6F7F5;
+            color: #087F8C;
+            font-size: 10.5px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 999px;
+            white-space: nowrap;
+          }
+
+          /* View 2 Subcategories 2x2 Grid on Mobile */
+          .subcat-cards-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 10px !important;
+            margin-bottom: 16px !important;
+          }
+
+          .subcat-visual-card {
+            min-height: 145px !important;
+            padding: 8px 8px 10px !important;
+          }
+
+          .subcat-card-img-wrap {
+            height: 80px !important;
+          }
+
+          .subcat-card-title {
+            font-size: 0.875rem !important;
+          }
+
+          .subcat-card-subtitle {
+            font-size: 0.65rem !important;
+            line-height: 1.3 !important;
+          }
+
+          /* Mobile View 2 Bottom Actions Bar */
+          .mobile-view2-bottom-bar.mobile-only-bar {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 12px !important;
+            margin-top: 24px !important;
+            padding-top: 16px !important;
+            border-top: 1.5px solid #E6EEF1 !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+
+          .mobile-view2-summary {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+          }
+
+          .mobile-view2-count {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748B;
+          }
+
+          .mobile-view2-price {
+            font-family: 'Poppins', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: #087F8C;
+            line-height: 1.2;
+          }
+
+          .mobile-view2-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+
+          .mobile-btn-back-services {
+            background: #F1F5F9;
+            color: #334155;
+            border: none;
+            border-radius: 999px;
+            padding: 10px 14px;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+          }
+
+          .mobile-btn-back-services:hover {
+            background: #E2E8F0;
+          }
+
+          .mobile-btn-proceed-next {
+            background: #087F8C;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 999px;
+            padding: 10px 18px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(8, 127, 140, 0.2);
+            transition: all 0.15s ease;
+          }
+
+          .mobile-btn-proceed-next:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none;
+          }
+
+          .mobile-step1-bottom-bar.mobile-only-bar {
+            display: none !important;
+          }
+
+          .mobile-step1-bottom-bar .pagination-dots {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+          }
+
+          .mobile-step1-bottom-bar .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #CBD5E1;
+            transition: all 0.2s;
+            cursor: pointer;
+          }
+
+          .mobile-step1-bottom-bar .dot.active {
+            background: #087F8C;
+            width: 9px;
+            height: 9px;
+          }
+
+          .mobile-full-next-btn {
+            width: 100% !important;
+            height: 48px !important;
+            background: #087F8C !important;
+            color: #FFFFFF !important;
+            border-radius: 999px !important;
+            font-size: 1rem !important;
+            font-weight: 700 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            border: none !important;
+            box-shadow: 0 4px 14px rgba(8, 127, 140, 0.25) !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+          }
+
+          .mobile-full-next-btn:disabled {
+            opacity: 0.5 !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
           }
         }
       `}</style>

@@ -513,13 +513,41 @@ export const ServiceDetailPage = () => {
           }
         }
 
+        @media (max-width: 768px) {
+          .service-hero-banner {
+            background-attachment: scroll;
+            padding: 70px 0 50px;
+          }
+          .beyond-cleaning-section,
+          .process-timeline-section,
+          .promises-section {
+            padding: 56px 0;
+          }
+          .trust-cta-banner-section {
+            padding: 10px 0 60px;
+          }
+          .trust-cta-banner {
+            padding: 32px 20px;
+          }
+        }
+
         @media (max-width: 640px) {
           .promises-cards-grid,
           .beyond-badges-grid {
             grid-template-columns: 1fr;
           }
           .service-hero-title {
-            font-size: 2.5rem;
+            font-size: 2.2rem;
+          }
+          .service-hero-subtitle {
+            font-size: 0.95rem;
+          }
+          .trust-cta-title {
+            font-size: 1.5rem;
+          }
+          .trust-towels-img {
+            max-width: 180px;
+            height: auto;
           }
         }
       `}</style>
