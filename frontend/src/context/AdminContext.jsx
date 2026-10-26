@@ -492,7 +492,33 @@ export const AdminProvider = ({ children }) => {
     } catch (_) {}
     return [];
   });
-  const [services, setServices] = useState(DEFAULT_SERVICES);
+  const [services, setServices] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const storedCustom = JSON.parse(localStorage.getItem('fabricare_custom_admin_services') || '[]');
+        const storedDeleted = JSON.parse(localStorage.getItem('fabricare_deleted_service_ids') || '[]');
+        const cachedAll = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
+        const deletedSet = new Set(storedDeleted.map(id => String(id).toLowerCase().trim()));
+
+        const activeCustom = (storedCustom || []).filter(s => {
+          const id = String(s.id || '').toLowerCase().trim();
+          return !deletedSet.has(id) && !s.isDeleted && s.status !== 'Deleted';
+        });
+        activeCustom.sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
+
+        const baseList = (cachedAll && cachedAll.length > 0) ? cachedAll : DEFAULT_SERVICES;
+        const activeBase = (baseList || []).filter(s => {
+          const id = String(s.id || '').toLowerCase().trim();
+          return !deletedSet.has(id) && !s.isDeleted && s.status !== 'Deleted';
+        });
+
+        const customIds = new Set(activeCustom.map(s => String(s.id || '').toLowerCase().trim()));
+        const remaining = activeBase.filter(s => !customIds.has(String(s.id || '').toLowerCase().trim()));
+        return [...activeCustom, ...remaining];
+      }
+    } catch (_) {}
+    return DEFAULT_SERVICES;
+  });
   const [complaints, setComplaints] = useState(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -1042,8 +1068,9 @@ export const AdminProvider = ({ children }) => {
     try {
       const created = await addAdminService(serviceData);
       setServices(prev => {
-        const exists = prev.some(s => s.id === created.id);
-        return exists ? prev.map(s => s.id === created.id ? created : s) : [...prev, created];
+        const cleanId = String(created.id);
+        const filtered = (prev || []).filter(s => String(s.id) !== cleanId);
+        return [created, ...filtered];
       });
       setIsAddServiceModalOpen(false);
       return created;
@@ -1056,7 +1083,7 @@ export const AdminProvider = ({ children }) => {
   const updateService = async (serviceId, updateFields) => {
     try {
       await updateAdminService(serviceId, updateFields);
-      setServices(prev => prev.map(s => s.id === serviceId ? { ...s, ...updateFields } : s));
+      setServices(prev => prev.map(s => String(s.id) === String(serviceId) ? { ...s, ...updateFields } : s));
       return true;
     } catch (err) {
       console.error('Failed to update service:', err);
@@ -1066,8 +1093,9 @@ export const AdminProvider = ({ children }) => {
 
   const deleteService = async (serviceId) => {
     try {
-      await deleteAdminService(serviceId);
-      setServices(prev => prev.filter(s => s.id !== serviceId));
+      const cleanId = String(serviceId).trim();
+      await deleteAdminService(cleanId);
+      setServices(prev => (prev || []).filter(s => String(s.id).trim() !== cleanId));
       return true;
     } catch (err) {
       console.error('Failed to delete service:', err);
@@ -1139,13 +1167,22 @@ export const AdminProvider = ({ children }) => {
 
   const replyToSupportTicket = async (ticketId, replyMessage, selectedStatus) => {
     try {
+      const existingTicket = (supportTickets || []).find(t => String(t.id) === String(ticketId) || String(t.ticket_number) === String(ticketId)) || activeSupportTicket || {};
       const payload = {
         admin_reply: replyMessage,
-        status: selectedStatus || 'IN_PROGRESS'
+        status: selectedStatus || 'IN_PROGRESS',
+        customer_email: existingTicket.customer_email || existingTicket.customerEmail,
+        customer_id: existingTicket.customer_id || existingTicket.customerId,
+        ticket_number: existingTicket.ticket_number
       };
       const res = await supportApi.replyTicket(ticketId, payload);
       try {
-        await replyToSupportComplaint(ticketId, replyMessage, currentUser);
+        await replyToSupportComplaint(ticketId, replyMessage, currentUser, {
+          status: selectedStatus || 'IN_PROGRESS',
+          type: 'support_reply',
+          customerEmail: payload.customer_email,
+          customerId: payload.customer_id
+        });
       } catch (_) {}
 
       const updatedTicket = (res && res.data && res.data.ticket) ? res.data.ticket : {
@@ -1153,7 +1190,10 @@ export const AdminProvider = ({ children }) => {
         admin_reply: replyMessage,
         admin_reply_at: new Date().toISOString(),
         formatted_admin_reply_at: new Date().toLocaleString(),
-        status: selectedStatus || 'IN_PROGRESS'
+        status: selectedStatus || 'IN_PROGRESS',
+        ticket_number: existingTicket.ticket_number || `#SUP-${ticketId}`,
+        customer_email: payload.customer_email,
+        customer_name: existingTicket.customer_name
       };
 
       setSupportTickets(prev => prev.map(t => (String(t.id) === String(ticketId)) ? { ...t, ...updatedTicket } : t));
@@ -1169,13 +1209,22 @@ export const AdminProvider = ({ children }) => {
 
   const resolveSupportTicket = async (ticketId, replyMessage) => {
     try {
+      const existingTicket = (supportTickets || []).find(t => String(t.id) === String(ticketId) || String(t.ticket_number) === String(ticketId)) || activeSupportTicket || {};
       const payload = {
         admin_reply: replyMessage,
-        status: 'RESOLVED'
+        status: 'RESOLVED',
+        customer_email: existingTicket.customer_email || existingTicket.customerEmail,
+        customer_id: existingTicket.customer_id || existingTicket.customerId,
+        ticket_number: existingTicket.ticket_number
       };
       const res = await supportApi.resolveTicket(ticketId, payload);
       try {
-        await replyToSupportComplaint(ticketId, replyMessage || 'Marked as resolved', currentUser);
+        await replyToSupportComplaint(ticketId, replyMessage || 'Marked as resolved', currentUser, {
+          status: 'RESOLVED',
+          type: 'support_resolved',
+          customerEmail: payload.customer_email,
+          customerId: payload.customer_id
+        });
       } catch (_) {}
 
       const updatedTicket = (res && res.data && res.data.ticket) ? res.data.ticket : {
@@ -1183,7 +1232,10 @@ export const AdminProvider = ({ children }) => {
         admin_reply: replyMessage,
         admin_reply_at: new Date().toISOString(),
         formatted_admin_reply_at: new Date().toLocaleString(),
-        status: 'RESOLVED'
+        status: 'RESOLVED',
+        ticket_number: existingTicket.ticket_number || `#SUP-${ticketId}`,
+        customer_email: payload.customer_email,
+        customer_name: existingTicket.customer_name
       };
 
       setSupportTickets(prev => prev.map(t => (String(t.id) === String(ticketId)) ? { ...t, ...updatedTicket } : t));

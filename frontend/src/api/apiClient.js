@@ -25,6 +25,7 @@ import {
   verifyAndCompleteDelivery,
   recordDeliveryFailureAndReschedule
 } from '../services/deliveryDataService.js';
+import { notifySupportTicketUpdate } from '../services/notificationService.js';
 import { calculateOrderTotal } from '../utils/helpers.js';
 
 export class ApiError extends Error {
@@ -42,9 +43,19 @@ const BACKEND_BASES = ['http://127.0.0.1:8000', 'http://127.0.0.1:8001'];
 export const fetchBackend = async (path, options = {}) => {
   const token = (typeof localStorage !== 'undefined' ? localStorage.getItem('fabricare_token') : null) || 
                 (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('fabricare_token') : null);
+  let savedEmail = '';
+  try {
+    const rawUser = typeof localStorage !== 'undefined' ? localStorage.getItem('fabricare_user') : null;
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      savedEmail = u?.email || '';
+    }
+  } catch (_) {}
+
   const headers = {
     'Content-Type': 'application/json',
-    ...(token && token !== 'demo-token' ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(savedEmail ? { 'X-User-Email': savedEmail } : {}),
     ...(options.headers || {})
   };
 
@@ -1271,16 +1282,40 @@ export const supportApi = {
       created_at: new Date(now).toISOString()
     };
 
+    const custUid = ticketData.customer_id || ticketData.customerId || auth.currentUser?.uid;
+    const custEmail = ticketData.customer_email || ticketData.customerEmail || auth.currentUser?.email;
+    const custName = ticketData.customer_name || ticketData.customerName || auth.currentUser?.displayName;
+
     // 1. Persist to Firebase RTDB support_tickets node (realtime sync for Admin)
     try {
       if (rtdb) {
         const tKey = String(createdTicket.id || `ticket_${now}`);
         await set(ref(rtdb, `support_tickets/${tKey}`), {
           ...createdTicket,
+          customerId: custUid || null,
+          customer_id: custUid || null,
+          customer_email: custEmail || null,
+          customer_name: custName || null,
           updatedAt: now
         }).catch(() => {});
       }
     } catch (_) {}
+
+    // Dispatch realtime notifications to Customer and Admin bells
+    try {
+      await notifySupportTicketUpdate({
+        ticketId: createdTicket.id,
+        ticketNumber: createdTicket.ticket_number,
+        customerUid: custUid,
+        customerEmail: custEmail,
+        customerName: custName,
+        subject: ticketData.subject,
+        message: ticketData.message,
+        type: 'created'
+      });
+    } catch (err) {
+      console.warn('createTicket notification error:', err);
+    }
 
     // 2. Synchronize immediately into localStorage
     try {
@@ -1312,7 +1347,7 @@ export const supportApi = {
   replyTicket: async (ticketId, data) => {
     let res = null;
     const replyMessage = typeof data === 'string' ? data : (data?.admin_reply || data?.response || data?.message || '');
-    const newStatus = typeof data === 'object' ? data?.status : 'IN_PROGRESS';
+    const newStatus = typeof data === 'object' ? (data?.status || 'IN_PROGRESS') : 'IN_PROGRESS';
 
     try {
       res = await fetchBackend(`/api/admin/support/tickets/${ticketId}/reply/`, {
@@ -1323,7 +1358,12 @@ export const supportApi = {
 
     try {
       const user = { uid: auth.currentUser?.uid, name: auth.currentUser?.displayName || 'Admin' };
-      await replyToSupportComplaint(ticketId, replyMessage, user);
+      await replyToSupportComplaint(ticketId, replyMessage, user, {
+        status: newStatus,
+        type: 'support_reply',
+        customerEmail: data?.customer_email,
+        customerId: data?.customer_id
+      });
     } catch (_) {}
 
     if (typeof window !== 'undefined') {
@@ -1348,7 +1388,12 @@ export const supportApi = {
 
     try {
       const user = { uid: auth.currentUser?.uid, name: auth.currentUser?.displayName || 'Admin' };
-      await replyToSupportComplaint(ticketId, replyMessage || 'Marked as resolved', user);
+      await replyToSupportComplaint(ticketId, replyMessage || 'Marked as resolved', user, {
+        status: 'RESOLVED',
+        type: 'support_resolved',
+        customerEmail: data?.customer_email,
+        customerId: data?.customer_id
+      });
     } catch (_) {}
 
     if (typeof window !== 'undefined') {

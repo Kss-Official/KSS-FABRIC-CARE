@@ -283,9 +283,32 @@ export const AdminServicesPage = () => {
     };
   };
 
-  // Sorted Services to maintain catalog order (1: Shirt, 2: Jeans, ..., 8: Curtain)
+  // Auto-jump to page 1 when new items are added to services
+  const prevServicesCountRef = useRef(services?.length || 0);
+  useEffect(() => {
+    if ((services?.length || 0) > prevServicesCountRef.current) {
+      setCurrentPage(1);
+    }
+    prevServicesCountRef.current = services?.length || 0;
+  }, [services?.length]);
+
+  // Sorted Services: Newly added / custom items are ALWAYS displayed at the TOP (newest first),
+  // followed by catalog items in their natural order (1: Shirt, 2: Jeans, ..., 8: Curtain)
   const sortedServices = useMemo(() => {
     return [...services].sort((a, b) => {
+      const isCustomA = Boolean(a.isCustom || String(a.id).startsWith('srv_') || (a.createdAt && isNaN(Number(a.id))));
+      const isCustomB = Boolean(b.isCustom || String(b.id).startsWith('srv_') || (b.createdAt && isNaN(Number(b.id))));
+
+      if (isCustomA && !isCustomB) return -1;
+      if (!isCustomA && isCustomB) return 1;
+
+      if (isCustomA && isCustomB) {
+        const timeA = Number(a.createdAt) || 0;
+        const timeB = Number(b.createdAt) || 0;
+        if (timeA !== timeB) return timeB - timeA;
+        return String(b.id).localeCompare(String(a.id));
+      }
+
       const idA = Number(a.id) || 999;
       const idB = Number(b.id) || 999;
       return idA - idB;
@@ -544,8 +567,10 @@ export const AdminServicesPage = () => {
   const getCategoryPillStyle = (category) => {
     switch (category) {
       case 'Wash & Fold':
+      case 'Wash and Fold':
         return { background: '#E0F2FE', color: '#0284C7' };
       case 'Wash & Iron':
+      case 'Wash and Iron':
         return { background: '#EEF2FF', color: '#4F46E5' };
       case 'Dry Cleaning':
       case 'Dry Clean':
@@ -587,7 +612,7 @@ export const AdminServicesPage = () => {
           type="button"
         >
           <Plus size={18} strokeWidth={2.5} />
-          <span>Add Service</span>
+          <span>Add Items</span>
         </button>
       </div>
 
@@ -713,18 +738,6 @@ export const AdminServicesPage = () => {
             <ChevronDown size={14} strokeWidth={2} className="select-picker-arrow" />
           </div>
 
-          {/* Single Refresh Button (replacing Reset button in the same position) */}
-          <button 
-            type="button" 
-            id="services-filter-refresh-btn"
-            className="btn-filter-refresh"
-            onClick={handleRefreshServices}
-            disabled={isRefreshing}
-            title="Refresh services from database"
-          >
-            <RotateCcw size={15} strokeWidth={2} className={isRefreshing ? 'spin-animation' : ''} />
-            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-          </button>
         </div>
       </div>
 
@@ -791,7 +804,7 @@ export const AdminServicesPage = () => {
                           <div className="service-text-meta">
                             <span className="service-name-text">{service.name}</span>
                             <span className="service-desc-text">
-                              {service.subcatName && !service.description?.startsWith(service.subcatName)
+                              {service.subcatName && !(typeof service.description === 'string' && service.description.startsWith(service.subcatName))
                                 ? `${service.subcatName} · `
                                 : ''}
                               {service.description}

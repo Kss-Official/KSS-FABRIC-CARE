@@ -120,7 +120,7 @@ export const AdminHelpSupportPage = () => {
       case 'RESOLVED':
         return <span className="hs-badge hs-badge-resolved">Resolved</span>;
       case 'CLOSED':
-        return <span className="hs-badge hs-badge-closed">Closed</span>;
+        return <span className="hs-badge hs-badge-resolved">Resolved</span>;
       default:
         return <span className="hs-badge hs-badge-open">{status}</span>;
     }
@@ -147,10 +147,18 @@ export const AdminHelpSupportPage = () => {
         if (itemP !== priorityFilter) return false;
       }
 
-      // Status filter
+      // Status filter (Resolved includes both RESOLVED and CLOSED tickets)
       if (statusFilter !== 'ALL') {
         const itemS = String(item.status || '').toUpperCase().replace(/\s+/g, '_');
-        if (itemS !== statusFilter) return false;
+        if (statusFilter === 'RESOLVED' || statusFilter === 'CLOSED') {
+          if (!['RESOLVED', 'CLOSED'].includes(itemS)) return false;
+        } else if (statusFilter === 'IN_PROGRESS') {
+          if (!['IN_PROGRESS', 'PROGRESS'].includes(itemS)) return false;
+        } else if (statusFilter === 'OPEN') {
+          if (itemS !== 'OPEN') return false;
+        } else if (itemS !== statusFilter) {
+          return false;
+        }
       }
 
       // Date Range Filter (filters strictly by ticket submission / creation date matching the table column)
@@ -230,7 +238,11 @@ export const AdminHelpSupportPage = () => {
       {/* 2. Four Summary Stat Cards matching Reference Image 4 with Live Dynamic Numbers */}
       <div className="hs-summary-grid">
         {/* Card 1: Total Tickets */}
-        <div className="hs-stat-card">
+        <div 
+          className={`hs-stat-card ${statusFilter === 'ALL' ? 'hs-stat-card-active' : ''}`}
+          onClick={() => { setStatusFilter('ALL'); setCurrentPage(1); }}
+          title="Click to view all tickets"
+        >
           <div className="stat-card-left">
             <div className="stat-icon-circle hs-icon-teal">
               <Tag size={20} className="text-[#0D7A75]" />
@@ -248,7 +260,11 @@ export const AdminHelpSupportPage = () => {
         </div>
 
         {/* Card 2: Open */}
-        <div className="hs-stat-card">
+        <div 
+          className={`hs-stat-card ${statusFilter === 'OPEN' ? 'hs-stat-card-active' : ''}`}
+          onClick={() => { setStatusFilter('OPEN'); setCurrentPage(1); }}
+          title="Click to filter open tickets"
+        >
           <div className="stat-card-left">
             <div className="stat-icon-circle hs-icon-orange">
               <Clock size={20} className="text-[#EA580C]" />
@@ -266,7 +282,11 @@ export const AdminHelpSupportPage = () => {
         </div>
 
         {/* Card 3: In Progress */}
-        <div className="hs-stat-card">
+        <div 
+          className={`hs-stat-card ${statusFilter === 'IN_PROGRESS' ? 'hs-stat-card-active' : ''}`}
+          onClick={() => { setStatusFilter('IN_PROGRESS'); setCurrentPage(1); }}
+          title="Click to filter in-progress tickets"
+        >
           <div className="stat-card-left">
             <div className="stat-icon-circle hs-icon-blue">
               <Hourglass size={20} className="text-[#2563EB]" />
@@ -284,7 +304,11 @@ export const AdminHelpSupportPage = () => {
         </div>
 
         {/* Card 4: Resolved */}
-        <div className="hs-stat-card">
+        <div 
+          className={`hs-stat-card ${statusFilter === 'RESOLVED' || statusFilter === 'CLOSED' ? 'hs-stat-card-active' : ''}`}
+          onClick={() => { setStatusFilter('RESOLVED'); setCurrentPage(1); }}
+          title="Click to filter resolved tickets"
+        >
           <div className="stat-card-left">
             <div className="stat-icon-circle hs-icon-green">
               <CheckCircle2 size={20} className="text-[#16A34A]" />

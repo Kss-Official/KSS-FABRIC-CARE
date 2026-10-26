@@ -26,7 +26,7 @@ const getCleanOrderIdentifiers = (o) => {
   });
   return Array.from(set);
 };
-import { formatOrderId } from '../utils/helpers';
+import { formatOrderId, formatIndianPhoneNumber, isValidIndianPhoneNumber } from '../utils/helpers';
 import { registerRoleUser } from '../services/notificationService';
 import { NotificationBellDropdown } from '../components/common/NotificationBellDropdown';
 import { NotificationsPageView } from '../components/common/NotificationsPageView';
@@ -1377,7 +1377,18 @@ export const LaundryPortal = () => {
   });
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [editProfileForm, setEditProfileForm] = useState(profileData);
+  const [staffPhoneError, setStaffPhoneError] = useState('');
   const avatarInputRef = useRef(null);
+
+  const handleContactPhoneChange = (e) => {
+    const formatted = formatIndianPhoneNumber(e.target.value);
+    setEditProfileForm(prev => ({ ...prev, phone: formatted }));
+    if (formatted && !isValidIndianPhoneNumber(formatted)) {
+      setStaffPhoneError('Phone must be 10 digits starting with 6, 7, 8, or 9');
+    } else {
+      setStaffPhoneError('');
+    }
+  };
 
   // Staff identity & avatar helpers (synchronized between Topbar chip, Profile hero card, and Edit modal)
   const staffAvatarUrl = profileData.avatarUrl || '';
@@ -1465,6 +1476,11 @@ export const LaundryPortal = () => {
 
   const handleSaveProfile = (e) => {
     e.preventDefault();
+    if (editProfileForm.phone && !isValidIndianPhoneNumber(editProfileForm.phone)) {
+      setStaffPhoneError('Contact phone must be a 10-digit number starting with 6–9');
+      return;
+    }
+    setStaffPhoneError('');
     setProfileData(editProfileForm);
     try {
       if (typeof window !== 'undefined') {
@@ -6420,12 +6436,19 @@ export const LaundryPortal = () => {
                   <div className="staff-form-group">
                     <label className="staff-form-label">Contact Phone *</label>
                     <input
-                      type="text"
+                      type="tel"
                       required
+                      placeholder="+91 98765 43210"
+                      maxLength={15}
                       value={editProfileForm.phone}
-                      onChange={(e) => setEditProfileForm({ ...editProfileForm, phone: e.target.value })}
-                      className="staff-form-input"
+                      onChange={handleContactPhoneChange}
+                      className={`staff-form-input ${staffPhoneError ? 'staff-input-error' : ''}`}
                     />
+                    {staffPhoneError && (
+                      <span style={{ color: '#EF4444', fontSize: '11px', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                        {staffPhoneError}
+                      </span>
+                    )}
                   </div>
                 </div>
 

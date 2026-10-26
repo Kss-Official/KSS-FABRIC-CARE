@@ -1,17 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAdmin } from '../../context/AdminContext';
 import { 
   X, 
   Tag, 
-  Upload, 
-  ChevronDown, 
-  Image as ImageIcon 
+  ChevronDown 
 } from 'lucide-react';
 
 export const AddServiceModal = () => {
   const { isAddServiceModalOpen, setIsAddServiceModalOpen, addService } = useAdmin();
-  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (isAddServiceModalOpen) {
@@ -24,16 +21,14 @@ export const AddServiceModal = () => {
   }, [isAddServiceModalOpen]);
 
   const [form, setForm] = useState({
-    name: 'Shirt',
-    description: 'Regular shirt cleaning and pressing',
-    category: 'Wash & Fold',
+    name: '',
+    category: 'All Services',
+    subcategory: 'Men',
     price: 80,
     turnaround: '2–3 days',
-    status: true,
-    image: null
+    status: true
   });
 
-  const [imagePreview, setImagePreview] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -41,37 +36,51 @@ export const AddServiceModal = () => {
     if (isSubmitting) return;
     try {
       setIsSubmitting(true);
-      if (addService) {
+        const now = Date.now();
         await addService({
           ...form,
+          id: `srv_${now}`,
+          isCustom: true,
+          createdAt: now,
+          updatedAt: now,
+          name: form.name.trim(),
+          category: 'All Services',
+          subcategory: form.subcategory,
+          subcategoryId: form.subcategory.toLowerCase(),
+          subcatName: form.subcategory,
+          description: `${form.subcategory} · ${form.name.trim() || 'Laundry'} care`,
           price: Number(form.price) || 80,
+          turnaround: form.turnaround || '2–3 days',
           status: form.status ? 'Active' : 'Inactive',
-          image: imagePreview || form.image
+          applicableServices: [
+            'All Services',
+            'Wash and Fold',
+            'Wash and Iron',
+            'Steam Ironing',
+            'Dry Cleaning',
+            'Express Laundry'
+          ],
+          prices: {
+            'wash-fold': Number(form.price) || 80,
+            'wash-iron': Math.round((Number(form.price) || 80) * 1.25),
+            'steam-iron': Math.round((Number(form.price) || 80) * 0.5),
+            'dry-cleaning': Number(form.price) || 80,
+            'express-laundry': Math.round((Number(form.price) || 80) * 1.6)
+          }
         });
-      }
       setIsAddServiceModalOpen(false);
       setForm({
         name: '',
-        description: '',
-        category: 'Wash & Fold',
+        category: 'All Services',
+        subcategory: 'Men',
         price: '',
         turnaround: '2–3 days',
-        status: true,
-        image: null
+        status: true
       });
-      setImagePreview(null);
     } catch (err) {
       console.error('Error adding service:', err);
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleImageChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setImagePreview(url);
     }
   };
 
@@ -87,7 +96,7 @@ export const AddServiceModal = () => {
               <Tag size={20} strokeWidth={2} />
             </div>
             <div className="add-service-header-text">
-              <h2 className="add-service-title">Add Service</h2>
+              <h2 className="add-service-title">Add Items</h2>
               <p className="add-service-subtitle">Add, edit or manage your laundry services and pricing.</p>
             </div>
           </div>
@@ -108,22 +117,29 @@ export const AddServiceModal = () => {
             <label className="add-service-label">
               Service <span className="req-star">*</span>
             </label>
+            <div className="add-service-all-services-box">
+              <div className="add-service-all-services-pill">
+                <span className="add-service-all-services-dot" />
+                <span className="add-service-all-services-text">All Services</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Subcategory */}
+          <div className="add-service-field-group">
+            <label className="add-service-label">
+              Subcategory <span className="req-star">*</span>
+            </label>
             <div className="add-service-select-wrap">
               <select 
                 className="add-service-select"
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                value={form.subcategory}
+                onChange={(e) => setForm({ ...form, subcategory: e.target.value })}
               >
-                <option value="Wash & Fold">Wash & Fold</option>
-                <option value="Dry Cleaning">Dry Cleaning</option>
-                <option value="Steam Ironing">Steam Ironing</option>
+                <option value="Men">Men</option>
+                <option value="Women">Women</option>
+                <option value="Kids">Kids</option>
                 <option value="Household">Household</option>
-                <option value="Wash & Iron">Wash & Iron</option>
-                <option value="Express">Express</option>
-                <option value="Express Laundry">Express Laundry</option>
-                <option value="Shoe Laundry">Shoe Laundry</option>
-                <option value="Home Care">Home Care</option>
-                <option value="Clothing">Clothing</option>
               </select>
               <ChevronDown size={16} className="add-service-select-chevron" />
             </div>
@@ -144,23 +160,6 @@ export const AddServiceModal = () => {
             />
           </div>
 
-          {/* Description */}
-          <div className="add-service-field-group">
-            <label className="add-service-label">
-              Description <span className="req-star">*</span>
-            </label>
-            <textarea 
-              rows="3"
-              required
-              maxLength={200}
-              className="add-service-textarea"
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Regular shirt cleaning and pressing"
-            />
-            <span className="add-service-char-count">{form.description.length}/200</span>
-          </div>
-
           {/* Price (₹) */}
           <div className="add-service-field-group">
             <label className="add-service-label">
@@ -169,10 +168,11 @@ export const AddServiceModal = () => {
             <input 
               type="number"
               required
+              min="0"
               className="add-service-input"
               value={form.price}
               onChange={(e) => setForm({ ...form, price: e.target.value })}
-              placeholder="240"
+              placeholder="80"
             />
           </div>
 
@@ -209,42 +209,6 @@ export const AddServiceModal = () => {
                 <span className="add-service-switch-knob" />
               </button>
               <span className="add-service-status-text">{form.status ? 'Active' : 'Inactive'}</span>
-            </div>
-          </div>
-
-          {/* Service Image */}
-          <div className="add-service-field-group">
-            <label className="add-service-label">Service Image</label>
-            <div className="add-service-image-row">
-              <div className="add-service-thumb-placeholder">
-                {imagePreview ? (
-                  <img src={imagePreview} alt="Service preview" className="thumb-preview-img" />
-                ) : (
-                  <ImageIcon size={20} color="#A78BFA" />
-                )}
-              </div>
-
-              <div 
-                className="add-service-upload-card" 
-                onClick={() => fileInputRef.current?.click()}
-                role="button"
-                tabIndex={0}
-              >
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  accept="image/png, image/jpeg, image/jpg" 
-                  style={{ display: 'none' }}
-                  onChange={handleImageChange}
-                />
-                <div className="upload-icon-circle">
-                  <Upload size={15} color="#0D7A75" strokeWidth={2} />
-                </div>
-                <div className="upload-card-text">
-                  <span className="upload-main-text">Change Image</span>
-                  <span className="upload-sub-text">JPG, PNG (Max 2MB)</span>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -449,6 +413,44 @@ export const AddServiceModal = () => {
           color: #94A3B8;
           margin-top: 4px;
           font-weight: 500;
+        }
+
+        .add-service-all-services-box {
+          width: 100%;
+          height: 42px;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 12px;
+          background: #F8FAFC;
+          display: flex;
+          align-items: center;
+          padding: 0 10px;
+          box-sizing: border-box;
+          user-select: none;
+        }
+
+        .add-service-all-services-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          background: #E6F7F5;
+          color: #0D7A75;
+          font-size: 0.8125rem;
+          font-weight: 700;
+          padding: 4px 12px;
+          border-radius: 8px;
+          border: 1px solid #B2E5E1;
+        }
+
+        .add-service-all-services-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #0D7A75;
+          flex-shrink: 0;
+        }
+
+        .add-service-all-services-text {
+          letter-spacing: -0.01em;
         }
 
         .add-service-select-wrap {

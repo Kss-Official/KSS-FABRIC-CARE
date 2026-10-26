@@ -22,7 +22,7 @@ import {
   X
 } from 'lucide-react';
 import { OrderStatusDropdown } from '../components/common/OrderStatusDropdown';
-import { formatOrderId, calculateOrderTotal, isOrderMatchingStatus } from '../utils/helpers';
+import { formatOrderId, calculateOrderTotal, isOrderMatchingStatus, matchesOrderSearch } from '../utils/helpers';
 
 export const CustomerDashboard = () => {
   const { currentUser } = useAuth();
@@ -277,54 +277,6 @@ export const CustomerDashboard = () => {
     };
   }, [currentUser?.uid, currentUser?.email, fetchOrders, normalizeAndDedupeOrders]);
 
-  const filteredOrders = orders.filter(order => {
-    const term = (searchQuery || '').trim().toLowerCase();
-    const orderNo = (order.order_number || order.code || '').toLowerCase();
-    const formattedNo = formatOrderId(order.order_number || order.code || order.id).toLowerCase();
-    const addr = (order.pickup_address || '').toLowerCase();
-    const matchesSearch = !term || orderNo.includes(term) || formattedNo.includes(term) || addr.includes(term);
-
-    if (!matchesSearch) return false;
-    return isOrderMatchingStatus(order, activeTab);
-  });
-
-  const getStatusBadge = (status) => {
-    const s = String(status || '').toUpperCase().trim();
-    switch (s) {
-      case 'PENDING':
-      case 'PAYMENT_PENDING':
-        return <span className="badge badge-warning">Pending Approval</span>;
-      case 'PLACED':
-        return <span className="badge badge-info">Booking Confirmed</span>;
-      case 'ACCEPTED':
-      case 'PICKUP_ASSIGNED':
-      case 'PICKUP_SCHEDULED':
-      case 'PICKUP_IN_PROGRESS':
-        return <span className="badge badge-info">Pickup Scheduled</span>;
-      case 'PICKED_UP':
-      case 'RECEIVED_AT_LAUNDRY':
-        return <span className="badge badge-info">Received at Hub</span>;
-      case 'IN_PROCESS':
-      case 'WASHING':
-      case 'DRYING':
-      case 'IRONING':
-        return <span className="badge badge-primary">Processing ({status})</span>;
-      case 'QUALITY_CHECK':
-        return <span className="badge badge-primary">Quality Check</span>;
-      case 'PACKED':
-      case 'READY_FOR_DELIVERY':
-        return <span className="badge badge-success">Ready for Delivery</span>;
-      case 'OUT_FOR_DELIVERY':
-        return <span className="badge badge-warning">Out for Delivery</span>;
-      case 'DELIVERED':
-        return <span className="badge badge-success">Delivered</span>;
-      case 'CANCELLED':
-        return <span className="badge badge-danger">Cancelled</span>;
-      default:
-        return <span className="badge badge-secondary">{status}</span>;
-    }
-  };
-
   const getOrderServices = (order) => {
     if (!order) return 'Wash & Fold';
 
@@ -379,6 +331,49 @@ export const CustomerDashboard = () => {
     }
 
     return 'Wash & Fold';
+  };
+
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch = matchesOrderSearch(order, searchQuery, getOrderServices(order));
+    if (!matchesSearch) return false;
+    return isOrderMatchingStatus(order, activeTab);
+  });
+
+  const getStatusBadge = (status) => {
+    const s = String(status || '').toUpperCase().trim();
+    switch (s) {
+      case 'PENDING':
+      case 'PAYMENT_PENDING':
+        return <span className="badge badge-warning">Pending Approval</span>;
+      case 'PLACED':
+        return <span className="badge badge-info">Booking Confirmed</span>;
+      case 'ACCEPTED':
+      case 'PICKUP_ASSIGNED':
+      case 'PICKUP_SCHEDULED':
+      case 'PICKUP_IN_PROGRESS':
+        return <span className="badge badge-info">Pickup Scheduled</span>;
+      case 'PICKED_UP':
+      case 'RECEIVED_AT_LAUNDRY':
+        return <span className="badge badge-info">Received at Hub</span>;
+      case 'IN_PROCESS':
+      case 'WASHING':
+      case 'DRYING':
+      case 'IRONING':
+        return <span className="badge badge-primary">Processing ({status})</span>;
+      case 'QUALITY_CHECK':
+        return <span className="badge badge-primary">Quality Check</span>;
+      case 'PACKED':
+      case 'READY_FOR_DELIVERY':
+        return <span className="badge badge-success">Ready for Delivery</span>;
+      case 'OUT_FOR_DELIVERY':
+        return <span className="badge badge-warning">Out for Delivery</span>;
+      case 'DELIVERED':
+        return <span className="badge badge-success">Delivered</span>;
+      case 'CANCELLED':
+        return <span className="badge badge-danger">Cancelled</span>;
+      default:
+        return <span className="badge badge-secondary">{status}</span>;
+    }
   };
 
   return (

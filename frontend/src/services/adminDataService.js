@@ -12,7 +12,7 @@ import {
   limitToLast
 } from 'firebase/database';
 import { rtdb, auth } from '../config/firebase.js';
-import { addNotificationToUpdates, addRoleNotificationsToUpdates, getRoleUserIds } from './notificationService.js';
+import { addNotificationToUpdates, addRoleNotificationsToUpdates, getRoleUserIds, findUidByEmail } from './notificationService.js';
 import { 
   PRICING_ITEMS, 
   PRICING_SUBCATEGORIES,
@@ -406,35 +406,97 @@ export const adminOverrideOrderStatus = async (orderId, newStatus, auditNote, ad
 /**
  * 4. Reply to customer complaint
  */
-export const replyToSupportComplaint = async (complaintId, replyMessage, adminUser) => {
-  const compSnap = await get(ref(rtdb, `complaints/${complaintId}`));
-  if (!compSnap.exists()) throw new Error('Complaint ticket not found.');
-  const complaint = compSnap.val();
+export const replyToSupportComplaint = async (complaintId, replyMessage, adminUser, options = {}) => {
+  let complaint = null;
+  let isComplaintNode = false;
   const now = Date.now();
 
-  const msgPush = push(ref(rtdb, `complaintMessages/${complaintId}`));
-  const notifPush = push(ref(rtdb, `notifications/${complaint.customerId}`));
+  try {
+    const compSnap = await get(ref(rtdb, `complaints/${complaintId}`));
+    if (compSnap && compSnap.exists()) {
+      complaint = compSnap.val();
+      isComplaintNode = true;
+    }
+  } catch (_) {}
+
+  if (!complaint) {
+    try {
+      const supSnap = await get(ref(rtdb, `support_tickets/${complaintId}`));
+      if (supSnap && supSnap.exists()) {
+        complaint = supSnap.val();
+      }
+    } catch (_) {}
+  }
+
+  if (!complaint) {
+    try {
+      const allSupSnap = await get(ref(rtdb, 'support_tickets'));
+      if (allSupSnap && allSupSnap.exists()) {
+        const allVal = allSupSnap.val() || {};
+        for (const [k, v] of Object.entries(allVal)) {
+          if (k === String(complaintId) || String(v?.id) === String(complaintId) || String(v?.ticket_number) === String(complaintId)) {
+            complaint = v;
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Fallback minimal complaint object if not in RTDB yet
+  if (!complaint) {
+    complaint = {
+      id: complaintId,
+      ticket_number: String(complaintId).startsWith('#') ? complaintId : `#SUP-${complaintId}`
+    };
+  }
+
+  let targetCustomerId = complaint.customerId || complaint.customer_id || complaint.uid || options.customerId;
+  const custEmail = complaint.customer_email || complaint.customerEmail || options.customerEmail;
+  if (!targetCustomerId && custEmail) {
+    targetCustomerId = await findUidByEmail(custEmail);
+  }
 
   const updates = {};
-  updates[`complaints/${complaintId}/status`] = 'Resolved';
-  updates[`complaints/${complaintId}/updatedAt`] = now;
-  updates[`complaintMessages/${complaintId}/${msgPush.key}`] = {
-    id: msgPush.key,
-    senderUid: adminUser.uid,
-    senderRole: 'admin',
-    message: replyMessage,
-    sentAt: now
-  };
+  const isResolved = options.status === 'RESOLVED' || options.status === 'Resolved' || options.status === 'Closed';
+  const targetStatus = options.status || (isResolved ? 'RESOLVED' : 'IN_PROGRESS');
 
-  addNotificationToUpdates(updates, complaint.customerId, {
-    type: 'complaint_reply',
-    title: `Response to Ticket ${complaint.ticketId}`,
-    body: replyMessage,
-    orderId: complaint.orderId || null,
-    createdAt: now
+  if (isComplaintNode) {
+    const msgPush = push(ref(rtdb, `complaintMessages/${complaintId}`));
+    updates[`complaints/${complaintId}/status`] = isResolved ? 'Resolved' : 'In Progress';
+    updates[`complaints/${complaintId}/updatedAt`] = now;
+    updates[`complaintMessages/${complaintId}/${msgPush.key}`] = {
+      id: msgPush.key,
+      senderUid: adminUser?.uid || 'admin',
+      senderRole: 'admin',
+      message: replyMessage,
+      sentAt: now
+    };
+  }
+
+  const supKey = String(complaint.id || complaintId);
+  updates[`support_tickets/${supKey}/status`] = targetStatus;
+  updates[`support_tickets/${supKey}/admin_reply`] = replyMessage;
+  updates[`support_tickets/${supKey}/admin_reply_at`] = new Date(now).toISOString();
+  updates[`support_tickets/${supKey}/updatedAt`] = now;
+
+  const ticketNum = complaint.ticket_number || complaint.ticketNumber || complaint.ticketId || (String(complaintId).startsWith('#') ? complaintId : `#SUP-${complaintId}`);
+
+  if (targetCustomerId) {
+    addNotificationToUpdates(updates, targetCustomerId, {
+      type: isResolved ? 'support_resolved' : 'support_reply',
+      title: isResolved ? `Support Ticket Resolved: ${ticketNum}` : `Support Ticket Response: ${ticketNum}`,
+      body: replyMessage || (isResolved ? `Your ticket ${ticketNum} has been marked as resolved.` : 'Admin responded to your support ticket.'),
+      ticketId: ticketNum,
+      ticketNumber: ticketNum,
+      orderId: complaint.orderId || null,
+      createdAt: now
+    });
+  }
+
+  await update(ref(rtdb), updates).catch(err => {
+    console.warn('replyToSupportComplaint update error:', err);
   });
-
-  await update(ref(rtdb), updates);
 };
 
 /**
@@ -925,18 +987,63 @@ const syncServiceToDjango = async (action, serviceId, serviceData = {}) => {
 };
 
 /**
+ * Persistent storage helpers for admin custom items & deleted service IDs
+ */
+export const getStoredCustomServices = () => {
+  try {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('fabricare_custom_admin_services');
+      return stored ? JSON.parse(stored) : [];
+    }
+  } catch (_) {}
+  return [];
+};
+
+export const getStoredDeletedServiceIds = () => {
+  try {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('fabricare_deleted_service_ids');
+      return stored ? JSON.parse(stored) : [];
+    }
+  } catch (_) {}
+  return [];
+};
+
+export const mergeWithCustomAndDeleted = (baseServices = []) => {
+  const deletedIds = new Set(getStoredDeletedServiceIds().map(id => String(id).toLowerCase().trim()));
+  const customServices = getStoredCustomServices().filter(s => {
+    const id = String(s.id || '').toLowerCase().trim();
+    return !deletedIds.has(id) && !s.isDeleted && s.status !== 'Deleted';
+  });
+
+  // Sort custom services newest first
+  customServices.sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
+
+  const filteredBase = (baseServices || []).filter(s => {
+    const id = String(s.id || '').toLowerCase().trim();
+    return !deletedIds.has(id) && !s.isDeleted && s.status !== 'Deleted';
+  });
+
+  const customIdSet = new Set(customServices.map(s => String(s.id || '').toLowerCase().trim()));
+  const remainingBase = filteredBase.filter(s => !customIdSet.has(String(s.id || '').toLowerCase().trim()));
+
+  return [...customServices, ...remainingBase];
+};
+
+/**
  * Realtime subscription to services in Realtime Database
  */
 export const subscribeAdminServices = (onServicesUpdated, onError) => {
   const servicesRef = ref(rtdb, 'services');
   const unsub = onValue(servicesRef, (snap) => {
     if (!snap.exists()) {
-      onServicesUpdated(DEFAULT_SERVICES);
-      setLiveAdminCatalog(DEFAULT_SERVICES);
+      const fallbackMerged = mergeWithCustomAndDeleted(DEFAULT_SERVICES);
+      onServicesUpdated(fallbackMerged);
+      setLiveAdminCatalog(fallbackMerged);
       try {
-        localStorage.setItem('fabricare_admin_services', JSON.stringify(DEFAULT_SERVICES));
+        localStorage.setItem('fabricare_admin_services', JSON.stringify(fallbackMerged));
       } catch (_) {}
-      seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
+      seedAdminServicesIfEmpty(DEFAULT_SERVICES, false).catch(() => {});
       return;
     }
     const data = snap.val();
@@ -946,9 +1053,10 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
     const activeRawList = rawList.filter(s => !s.isDeleted && s.status !== 'Deleted');
 
     if (rawList.length === 0) {
-      seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
-      onServicesUpdated(DEFAULT_SERVICES);
-      setLiveAdminCatalog(DEFAULT_SERVICES);
+      seedAdminServicesIfEmpty(DEFAULT_SERVICES, false).catch(() => {});
+      const fallbackMerged = mergeWithCustomAndDeleted(DEFAULT_SERVICES);
+      onServicesUpdated(fallbackMerged);
+      setLiveAdminCatalog(fallbackMerged);
       return;
     }
 
@@ -984,16 +1092,19 @@ export const subscribeAdminServices = (onServicesUpdated, onError) => {
       };
     });
 
+    const mergedList = mergeWithCustomAndDeleted(list);
+
     // Synchronize live admin catalog in memory and storage
-    setLiveAdminCatalog(list);
+    setLiveAdminCatalog(mergedList);
     try {
-      localStorage.setItem('fabricare_admin_services', JSON.stringify(list));
+      localStorage.setItem('fabricare_admin_services', JSON.stringify(mergedList));
     } catch (_) {}
 
-    onServicesUpdated(list);
+    onServicesUpdated(mergedList);
   }, (err) => {
-    onServicesUpdated(DEFAULT_SERVICES);
-    setLiveAdminCatalog(DEFAULT_SERVICES);
+    const fallbackMerged = mergeWithCustomAndDeleted(DEFAULT_SERVICES);
+    onServicesUpdated(fallbackMerged);
+    setLiveAdminCatalog(fallbackMerged);
     if (onError) onError(err);
   });
 
@@ -1052,32 +1163,70 @@ export const seedAdminServicesIfEmpty = async (initialServices = DEFAULT_SERVICE
  */
 export const addAdminService = async (serviceData) => {
   const serviceId = String(serviceData.id || `srv_${Date.now()}`);
+  const now = Date.now();
+  const priceVal = Number(serviceData.price) || 80;
   const newService = {
     id: serviceId,
     name: serviceData.name || 'New Service',
     description: serviceData.description || '',
-    category: serviceData.category || 'Wash & Fold',
-    subcategory: serviceData.subcategory || 'men',
-    subcategoryId: serviceData.subcategory || 'men',
-    price: Number(serviceData.price) || 100,
+    category: serviceData.category || 'All Services',
+    subcategory: serviceData.subcategory || 'Men',
+    subcategoryId: (serviceData.subcategoryId || serviceData.subcategory || 'men').toLowerCase(),
+    subcatName: serviceData.subcatName || serviceData.subcategory || 'Men',
+    applicableServices: serviceData.applicableServices || [
+      'All Services',
+      'Wash and Fold',
+      'Wash and Iron',
+      'Steam Ironing',
+      'Dry Cleaning',
+      'Express Laundry'
+    ],
+    services: serviceData.applicableServices || [
+      'All Services',
+      'Wash and Fold',
+      'Wash and Iron',
+      'Steam Ironing',
+      'Dry Cleaning',
+      'Express Laundry'
+    ],
+    price: priceVal,
+    prices: serviceData.prices || {
+      'wash-fold': priceVal,
+      'wash-iron': Math.round(priceVal * 1.25),
+      'steam-iron': Math.round(priceVal * 0.5),
+      'dry-cleaning': priceVal,
+      'express-laundry': Math.round(priceVal * 1.6)
+    },
+    isExpressAvailable: true,
+    expressPrice: serviceData.expressPrice || Math.round(priceVal * 1.6),
     turnaround: serviceData.turnaround || '2–3 days',
     status: (serviceData.status === true || serviceData.status === 'Active') ? 'Active' : 'Inactive',
     is_active: (serviceData.status === true || serviceData.status === 'Active'),
     icon: serviceData.icon || 'Shirt',
-    type: serviceData.type || (Number(serviceData.price) > 200 ? 'Premium' : (String(serviceData.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard')),
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    type: serviceData.type || (priceVal > 200 ? 'Premium' : (String(serviceData.name || '').toLowerCase().includes('express') ? 'Express' : 'Standard')),
+    isCustom: true,
+    createdAt: serviceData.createdAt || now,
+    updatedAt: now
   };
+
   try {
     await set(ref(rtdb, `services/${serviceId}`), newService);
   } catch (e) {
     console.warn('RTDB add service notice:', e);
   }
 
-  // Update in localStorage and live catalog
+  // Update in persistent custom services and live catalog
   try {
+    const existingCustom = getStoredCustomServices();
+    const updatedCustom = [newService, ...existingCustom.filter(s => String(s.id) !== serviceId)];
+    localStorage.setItem('fabricare_custom_admin_services', JSON.stringify(updatedCustom));
+
+    // Remove from deleted list if previously marked deleted
+    const deletedIds = getStoredDeletedServiceIds().filter(id => String(id).toLowerCase().trim() !== serviceId.toLowerCase());
+    localStorage.setItem('fabricare_deleted_service_ids', JSON.stringify(deletedIds));
+
     const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
-    const next = [...cached, newService];
+    const next = [newService, ...cached.filter(s => String(s.id) !== serviceId)];
     localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
     setLiveAdminCatalog(next);
   } catch (_) {}
@@ -1110,8 +1259,12 @@ export const updateAdminService = async (serviceId, updateFields) => {
     console.warn('RTDB update service notice:', e);
   }
 
-  // Update in localStorage and live catalog
+  // Update in localStorage, custom list, and live catalog
   try {
+    const existingCustom = getStoredCustomServices();
+    const nextCustom = existingCustom.map(s => String(s.id) === cleanId ? { ...s, ...updates } : s);
+    localStorage.setItem('fabricare_custom_admin_services', JSON.stringify(nextCustom));
+
     const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
     const next = cached.map(s => String(s.id) === cleanId ? { ...s, ...updates } : s);
     localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
@@ -1149,10 +1302,17 @@ export const deleteAdminService = async (serviceId) => {
     console.warn('RTDB delete service notice:', e);
   }
 
-  // Update in localStorage and live catalog
+  // Permanently record deletion in deleted IDs and custom services
   try {
+    const deletedIds = Array.from(new Set([...getStoredDeletedServiceIds(), cleanId]));
+    localStorage.setItem('fabricare_deleted_service_ids', JSON.stringify(deletedIds));
+
+    const existingCustom = getStoredCustomServices();
+    const nextCustom = existingCustom.filter(s => String(s.id) !== cleanId);
+    localStorage.setItem('fabricare_custom_admin_services', JSON.stringify(nextCustom));
+
     const cached = JSON.parse(localStorage.getItem('fabricare_admin_services') || '[]');
-    const next = cached.filter(s => String(s.id) !== cleanId).map(s => String(s.id) === cleanId ? { ...s, ...deleteUpdates } : s);
+    const next = cached.filter(s => String(s.id) !== cleanId);
     localStorage.setItem('fabricare_admin_services', JSON.stringify(next));
     setLiveAdminCatalog(next);
   } catch (_) {}
@@ -1281,12 +1441,12 @@ export const fetchAdminServicesOnce = async () => {
 
 
 
-  if (list.length < 69) {
+  if (list.length === 0) {
     list = DEFAULT_SERVICES;
-    seedAdminServicesIfEmpty(DEFAULT_SERVICES, true).catch(() => {});
+    seedAdminServicesIfEmpty(DEFAULT_SERVICES, false).catch(() => {});
   }
 
-  return list.map(item => {
+  const normalized = list.map(item => {
     let cat = item.category || item.category_name || 'Wash & Fold';
     const nameLower = String(item.name || '').toLowerCase();
     if (item.subcategory === 'household' || nameLower.includes('bedsheet') || nameLower.includes('blanket') || nameLower.includes('curtain') || nameLower.includes('carpet')) {
@@ -1317,5 +1477,7 @@ export const fetchAdminServicesOnce = async () => {
       expressTurnaround: '24 hours'
     };
   });
+
+  return mergeWithCustomAndDeleted(normalized);
 };
 
