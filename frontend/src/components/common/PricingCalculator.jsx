@@ -91,6 +91,9 @@ export const PricingCalculator = () => {
   const [itemSearchQuery, setItemSearchQuery] = useState('');
   const [, setCatalogVersion] = useState(0);
 
+  // State 4: Mobile Responsive Segmented Tab ('rates' | 'estimator')
+  const [mobileTab, setMobileTab] = useState('rates');
+
   useEffect(() => {
     const handleUpdate = () => setCatalogVersion(v => v + 1);
     if (typeof window !== 'undefined') {
@@ -169,7 +172,7 @@ export const PricingCalculator = () => {
     { id: 'wash-fold', name: 'Wash & Fold (kg)', rate: 85, unit: 'kg', count: 2, icon: <Shirt size={18} strokeWidth={2.2} /> },
     { id: 'wash-iron', name: 'Wash & Iron (kg)', rate: 120, unit: 'kg', count: 1, icon: <IronIcon size={18} color="#087F8C" /> },
     { id: 'dry-cleaning', name: 'Dry Cleaning (pieces)', rate: 120, unit: 'item', count: 1, icon: <HangerIcon size={18} color="#087F8C" /> },
-    { id: 'steam-iron', name: 'Steam Iron (pieces)', rate: 20, unit: 'item', count: 2, icon: <IronIcon size={18} color="#087F8C" /> },
+    { id: 'steam-iron', name: 'Steam Iron (pieces)', rate: 20, unit: 'item', count: 3, icon: <IronIcon size={18} color="#087F8C" /> },
     { id: 'express-laundry', name: 'Express Laundry (items)', rate: 200, unit: 'item', count: 0, icon: <Zap size={18} color="#087F8C" strokeWidth={2.2} /> }
   ]);
 
@@ -184,6 +187,89 @@ export const PricingCalculator = () => {
   };
 
   const subtotal = estimatorItems.reduce((sum, item) => sum + (item.count * item.rate), 0);
+
+  // Mobile-specific data with exact laptop pricing preserved
+  const mobilePopularRates = [
+    {
+      id: 'wash-fold',
+      name: 'Wash & Fold',
+      priceNum: '₹85',
+      unit: '/kg',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z" />
+        </svg>
+      )
+    },
+    {
+      id: 'wash-iron',
+      name: 'Wash & Iron',
+      priceNum: '₹120',
+      unit: '/kg',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3c0 .8.4 1.5 1 2L2 14v2h20v-2L14 7c.6-.5 1-1.2 1-2a3 3 0 0 0-3-3z" />
+          <path d="M2 16h20" />
+          <path d="M12 10v6" />
+        </svg>
+      )
+    },
+    {
+      id: 'dry-cleaning',
+      name: 'Dry Cleaning',
+      priceNum: '₹120',
+      unit: '/item',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3c0 .8.4 1.5 1 2L2 14v2h20v-2L14 7c.6-.5 1-1.2 1-2a3 3 0 0 0-3-3z" />
+          <path d="M2 16h20" />
+        </svg>
+      )
+    },
+    {
+      id: 'steam-iron',
+      name: 'Steam Iron',
+      priceNum: '₹20',
+      unit: '/item',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 18h16a2 2 0 0 0 2-2c0-4-4-7-8-7H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2z" />
+          <path d="M4 9V6a2 2 0 0 1 2-2h8" />
+        </svg>
+      )
+    },
+    {
+      id: 'bed-blankets',
+      name: 'Bed Cover & Blankets',
+      priceNum: '₹190',
+      unit: '/item',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 4v16" />
+          <path d="M2 8h18a2 2 0 0 1 2 2v10" />
+          <path d="M2 17h20" />
+          <path d="M6 8v9" />
+        </svg>
+      )
+    },
+    {
+      id: 'curtains',
+      name: 'Curtain Cleaning',
+      priceNum: '₹130',
+      unit: '/piece',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="18" height="18" x="3" y="3" rx="2" />
+          <path d="M12 3v18" />
+          <path d="M3 12h18" />
+        </svg>
+      )
+    }
+  ];
+
+  const mobileEstimatorSubtotal = estimatorItems
+    .filter(it => ['wash-fold', 'dry-cleaning', 'steam-iron'].includes(it.id))
+    .reduce((sum, it) => sum + (it.rate * it.count), 0);
 
   // Helper for Category Icon
   const renderCategoryIcon = (iconName) => {
@@ -218,8 +304,10 @@ export const PricingCalculator = () => {
   return (
     <section className="pricing-section" id="pricing-section">
       <div className="container">
-        {/* Section Header */}
-        <div className="text-center pricing-head-wrap">
+        {/* Desktop View - 100% UNTOUCHED for laptops / wide screens */}
+        <div className="pricing-desktop-view">
+          {/* Section Header */}
+          <div className="text-center pricing-head-wrap">
           <div className="pricing-eyebrow-pill">
             <Tag size={13} strokeWidth={2.5} />
             <span>SIMPLE PRICING</span>
@@ -721,9 +809,189 @@ export const PricingCalculator = () => {
             </div>
           </div>
         </div>
+        </div>
+
+        {/* Mobile View - Matching Reference Mockups (with exact laptop data preserved) */}
+        <div className="pricing-mobile-view">
+          <div className="mobile-pricing-header text-center">
+            <div className="mobile-pricing-eyebrow">
+              <span className="eyebrow-line" />
+              <span>OUR PRICING</span>
+              <span className="eyebrow-line" />
+            </div>
+            <h2 className="mobile-pricing-title">
+              No Hidden Fees. <br />
+              <span className="highlight">Pure Transparency.</span>
+            </h2>
+            <p className="mobile-pricing-sub">
+              Explore our most popular services with simple, transparent pricing.
+            </p>
+          </div>
+
+          {/* Segmented Tab Controls */}
+          <div className="mobile-pricing-tabs-wrapper">
+            <div className="mobile-pricing-tabs-pill">
+              <button
+                type="button"
+                className={`mobile-tab-btn ${mobileTab === 'rates' ? 'active' : ''}`}
+                onClick={() => setMobileTab('rates')}
+              >
+                Popular Flat Rates
+              </button>
+              <button
+                type="button"
+                className={`mobile-tab-btn ${mobileTab === 'estimator' ? 'active' : ''}`}
+                onClick={() => setMobileTab('estimator')}
+              >
+                Instant Estimator
+              </button>
+            </div>
+          </div>
+
+          {/* Tab 1 Content: Popular Flat Rates */}
+          {mobileTab === 'rates' && (
+            <div className="mobile-flat-rates-stack animate-fade-in">
+              {mobilePopularRates.map((item) => (
+                <div
+                  key={item.id}
+                  className="mobile-flat-rate-card"
+                  onClick={() => setMobileTab('estimator')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="mobile-rate-left">
+                    <div className="mobile-rate-icon-box">
+                      {item.icon}
+                    </div>
+                    <span className="mobile-rate-name">{item.name}</span>
+                  </div>
+                  <div className="mobile-rate-right">
+                    <span className="mobile-rate-price-num">{item.priceNum}</span>
+                    <span className="mobile-rate-price-unit">{item.unit}</span>
+                    <ArrowRight size={14} className="mobile-rate-arrow" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tab 2 Content: Instant Estimator Card */}
+          {mobileTab === 'estimator' && (
+            <div className="mobile-estimator-card animate-fade-in">
+              <h3 className="mobile-estimator-title">Instant Estimator</h3>
+              <p className="mobile-estimator-sub">Select items below to get an estimated total.</p>
+
+              <div className="mobile-estimator-items-list">
+                {estimatorItems
+                  .filter((item) => ['wash-fold', 'dry-cleaning', 'steam-iron'].includes(item.id))
+                  .map((item) => {
+                    const match = item.name.match(/^(.*?)\s*(\(.*?\))?$/);
+                    const mainName = match ? match[1] : item.name;
+                    const unitTag = match && match[2] ? match[2] : `(${item.unit})`;
+
+                    return (
+                      <div key={item.id} className="mobile-estimator-item-card">
+                        <div className="mobile-est-left">
+                          <div className="mobile-est-icon-circle">
+                            {item.icon}
+                          </div>
+                          <div className="mobile-est-info">
+                            <h4 className="mobile-est-name">
+                              {mainName} <br />
+                              <span className="mobile-est-unit-tag">{unitTag}</span>
+                            </h4>
+                            <span className="mobile-est-rate">₹ {item.rate} / {item.unit}</span>
+                          </div>
+                        </div>
+
+                        <div className="mobile-est-stepper">
+                          <button
+                            type="button"
+                            className="mobile-stepper-btn"
+                            onClick={() => updateCount(item.id, -1)}
+                            disabled={item.count === 0}
+                            aria-label={`Decrease ${item.name}`}
+                          >
+                            <Minus size={13} strokeWidth={2.5} />
+                          </button>
+                          <span className="mobile-stepper-val">{item.count}</span>
+                          <button
+                            type="button"
+                            className="mobile-stepper-btn"
+                            onClick={() => updateCount(item.id, 1)}
+                            aria-label={`Increase ${item.name}`}
+                          >
+                            <Plus size={13} strokeWidth={2.5} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              {/* Estimated Subtotal Highlight Box */}
+              <div className="mobile-subtotal-box">
+                <div className="mobile-subtotal-row">
+                  <span className="mobile-subtotal-label">Estimated Subtotal</span>
+                  <span className="mobile-subtotal-amount">₹ {mobileEstimatorSubtotal}</span>
+                </div>
+                <div className="mobile-subtotal-note">
+                  <CheckCircle2 size={16} strokeWidth={2.5} color="#087F8C" />
+                  <span>Includes standard handling and quality care.</span>
+                </div>
+              </div>
+
+              {/* Book Pickup Button */}
+              <button
+                type="button"
+                className="mobile-book-pickup-btn"
+                onClick={() => {
+                  if (mobileEstimatorSubtotal === 0) {
+                    alert('Please select at least one item to proceed with booking.');
+                    return;
+                  }
+                  startBooking(1);
+                }}
+              >
+                <span>Book a Pickup Now</span>
+                <ArrowRight size={18} strokeWidth={2.4} />
+              </button>
+
+              {/* Trust Badges */}
+              <div className="mobile-estimator-trust-row">
+                <div className="mobile-trust-col">
+                  <div className="mobile-trust-icon-circle">
+                    <Truck size={18} strokeWidth={2.2} color="#087F8C" />
+                  </div>
+                  <span className="mobile-trust-text">Free Pickup<br />&amp; Drop</span>
+                </div>
+                <div className="mobile-trust-col">
+                  <div className="mobile-trust-icon-circle">
+                    <ShieldCheck size={18} strokeWidth={2.2} color="#087F8C" />
+                  </div>
+                  <span className="mobile-trust-text">Safe &amp; Hygienic<br />Handling</span>
+                </div>
+                <div className="mobile-trust-col">
+                  <div className="mobile-trust-icon-circle">
+                    <Leaf size={18} strokeWidth={2.2} color="#087F8C" />
+                  </div>
+                  <span className="mobile-trust-text">Trusted by<br />1000+ Customers</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <style>{`
+        .pricing-desktop-view {
+          display: block;
+        }
+
+        .pricing-mobile-view {
+          display: none;
+        }
+
         .pricing-section {
           padding: 100px 0;
           background: #FFFFFF;
@@ -1881,26 +2149,385 @@ export const PricingCalculator = () => {
           }
         }
 
-        @media (max-width: 640px) {
-          .pricing-main-title {
-            font-size: 30px;
+        @media (max-width: 768px) {
+          .pricing-section {
+            padding: 44px 0 54px !important;
           }
-          .estimator-card {
-            padding: 24px 20px;
+          .pricing-desktop-view {
+            display: none !important;
           }
-          .estimator-trust-row {
-            grid-template-columns: 1fr;
+          .pricing-mobile-view {
+            display: block !important;
+            max-width: 440px !important;
+            margin: 0 auto !important;
+            padding: 0 4px !important;
+          }
+          .mobile-pricing-header {
+            text-align: center;
+            margin-bottom: 24px;
+          }
+          .mobile-pricing-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 12.5px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: #087F8C;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+          }
+          .mobile-pricing-eyebrow .eyebrow-line {
+            width: 24px;
+            height: 2px;
+            background-color: #087F8C;
+            border-radius: 2px;
+          }
+          .mobile-pricing-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 28px;
+            font-weight: 800;
+            color: #12263A;
+            line-height: 1.18;
+            letter-spacing: -0.6px;
+            margin: 0 0 10px;
+          }
+          .mobile-pricing-title .highlight {
+            color: #087F8C;
+          }
+          .mobile-pricing-sub {
+            font-family: 'Inter', sans-serif;
+            font-size: 13.5px;
+            color: #556980;
+            line-height: 1.55;
+            max-width: 320px;
+            margin: 0 auto;
+          }
+          .mobile-pricing-tabs-wrapper {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 22px;
+          }
+          .mobile-pricing-tabs-pill {
+            background: #F1F5F9;
+            border-radius: 9999px;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            width: 100%;
+            max-width: 360px;
+          }
+          .mobile-tab-btn {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 9999px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #475569;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+          }
+          .mobile-tab-btn.active {
+            background: #087F8C;
+            color: #FFFFFF;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(8, 127, 140, 0.25);
+          }
+          .mobile-flat-rates-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+          .mobile-flat-rate-card {
+            background: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 18px;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(18, 38, 58, 0.03);
+            cursor: pointer;
+            transition: all 0.15s ease;
+          }
+          .mobile-flat-rate-card:active {
+            transform: scale(0.99);
+            border-color: #087F8C;
+          }
+          .mobile-rate-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+          }
+          .mobile-rate-icon-box {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            background: #F0FAF9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: #087F8C;
+          }
+          .mobile-rate-name {
+            font-family: 'Poppins', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            color: #12263A;
+          }
+          .mobile-rate-right {
+            display: flex;
+            align-items: baseline;
+            gap: 2px;
+          }
+          .mobile-rate-price-num {
+            font-family: 'Poppins', sans-serif;
+            font-size: 16px;
+            font-weight: 800;
+            color: #087F8C;
+          }
+          .mobile-rate-price-unit {
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748B;
+            margin-right: 4px;
+          }
+          .mobile-rate-arrow {
+            color: #94A3B8;
+            stroke-width: 2.2;
+            align-self: center;
+          }
+          .mobile-estimator-card {
+            background: #FFFFFF;
+            border: 1.5px solid #D8F1EE;
+            border-radius: 26px;
+            padding: 24px 18px;
+            box-shadow: 0 10px 30px rgba(8, 127, 140, 0.06);
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+          }
+          .mobile-estimator-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 24px;
+            font-weight: 800;
+            color: #12263A;
+            margin: 0 0 4px;
+            text-align: left;
+          }
+          .mobile-estimator-sub {
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            color: #64748B;
+            margin: 0 0 20px;
+            text-align: left;
+          }
+          .mobile-estimator-items-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 16px;
+          }
+          .mobile-estimator-item-card {
+            background: #FFFFFF;
+            border: 1.5px solid #E6F4F2;
+            border-radius: 18px;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-sizing: border-box;
+          }
+          .mobile-est-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+          .mobile-est-icon-circle {
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            background: #E0F7F6;
+            color: #087F8C;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+          }
+          .mobile-est-info {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+          }
+          .mobile-est-name {
+            font-family: 'Poppins', sans-serif;
+            font-size: 14.5px;
+            font-weight: 700;
+            color: #12263A;
+            margin: 0;
+            line-height: 1.2;
+          }
+          .mobile-est-unit-tag {
+            font-size: 12px;
+            font-weight: 600;
+            color: #12263A;
+          }
+          .mobile-est-rate {
+            font-family: 'Inter', sans-serif;
+            font-size: 12.5px;
+            color: #64748B;
+            margin-top: 2px;
+          }
+          .mobile-est-stepper {
+            background: #EAF8F6;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px 12px;
+          }
+          .mobile-stepper-btn {
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            color: #087F8C;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .mobile-stepper-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+          }
+          .mobile-stepper-val {
+            font-family: 'Poppins', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            color: #12263A;
+            min-width: 14px;
+            text-align: center;
+          }
+          .mobile-subtotal-box {
+            background: #EAF8F6;
+            border-radius: 18px;
+            padding: 16px 18px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
             gap: 8px;
           }
-          .subcategories-pill-row {
-            grid-template-columns: 1fr 1fr;
+          .mobile-subtotal-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
           }
-          .items-search-box {
+          .mobile-subtotal-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            color: #475569;
+          }
+          .mobile-subtotal-amount {
+            font-family: 'Poppins', sans-serif;
+            font-size: 26px;
+            font-weight: 800;
+            color: #087F8C;
+          }
+          .mobile-subtotal-note {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            color: #087F8C;
+          }
+          .mobile-book-pickup-btn {
             width: 100%;
+            height: 52px;
+            border-radius: 9999px;
+            background: #FF6046;
+            color: #FFFFFF;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 700;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(255, 96, 70, 0.35);
+            margin-bottom: 22px;
+            transition: transform 0.15s ease;
           }
-          .items-dropdown-toolbar {
+          .mobile-book-pickup-btn:active {
+            transform: scale(0.98);
+          }
+          .mobile-estimator-trust-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding-top: 14px;
+            border-top: 1px solid #EEF2F6;
+          }
+          .mobile-trust-col {
+            display: flex;
             flex-direction: column;
-            align-items: flex-start;
+            align-items: center;
+            text-align: center;
+            gap: 6px;
+            padding: 0 4px;
+          }
+          .mobile-trust-col:not(:last-child) {
+            border-right: 1px solid #E2E8F0;
+          }
+          .mobile-trust-icon-circle {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: #E0F7F6;
+            color: #087F8C;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .mobile-trust-text {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            color: #556980;
+            line-height: 1.25;
+            text-align: center;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .mobile-pricing-title {
+            font-size: 25px;
+          }
+          .mobile-pricing-sub {
+            font-size: 12.5px;
+          }
+          .mobile-estimator-title {
+            font-size: 22px;
+          }
+          .mobile-est-name {
+            font-size: 13.5px;
+          }
+          .mobile-est-rate {
+            font-size: 11.5px;
+          }
+          .mobile-trust-text {
+            font-size: 10px;
           }
         }
       `}</style>

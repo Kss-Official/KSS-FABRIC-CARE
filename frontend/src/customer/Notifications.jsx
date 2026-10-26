@@ -1229,6 +1229,65 @@ export const Notifications = () => {
           background: #0D7A75;
           color: #ffffff;
         }
+
+        @media (max-width: 768px) {
+          .notifications-portal {
+            padding: 8px 0 16px 0 !important;
+          }
+
+          .notifications-main-title {
+            font-size: 1.45rem !important;
+          }
+
+          .notifications-main-subtitle {
+            font-size: 0.8125rem !important;
+          }
+
+          .notifications-main-card {
+            padding: 16px 14px !important;
+            border-radius: 16px !important;
+          }
+
+          .notifications-toolbar {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+          }
+
+          .notifications-search-wrapper {
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+
+          .notifications-search-input {
+            width: 100% !important;
+            height: 40px !important;
+            font-size: 14px !important;
+            box-sizing: border-box;
+          }
+
+          .notifications-filter-bar {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            padding-bottom: 6px !important;
+            gap: 6px !important;
+          }
+
+          .filter-tab {
+            flex-shrink: 0 !important;
+            padding: 6px 12px !important;
+            font-size: 0.75rem !important;
+          }
+
+          .notification-card {
+            padding: 14px 12px !important;
+            border-radius: 14px !important;
+          }
+
+          .notification-content {
+            gap: 6px !important;
+          }
+        }
       `}</style>
     </div>
   );

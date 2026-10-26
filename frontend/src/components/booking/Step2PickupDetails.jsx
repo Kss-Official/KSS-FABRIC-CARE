@@ -78,8 +78,8 @@ export const Step2PickupDetails = () => {
           </div>
 
           <div className="form-fields-container">
-            {/* Full Name Field */}
-            <div className="form-group">
+            {/* Full Name Field (Desktop only) */}
+            <div className="form-group desktop-only-field">
               <label className="form-label">Full Name</label>
               <div className="input-with-icon">
                 <span className="input-icon left-icon">
@@ -137,7 +137,7 @@ export const Step2PickupDetails = () => {
                   className="form-input with-right-action"
                   value={pickupDetails.address || ''}
                   onChange={(e) => setPickupDetails(prev => ({ ...prev, address: e.target.value }))}
-                  placeholder="Banaswadi, Bengaluru - 560043"
+                  placeholder="Banaswadi, Bengaluru – 560043"
                 />
                 <button
                   type="button"
@@ -202,8 +202,8 @@ export const Step2PickupDetails = () => {
             </div>
           </div>
 
-          {/* Carousel / Pagination Row inside parent card */}
-          <div className="card-pagination-row">
+          {/* Desktop Carousel / Pagination Row inside parent card */}
+          <div className="card-pagination-row desktop-only-pagination">
             <button
               className="pagination-circle-btn"
               onClick={() => setCurrentStep(1)}
@@ -226,6 +226,45 @@ export const Step2PickupDetails = () => {
               disabled={!canProceed}
             >
               <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* Mobile Step 2 Bottom Navigation */}
+          <div className="mobile-step2-bottom-bar mobile-only-bar">
+            <div className="card-pagination-row">
+              <button
+                className="pagination-circle-btn"
+                onClick={() => setCurrentStep(1)}
+                aria-label="Previous step"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              <div className="pagination-dots">
+                <span className="dot" onClick={() => setCurrentStep(1)}></span>
+                <span className="dot active"></span>
+                <span className="dot" onClick={() => canProceed && setCurrentStep(3)}></span>
+                <span className="dot" onClick={() => canProceed && setCurrentStep(4)}></span>
+              </div>
+
+              <button
+                className="pagination-circle-btn"
+                onClick={() => canProceed && setCurrentStep(3)}
+                aria-label="Next step"
+                disabled={!canProceed}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="mobile-full-next-btn"
+              onClick={() => canProceed && setCurrentStep(3)}
+              disabled={!canProceed}
+            >
+              <span>Next</span>
+              <ArrowRight size={18} />
             </button>
           </div>
         </div>
@@ -705,12 +744,254 @@ export const Step2PickupDetails = () => {
           cursor: not-allowed;
         }
 
+        .mobile-only-bar {
+          display: none;
+        }
+
         @media (max-width: 960px) {
           .booking-layout-grid {
             grid-template-columns: 1fr;
           }
           .trust-side-card {
             padding: 24px;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .trust-side-card,
+          .desktop-only-field,
+          .desktop-only-pagination {
+            display: none !important;
+          }
+
+          .pickup-parent-card {
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+          }
+
+          .step-header {
+            margin-bottom: 22px;
+            text-align: left;
+          }
+
+          .step-count {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #8492A6;
+            margin-bottom: 6px;
+            display: inline-block;
+          }
+
+          .step-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 1.65rem;
+            font-weight: 800;
+            color: #12263A;
+            margin: 0 0 6px 0;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+          }
+
+          .step-subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            color: #718096;
+            margin: 0 0 20px 0;
+          }
+
+          .form-label {
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #12263A;
+            margin-bottom: 8px;
+            display: block;
+          }
+
+          .form-input {
+            height: 48px;
+            border-radius: 14px;
+            border: 1.5px solid #E2E8F0;
+            font-size: 0.95rem;
+            color: #12263A;
+            font-weight: 500;
+            padding-left: 44px;
+          }
+
+          .form-input.phone-input {
+            padding-left: 78px;
+          }
+
+          .phone-prefix-badge {
+            position: absolute;
+            left: 42px;
+            font-weight: 600;
+            color: #12263A;
+            font-size: 0.95rem;
+            z-index: 2;
+          }
+
+          .input-helper-text {
+            font-size: 0.78rem;
+            color: #718096;
+            margin-top: 6px;
+          }
+
+          .add-landmark-link {
+            color: #087F8C;
+            font-size: 0.875rem;
+            font-weight: 600;
+            background: none;
+            border: none;
+            padding: 8px 0;
+            cursor: pointer;
+            margin-top: 4px;
+            display: inline-block;
+          }
+
+          .same-address-card {
+            background: #EAF8F7;
+            border: 1.5px solid #D4F0EE;
+            border-radius: 18px;
+            padding: 16px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 20px;
+          }
+
+          .home-icon-box {
+            background: #FFFFFF;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #087F8C;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(8, 127, 140, 0.08);
+          }
+
+          .same-address-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #12263A;
+            margin: 0 0 3px 0;
+          }
+
+          .same-address-sub {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            color: #556980;
+            margin: 0;
+            line-height: 1.35;
+          }
+
+          .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 26px;
+            flex-shrink: 0;
+          }
+
+          .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #CBD5E1;
+            transition: 0.3s;
+            border-radius: 34px;
+          }
+
+          .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+          }
+
+          input:checked + .toggle-slider {
+            background-color: #087F8C;
+          }
+
+          input:checked + .toggle-slider:before {
+            transform: translateX(22px);
+          }
+
+          .mobile-step2-bottom-bar.mobile-only-bar {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 18px !important;
+            margin-top: 24px !important;
+            width: 100% !important;
+          }
+
+          .mobile-step2-bottom-bar .card-pagination-row {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 16px !important;
+            width: 100% !important;
+          }
+
+          .mobile-step2-bottom-bar .pagination-dots {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+          }
+
+          .mobile-step2-bottom-bar .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #CBD5E1;
+            transition: all 0.2s;
+            cursor: pointer;
+          }
+
+          .mobile-step2-bottom-bar .dot.active {
+            background: #087F8C;
+            width: 9px;
+            height: 9px;
+          }
+
+          .mobile-full-next-btn {
+            width: 100% !important;
+            height: 48px !important;
+            background: #087F8C !important;
+            color: #FFFFFF !important;
+            border-radius: 999px !important;
+            font-size: 1rem !important;
+            font-weight: 700 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            border: none !important;
+            box-shadow: 0 4px 14px rgba(8, 127, 140, 0.25) !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+          }
+
+          .mobile-full-next-btn:disabled {
+            opacity: 0.5 !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
           }
         }
       `}</style>

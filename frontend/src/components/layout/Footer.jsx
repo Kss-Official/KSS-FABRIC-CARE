@@ -784,7 +784,7 @@ export const Footer = () => {
         }
 
         /* Responsive Breakpoints */
-        @media (max-width: 1080px) {
+        @media (max-width: 1080px) and (min-width: 769px) {
           .footer-main-grid {
             grid-template-columns: 1fr 1fr;
             gap: 40px 24px;
@@ -800,31 +800,158 @@ export const Footer = () => {
           }
         }
 
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
           .footer-inner-container {
-            padding: 48px 20px 24px;
+            padding: 44px 20px calc(24px + env(safe-area-inset-bottom, 0px));
           }
           .footer-main-grid {
-            grid-template-columns: 1fr;
-            gap: 36px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 28px 18px;
           }
           .footer-col {
             padding: 0;
+            border-right: none;
+          }
+          .footer-col-brand {
+            grid-column: 1 / -1;
+            border-right: none;
+            padding-bottom: 4px;
+          }
+          .footer-logo-title {
+            font-size: 26px;
+            margin-bottom: 12px;
+            gap: 10px;
+          }
+          .footer-brand-logo-img {
+            width: 32px;
+            height: 32px;
+          }
+          .footer-slogan {
+            font-size: 14.5px;
+            margin-bottom: 6px;
           }
           .footer-desc {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #8FA4B0;
             max-width: 100%;
+            margin-bottom: 18px;
+          }
+          .footer-social-row {
+            gap: 10px;
+          }
+          .footer-social-circle {
+            width: 36px;
+            height: 36px;
+            background: #0C2836;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+          }
+          .footer-col-links {
+            grid-column: 1 / 2;
+            border-right: none;
+          }
+          .footer-col-services {
+            grid-column: 2 / 3;
+            border-right: none;
+          }
+          .footer-heading {
+            font-size: 14.5px;
+            font-weight: 700;
+            color: #FFFFFF;
+            margin: 0 0 12px;
+            letter-spacing: -0.01em;
+          }
+          .footer-nav-list {
+            gap: 9px;
+          }
+          .footer-nav-link {
+            font-size: 13px;
+            padding: 3px 0;
+            color: #94A8B5;
+          }
+          .footer-col-contact {
+            grid-column: 1 / -1;
+            padding-top: 22px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+          }
+          .footer-contact-list {
+            gap: 12px;
+            margin-bottom: 20px;
+          }
+          .footer-contact-item {
+            gap: 12px;
+          }
+          .contact-icon-bubble {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: #0A3A45;
+            color: #00CED1;
+          }
+          .contact-item-text {
+            font-size: 13px;
+            color: #D1DCE5;
           }
           .footer-cta-pill-btn {
-            max-width: 100%;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: 48px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #FF6B54 0%, #FF5639 100%);
+            box-shadow: 0 6px 20px rgba(255, 107, 84, 0.32);
           }
           .footer-bottom-bar {
             flex-direction: column;
+            align-items: center;
             text-align: center;
-            gap: 12px;
-            margin-top: 40px;
+            gap: 10px;
+            margin-top: 28px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+          }
+          .footer-copyright-text {
+            font-size: 12px;
+            color: #768C9A;
           }
           .footer-legal-links {
+            display: flex;
+            align-items: center;
             justify-content: center;
+            gap: 12px;
+          }
+          .footer-legal-link {
+            font-size: 12px;
+            color: #8FA4B0;
+          }
+          .footer-legal-divider {
+            color: rgba(255, 255, 255, 0.25);
+            font-size: 11px;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .footer-inner-container {
+            padding: 38px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+          }
+          .footer-main-grid {
+            gap: 24px 12px;
+          }
+          .footer-logo-title {
+            font-size: 24px;
+          }
+          .footer-nav-link {
+            font-size: 12.5px;
+          }
+          .footer-cta-pill-btn {
+            height: 46px;
+            font-size: 14px;
           }
         }
       `}</style>

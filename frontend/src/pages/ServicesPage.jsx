@@ -355,6 +355,7 @@ export const ServicesPage = () => {
       {/* 1. HERO BANNER WITH WHITE FADE OVERLAY & HEADINGS */}
       <PageHeroBanner
         bgImage="/assets/services-hero.png"
+        eyebrow="OUR SERVICES"
         heading="Our Services"
         subtitle="Professional Garment Care & Premium Dry Cleaning"
         altText="FabriCare Professional Garment Care and Dry Cleaning Specialist"
@@ -456,8 +457,10 @@ export const ServicesPage = () => {
                 <div key={step.num} className="process-step-node">
                   <div className="step-num-pill">{step.num}</div>
                   <div className="step-circle-bubble">{step.icon}</div>
-                  <h4 className="step-title">{step.title}</h4>
-                  <p className="step-desc">{step.desc}</p>
+                  <div className="step-text-wrap">
+                    <h4 className="step-title">{step.title}</h4>
+                    <p className="step-desc">{step.desc}</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -887,6 +890,13 @@ export const ServicesPage = () => {
           box-shadow: 0 0 0 10px #D3EFEA, 0 8px 20px rgba(8, 127, 140, 0.15);
         }
 
+        .step-text-wrap {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+
         .step-title {
           font-family: 'Poppins', sans-serif;
           font-size: 14.5px;
@@ -1220,7 +1230,7 @@ export const ServicesPage = () => {
         /* ==========================================================================
            RESPONSIVE STYLING
            ========================================================================== */
-        @media (max-width: 1024px) {
+        @media (max-width: 1024px) and (min-width: 769px) {
           .beyond-cleaning-grid {
             grid-template-columns: 1fr;
             gap: 40px;
@@ -1245,42 +1255,294 @@ export const ServicesPage = () => {
             max-height: 320px;
             object-position: top center;
           }
+
+          /* Part 1: Care That Goes Beyond Cleaning */
+          .beyond-cleaning-section {
+            padding: 40px 0 50px !important;
+            background: #FFFFFF !important;
+          }
+          .beyond-cleaning-grid {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 24px !important;
+            max-width: 440px !important;
+            margin: 0 auto !important;
+          }
+          .beyond-img-card {
+            border-radius: 24px !important;
+            overflow: hidden !important;
+            box-shadow: 0 10px 28px rgba(18, 38, 58, 0.08) !important;
+            width: 100% !important;
+          }
+          .beyond-specialist-photo {
+            border-radius: 24px !important;
+            width: 100% !important;
+            height: auto !important;
+            max-height: 290px !important;
+            object-fit: cover !important;
+            display: block !important;
+          }
+          .beyond-right-col {
+            text-align: left !important;
+          }
+          .beyond-eyebrow-text {
+            font-size: 13px !important;
+            font-weight: 800 !important;
+            letter-spacing: 1.5px !important;
+            color: #087F8C !important;
+            margin-bottom: 8px !important;
+          }
           .beyond-section-title {
-            font-size: 32px;
+            font-size: 28px !important;
+            font-weight: 800 !important;
+            color: #12263A !important;
+            line-height: 1.2 !important;
+            letter-spacing: -0.5px !important;
+            margin: 0 0 12px !important;
+          }
+          .beyond-body-text {
+            font-size: 13.5px !important;
+            line-height: 1.6 !important;
+            color: #556980 !important;
+            margin: 0 0 24px !important;
+            max-width: 100% !important;
           }
           .beyond-features-row {
-            grid-template-columns: repeat(2, 1fr);
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 12px !important;
+          }
+          .beyond-feature-item {
+            background: #FFFFFF !important;
+            border: 1.5px solid #E6EFF0 !important;
+            border-radius: 18px !important;
+            padding: 18px 12px !important;
+            box-shadow: 0 4px 14px rgba(18, 38, 58, 0.04) !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            text-align: center !important;
+            gap: 8px !important;
+          }
+          .beyond-circle-icon {
+            width: 48px !important;
+            height: 48px !important;
+            border-radius: 50% !important;
+            background: #E0F7F6 !important;
+            color: #087F8C !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            margin-bottom: 2px !important;
+          }
+          .beyond-feature-name {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            line-height: 1.25 !important;
+          }
+
+          /* Part 2: Our Dry Cleaning Process (Vertical Timeline Stepper) */
+          .dry-process-section {
+            padding: 48px 0 54px !important;
+            background: #F0F9F8 !important;
+          }
+          .process-header-wrap {
+            margin-bottom: 32px !important;
+          }
+          .process-header-title {
+            font-size: 27px !important;
+            font-weight: 800 !important;
+            letter-spacing: -0.5px !important;
+            margin: 0 0 8px !important;
+          }
+          .process-header-sub {
+            font-size: 13px !important;
+            color: #556980 !important;
+            max-width: 320px !important;
+            margin: 0 auto !important;
+            line-height: 1.45 !important;
+          }
+          .process-timeline-wrapper {
+            position: relative !important;
+            max-width: 440px !important;
+            margin: 0 auto !important;
+            padding: 10px 0 !important;
+          }
+          .process-timeline-line {
+            display: block !important;
+            position: absolute !important;
+            top: 24px !important;
+            bottom: 24px !important;
+            left: 60px !important;
+            right: auto !important;
+            width: 2px !important;
+            height: auto !important;
+            background: #9DE0D9 !important;
+            z-index: 1 !important;
           }
           .process-steps-grid {
-            grid-template-columns: repeat(2, 1fr);
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 20px !important;
+            position: relative !important;
+            z-index: 2 !important;
+          }
+          .process-step-node {
+            display: grid !important;
+            grid-template-columns: 28px 46px 1fr !important;
+            align-items: center !important;
+            gap: 12px !important;
+            text-align: left !important;
+          }
+          .step-num-pill {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 13px !important;
+            font-weight: 800 !important;
+            color: #087F8C !important;
+            text-align: right !important;
+            margin-bottom: 0 !important;
+            line-height: 1 !important;
+            justify-self: end !important;
+          }
+          .step-circle-bubble {
+            width: 44px !important;
+            height: 44px !important;
+            border-radius: 50% !important;
+            background: #FFFFFF !important;
+            border: 2px solid #7EDCD2 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-shadow: 0 0 0 5px #E2F5F3 !important;
+            margin-bottom: 0 !important;
+            justify-self: center !important;
+          }
+          .step-text-wrap {
+            display: flex !important;
+            flex-direction: column !important;
+            text-align: left !important;
+            justify-content: center !important;
+          }
+          .step-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 14px !important;
+            font-weight: 800 !important;
+            color: #12263A !important;
+            margin: 0 0 2px !important;
+            line-height: 1.25 !important;
+            min-height: unset !important;
+            display: block !important;
+            text-align: left !important;
+          }
+          .step-title br {
+            display: none !important;
+          }
+          .step-desc {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 12px !important;
+            color: #64748B !important;
+            line-height: 1.35 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+            text-align: left !important;
+          }
+
+          /* Part 3: Our Promise to You */
+          .our-promise-section {
+            padding: 44px 0 50px !important;
+            background: #FFFFFF !important;
+          }
+          .promise-header-wrap {
+            margin-bottom: 24px !important;
+          }
+          .promise-eyebrow-text {
+            font-size: 14px !important;
+            letter-spacing: 1.5px !important;
           }
           .promise-cards-grid {
-            grid-template-columns: repeat(2, 1fr);
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 12px !important;
+            max-width: 440px !important;
+            margin: 0 auto !important;
           }
+          .promise-card {
+            background: #FFFFFF !important;
+            border: 1.5px solid #E6EFF0 !important;
+            border-radius: 18px !important;
+            padding: 18px 12px 16px !important;
+            text-align: center !important;
+            box-shadow: 0 4px 14px rgba(18, 38, 58, 0.04) !important;
+          }
+          .promise-icon-bubble {
+            width: 48px !important;
+            height: 48px !important;
+            border-radius: 50% !important;
+            background: #E0F7F6 !important;
+            margin: 0 auto 10px !important;
+          }
+          .promise-card-title {
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            line-height: 1.25 !important;
+            min-height: unset !important;
+          }
+
+          /* Part 4: Trust CTA Banner Card */
+          .trust-cta-section {
+            padding: 10px 0 44px !important;
+            background: #FFFFFF !important;
+          }
+          .trust-cta-banner-card {
+            max-width: 440px !important;
+            margin: 0 auto !important;
+            border-radius: 20px !important;
+            overflow: hidden !important;
+            box-shadow: 0 8px 24px rgba(8, 127, 140, 0.12) !important;
+          }
+          .trust-cta-exact-img {
+            width: 100% !important;
+            height: auto !important;
+            display: block !important;
+          }
+
+          /* FAQ mobile */
           .faq-question-btn {
-            padding: 16px 18px;
+            padding: 16px 18px !important;
           }
           .faq-answer-inner {
-            margin-left: 0;
-            padding-left: 14px;
+            margin-left: 0 !important;
+            padding-left: 14px !important;
           }
           .faq-q-title {
-            font-size: 14.5px;
+            font-size: 14.5px !important;
           }
         }
 
-        @media (max-width: 520px) {
-          .beyond-features-row {
-            grid-template-columns: 1fr;
+        @media (max-width: 420px) {
+          .beyond-section-title {
+            font-size: 25px !important;
           }
-          .process-steps-grid {
-            grid-template-columns: 1fr;
+          .beyond-features-row {
+            gap: 8px !important;
+          }
+          .beyond-feature-item {
+            padding: 14px 8px !important;
+          }
+          .beyond-feature-name {
+            font-size: 12px !important;
+          }
+          .process-header-title {
+            font-size: 25px !important;
           }
           .promise-cards-grid {
-            grid-template-columns: 1fr;
+            gap: 8px !important;
           }
-          .trust-cta-headline {
-            font-size: 24px;
+          .promise-card {
+            padding: 14px 8px !important;
           }
         }
 

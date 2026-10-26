@@ -557,6 +557,52 @@ export const PRICING_ITEMS = [
     subcategory: 'household',
     unit: 'piece',
     prices: { 'wash-fold': 15, 'wash-iron': 22, 'express-laundry': 30, 'dry-cleaning': null, 'steam-iron': null }
+  },
+
+  // ==========================================
+  // 5. SHOE LAUNDRY ITEMS (6 ITEMS)
+  // ==========================================
+  {
+    id: 'shoe-sneakers',
+    name: 'Sneakers / Casual shoes',
+    subcategory: 'men',
+    unit: 'pair',
+    prices: { 'shoe-laundry': 150, 'wash-fold': 150, 'dry-cleaning': 180, 'express-laundry': 250 }
+  },
+  {
+    id: 'shoe-sports',
+    name: 'Sports / Running shoes',
+    subcategory: 'men',
+    unit: 'pair',
+    prices: { 'shoe-laundry': 150, 'wash-fold': 150, 'dry-cleaning': 180, 'express-laundry': 250 }
+  },
+  {
+    id: 'shoe-leather',
+    name: 'Formal leather shoes',
+    subcategory: 'men',
+    unit: 'pair',
+    prices: { 'shoe-laundry': 200, 'wash-fold': 200, 'dry-cleaning': 220, 'express-laundry': 300 }
+  },
+  {
+    id: 'shoe-suede',
+    name: 'Suede shoes / Boots',
+    subcategory: 'men',
+    unit: 'pair',
+    prices: { 'shoe-laundry': 250, 'wash-fold': 250, 'dry-cleaning': 280, 'express-laundry': 350 }
+  },
+  {
+    id: 'shoe-women-heels',
+    name: 'Heels / Wedges / Flats',
+    subcategory: 'women',
+    unit: 'pair',
+    prices: { 'shoe-laundry': 160, 'wash-fold': 160, 'dry-cleaning': 180, 'express-laundry': 260 }
+  },
+  {
+    id: 'shoe-kids',
+    name: 'Kids school / sports shoes',
+    subcategory: 'kids',
+    unit: 'pair',
+    prices: { 'shoe-laundry': 100, 'wash-fold': 100, 'dry-cleaning': 120, 'express-laundry': 180 }
   }
 ];
 
@@ -600,6 +646,21 @@ export const EXPRESS_SERVICES = [
 export const isItemApplicableToService = (item, serviceId) => {
   if (!item) return false;
   const id = item.id;
+
+  // Shoe laundry only accepts shoe items
+  if (serviceId === 'shoe-laundry') {
+    return id.startsWith('shoe-');
+  }
+
+  // Home Care only accepts household items
+  if (serviceId === 'home-care') {
+    return item.subcategory === 'household';
+  }
+
+  // Other standard clothing services should not include shoes
+  if (id.startsWith('shoe-')) {
+    return false;
+  }
 
   if (serviceId === 'wash-fold') {
     // Structured formal 2pc suits/blazers are dry clean only

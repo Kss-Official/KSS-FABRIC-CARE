@@ -7,7 +7,9 @@ import {
   Leaf,
   Truck,
   IndianRupee,
-  Clock
+  Clock,
+  Plus,
+  Minus
 } from 'lucide-react';
 
 const HangerIcon = ({ size = 20, color = 'currentColor' }) => (
@@ -51,33 +53,33 @@ export const FAQAccordion = ({ items, customTitle, customTag }) => {
   const defaultItems = [
     {
       icon: 'hanger',
-      question: 'Do you offer premium care for designer or delicate garments?',
+      question: 'Do you offer premium care for delicate or designer garments?',
       answer:
         'Yes! We provide specialized care for designer wear, delicate fabrics (like silk, linen, chiffon, wool) and expensive garments. Our team uses gentle cleaning methods and premium detergents to keep your clothes safe and looking their best.'
     },
     {
-      icon: 'shield',
-      question: 'What makes FabriCare different from regular dry cleaners?',
+      icon: 'rupee',
+      question: 'Is there a minimum order value for pickup and delivery?',
       answer:
-        'We use 100% eco-friendly hydrocarbon solvents instead of harsh perchloroethylene chemicals. Plus, we provide scheduled doorstep pickup and drop, real-time status tracking, and temperature-controlled steam finishing.'
-    },
-    {
-      icon: 'leaf',
-      question: 'What laundry services do you offer?',
-      answer:
-        'We offer a complete suite: Wash & Fold, Wash & Iron, Dry Cleaning, Specialized Stain Removal, Steam Ironing, Shoe Deep Cleaning & Restoration, and Home Care (curtains, quilts & bedsheets).'
+        'Free doorstep pickup and delivery is available for orders above ₹300–₹500 depending on your area. For smaller orders, a nominal delivery fee applies.'
     },
     {
       icon: 'truck',
+      question: 'What locations do you serve?',
+      answer:
+        'We currently serve major residential societies, corporate hubs, and surrounding neighborhoods with convenient daily morning and evening pickup and delivery slots.'
+    },
+    {
+      icon: 'leaf',
       question: 'How does pickup and delivery work?',
       answer:
         'Simply select your services, enter your address, and choose your preferred 2-hour pickup time window. Our verified rider will arrive with laundry bags, verify your items, and deliver them fresh within 24–48 hours.'
     },
     {
-      icon: 'rupee',
-      question: 'What are your prices and is there a minimum order value?',
+      icon: 'shield',
+      question: 'What are your prices and is there any hidden cost?',
       answer:
-        'Our pricing is 100% transparent with no hidden charges. Everyday wash starts from ₹60/kg, and individual steam pressing from ₹20/pc. Pickup & delivery is completely free for orders above ₹500.'
+        'Our pricing is 100% transparent with no hidden charges. Everyday wash starts from ₹60/kg, and individual steam pressing from ₹20/pc. All taxes and standard eco-friendly packing are included.'
     },
     {
       icon: 'clock',
@@ -115,7 +117,8 @@ export const FAQAccordion = ({ items, customTitle, customTag }) => {
   return (
     <section className="faq-section" id="faq-section">
       <div className="container">
-        <div className="faq-header text-center">
+        {/* Desktop Header */}
+        <div className="faq-header faq-desktop-header text-center">
           <div className="faq-eyebrow-badge">
             <MessageSquare size={14} strokeWidth={2.4} className="faq-eyebrow-icon" />
             <span>{customTag || 'FAQS'}</span>
@@ -125,6 +128,22 @@ export const FAQAccordion = ({ items, customTitle, customTag }) => {
           </h2>
           <p className="faq-subtitle">
             Still have questions? Here are some common ones. If you need more help, feel free to reach out to us.
+          </p>
+        </div>
+
+        {/* Mobile Header (Exact Match to User Reference Mockup) */}
+        <div className="faq-header faq-mobile-header text-center">
+          <div className="mobile-faq-eyebrow">
+            <span className="eyebrow-line"></span>
+            <span className="eyebrow-text">FAQ</span>
+            <span className="eyebrow-line"></span>
+          </div>
+          <h2 className="mobile-faq-title">
+            Frequently Asked <br />
+            <span className="highlight">Questions</span>
+          </h2>
+          <p className="mobile-faq-sub">
+            We've answered some of the most common questions to help you get started.
           </p>
         </div>
 
@@ -144,8 +163,17 @@ export const FAQAccordion = ({ items, customTitle, customTag }) => {
                     </span>
                     <h3 className="faq-question-text">{faq.question}</h3>
                   </div>
-                  <div className={`faq-chevron-circle ${isOpen ? 'rotated' : ''}`}>
+                  {/* Desktop Chevron */}
+                  <div className={`faq-chevron-circle faq-desktop-toggle ${isOpen ? 'rotated' : ''}`}>
                     <ChevronDown size={18} strokeWidth={2.2} />
+                  </div>
+                  {/* Mobile Plus / Minus button */}
+                  <div className={`faq-mobile-toggle-btn ${isOpen ? 'open' : ''}`}>
+                    {isOpen ? (
+                      <Minus size={15} strokeWidth={2.8} />
+                    ) : (
+                      <Plus size={15} strokeWidth={2.8} />
+                    )}
                   </div>
                 </div>
 
@@ -187,6 +215,14 @@ export const FAQAccordion = ({ items, customTitle, customTag }) => {
           margin-bottom: 52px;
           position: relative;
           z-index: 2;
+        }
+
+        .faq-desktop-header {
+          display: block;
+        }
+
+        .faq-mobile-header {
+          display: none;
         }
 
         .text-center {
@@ -319,6 +355,14 @@ export const FAQAccordion = ({ items, customTitle, customTag }) => {
           transform: rotate(180deg);
         }
 
+        .faq-desktop-toggle {
+          display: flex;
+        }
+
+        .faq-mobile-toggle-btn {
+          display: none;
+        }
+
         .faq-answer-row {
           padding: 0 28px 26px 28px;
         }
@@ -337,37 +381,137 @@ export const FAQAccordion = ({ items, customTitle, customTag }) => {
           margin: 0;
         }
 
-        @media (max-width: 640px) {
+        /* Div 8 Mobile Responsiveness (Exact Reference Mockup Match) */
+        @media (max-width: 768px) {
           .faq-section {
-            padding: 70px 0 80px;
+            padding: 48px 0 58px !important;
+            background: #F0F9F8 !important;
           }
-          .faq-main-title {
-            font-size: 2rem;
+          .faq-desktop-header {
+            display: none !important;
           }
-          .faq-subtitle {
-            font-size: 0.95rem;
+          .faq-mobile-header {
+            display: block !important;
+            margin-bottom: 26px !important;
+          }
+          .mobile-faq-eyebrow {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            margin-bottom: 12px !important;
+          }
+          .mobile-faq-eyebrow .eyebrow-line {
+            width: 18px !important;
+            height: 2px !important;
+            background-color: #087F8C !important;
+            border-radius: 2px !important;
+          }
+          .mobile-faq-eyebrow .eyebrow-text {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            letter-spacing: 1.5px !important;
+            color: #087F8C !important;
+            text-transform: uppercase !important;
+          }
+          .mobile-faq-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 29px !important;
+            font-weight: 800 !important;
+            color: #12263A !important;
+            line-height: 1.18 !important;
+            letter-spacing: -0.5px !important;
+            margin: 0 0 12px !important;
+          }
+          .mobile-faq-title .highlight {
+            color: #087F8C !important;
+          }
+          .mobile-faq-sub {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 14px !important;
+            color: #556980 !important;
+            line-height: 1.5 !important;
+            max-width: 330px !important;
+            margin: 0 auto !important;
+          }
+          .faq-accordion-list {
+            max-width: 440px !important;
+            margin: 0 auto !important;
+            gap: 12px !important;
+            padding: 0 4px !important;
+          }
+          .faq-item {
+            background: #FFFFFF !important;
+            border-radius: 20px !important;
+            border: 1px solid rgba(8, 127, 140, 0.05) !important;
+            box-shadow: 0 3px 14px rgba(18, 38, 58, 0.03) !important;
+            box-sizing: border-box !important;
+          }
+          .faq-item.open {
+            border-color: #9DE0D9 !important;
+            box-shadow: 0 6px 20px rgba(8, 127, 140, 0.07) !important;
           }
           .faq-question-row {
-            padding: 18px 20px;
-            gap: 12px;
+            padding: 16px 18px !important;
+            gap: 14px !important;
           }
           .faq-icon-circle {
-            width: 38px;
-            height: 38px;
+            display: none !important;
           }
           .faq-question-text {
-            font-size: 0.95rem;
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 14.5px !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            line-height: 1.35 !important;
           }
-          .faq-chevron-circle {
-            width: 32px;
-            height: 32px;
+          .faq-desktop-toggle {
+            display: none !important;
+          }
+          .faq-mobile-toggle-btn {
+            display: flex !important;
+            width: 32px !important;
+            height: 32px !important;
+            border-radius: 50% !important;
+            background: #E0F7F6 !important;
+            color: #087F8C !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+            transition: all 0.2s ease !important;
+          }
+          .faq-mobile-toggle-btn.open {
+            background: #087F8C !important;
+            color: #FFFFFF !important;
           }
           .faq-answer-row {
-            padding: 0 20px 22px 20px;
+            padding: 0 18px 18px 18px !important;
           }
           .faq-answer-inner {
-            margin-left: 16px;
-            padding-left: 14px;
+            margin-left: 0 !important;
+            border-left: none !important;
+            padding-left: 0 !important;
+            border-top: 1px solid #EEF5F4 !important;
+            padding-top: 12px !important;
+          }
+          .faq-answer-inner p {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 13px !important;
+            line-height: 1.55 !important;
+            color: #556980 !important;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .mobile-faq-title {
+            font-size: 27px !important;
+          }
+          .faq-question-row {
+            padding: 15px 16px !important;
+          }
+          .faq-question-text {
+            font-size: 13.5px !important;
           }
         }
       `}</style>

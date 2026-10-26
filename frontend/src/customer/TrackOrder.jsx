@@ -1876,21 +1876,53 @@ export const TrackOrder = () => {
           }
         }
 
+        @media (max-width: 768px) {
+          .track-order-portal {
+            padding: 8px 0 16px 0 !important;
+          }
+
+          .track-main-title {
+            font-size: 1.45rem !important;
+          }
+
+          .track-main-subtitle {
+            font-size: 0.8125rem !important;
+          }
+
+          .tracking-summary-card,
+          .tracking-progress-card,
+          .tracking-items-card,
+          .tracking-help-card {
+            padding: 16px 14px !important;
+            border-radius: 16px !important;
+          }
+
+          .horizontal-stepper-scroll-container {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            padding-bottom: 10px !important;
+          }
+
+          .horizontal-stepper {
+            min-width: 620px !important;
+          }
+
+          .header-right-illustration {
+            display: none !important;
+          }
+        }
+
         @media (max-width: 640px) {
           .track-header-row {
             flex-direction: column;
             align-items: flex-start;
           }
-          .header-right-illustration {
-            width: 100%;
-            justify-content: center;
-          }
           .tracking-items-table {
             font-size: 0.8125rem;
           }
           .help-towels-img {
-            max-width: 230px;
-            max-height: 160px;
+            max-width: 200px;
+            max-height: 140px;
           }
         }
       `}</style>
