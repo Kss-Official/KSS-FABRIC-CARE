@@ -36,7 +36,7 @@ export const PageHeroBanner = ({
         ...containerStyle
       }}
     >
-      {/* 1. Background Image (Fixed attachment so image remains stationary while page content scrolls) */}
+      {/* 1. Background Image (Scrolls naturally with page content so image moves synchronously with text) */}
       {bgImage && bgImage.trim() !== '' && !imgError && (
         <div
           className={`page-hero-bg-layer ${imgLoaded ? 'loaded' : ''}`}
@@ -139,13 +139,13 @@ export const PageHeroBanner = ({
           touch-action: manipulation;
         }
 
-        /* 1. Background image (Fixed to viewport so it remains fixed while page content scrolls) */
+        /* 1. Background image (Scrolls naturally with text, matching Home page Div 1 hero) */
         .page-hero-bg-layer {
           position: absolute;
           inset: 0;
           width: 100%;
           height: 100%;
-          background-attachment: fixed;
+          background-attachment: scroll;
           background-position: center top;
           background-size: cover;
           background-repeat: no-repeat;

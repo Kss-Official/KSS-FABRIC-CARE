@@ -30,7 +30,8 @@ import {
   assignPickupAgent,
   assignDeliveryAgent,
   adminOverrideOrderStatus,
-  replyToSupportComplaint
+  replyToSupportComplaint,
+  isPermissionError
 } from '../services/adminDataService';
 import { createStaffOrAgentByAdmin } from '../services/authService';
 import { supportApi } from '../api/apiClient';
@@ -460,7 +461,17 @@ export const AdminProvider = ({ children }) => {
   });
 
   const { currentUser, userProfile, userRole, updateCurrentUserProfile, refreshProfile } = useAuth();
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(true);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
+    try {
+      const stored = localStorage.getItem('fabricare_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        const r = (u.role || '').toLowerCase();
+        return r === 'admin' || r === 'super_admin';
+      }
+    } catch (_) {}
+    return false;
+  });
 
   // Live isolated notifications hook for admin
   const {
@@ -474,6 +485,8 @@ export const AdminProvider = ({ children }) => {
     if (userRole === 'admin' || userRole === 'super_admin') {
       setIsAdminAuthenticated(true);
       setAdminTab(prev => (prev === 'login' ? 'dashboard' : prev));
+    } else if (userRole && userRole !== 'admin' && userRole !== 'super_admin') {
+      setIsAdminAuthenticated(false);
     }
   }, [userRole]);
 
@@ -672,6 +685,9 @@ export const AdminProvider = ({ children }) => {
 
   // Initial hydration from database on mount
   useEffect(() => {
+    const isActuallyAdmin = userRole === 'admin' || userRole === 'super_admin' || (isAdminAuthenticated && (currentUser?.role === 'admin' || currentUser?.role === 'ADMIN'));
+    if (!isActuallyAdmin) return;
+
     fetchAdminOrdersOnce().then(raw => {
       if (raw && raw.length > 0) {
         setOrders(raw.map(mapAdminOrderRecord).filter(Boolean));
@@ -692,13 +708,14 @@ export const AdminProvider = ({ children }) => {
 
     // Initial complaints hydration from backend
     fetchComplaints();
-  }, [fetchComplaints]);
+  }, [fetchComplaints, userRole, isAdminAuthenticated, currentUser]);
 
   // ========================================================
   // REAL-TIME RTDB SUBSCRIPTIONS (Strict cleanup on unmount)
   // ========================================================
   useEffect(() => {
-    if (!currentUser && !isAdminAuthenticated) {
+    const isActuallyAdmin = userRole === 'admin' || userRole === 'super_admin' || (isAdminAuthenticated && (currentUser?.role === 'admin' || currentUser?.role === 'ADMIN'));
+    if (!isActuallyAdmin) {
       setLoading(false);
       return;
     }
@@ -711,7 +728,11 @@ export const AdminProvider = ({ children }) => {
       const mapped = (rtdbOrders || []).map(mapAdminOrderRecord).filter(Boolean);
       setOrders(mapped);
       setLoading(false);
-    }, (err) => console.warn('Admin orders listener error:', err));
+    }, (err) => {
+      if (!isPermissionError(err)) {
+        console.warn('Admin orders listener error:', err);
+      }
+    });
 
     const unsubTasks = subscribeAdminTasks((rtdbTasks) => {
       const mapped = (rtdbTasks || []).map(t => ({
@@ -836,6 +857,10 @@ export const AdminProvider = ({ children }) => {
           } catch (_) {}
           return merged;
         });
+      }
+    }, (err) => {
+      if (!isPermissionError(err)) {
+        console.warn('Deleted users listener error:', err);
       }
     });
 

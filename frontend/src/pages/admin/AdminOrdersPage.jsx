@@ -911,17 +911,10 @@ export const AdminOrdersPage = () => {
         </div>
       </div>
 
-      {/* 5 Metric Cards (Clickable Top Filter Buttons working Real-Time) */}
+      {/* 5 Metric Cards (Static Summary Cards) */}
       <div className="orders-metric-cards-row">
         {/* Total Orders */}
-        <div 
-          className={`orders-metric-pill-card ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => handleTabClick('all')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabClick('all'); } }}
-          title="Click to view All Orders"
-        >
+        <div className="orders-metric-pill-card">
           <div className="metric-badge-box cyan">
             <ShoppingBag size={20} color="#0D7A75" strokeWidth={2} />
           </div>
@@ -932,14 +925,7 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* Pending Pickup */}
-        <div 
-          className={`orders-metric-pill-card ${activeTab === 'pending' ? 'active' : ''}`}
-          onClick={() => handleTabClick(activeTab === 'pending' ? 'all' : 'pending')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabClick(activeTab === 'pending' ? 'all' : 'pending'); } }}
-          title="Click to filter by Pending Pickup"
-        >
+        <div className="orders-metric-pill-card">
           <div className="metric-badge-box orange">
             <Truck size={20} color="#EA580C" strokeWidth={2} />
           </div>
@@ -950,14 +936,7 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* In Cleaning */}
-        <div 
-          className={`orders-metric-pill-card ${activeTab === 'cleaning' ? 'active' : ''}`}
-          onClick={() => handleTabClick(activeTab === 'cleaning' ? 'all' : 'cleaning')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabClick(activeTab === 'cleaning' ? 'all' : 'cleaning'); } }}
-          title="Click to filter by In Cleaning"
-        >
+        <div className="orders-metric-pill-card">
           <div className="metric-badge-box yellow">
             <WasherIcon size={20} color="#D97706" />
           </div>
@@ -968,14 +947,7 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* Ready for Delivery */}
-        <div 
-          className={`orders-metric-pill-card ${activeTab === 'ready' ? 'active' : ''}`}
-          onClick={() => handleTabClick(activeTab === 'ready' ? 'all' : 'ready')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabClick(activeTab === 'ready' ? 'all' : 'ready'); } }}
-          title="Click to filter by Ready for Delivery"
-        >
+        <div className="orders-metric-pill-card">
           <div className="metric-badge-box purple">
             <ShoppingBag size={20} color="#9333EA" strokeWidth={2} />
           </div>
@@ -986,14 +958,7 @@ export const AdminOrdersPage = () => {
         </div>
 
         {/* Completed */}
-        <div 
-          className={`orders-metric-pill-card ${activeTab === 'completed' ? 'active' : ''}`}
-          onClick={() => handleTabClick(activeTab === 'completed' ? 'all' : 'completed')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTabClick(activeTab === 'completed' ? 'all' : 'completed'); } }}
-          title="Click to filter by Completed"
-        >
+        <div className="orders-metric-pill-card">
           <div className="metric-badge-box green">
             <CheckCircle2 size={20} color="#16A34A" strokeWidth={2} />
           </div>
@@ -1093,19 +1058,6 @@ export const AdminOrdersPage = () => {
               </div>
             )}
           </div>
-
-          {/* Single Refresh Button (replacing Reset button in the same position) */}
-          <button 
-            type="button" 
-            id="orders-filter-refresh-btn"
-            className="filter-refresh-btn" 
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            title="Refresh orders from database"
-          >
-            <RotateCcw size={14} className={isRefreshing ? 'animate-spin' : ''} />
-            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-          </button>
         </div>
       </div>
 
@@ -1535,21 +1487,8 @@ export const AdminOrdersPage = () => {
           align-items: center;
           gap: 14px;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-          transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-          cursor: pointer;
+          cursor: default;
           user-select: none;
-        }
-
-        .orders-metric-pill-card:hover {
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-          transform: translateY(-2px);
-          border-color: #CBD5E1;
-        }
-
-        .orders-metric-pill-card.active {
-          border-color: #087F77;
-          background: #F0FDFA;
-          box-shadow: 0 4px 14px rgba(8, 127, 119, 0.12);
         }
 
         .metric-badge-box {

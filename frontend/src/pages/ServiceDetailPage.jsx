@@ -215,8 +215,8 @@ export const ServiceDetailPage = () => {
         /* 1. HERO BANNER */
         .service-hero-banner {
           position: relative;
-          background: url('/assets/dry-clean-hero.jpg') top center / cover no-repeat fixed;
-          background-attachment: fixed;
+          background: url('/assets/dry-clean-hero.jpg') top center / cover no-repeat;
+          background-attachment: scroll;
           padding: 110px 0 90px;
           color: #ffffff;
           overflow: hidden;

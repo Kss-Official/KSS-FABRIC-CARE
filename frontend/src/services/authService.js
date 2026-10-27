@@ -33,6 +33,11 @@ export const mapAuthError = (error) => {
       return 'Network error. Please check your internet connection.';
     case 'auth/requires-recent-login':
       return 'This operation requires recent authentication. Please sign in again.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Sign-in window was closed before completing login.';
+    case 'auth/popup-blocked':
+      return 'Sign-in popup was blocked by your browser. Please allow popups for this site.';
     default:
       return error.message || 'Authentication failed. Please try again.';
   }
