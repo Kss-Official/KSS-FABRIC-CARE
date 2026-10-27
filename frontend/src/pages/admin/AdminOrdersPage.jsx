@@ -687,8 +687,8 @@ export const AdminOrdersPage = () => {
   const handleStatusFilterChange = (val) => {
     setStatusFilter(val);
     if (val === 'all') setActiveTab('all');
-    else if (val === 'Pending Pickup') setActiveTab('pending');
-    else if (val === 'Pickup Scheduled') {
+    else if (val === 'Pending Pickup' || val === 'Pending') setActiveTab('pending');
+    else if (val === 'Pickup Scheduled' || val === 'Scheduled') {
       if (activeTab !== 'all' && activeTab !== 'pending') {
         setActiveTab('pending');
       }
@@ -991,8 +991,8 @@ export const AdminOrdersPage = () => {
               onChange={(e) => handleStatusFilterChange(e.target.value)}
             >
               <option value="all">All Status</option>
-              <option value="Pending Pickup">Pending Pickup</option>
-              <option value="Pickup Scheduled">Pickup Scheduled</option>
+              <option value="Pending">Pending</option>
+              <option value="Scheduled">Scheduled</option>
               <option value="In Cleaning">In Cleaning</option>
               <option value="Ready for Delivery">Ready for Delivery</option>
               <option value="Completed">Completed</option>

@@ -479,12 +479,21 @@ export const AdminDashboardPage = () => {
 
   const getStatusClass = (status = '') => {
     const s = String(status || '').toLowerCase();
+    if (s.includes('rescheduled')) return 'rescheduled';
     if (s.includes('pickup scheduled') || s.includes('scheduled')) return 'pickup-scheduled';
     if (s.includes('pending')) return 'pending-pickup';
     if (s.includes('cleaning') || s.includes('processing')) return 'in-cleaning';
     if (s.includes('ready')) return 'ready-for-delivery';
     if (s.includes('delivered') || s.includes('completed')) return 'delivered';
     return 'pickup-scheduled';
+  };
+
+  const displayStatus = (status = '') => {
+    if (!status) return '';
+    const s = String(status).trim();
+    if (s.toLowerCase() === 'pickup scheduled' || s.toLowerCase() === 'scheduled') return 'Scheduled';
+    if (s.toLowerCase() === 'pending pickup' || s.toLowerCase() === 'pickup pending' || s.toLowerCase() === 'pending') return 'Pending';
+    return s;
   };
 
   // Recent Orders dynamically bound to unified orders (62 orders)
@@ -1067,7 +1076,7 @@ export const AdminDashboardPage = () => {
                   <td><strong className="amount-cell-txt">₹{ord.amount}</strong></td>
                   <td>
                     <span className={`status-pill ${getStatusClass(ord.status)}`}>
-                      {ord.status}
+                      {displayStatus(ord.status)}
                     </span>
                   </td>
                   <td className="action-cell">
@@ -1086,8 +1095,8 @@ export const AdminDashboardPage = () => {
                       {activeActionMenuId === ord.id && (
                         <div className="action-dropdown-menu" onClick={e => e.stopPropagation()}>
                           <div className="dropdown-order-header">
-                            <span>Order {ord.id}</span>
-                            <span className={`status-mini-badge ${getStatusClass(ord.status)}`}>{ord.status}</span>
+                            <span className="dropdown-order-title">Order {ord.id}</span>
+                            <span className={`status-mini-badge ${getStatusClass(ord.status)}`}>{displayStatus(ord.status)}</span>
                           </div>
                           
                           <button 
@@ -1106,25 +1115,31 @@ export const AdminDashboardPage = () => {
 
                           <div className="dropdown-status-options">
                             {[
-                              'Pickup Scheduled',
-                              'Pending Pickup',
+                              'Scheduled',
+                              'Pending',
                               'In Cleaning',
                               'Ready for Delivery',
                               'Delivered'
-                            ].map(st => (
-                              <button
-                                key={st}
-                                className={`dropdown-status-btn ${ord.status === st ? 'current' : ''}`}
-                                onClick={() => {
-                                  updateOrderStatus(ord.id, st);
-                                  setActiveActionMenuId(null);
-                                }}
-                              >
-                                <span className={`status-indicator-dot ${getStatusClass(st)}`} />
-                                <span>{st}</span>
-                                {ord.status === st && <Check size={14} className="check-icon" />}
-                              </button>
-                            ))}
+                            ].map(st => {
+                              const isCurrent = 
+                                ord.status === st ||
+                                (st === 'Scheduled' && (ord.status === 'Pickup Scheduled' || ord.status === 'Scheduled')) ||
+                                (st === 'Pending' && (ord.status === 'Pending Pickup' || ord.status === 'Pickup Pending' || ord.status === 'Pending'));
+                              return (
+                                <button
+                                  key={st}
+                                  className={`dropdown-status-btn ${isCurrent ? 'current' : ''}`}
+                                  onClick={() => {
+                                    updateOrderStatus(ord.id, st);
+                                    setActiveActionMenuId(null);
+                                  }}
+                                >
+                                  <span className={`status-indicator-dot ${getStatusClass(st)}`} />
+                                  <span>{st}</span>
+                                  {isCurrent && <Check size={14} className="check-icon" />}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -1280,7 +1295,7 @@ export const AdminDashboardPage = () => {
                 <h3 className="modal-title">Order Details</h3>
                 <span className="modal-order-id font-mono">{formatOrderId(selectedOrderDetails.id || selectedOrderDetails.order_number || selectedOrderDetails.order_id)}</span>
                 <span className={`status-pill ${getStatusClass(selectedOrderDetails.status)}`}>
-                  {selectedOrderDetails.status}
+                  {displayStatus(selectedOrderDetails.status)}
                 </span>
               </div>
               <button 
@@ -1346,23 +1361,29 @@ export const AdminDashboardPage = () => {
                 <label className="grid-label">Update Order Status:</label>
                 <div className="modal-status-buttons">
                   {[
-                    'Pickup Scheduled',
-                    'Pending Pickup',
+                    'Scheduled',
+                    'Pending',
                     'In Cleaning',
                     'Ready for Delivery',
                     'Delivered'
-                  ].map(st => (
-                    <button
-                      key={st}
-                      className={`modal-status-btn ${selectedOrderDetails.status === st ? 'active' : ''}`}
-                      onClick={() => {
-                        updateOrderStatus(selectedOrderDetails.id, st);
-                        setSelectedOrderDetails(prev => ({ ...prev, status: st }));
-                      }}
-                    >
-                      {st}
-                    </button>
-                  ))}
+                  ].map(st => {
+                    const isCurrent = 
+                      selectedOrderDetails.status === st ||
+                      (st === 'Scheduled' && (selectedOrderDetails.status === 'Pickup Scheduled' || selectedOrderDetails.status === 'Scheduled')) ||
+                      (st === 'Pending' && (selectedOrderDetails.status === 'Pending Pickup' || selectedOrderDetails.status === 'Pickup Pending' || selectedOrderDetails.status === 'Pending'));
+                    return (
+                      <button
+                        key={st}
+                        className={`modal-status-btn ${isCurrent ? 'active' : ''}`}
+                        onClick={() => {
+                          updateOrderStatus(selectedOrderDetails.id, st);
+                          setSelectedOrderDetails(prev => ({ ...prev, status: st }));
+                        }}
+                      >
+                        {st}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -2119,7 +2140,10 @@ export const AdminDashboardPage = () => {
           top: calc(100% + 4px);
           right: 0;
           z-index: 50;
-          width: 210px;
+          width: 220px;
+          min-width: 210px;
+          max-width: 260px;
+          height: auto;
           background: #FFFFFF;
           border: 1px solid #E2E8F0;
           border-radius: 14px;
@@ -2128,6 +2152,7 @@ export const AdminDashboardPage = () => {
           display: flex;
           flex-direction: column;
           gap: 2px;
+          box-sizing: border-box;
           animation: dropdownPop 0.15s ease-out;
         }
 
@@ -2146,26 +2171,49 @@ export const AdminDashboardPage = () => {
           display: flex;
           align-items: center;
           justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 6px 8px;
           padding: 6px 8px 8px 8px;
           border-bottom: 1px solid #F1F5F9;
           margin-bottom: 4px;
+          min-height: auto;
+          width: 100%;
+          box-sizing: border-box;
         }
 
-        .dropdown-order-header span:first-child {
+        .dropdown-order-header span:first-child,
+        .dropdown-order-title {
           font-size: 0.75rem;
           font-weight: 700;
           color: #0F172A;
+          word-break: break-word;
+          overflow-wrap: break-word;
+          line-height: 1.35;
+          flex: 1 1 auto;
+          min-width: 0;
         }
 
         .status-mini-badge {
           font-size: 0.65rem;
           font-weight: 600;
-          padding: 2px 6px;
+          padding: 2px 7px;
           border-radius: 9999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1.35;
+          word-break: break-word;
+          overflow-wrap: break-word;
+          white-space: normal;
+          max-width: 100%;
+          flex-shrink: 0;
         }
 
-        .status-mini-badge.pickup-scheduled { background: #E0F2FE; color: #0284C7; }
-        .status-mini-badge.pending-pickup { background: #FFE4E6; color: #E11D48; }
+        .status-mini-badge.pickup-scheduled,
+        .status-mini-badge.scheduled,
+        .status-mini-badge.rescheduled { background: #E0F2FE; color: #0284C7; }
+        .status-mini-badge.pending-pickup,
+        .status-mini-badge.pending { background: #FFE4E6; color: #E11D48; }
         .status-mini-badge.in-cleaning { background: #FEF9C3; color: #CA8A04; }
         .status-mini-badge.ready-for-delivery { background: #F3E8FF; color: #9333EA; }
         .status-mini-badge.delivered { background: #DCFCE7; color: #16A34A; }
@@ -2249,8 +2297,11 @@ export const AdminDashboardPage = () => {
           flex-shrink: 0;
         }
 
-        .status-indicator-dot.pickup-scheduled { background: #0284C7; }
-        .status-indicator-dot.pending-pickup { background: #E11D48; }
+        .status-indicator-dot.pickup-scheduled,
+        .status-indicator-dot.scheduled,
+        .status-indicator-dot.rescheduled { background: #0284C7; }
+        .status-indicator-dot.pending-pickup,
+        .status-indicator-dot.pending { background: #E11D48; }
         .status-indicator-dot.in-cleaning { background: #CA8A04; }
         .status-indicator-dot.ready-for-delivery { background: #9333EA; }
         .status-indicator-dot.delivered { background: #16A34A; }
