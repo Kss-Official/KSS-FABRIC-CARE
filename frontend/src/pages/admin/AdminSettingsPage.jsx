@@ -15,7 +15,13 @@ import {
   ChevronDown,
   Edit3
 } from 'lucide-react';
-import { formatIndianPhoneNumber, isValidIndianPhoneNumber } from '../../utils/helpers';
+import { 
+  formatIndianPhoneNumber, 
+  isValidIndianPhoneNumber,
+  isValidStrictEmail,
+  sanitizeEmailInput,
+  handleEmailKeyDown 
+} from '../../utils/helpers';
 
 export const AdminSettingsPage = () => {
   const { settings, updateSettings } = useAdmin();
@@ -332,15 +338,28 @@ export const AdminSettingsPage = () => {
 
   const handleSaveProfile = async () => {
     const errs = {};
-    if (!form.name.trim()) errs.name = 'Name is required';
-    if (!form.email.trim()) {
+    const trimmedName = form.name.trim();
+    if (!trimmedName) {
+      errs.name = 'Name is required';
+    } else if (!/^[A-Za-z\s]+$/.test(trimmedName)) {
+      errs.name = 'Name must contain only alphabetic characters and spaces';
+    } else if (trimmedName.replace(/\s+/g, '').length < 2) {
+      errs.name = 'Name must be at least 2 letters';
+    } else if (trimmedName.length > 25) {
+      errs.name = 'Name cannot exceed 25 characters';
+    }
+
+    const trimmedEmail = sanitizeEmailInput(form.email || '').trim();
+    if (!trimmedEmail) {
       errs.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      errs.email = 'Invalid email address';
+    } else if (!isValidStrictEmail(trimmedEmail)) {
+      errs.email = 'Please enter a valid email address (e.g., name@example.com)';
     }
+
     if (form.phone && form.phone.trim() && !isValidIndianPhoneNumber(form.phone)) {
-      errs.phone = 'Phone number must be 10 digits starting with 6–9';
+      errs.phone = 'Mobile number must be 10 digits starting with 6–9';
     }
+
     if (Object.keys(errs).length > 0) {
       setErrors(prev => ({ ...prev, ...errs }));
       return;
@@ -350,13 +369,13 @@ export const AdminSettingsPage = () => {
       setIsSavingProfile(true);
       await updateSettings({
         name: form.name.trim(),
-        email: form.email.trim(),
+        email: trimmedEmail,
         phone: form.phone.trim(),
         photoUrl: form.photoUrl
       });
       setSavedProfileValues({
         name: form.name.trim(),
-        email: form.email.trim(),
+        email: trimmedEmail,
         phone: form.phone.trim()
       });
       setIsEditingProfile(false);
@@ -382,10 +401,11 @@ export const AdminSettingsPage = () => {
 
   const handleSaveContact = async () => {
     const errs = {};
-    if (!form.supportEmail.trim()) {
+    const trimmedSupportEmail = sanitizeEmailInput(form.supportEmail || '').trim();
+    if (!trimmedSupportEmail) {
       errs.supportEmail = 'Email address is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.supportEmail.trim())) {
-      errs.supportEmail = 'Invalid email address';
+    } else if (!isValidStrictEmail(trimmedSupportEmail)) {
+      errs.supportEmail = 'Please enter a valid email address (e.g., name@example.com)';
     }
     if (form.supportPhone && form.supportPhone.trim() && !isValidIndianPhoneNumber(form.supportPhone)) {
       errs.supportPhone = 'Phone number must be 10 digits starting with 6–9';
@@ -681,12 +701,55 @@ export const AdminSettingsPage = () => {
                   </label>
                   <input 
                     type="text" 
+                    maxLength={25}
                     disabled={!isEditingProfile}
                     className={`as-input ${errors.name ? 'as-input-error' : ''}`}
                     value={form.name}
+                    placeholder="Enter full name (max 25 characters)"
                     onChange={(e) => {
-                      setForm({ ...form, name: e.target.value });
-                      if (errors.name) setErrors({ ...errors, name: '' });
+                      // Disallow numbers and special characters immediately, max 25 chars
+                      const filtered = e.target.value.replace(/[^A-Za-z\s]/g, '').slice(0, 25);
+                      setForm({ ...form, name: filtered });
+                      if (errors.name) {
+                        if (filtered.trim().length >= 2 && filtered.trim().length <= 25 && /^[A-Za-z\s]+$/.test(filtered.trim())) {
+                          setErrors(prev => ({ ...prev, name: '' }));
+                        }
+                      }
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pasteText = (e.clipboardData || window.clipboardData).getData('text') || '';
+                      const filtered = pasteText.replace(/[^A-Za-z\s]/g, '').slice(0, 25);
+                      setForm({ ...form, name: filtered });
+                      if (!filtered.trim()) {
+                        setErrors(prev => ({ ...prev, name: 'Name is required' }));
+                      } else if (!/^[A-Za-z\s]+$/.test(filtered.trim())) {
+                        setErrors(prev => ({ ...prev, name: 'Name must contain only alphabetic characters and spaces' }));
+                      } else if (filtered.trim().length < 2) {
+                        setErrors(prev => ({ ...prev, name: 'Name must be at least 2 letters' }));
+                      } else {
+                        setErrors(prev => ({ ...prev, name: '' }));
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) return;
+                      if (!/^[A-Za-z\s]$/.test(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={() => {
+                      const trimmed = form.name.trim();
+                      if (!trimmed) {
+                        setErrors(prev => ({ ...prev, name: 'Name is required' }));
+                      } else if (!/^[A-Za-z\s]+$/.test(trimmed)) {
+                        setErrors(prev => ({ ...prev, name: 'Name must contain only alphabetic characters and spaces' }));
+                      } else if (trimmed.replace(/\s+/g, '').length < 2) {
+                        setErrors(prev => ({ ...prev, name: 'Name must be at least 2 letters' }));
+                      } else if (trimmed.length > 25) {
+                        setErrors(prev => ({ ...prev, name: 'Name cannot exceed 25 characters' }));
+                      } else {
+                        setErrors(prev => ({ ...prev, name: '' }));
+                      }
                     }}
                   />
                   {errors.name && <span className="as-error-hint">{errors.name}</span>}
@@ -699,12 +762,48 @@ export const AdminSettingsPage = () => {
                   </label>
                   <input 
                     type="email" 
+                    inputMode="email"
                     disabled={!isEditingProfile}
                     className={`as-input ${errors.email ? 'as-input-error' : ''}`}
                     value={form.email}
+                    placeholder="name@example.com"
+                    onKeyDown={(e) => handleEmailKeyDown(e, form.email)}
                     onChange={(e) => {
-                      setForm({ ...form, email: e.target.value });
-                      if (errors.email) setErrors({ ...errors, email: '' });
+                      const val = sanitizeEmailInput(e.target.value);
+                      setForm(prev => ({ ...prev, email: val }));
+                      if (!val.trim()) {
+                        setErrors(prev => ({ ...prev, email: 'Email is required' }));
+                      } else if (!isValidStrictEmail(val.trim())) {
+                        setErrors(prev => ({ ...prev, email: 'Please enter a valid email address (e.g., name@example.com)' }));
+                      } else {
+                        setErrors(prev => ({ ...prev, email: '' }));
+                      }
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pasted = (e.clipboardData || window.clipboardData).getData('text');
+                      const val = sanitizeEmailInput(pasted);
+                      setForm(prev => ({ ...prev, email: val }));
+                      if (!val.trim()) {
+                        setErrors(prev => ({ ...prev, email: 'Email is required' }));
+                      } else if (!isValidStrictEmail(val.trim())) {
+                        setErrors(prev => ({ ...prev, email: 'Please enter a valid email address (e.g., name@example.com)' }));
+                      } else {
+                        setErrors(prev => ({ ...prev, email: '' }));
+                      }
+                    }}
+                    onBlur={() => {
+                      const trimmed = sanitizeEmailInput(form.email || '').trim();
+                      if (trimmed !== form.email) {
+                        setForm(prev => ({ ...prev, email: trimmed }));
+                      }
+                      if (!trimmed) {
+                        setErrors(prev => ({ ...prev, email: 'Email is required' }));
+                      } else if (!isValidStrictEmail(trimmed)) {
+                        setErrors(prev => ({ ...prev, email: 'Please enter a valid email address (e.g., name@example.com)' }));
+                      } else {
+                        setErrors(prev => ({ ...prev, email: '' }));
+                      }
                     }}
                   />
                   {errors.email && <span className="as-error-hint">{errors.email}</span>}
@@ -715,6 +814,7 @@ export const AdminSettingsPage = () => {
                   <label className="as-label">Phone Number</label>
                   <input 
                     type="tel" 
+                    inputMode="numeric"
                     disabled={!isEditingProfile}
                     className={`as-input ${errors.phone ? 'as-input-error' : ''}`}
                     placeholder="+91 98765 43210"
@@ -723,8 +823,19 @@ export const AdminSettingsPage = () => {
                     onChange={(e) => {
                       const formatted = formatIndianPhoneNumber(e.target.value);
                       setForm({ ...form, phone: formatted });
-                      if (formatted && !isValidIndianPhoneNumber(formatted)) {
-                        setErrors(prev => ({ ...prev, phone: 'Phone must be 10 digits starting with 6–9' }));
+                      if (errors.phone) {
+                        if (!formatted || isValidIndianPhoneNumber(formatted)) {
+                          setErrors(prev => ({ ...prev, phone: '' }));
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      if (form.phone && form.phone.trim()) {
+                        if (!isValidIndianPhoneNumber(form.phone)) {
+                          setErrors(prev => ({ ...prev, phone: 'Mobile number must be 10 digits starting with 6–9' }));
+                        } else {
+                          setErrors(prev => ({ ...prev, phone: '' }));
+                        }
                       } else {
                         setErrors(prev => ({ ...prev, phone: '' }));
                       }
@@ -800,12 +911,48 @@ export const AdminSettingsPage = () => {
                 </label>
                 <input 
                   type="email" 
+                  inputMode="email"
                   disabled={!isEditingContact}
                   className={`as-input ${errors.supportEmail ? 'as-input-error' : ''}`}
                   value={form.supportEmail}
+                  placeholder="contact@fabricare.com"
+                  onKeyDown={(e) => handleEmailKeyDown(e, form.supportEmail)}
                   onChange={(e) => {
-                    setForm({ ...form, supportEmail: e.target.value });
-                    if (errors.supportEmail) setErrors({ ...errors, supportEmail: '' });
+                    const val = sanitizeEmailInput(e.target.value);
+                    setForm(prev => ({ ...prev, supportEmail: val }));
+                    if (!val.trim()) {
+                      setErrors(prev => ({ ...prev, supportEmail: 'Email address is required' }));
+                    } else if (!isValidStrictEmail(val.trim())) {
+                      setErrors(prev => ({ ...prev, supportEmail: 'Please enter a valid email address (e.g., name@example.com)' }));
+                    } else {
+                      setErrors(prev => ({ ...prev, supportEmail: '' }));
+                    }
+                  }}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    const pasted = (e.clipboardData || window.clipboardData).getData('text');
+                    const val = sanitizeEmailInput(pasted);
+                    setForm(prev => ({ ...prev, supportEmail: val }));
+                    if (!val.trim()) {
+                      setErrors(prev => ({ ...prev, supportEmail: 'Email address is required' }));
+                    } else if (!isValidStrictEmail(val.trim())) {
+                      setErrors(prev => ({ ...prev, supportEmail: 'Please enter a valid email address (e.g., name@example.com)' }));
+                    } else {
+                      setErrors(prev => ({ ...prev, supportEmail: '' }));
+                    }
+                  }}
+                  onBlur={() => {
+                    const trimmed = sanitizeEmailInput(form.supportEmail || '').trim();
+                    if (trimmed !== form.supportEmail) {
+                      setForm(prev => ({ ...prev, supportEmail: trimmed }));
+                    }
+                    if (!trimmed) {
+                      setErrors(prev => ({ ...prev, supportEmail: 'Email address is required' }));
+                    } else if (!isValidStrictEmail(trimmed)) {
+                      setErrors(prev => ({ ...prev, supportEmail: 'Please enter a valid email address (e.g., name@example.com)' }));
+                    } else {
+                      setErrors(prev => ({ ...prev, supportEmail: '' }));
+                    }
                   }}
                 />
                 {errors.supportEmail && <span className="as-error-hint">{errors.supportEmail}</span>}

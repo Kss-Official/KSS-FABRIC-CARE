@@ -11,7 +11,7 @@ ALLOWED_IMG_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 class UserSerializer(serializers.ModelSerializer):
-    full_name = serializers.CharField(required=False)
+    full_name = serializers.CharField(required=False, max_length=25)
     profile_picture_url = serializers.SerializerMethodField()
     aadhaar_document_url = serializers.SerializerMethodField()
     pan_document_url = serializers.SerializerMethodField()
@@ -61,6 +61,32 @@ class UserSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.pan_document.url)
             return obj.pan_document.url
         return None
+
+    def validate_full_name(self, value):
+        if value and len(str(value).strip()) > 25:
+            raise serializers.ValidationError("Name cannot exceed 25 characters.")
+        return value
+
+    def validate_email(self, value):
+        if value:
+            val = str(value).strip().lower()
+            if not val:
+                raise serializers.ValidationError("Email address is required.")
+            if ' ' in val:
+                raise serializers.ValidationError("Email cannot contain spaces.")
+            parts = val.split('@')
+            if len(parts) != 2 or not parts[0] or not parts[1]:
+                raise serializers.ValidationError("Please enter a valid email address (e.g., name@example.com).")
+            # Strict regex
+            pattern = r'^[a-zA-Z0-9]+([._%+-][a-zA-Z0-9]+)*@[a-zA-Z0-9]+([.-][a-zA-Z0-9]+)*\.(com|org|net|edu|gov|mil|biz|info|io|co|in|ai|app|dev|me|tv|cc|tech|online|store|site|co\.in|org\.in|ac\.in|gov\.in|net\.in|com\.au|co\.uk|[a-zA-Z]{2,8})$'
+            if not re.match(pattern, val):
+                raise serializers.ValidationError("Please enter a valid email address (e.g., name@example.com).")
+            # Reject trailing characters directly attached after standard TLDs
+            tld = parts[1].split('.')[-1]
+            if re.match(r'^(com|org|net|edu|gov|biz|info|mil)[a-z0-9]+', tld):
+                raise serializers.ValidationError("Please enter a valid email address (e.g., name@example.com).")
+            return val
+        return value
 
     def validate_dob(self, value):
         if not value:

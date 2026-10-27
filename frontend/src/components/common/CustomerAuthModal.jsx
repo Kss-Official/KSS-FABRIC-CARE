@@ -59,10 +59,10 @@ export const CustomerAuthModal = () => {
         if (cleanPhone && cleanPhone.length !== 10) {
           throw new Error('Please enter a valid 10-digit mobile number.');
         }
-        if (password.length < 6) {
-          throw new Error('Password must be at least 6 characters long.');
+        if (fullName && fullName.trim().length > 20) {
+          throw new Error('Name cannot exceed 20 characters.');
         }
-        await register({ email, password, fullName, phone: cleanPhone ? `+91 ${cleanPhone}` : '' });
+        await register({ email, password, fullName: (fullName || '').trim().slice(0, 20), phone: cleanPhone ? `+91 ${cleanPhone}` : '' });
       } else if (authModalMode === 'forgot') {
         await sendPasswordReset(email);
         setResetSuccess(true);
@@ -130,10 +130,11 @@ export const CustomerAuthModal = () => {
                     <input 
                       type="text" 
                       required 
+                      maxLength={20}
                       className="form-input" 
-                      placeholder="e.g. Rohan Mehta"
+                      placeholder="e.g. Rohan Mehta (max 20)"
                       value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
+                      onChange={(e) => setFullName(e.target.value.slice(0, 20))}
                     />
                   </div>
                 </div>

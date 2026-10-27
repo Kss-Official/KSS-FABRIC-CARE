@@ -664,9 +664,6 @@ export const AdminLayout = ({ children }) => {
                   >
                     <Bell size={15} style={{ marginRight: 8 }} />
                     Notifications
-                    {unreadNotifsCount > 0 && (
-                      <span className="profile-drop-badge">{unreadNotifsCount}</span>
-                    )}
                   </button>
                   <button 
                     type="button"

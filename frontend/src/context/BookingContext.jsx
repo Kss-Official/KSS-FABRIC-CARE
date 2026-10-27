@@ -1005,11 +1005,11 @@ export const BookingProvider = ({ children }) => {
         }
       }
 
-      // Sanitize customer name to never permit delivery agent or administrator name when booked by a customer
-      let finalCustName = (pickupDetails.name || '').trim();
+      // Sanitize customer name to never permit delivery agent or administrator name when booked by a customer (max 20 chars)
+      let finalCustName = (pickupDetails.name || '').trim().slice(0, 20);
       const staffNames = ['ravi sharma', 'administrator', 'anil verma', 'anita sharma', 'delivery agent'];
       if (!finalCustName || staffNames.includes(finalCustName.toLowerCase())) {
-        finalCustName = (currentUser?.displayName || currentUser?.name || currentUser?.fullName || 'Customer').trim();
+        finalCustName = (currentUser?.displayName || currentUser?.name || currentUser?.fullName || 'Customer').trim().slice(0, 20);
       }
 
       let finalCustPhone = (pickupDetails.mobile || '').trim();

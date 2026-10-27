@@ -87,13 +87,14 @@ export const Step2PickupDetails = () => {
                 </span>
                 <input
                   type="text"
+                  maxLength={20}
                   className="form-input"
                   value={pickupDetails.name || ''}
-                  onChange={(e) => setPickupDetails(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Enter full name"
+                  onChange={(e) => setPickupDetails(prev => ({ ...prev, name: e.target.value.slice(0, 20) }))}
+                  placeholder="Enter full name (max 20 characters)"
                 />
               </div>
-              <p className="input-helper-text">Name for order contact and delivery</p>
+              <p className="input-helper-text">Name for order contact and delivery (max 20 characters)</p>
             </div>
 
             {/* Mobile Number Field */}

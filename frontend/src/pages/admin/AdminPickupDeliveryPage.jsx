@@ -1160,10 +1160,27 @@ export const AdminPickupDeliveryPage = () => {
                     </label>
                     <input 
                       type="date"
+                      min="1000-01-01"
+                      max="9999-12-31"
                       value={typeof selectedDateRange === 'string' && selectedDateRange.match(/^\d{4}-\d{2}-\d{2}$/) ? selectedDateRange : ''}
+                      onInput={(e) => {
+                        let val = e.target.value;
+                        if (val) {
+                          const parts = val.split('-');
+                          if (parts.length === 3 && parts[0] && parts[0].length > 4) {
+                            val = `${parts[0].slice(0, 4)}-${parts[1]}-${parts[2]}`;
+                            e.target.value = val;
+                          }
+                        }
+                      }}
                       onChange={(e) => {
-                        if (e.target.value) {
-                          setSelectedDateRange(e.target.value);
+                        let val = e.target.value;
+                        if (val) {
+                          const parts = val.split('-');
+                          if (parts.length === 3 && parts[0] && parts[0].length > 4) {
+                            val = `${parts[0].slice(0, 4)}-${parts[1]}-${parts[2]}`;
+                          }
+                          setSelectedDateRange(val);
                           setCurrentPage(1);
                           setIsDateRangeDropdownOpen(false);
                         }

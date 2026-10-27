@@ -28,7 +28,8 @@ import {
   PauseCircle,
   X
 } from 'lucide-react';
-import { filterMatchesDate } from '../../utils/dateFilterUtils';
+import { filterMatchesDate, formatDateFilterLabel } from '../../utils/dateFilterUtils';
+import { AdminDateFilterPopover } from '../../components/admin/AdminDateFilterPopover';
 
 // Baseline Customers matching existing system
 const BASELINE_CUSTOMERS = [
@@ -1044,40 +1045,27 @@ export const AdminUsersPage = () => {
           <div className="filter-dropdown-pill-wrapper">
             <button 
               type="button"
-              className={`filter-pill-button ${dateRangeFilter !== 'all' ? 'active' : ''}`}
+              className={`filter-pill-button ${(dateRangeFilter && dateRangeFilter !== 'all') || isJoinDateDropdownOpen ? 'active' : ''}`}
               onClick={() => setIsJoinDateDropdownOpen(!isJoinDateDropdownOpen)}
             >
               <Calendar size={15} className="pill-button-icon" />
               <span>
-                {dateRangeFilter === 'all'
-                  ? 'Join Date'
-                  : (dateRangeFilter === 'today' ? 'Joined: Today' : dateRangeFilter === 'yesterday' ? 'Joined: Yesterday' : dateRangeFilter === 'last-week' ? 'Joined: Last Week' : 'Joined: Last 30 Days')}
+                {formatDateFilterLabel(dateRangeFilter, 'Join Date', 'Joined:')}
               </span>
               <ChevronDown size={14} className="pill-button-chevron" />
             </button>
-            {isJoinDateDropdownOpen && (
-              <div className="join-date-popover animate-scale-in">
-                {[
-                  { key: 'all', label: 'All Time' },
-                  { key: 'today', label: 'Today' },
-                  { key: 'yesterday', label: 'Yesterday' },
-                  { key: 'last-week', label: 'Last Week' },
-                  { key: 'last-30', label: 'Last 30 Days' }
-                ].map(r => (
-                  <button 
-                    key={r.key}
-                    className={`popover-item ${dateRangeFilter === r.key ? 'active' : ''}`}
-                    onClick={() => {
-                      setDateRangeFilter(r.key);
-                      setCurrentPage(1);
-                      setIsJoinDateDropdownOpen(false);
-                    }}
-                  >
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-            )}
+
+            <AdminDateFilterPopover
+              isOpen={isJoinDateDropdownOpen}
+              onClose={() => setIsJoinDateDropdownOpen(false)}
+              value={dateRangeFilter}
+              onChange={(newVal) => {
+                setDateRangeFilter(newVal);
+                setCurrentPage(1);
+              }}
+              allLabel="All Time"
+              align="right"
+            />
           </div>
 
         </div>

@@ -77,19 +77,41 @@ export const AddCustomerModal = () => {
 
   const validate = () => {
     const errs = {};
-    if (!form.name.trim()) {
+    const trimmedName = form.name.trim();
+    if (!trimmedName) {
       errs.name = 'Full name is required';
+    } else if (!/^[A-Za-z\s]+$/.test(trimmedName)) {
+      errs.name = 'Name must contain only alphabetic characters and spaces';
+    } else if (trimmedName.replace(/\s+/g, '').length < 2) {
+      errs.name = 'Name must be at least 2 letters';
+    } else if (trimmedName.length > 20) {
+      errs.name = 'Name cannot exceed 20 characters';
     }
 
-    const cleanPhone = form.phone.replace(/[^0-9]/g, '');
-    if (!form.phone.trim()) {
-      errs.phone = 'Phone number is required';
-    } else if (cleanPhone.length < 10) {
-      errs.phone = 'Please enter a valid 10-digit phone number';
+    const cleanPhone = form.phone.replace(/\D/g, '');
+    if (!cleanPhone) {
+      errs.phone = 'Mobile number is required';
+    } else if (cleanPhone.length !== 10) {
+      errs.phone = 'Mobile number must be exactly 10 digits';
+    } else if (!/^[6-9]/.test(cleanPhone)) {
+      errs.phone = 'Mobile number must start with 6, 7, 8, or 9';
     }
 
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      errs.email = 'Please enter a valid email address';
+    if (form.whatsapp && form.whatsapp.trim()) {
+      const cleanWa = form.whatsapp.replace(/\D/g, '');
+      if (cleanWa.length !== 10) {
+        errs.whatsapp = 'WhatsApp number must be exactly 10 digits';
+      } else if (!/^[6-9]/.test(cleanWa)) {
+        errs.whatsapp = 'WhatsApp number must start with 6, 7, 8, or 9';
+      }
+    }
+
+    const trimmedEmail = form.email.trim();
+    if (trimmedEmail) {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(trimmedEmail)) {
+        errs.email = 'Please enter a valid email address (e.g., user@example.com)';
+      }
     }
 
     if (!form.address1.trim()) {
@@ -225,12 +247,39 @@ export const AddCustomerModal = () => {
                   <User size={17} className="ac-field-icon" />
                   <input 
                     type="text"
-                    placeholder="Enter customer name"
+                    maxLength={20}
+                    placeholder="Enter full name (max 20 characters)"
                     className="ac-input"
                     value={form.name}
                     onChange={(e) => {
-                      setForm({ ...form, name: e.target.value });
-                      if (errors.name) setErrors({ ...errors, name: '' });
+                      // Disallow numbers and special characters immediately, max 20 chars
+                      const lettersOnly = e.target.value.replace(/[^A-Za-z\s]/g, '').slice(0, 20);
+                      setForm(f => ({ ...f, name: lettersOnly }));
+                      if (errors.name) {
+                        if (lettersOnly.trim().length >= 2 && lettersOnly.trim().length <= 20 && /^[A-Za-z\s]+$/.test(lettersOnly.trim())) {
+                          setErrors(prev => ({ ...prev, name: '' }));
+                        }
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) return;
+                      if (!/^[A-Za-z\s]$/.test(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={() => {
+                      const trimmed = form.name.trim();
+                      if (!trimmed) {
+                        setErrors(prev => ({ ...prev, name: 'Full name is required' }));
+                      } else if (!/^[A-Za-z\s]+$/.test(trimmed)) {
+                        setErrors(prev => ({ ...prev, name: 'Name must contain only alphabetic characters and spaces' }));
+                      } else if (trimmed.replace(/\s+/g, '').length < 2) {
+                        setErrors(prev => ({ ...prev, name: 'Name must be at least 2 letters' }));
+                      } else if (trimmed.length > 20) {
+                        setErrors(prev => ({ ...prev, name: 'Name cannot exceed 20 characters' }));
+                      } else {
+                        setErrors(prev => ({ ...prev, name: '' }));
+                      }
                     }}
                   />
                 </div>
@@ -246,12 +295,38 @@ export const AddCustomerModal = () => {
                   <Phone size={17} className="ac-field-icon" />
                   <input 
                     type="tel"
-                    placeholder="+91 98765 43210"
+                    inputMode="numeric"
+                    maxLength={10}
+                    placeholder="10-digit mobile number"
                     className="ac-input"
                     value={form.phone}
                     onChange={(e) => {
-                      setForm({ ...form, phone: e.target.value });
-                      if (errors.phone) setErrors({ ...errors, phone: '' });
+                      // Accept only numeric input up to 10 digits
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setForm(f => ({ ...f, phone: digits }));
+                      if (errors.phone) {
+                        if (digits.length === 10 && /^[6-9]/.test(digits)) {
+                          setErrors(prev => ({ ...prev, phone: '' }));
+                        }
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) return;
+                      if (!/^\d$/.test(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={() => {
+                      const digits = form.phone.replace(/\D/g, '');
+                      if (!digits) {
+                        setErrors(prev => ({ ...prev, phone: 'Mobile number is required' }));
+                      } else if (digits.length !== 10) {
+                        setErrors(prev => ({ ...prev, phone: 'Mobile number must be exactly 10 digits' }));
+                      } else if (!/^[6-9]/.test(digits)) {
+                        setErrors(prev => ({ ...prev, phone: 'Mobile number must start with 6, 7, 8, or 9' }));
+                      } else {
+                        setErrors(prev => ({ ...prev, phone: '' }));
+                      }
                     }}
                   />
                 </div>
@@ -265,12 +340,32 @@ export const AddCustomerModal = () => {
                   <Mail size={17} className="ac-field-icon" />
                   <input 
                     type="email"
-                    placeholder="Enter email address"
+                    inputMode="email"
+                    placeholder="name@example.com"
                     className="ac-input"
                     value={form.email}
                     onChange={(e) => {
-                      setForm({ ...form, email: e.target.value });
-                      if (errors.email) setErrors({ ...errors, email: '' });
+                      const val = e.target.value;
+                      setForm(f => ({ ...f, email: val }));
+                      if (errors.email) {
+                        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                        if (!val.trim() || emailRegex.test(val.trim())) {
+                          setErrors(prev => ({ ...prev, email: '' }));
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      const trimmed = form.email.trim();
+                      if (trimmed) {
+                        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                        if (!emailRegex.test(trimmed)) {
+                          setErrors(prev => ({ ...prev, email: 'Please enter a valid email address (e.g., name@example.com)' }));
+                        } else {
+                          setErrors(prev => ({ ...prev, email: '' }));
+                        }
+                      } else {
+                        setErrors(prev => ({ ...prev, email: '' }));
+                      }
                     }}
                   />
                 </div>
@@ -280,16 +375,47 @@ export const AddCustomerModal = () => {
               {/* WhatsApp Number (Optional) */}
               <div className="ac-field">
                 <label className="ac-label">WhatsApp Number (Optional)</label>
-                <div className="ac-input-wrapper">
+                <div className={`ac-input-wrapper ${errors.whatsapp ? 'ac-error' : ''}`}>
                   <WhatsAppIcon size={17} className="ac-field-icon ac-whatsapp-icon" />
                   <input 
                     type="tel"
-                    placeholder="+91 98765 43210"
+                    inputMode="numeric"
+                    maxLength={10}
+                    placeholder="10-digit WhatsApp number"
                     className="ac-input"
                     value={form.whatsapp}
-                    onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setForm(f => ({ ...f, whatsapp: digits }));
+                      if (errors.whatsapp) {
+                        if (!digits || (digits.length === 10 && /^[6-9]/.test(digits))) {
+                          setErrors(prev => ({ ...prev, whatsapp: '' }));
+                        }
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) return;
+                      if (!/^\d$/.test(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={() => {
+                      const digits = form.whatsapp.replace(/\D/g, '');
+                      if (digits) {
+                        if (digits.length !== 10) {
+                          setErrors(prev => ({ ...prev, whatsapp: 'WhatsApp number must be exactly 10 digits' }));
+                        } else if (!/^[6-9]/.test(digits)) {
+                          setErrors(prev => ({ ...prev, whatsapp: 'WhatsApp number must start with 6, 7, 8, or 9' }));
+                        } else {
+                          setErrors(prev => ({ ...prev, whatsapp: '' }));
+                        }
+                      } else {
+                        setErrors(prev => ({ ...prev, whatsapp: '' }));
+                      }
+                    }}
                   />
                 </div>
+                {errors.whatsapp && <span className="ac-error-text">{errors.whatsapp}</span>}
               </div>
             </div>
           </div>

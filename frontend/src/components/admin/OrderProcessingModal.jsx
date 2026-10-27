@@ -559,10 +559,10 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
             </p>
           </div>
 
-          <div className="header-actions-group">
+          <div className="header-actions-group no-print">
             <button 
               type="button" 
-              className="proc-header-icon-btn" 
+              className="proc-header-icon-btn no-print" 
               title="Print Order Summary"
               onClick={() => window.print()}
             >
@@ -572,7 +572,7 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
 
             <button 
               type="button" 
-              className="proc-close-icon-btn" 
+              className="proc-close-icon-btn no-print" 
               onClick={onClose}
               aria-label="Close Modal"
             >
@@ -583,7 +583,7 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
 
         {/* FEEDBACK ALERT */}
         {feedbackMsg && (
-          <div className={`proc-feedback-banner ${feedbackMsg.type}`}>
+          <div className={`proc-feedback-banner ${feedbackMsg.type} no-print`}>
             {feedbackMsg.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
             <span>{feedbackMsg.text}</span>
           </div>
@@ -592,7 +592,7 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
         {/* MODAL BODY */}
         <div className="order-proc-modal-body">
           {/* CUSTOMER PORTAL TRACK ORDER PROGRESS CARD */}
-          <div className="proc-section-card tracking-progress-card">
+          <div className="proc-section-card tracking-progress-card no-print">
             <div className="tracker-card-header">
               <div className="tracker-header-left">
                 <span className="tracker-title-tag">ORDER PROGRESS</span>
@@ -733,7 +733,7 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
                       {!isRiderAssigned && (
                         <button 
                           type="button" 
-                          className="change-driver-btn"
+                          className="change-driver-btn no-print"
                           onClick={() => {
                             setAssigningOrder(order);
                             setIsAssignOrderModalOpen(true);
@@ -809,7 +809,7 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
           </div>
 
           {/* 4. FINANCIAL SUMMARY CARD */}
-          <div className="proc-section-card finance-summary-card">
+          <div className="proc-section-card finance-summary-card no-print">
             <div className="finance-left">
               <div className="payment-status-block">
                 <span className="finance-label">Payment Status</span>
@@ -830,11 +830,11 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
         </div>
 
         {/* MODAL FOOTER */}
-        <div className="order-proc-modal-footer">
+        <div className="order-proc-modal-footer no-print">
           <div className="footer-left">
             <button 
               type="button" 
-              className="proc-secondary-btn"
+              className="proc-secondary-btn no-print"
               onClick={onClose}
             >
               Close
@@ -1641,6 +1641,205 @@ export const OrderProcessingModal = ({ order, onClose, onOrderUpdated }) => {
             0% { box-shadow: 0 0 0 0 rgba(13, 122, 117, 0.4); }
             70% { box-shadow: 0 0 0 8px rgba(13, 122, 117, 0); }
             100% { box-shadow: 0 0 0 0 rgba(13, 122, 117, 0); }
+          }
+
+          /* PRINT VIEW STYLES */
+          @media print {
+            @page {
+              size: A4 portrait;
+              margin: 10mm 12mm;
+            }
+
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #FFFFFF !important;
+              color: #0F172A !important;
+              height: auto !important;
+              min-height: 0 !important;
+              overflow: visible !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+
+            /* Hide everything outside modal and all unwanted sections */
+            body > *:not(.order-proc-modal-backdrop),
+            #root,
+            .no-print,
+            .header-actions-group,
+            .proc-header-icon-btn,
+            .proc-close-icon-btn,
+            .tracking-progress-card,
+            .change-driver-btn,
+            .finance-summary-card,
+            .order-proc-modal-footer,
+            .proc-secondary-btn,
+            .proc-feedback-banner {
+              display: none !important;
+              visibility: hidden !important;
+              height: 0 !important;
+              width: 0 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              overflow: hidden !important;
+            }
+
+            /* Remove backdrop overlay & fix modal container */
+            .order-proc-modal-backdrop {
+              position: static !important;
+              inset: auto !important;
+              background: transparent !important;
+              backdrop-filter: none !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              display: block !important;
+              width: 100% !important;
+              height: auto !important;
+              max-height: none !important;
+              overflow: visible !important;
+              overflow-y: visible !important;
+              overflow-x: visible !important;
+              z-index: auto !important;
+              animation: none !important;
+            }
+
+            .order-proc-modal-card {
+              position: static !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              height: auto !important;
+              max-height: none !important;
+              border: none !important;
+              border-radius: 0 !important;
+              box-shadow: none !important;
+              background: #FFFFFF !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              overflow: visible !important;
+              overflow-y: visible !important;
+              overflow-x: visible !important;
+              display: block !important;
+              animation: none !important;
+            }
+
+            /* Clean Order Header for Print */
+            .order-proc-modal-header {
+              padding: 0 0 14px 0 !important;
+              background: transparent !important;
+              border-bottom: 2px solid #E2E8F0 !important;
+              margin-bottom: 16px !important;
+              display: flex !important;
+              justify-content: space-between !important;
+              align-items: flex-start !important;
+            }
+
+            .order-id-headline {
+              font-size: 1.45rem !important;
+              color: #0F172A !important;
+            }
+
+            .status-badge-capsule {
+              border: 1px solid #CBD5E1 !important;
+            }
+
+            /* Modal Body - Expand fully without any scrollbars */
+            .order-proc-modal-body {
+              padding: 0 !important;
+              margin: 0 !important;
+              background: transparent !important;
+              display: flex !important;
+              flex-direction: column !important;
+              gap: 16px !important;
+              overflow: visible !important;
+              overflow-y: visible !important;
+              overflow-x: visible !important;
+              height: auto !important;
+              max-height: none !important;
+            }
+
+            /* Stack sections cleanly with full width in print */
+            .proc-details-two-columns {
+              display: flex !important;
+              flex-direction: column !important;
+              gap: 16px !important;
+              width: 100% !important;
+            }
+
+            .column-card,
+            .proc-section-card {
+              width: 100% !important;
+              box-sizing: border-box !important;
+              border: 1px solid #CBD5E1 !important;
+              border-radius: 12px !important;
+              padding: 16px 20px !important;
+              box-shadow: none !important;
+              background: #FFFFFF !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+
+            .card-section-title {
+              font-size: 1rem !important;
+              color: #0F172A !important;
+              margin-bottom: 8px !important;
+            }
+
+            /* Customer Details Card in Print */
+            .customer-profile-block {
+              background: #F8FAFC !important;
+              border: 1px solid #E2E8F0 !important;
+              padding: 10px 14px !important;
+              border-radius: 10px !important;
+            }
+
+            .cust-name-str {
+              word-break: break-all !important;
+            }
+
+            /* Services & Garment Items Table in Print */
+            .proc-items-table-wrapper {
+              border: 1px solid #E2E8F0 !important;
+              border-radius: 8px !important;
+              overflow: visible !important;
+              overflow-x: visible !important;
+              width: 100% !important;
+            }
+
+            .proc-items-table {
+              width: 100% !important;
+              table-layout: auto !important;
+            }
+
+            .proc-items-table th {
+              background: #F1F5F9 !important;
+              color: #475569 !important;
+              font-weight: 700 !important;
+              padding: 8px 12px !important;
+            }
+
+            .proc-items-table td {
+              padding: 10px 12px !important;
+              border-bottom: 1px solid #F1F5F9 !important;
+            }
+
+            .proc-care-notes-box {
+              background: #F8FAFC !important;
+              border: 1px solid #E2E8F0 !important;
+              border-radius: 8px !important;
+              padding: 10px 12px !important;
+              margin-top: 10px !important;
+            }
+
+            /* Suppress any browser scrollbars during print */
+            * {
+              scrollbar-width: none !important;
+              -ms-overflow-style: none !important;
+            }
+            *::-webkit-scrollbar {
+              display: none !important;
+              width: 0 !important;
+              height: 0 !important;
+            }
           }
         `}</style>
       </div>

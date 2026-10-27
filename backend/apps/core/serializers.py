@@ -180,7 +180,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
-    pickup_full_name = serializers.CharField(required=False, allow_blank=True)
+    pickup_full_name = serializers.CharField(required=False, allow_blank=True, max_length=20)
     pickup_phone = serializers.CharField(required=False, allow_blank=True)
     pickup_address = serializers.CharField(required=False, allow_blank=True)
     pickup_city = serializers.CharField(required=False, allow_blank=True, default='Bengaluru')
@@ -192,6 +192,11 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     pickup_slot = serializers.DictField(required=False, write_only=True)
     is_express = serializers.BooleanField(required=False, write_only=True, default=False)
     notes = serializers.CharField(required=False, write_only=True, allow_blank=True)
+
+    def validate_pickup_full_name(self, value):
+        if value and len(str(value).strip()) > 20:
+            raise serializers.ValidationError("Customer name cannot exceed 20 characters.")
+        return value
 
     def validate_pickup_date(self, value):
         return parse_flexible_date(value)

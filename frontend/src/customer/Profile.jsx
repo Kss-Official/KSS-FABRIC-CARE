@@ -155,6 +155,14 @@ export const Profile = () => {
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
+    if (!profileForm.name?.trim()) {
+      alert('Please enter your full name.');
+      return;
+    }
+    if (profileForm.name.trim().length > 20) {
+      alert('Customer name cannot exceed 20 characters.');
+      return;
+    }
     setSavingProfile(true);
     try {
       if (typeof updateCurrentUserProfile === 'function') {
@@ -483,9 +491,10 @@ export const Profile = () => {
                 <input 
                   type="text"
                   required
+                  maxLength={20}
                   value={profileForm.name}
-                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                  placeholder="Enter your full name"
+                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value.slice(0, 20) })}
+                  placeholder="Enter your full name (max 20 characters)"
                   className="form-input"
                 />
               </div>
