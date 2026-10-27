@@ -236,8 +236,30 @@ export const RescheduleDeliveryDrawer = () => {
                   id="delivery-date-input"
                   type="date"
                   min={getMinDate()}
+                  max="9999-12-31"
                   value={deliveryDate}
-                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  onInput={(e) => {
+                    let val = e.target.value;
+                    if (val) {
+                      const parts = val.split('-');
+                      if (parts[0] && parts[0].length > 4) {
+                        val = `${parts[0].slice(0, 4)}-${parts[1] || ''}-${parts[2] || ''}`;
+                        e.target.value = val;
+                      }
+                    }
+                    setDeliveryDate(val);
+                  }}
+                  onChange={(e) => {
+                    let val = e.target.value;
+                    if (val) {
+                      const parts = val.split('-');
+                      if (parts[0] && parts[0].length > 4) {
+                        val = `${parts[0].slice(0, 4)}-${parts[1] || ''}-${parts[2] || ''}`;
+                        e.target.value = val;
+                      }
+                    }
+                    setDeliveryDate(val);
+                  }}
                   className="reschedule-date-input"
                   required
                 />

@@ -338,9 +338,32 @@ export const AssignOrderModal = () => {
                   <label className="schedule-field-label">Pickup Date</label>
                   <input 
                     type="date"
+                    min="1000-01-01"
+                    max="9999-12-31"
                     className="schedule-date-input"
                     value={pickupDate}
-                    onChange={(e) => setPickupDate(e.target.value)}
+                    onInput={(e) => {
+                      let val = e.target.value;
+                      if (val) {
+                        const parts = val.split('-');
+                        if (parts[0] && parts[0].length > 4) {
+                          val = `${parts[0].slice(0, 4)}-${parts[1] || ''}-${parts[2] || ''}`;
+                          e.target.value = val;
+                        }
+                      }
+                      setPickupDate(val);
+                    }}
+                    onChange={(e) => {
+                      let val = e.target.value;
+                      if (val) {
+                        const parts = val.split('-');
+                        if (parts[0] && parts[0].length > 4) {
+                          val = `${parts[0].slice(0, 4)}-${parts[1] || ''}-${parts[2] || ''}`;
+                          e.target.value = val;
+                        }
+                      }
+                      setPickupDate(val);
+                    }}
                     disabled={isAlreadyAssigned}
                     style={isAlreadyAssigned ? { opacity: 0.95, backgroundColor: '#F8FAFC', cursor: 'default' } : {}}
                   />

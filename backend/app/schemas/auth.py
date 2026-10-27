@@ -31,7 +31,7 @@ class MeUpdateRequest(BaseModel):
 
 
 class AdminUserCreate(BaseModel):
-    name: str = Field(..., min_length=2, max_length=100)
+    name: str = Field(..., min_length=2, max_length=25)
     email: str = Field(..., pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     phone: str = Field(..., min_length=10, max_length=15)
     role: str = Field(..., pattern="^(customer|agent|staff|admin)$")
@@ -41,7 +41,7 @@ class AdminUserCreate(BaseModel):
 
 
 class AdminUserUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    name: Optional[str] = Field(None, min_length=2, max_length=25)
     phone: Optional[str] = Field(None, min_length=10, max_length=15)
     role: Optional[str] = Field(None, pattern="^(customer|agent|staff|admin)$")
 

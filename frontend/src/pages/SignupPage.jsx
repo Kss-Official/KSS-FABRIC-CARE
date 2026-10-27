@@ -62,6 +62,10 @@ export const SignupPage = () => {
       setErrorMessage('Please enter your full name.');
       return;
     }
+    if (fullName.trim().length > 20) {
+      setErrorMessage('Customer name cannot exceed 20 characters.');
+      return;
+    }
     if (!email.trim() || !email.includes('@')) {
       setErrorMessage('Please enter a valid email address.');
       return;
@@ -251,10 +255,11 @@ export const SignupPage = () => {
                   <input
                     type="text"
                     required
+                    maxLength={20}
                     className="auth-input-control"
-                    placeholder="Enter your full name"
+                    placeholder="Enter your full name (max 20 characters)"
                     value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    onChange={(e) => setFullName(e.target.value.slice(0, 20))}
                     disabled={isSubmitting}
                     autoComplete="name"
                   />

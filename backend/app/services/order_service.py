@@ -33,6 +33,7 @@ def _create_order_tx(
     items_input: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     db = get_db()
+    customer_name = (customer_name or "").strip()[:20]
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
     expires_at = (now + timedelta(minutes=30)).isoformat()

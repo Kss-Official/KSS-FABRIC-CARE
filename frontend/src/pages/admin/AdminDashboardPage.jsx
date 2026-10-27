@@ -1094,8 +1094,8 @@ export const AdminDashboardPage = () => {
 
                       {activeActionMenuId === ord.id && (
                         <div className="action-dropdown-menu" onClick={e => e.stopPropagation()}>
-                          <div className="dropdown-order-header">
-                            <span className="dropdown-order-title">Order {ord.id}</span>
+                          <div className="dropdown-order-header" style={{ textAlign: 'left' }}>
+                            <span className="dropdown-order-title" style={{ textAlign: 'left' }}>Order {ord.id}</span>
                             <span className={`status-mini-badge ${getStatusClass(ord.status)}`}>{displayStatus(ord.status)}</span>
                           </div>
                           
@@ -2154,6 +2154,7 @@ export const AdminDashboardPage = () => {
           gap: 2px;
           box-sizing: border-box;
           animation: dropdownPop 0.15s ease-out;
+          text-align: left;
         }
 
         @keyframes dropdownPop {
@@ -2179,6 +2180,7 @@ export const AdminDashboardPage = () => {
           min-height: auto;
           width: 100%;
           box-sizing: border-box;
+          text-align: left;
         }
 
         .dropdown-order-header span:first-child,
@@ -2186,6 +2188,7 @@ export const AdminDashboardPage = () => {
           font-size: 0.75rem;
           font-weight: 700;
           color: #0F172A;
+          text-align: left;
           word-break: break-word;
           overflow-wrap: break-word;
           line-height: 1.35;
@@ -2670,6 +2673,9 @@ export const AdminDashboardPage = () => {
           border-radius: 16px;
           cursor: pointer;
           transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+          height: auto;
+          min-height: 76px;
+          box-sizing: border-box;
         }
 
         .pickup-item-card:hover {
@@ -2682,6 +2688,7 @@ export const AdminDashboardPage = () => {
           display: flex;
           align-items: center;
           gap: 20px;
+          flex: 1 1 auto;
           min-width: 0;
         }
 
@@ -2722,7 +2729,9 @@ export const AdminDashboardPage = () => {
           display: flex;
           flex-direction: column;
           gap: 3px;
+          flex: 1 1 auto;
           min-width: 0;
+          overflow: hidden;
         }
 
         .pickup-item-id {
@@ -2731,13 +2740,18 @@ export const AdminDashboardPage = () => {
           color: #0F172A;
           letter-spacing: -0.01em;
           line-height: 1.25;
+          word-break: break-word;
+          overflow-wrap: anywhere;
         }
 
         .pickup-item-name {
           font-size: 0.875rem;
           font-weight: 600;
           color: #475569;
-          line-height: 1.25;
+          line-height: 1.35;
+          white-space: normal;
+          word-break: break-word;
+          overflow-wrap: anywhere;
         }
 
         .pickup-item-area {
@@ -2745,9 +2759,9 @@ export const AdminDashboardPage = () => {
           font-weight: 400;
           color: #94A3B8;
           line-height: 1.25;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          word-break: break-word;
+          overflow-wrap: anywhere;
+          white-space: normal;
         }
 
         .pickup-right-col {
@@ -2755,6 +2769,7 @@ export const AdminDashboardPage = () => {
           align-items: center;
           gap: 16px;
           flex-shrink: 0;
+          margin-left: auto;
         }
 
         .pickup-type-pill {

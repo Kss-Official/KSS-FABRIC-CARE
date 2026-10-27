@@ -16,9 +16,10 @@ import {
   UserCheck,
   RotateCcw
 } from 'lucide-react';
-import { filterMatchesDate } from '../../utils/dateFilterUtils';
+import { filterMatchesDate, formatDateFilterLabel } from '../../utils/dateFilterUtils';
 import { formatOrderId } from '../../utils/helpers';
 import { OrderProcessingModal } from '../../components/admin/OrderProcessingModal';
+import { AdminDateFilterPopover } from '../../components/admin/AdminDateFilterPopover';
 
 // Washing Machine / Washer SVG icon matching Reference Image 2 Metric Card 3
 const WasherIcon = ({ size = 20, color = 'currentColor', className = '' }) => (
@@ -766,7 +767,7 @@ export const AdminOrdersPage = () => {
     }
 
     // Date range filter
-    if (dateRangeFilter !== 'all' && !filterMatchesDate(o, dateRangeFilter, ['placedAt', 'createdAt', 'updatedAt', 'date', 'pickup_time', 'created_at'])) {
+    if (dateRangeFilter !== 'all' && !filterMatchesDate(o, dateRangeFilter, ['pickup_date', 'pickupDate', 'date', 'pickupTime', 'pickup_time', 'placedAt', 'createdAt', 'created_at', 'updatedAt'])) {
       return false;
     }
 
@@ -1021,42 +1022,27 @@ export const AdminOrdersPage = () => {
           <div className="orders-date-dropdown-wrapper">
             <button 
               type="button"
-              className={`filter-date-range-box ${isDateDropdownOpen ? 'active' : ''}`}
+              className={`filter-date-range-box ${(dateRangeFilter && dateRangeFilter !== 'all') || isDateDropdownOpen ? 'active' : ''}`}
               onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
             >
               <Calendar size={15} className="date-icon" />
               <span className="date-label">
-                {dateRangeFilter === 'all' 
-                  ? 'Select Date Range' 
-                  : (dateRangeFilter === 'today' ? 'Today' : dateRangeFilter === 'yesterday' ? 'Yesterday' : dateRangeFilter === 'last-week' ? 'Last Week' : 'Last 30 Days')}
+                {formatDateFilterLabel(dateRangeFilter, 'Select Date Range')}
               </span>
               <ChevronDown size={15} className="date-chevron" />
             </button>
 
-            {isDateDropdownOpen && (
-              <div className="orders-date-popover animate-scale-in">
-                {[
-                  { key: 'all', label: 'All Dates' },
-                  { key: 'today', label: 'Today' },
-                  { key: 'yesterday', label: 'Yesterday' },
-                  { key: 'last-week', label: 'Last Week' },
-                  { key: 'last-30', label: 'Last 30 Days' }
-                ].map(opt => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    className={`orders-popover-item ${dateRangeFilter === opt.key ? 'active' : ''}`}
-                    onClick={() => {
-                      setDateRangeFilter(opt.key);
-                      setCurrentPage(1);
-                      setIsDateDropdownOpen(false);
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <AdminDateFilterPopover
+              isOpen={isDateDropdownOpen}
+              onClose={() => setIsDateDropdownOpen(false)}
+              value={dateRangeFilter}
+              onChange={(newVal) => {
+                setDateRangeFilter(newVal);
+                setCurrentPage(1);
+              }}
+              allLabel="All Dates"
+              align="left"
+            />
           </div>
         </div>
       </div>

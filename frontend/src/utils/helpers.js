@@ -564,4 +564,117 @@ export const matchesOrderSearch = (order, searchQuery, servicesString = '') => {
   return false;
 };
 
+/**
+ * Strict Email Validation and Keystroke Control
+ * Prevents typing additional characters after complete TLDs (e.g. .com)
+ */
+export const sanitizeEmailInput = (val) => {
+  if (!val) return '';
+  // Remove all whitespace
+  let clean = String(val).replace(/\s+/g, '');
+  
+  // If email already has a completed standard TLD (e.g. .com, .org, .net, etc.) followed by extra characters, strip them
+  clean = clean.replace(/(@[a-zA-Z0-9.-]+\.(?:com|org|net|edu|gov|biz|info|io|co\.in|org\.in|ac\.in|net\.in|com\.au|co\.uk))[^\s@]+/i, '$1');
+  
+  // Prevent multiple '@' characters
+  const atParts = clean.split('@');
+  if (atParts.length > 2) {
+    clean = atParts[0] + '@' + atParts.slice(1).join('').replace(/@/g, '');
+  }
+
+  return clean;
+};
+
+export const handleEmailKeyDown = (e, currentVal) => {
+  // Allow control / navigation keys
+  if (
+    e.key === 'Backspace' ||
+    e.key === 'Delete' ||
+    e.key === 'Tab' ||
+    e.key === 'Enter' ||
+    e.key === 'Escape' ||
+    e.key.startsWith('Arrow') ||
+    e.ctrlKey ||
+    e.metaKey ||
+    e.altKey
+  ) {
+    return;
+  }
+
+  // Disallow space
+  if (e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault();
+    return;
+  }
+
+  if (e.key.length === 1) {
+    const input = e.target;
+    const start = input.selectionStart ?? (currentVal ? currentVal.length : 0);
+    const end = input.selectionEnd ?? start;
+    const val = currentVal || '';
+
+    // If already complete with standard TLD (.com, .org, etc.)
+    const completeTldRegex = /@[a-zA-Z0-9.-]+\.(com|org|net|edu|gov|biz|info|io|co\.in|org\.in|ac\.in|net\.in|com\.au|co\.uk)$/i;
+
+    // If at the end of a completed domain and not replacing selection
+    if (completeTldRegex.test(val) && start >= val.length && start === end) {
+      e.preventDefault();
+      return;
+    }
+
+    // Check what the value would become after inserting this key
+    const nextVal = val.slice(0, start) + e.key + val.slice(end);
+    if (/@.+\.(com|org|net|edu|gov|biz|info|io|co\.in|org\.in|ac\.in|net\.in|com\.au|co\.uk)[^\s@]/i.test(nextVal)) {
+      e.preventDefault();
+      return;
+    }
+  }
+};
+
+export const isValidStrictEmail = (email) => {
+  if (!email || typeof email !== 'string') return false;
+  const trimmed = email.trim();
+  if (trimmed.length < 5 || trimmed.length > 254) return false;
+
+  // No whitespace allowed
+  if (/\s/.test(trimmed)) return false;
+
+  // Exactly one '@' symbol
+  const parts = trimmed.split('@');
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+
+  // Local part checks
+  if (!local || local.length > 64) return false;
+  if (local.startsWith('.') || local.endsWith('.') || local.includes('..')) return false;
+  if (!/^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~.-]+$/.test(local)) return false;
+
+  // Domain checks
+  if (!domain || domain.length > 255) return false;
+  if (domain.startsWith('.') || domain.endsWith('.') || domain.includes('..') || domain.startsWith('-') || domain.endsWith('-')) return false;
+
+  const domainParts = domain.split('.');
+  if (domainParts.length < 2) return false;
+
+  for (const label of domainParts) {
+    if (!label || label.startsWith('-') || label.endsWith('-')) return false;
+    if (!/^[a-zA-Z0-9-]+$/.test(label)) return false;
+  }
+
+  // TLD check (last part)
+  const tld = domainParts[domainParts.length - 1].toLowerCase();
+
+  // Reject additional characters appended to common TLDs (e.g. coma, comx, comm, orga, netx, etc.)
+  if (/^(com|org|net|edu|gov|biz|info|mil)[a-z0-9]+/i.test(tld)) {
+    return false;
+  }
+
+  // TLD must be between 2 and 10 alphabetic characters
+  if (!/^[a-zA-Z]{2,10}$/.test(tld)) return false;
+
+  // Comprehensive strict email regex
+  const regex = /^[a-zA-Z0-9]+([._%+-][a-zA-Z0-9]+)*@[a-zA-Z0-9]+([.-][a-zA-Z0-9]+)*\.(com|org|net|edu|gov|mil|biz|info|io|co|in|ai|app|dev|me|tv|cc|tech|online|store|site|co\.in|org\.in|ac\.in|gov\.in|net\.in|com\.au|co\.uk|[a-zA-Z]{2,8})$/i;
+  return regex.test(trimmed);
+};
+
 

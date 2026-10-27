@@ -238,7 +238,7 @@ export const normalizeFirestoreOrder = (docData, docId) => {
   if (!rawCustName || rawCustName.trim().toLowerCase() === 'customer') {
     rawCustName = d.customerName || d.customer_name || d.pickup_full_name || d.recipient_name || d.userName || d.name || '';
   }
-  const custName = (rawCustName && rawCustName.trim().toLowerCase() !== 'customer') ? rawCustName.trim() : 'Customer';
+  const custName = (rawCustName && rawCustName.trim().toLowerCase() !== 'customer') ? rawCustName.trim().slice(0, 20) : 'Customer';
 
   // Safely extract customer phone
   let rawCustPhone = '';

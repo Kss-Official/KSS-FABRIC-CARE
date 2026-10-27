@@ -1286,10 +1286,11 @@ export const HomePage = () => {
                     <input
                       type="text"
                       required
-                      placeholder="Name"
+                      maxLength={20}
+                      placeholder="Name (max 20)"
                       className="mobile-form-input"
                       value={contactForm.name}
-                      onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                      onChange={(e) => setContactForm({ ...contactForm, name: e.target.value.slice(0, 20) })}
                     />
                     <input
                       type="email"

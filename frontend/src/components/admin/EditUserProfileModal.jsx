@@ -37,13 +37,14 @@ export const EditUserProfileModal = ({
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
 
   // Sync form whenever user changes (or modal opens with a new user)
   useEffect(() => {
     if (user) {
       setFormData({
         name: user.fullName || user.name || '',
-        phone: user.phone || user.phoneNumber || '',
+        phone: (user.phone || user.phoneNumber || '').replace(/\D/g, '').slice(0, 10),
         email: user.email || '',
         status: (user.isActive !== false && user.status !== 'Inactive') ? 'Active' : 'Inactive',
         location: user.location || user.address || user.area || '',
@@ -52,6 +53,7 @@ export const EditUserProfileModal = ({
         vehicleType: user.vehicleType || 'Two-Wheeler',
         vehicleNumber: user.vehicleNumber || ''
       });
+      setErrors({});
     }
   }, [user, isOpen]);
 
@@ -108,6 +110,40 @@ export const EditUserProfileModal = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errs = {};
+    const trimmedName = formData.name.trim();
+    if (!trimmedName) {
+      errs.name = 'Full name is required';
+    } else if (!/^[A-Za-z\s]+$/.test(trimmedName)) {
+      errs.name = 'Name must contain only alphabetic characters and spaces';
+    } else if (trimmedName.replace(/\s+/g, '').length < 2) {
+      errs.name = 'Name must be at least 2 letters';
+    } else if (trimmedName.length > 20) {
+      errs.name = 'Name cannot exceed 20 characters';
+    }
+
+    const cleanPhone = formData.phone.replace(/\D/g, '');
+    if (!cleanPhone) {
+      errs.phone = 'Mobile number is required';
+    } else if (cleanPhone.length !== 10) {
+      errs.phone = 'Mobile number must be exactly 10 digits';
+    } else if (!/^[6-9]/.test(cleanPhone)) {
+      errs.phone = 'Mobile number must start with 6, 7, 8, or 9';
+    }
+
+    const trimmedEmail = formData.email.trim();
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!trimmedEmail) {
+      errs.email = 'Email address is required';
+    } else if (!emailRegex.test(trimmedEmail)) {
+      errs.email = 'Please enter a valid email address (e.g., name@example.com)';
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (onSave) {
@@ -268,20 +304,49 @@ export const EditUserProfileModal = ({
                   display: 'flex',
                   alignItems: 'center',
                   background: '#FFFFFF',
-                  border: '1px solid #E2E8F0',
+                  border: errors.name ? '1.5px solid #EF4444' : '1px solid #E2E8F0',
                   borderRadius: '10px',
                   height: '44px',
                   padding: '0 12px',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  boxShadow: errors.name ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : '0 1px 2px rgba(0,0,0,0.02)',
                   transition: 'border-color 0.15s, box-shadow 0.15s'
                 }}
               >
-                <User size={17} color="#94A3B8" strokeWidth={1.8} style={{ flexShrink: 0, marginRight: '10px' }} />
+                <User size={17} color={errors.name ? '#EF4444' : '#94A3B8'} strokeWidth={1.8} style={{ flexShrink: 0, marginRight: '10px' }} />
                 <input 
                   type="text" 
+                  maxLength={20}
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Enter full name"
+                  onChange={(e) => {
+                    const lettersOnly = e.target.value.replace(/[^A-Za-z\s]/g, '').slice(0, 20);
+                    setFormData({ ...formData, name: lettersOnly });
+                    if (errors.name) {
+                      if (lettersOnly.trim().length >= 2 && lettersOnly.trim().length <= 20 && /^[A-Za-z\s]+$/.test(lettersOnly.trim())) {
+                        setErrors(prev => ({ ...prev, name: '' }));
+                      }
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) return;
+                    if (!/^[A-Za-z\s]$/.test(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onBlur={() => {
+                    const trimmed = formData.name.trim();
+                    if (!trimmed) {
+                      setErrors(prev => ({ ...prev, name: 'Full name is required' }));
+                    } else if (!/^[A-Za-z\s]+$/.test(trimmed)) {
+                      setErrors(prev => ({ ...prev, name: 'Name must contain only alphabetic characters and spaces' }));
+                    } else if (trimmed.replace(/\s+/g, '').length < 2) {
+                      setErrors(prev => ({ ...prev, name: 'Name must be at least 2 letters' }));
+                    } else if (trimmed.length > 20) {
+                      setErrors(prev => ({ ...prev, name: 'Name cannot exceed 20 characters' }));
+                    } else {
+                      setErrors(prev => ({ ...prev, name: '' }));
+                    }
+                  }}
+                  placeholder="Enter full name (max 20 characters)"
                   required
                   style={{
                     flex: 1,
@@ -295,6 +360,7 @@ export const EditUserProfileModal = ({
                   }}
                 />
               </div>
+              {errors.name && <span style={{ color: '#EF4444', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>{errors.name}</span>}
             </div>
 
             {/* Phone Number */}
@@ -316,20 +382,48 @@ export const EditUserProfileModal = ({
                   display: 'flex',
                   alignItems: 'center',
                   background: '#FFFFFF',
-                  border: '1px solid #E2E8F0',
+                  border: errors.phone ? '1.5px solid #EF4444' : '1px solid #E2E8F0',
                   borderRadius: '10px',
                   height: '44px',
                   padding: '0 12px',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  boxShadow: errors.phone ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : '0 1px 2px rgba(0,0,0,0.02)',
                   transition: 'border-color 0.15s, box-shadow 0.15s'
                 }}
               >
-                <Phone size={17} color="#94A3B8" strokeWidth={1.8} style={{ flexShrink: 0, marginRight: '10px' }} />
+                <Phone size={17} color={errors.phone ? '#EF4444' : '#94A3B8'} strokeWidth={1.8} style={{ flexShrink: 0, marginRight: '10px' }} />
                 <input 
-                  type="text" 
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+91 98000 00000"
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setFormData({ ...formData, phone: digits });
+                    if (errors.phone) {
+                      if (digits.length === 10 && /^[6-9]/.test(digits)) {
+                        setErrors(prev => ({ ...prev, phone: '' }));
+                      }
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key)) return;
+                    if (!/^\d$/.test(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onBlur={() => {
+                    const digits = formData.phone.replace(/\D/g, '');
+                    if (!digits) {
+                      setErrors(prev => ({ ...prev, phone: 'Mobile number is required' }));
+                    } else if (digits.length !== 10) {
+                      setErrors(prev => ({ ...prev, phone: 'Mobile number must be exactly 10 digits' }));
+                    } else if (!/^[6-9]/.test(digits)) {
+                      setErrors(prev => ({ ...prev, phone: 'Mobile number must start with 6, 7, 8, or 9' }));
+                    } else {
+                      setErrors(prev => ({ ...prev, phone: '' }));
+                    }
+                  }}
+                  placeholder="10-digit mobile number"
                   required
                   style={{
                     flex: 1,
@@ -343,6 +437,7 @@ export const EditUserProfileModal = ({
                   }}
                 />
               </div>
+              {errors.phone && <span style={{ color: '#EF4444', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>{errors.phone}</span>}
             </div>
           </div>
 
@@ -367,19 +462,40 @@ export const EditUserProfileModal = ({
                   display: 'flex',
                   alignItems: 'center',
                   background: '#FFFFFF',
-                  border: '1px solid #E2E8F0',
+                  border: errors.email ? '1.5px solid #EF4444' : '1px solid #E2E8F0',
                   borderRadius: '10px',
                   height: '44px',
                   padding: '0 12px',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  boxShadow: errors.email ? '0 0 0 3px rgba(239, 68, 68, 0.1)' : '0 1px 2px rgba(0,0,0,0.02)',
                   transition: 'border-color 0.15s, box-shadow 0.15s'
                 }}
               >
-                <Mail size={17} color="#94A3B8" strokeWidth={1.8} style={{ flexShrink: 0, marginRight: '10px' }} />
+                <Mail size={17} color={errors.email ? '#EF4444' : '#94A3B8'} strokeWidth={1.8} style={{ flexShrink: 0, marginRight: '10px' }} />
                 <input 
                   type="email" 
+                  inputMode="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, email: val });
+                    if (errors.email) {
+                      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                      if (emailRegex.test(val.trim())) {
+                        setErrors(prev => ({ ...prev, email: '' }));
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    const trimmed = formData.email.trim();
+                    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                    if (!trimmed) {
+                      setErrors(prev => ({ ...prev, email: 'Email address is required' }));
+                    } else if (!emailRegex.test(trimmed)) {
+                      setErrors(prev => ({ ...prev, email: 'Please enter a valid email address (e.g., name@example.com)' }));
+                    } else {
+                      setErrors(prev => ({ ...prev, email: '' }));
+                    }
+                  }}
                   placeholder="name@example.com"
                   required
                   style={{
@@ -394,6 +510,7 @@ export const EditUserProfileModal = ({
                   }}
                 />
               </div>
+              {errors.email && <span style={{ color: '#EF4444', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>{errors.email}</span>}
             </div>
 
             {/* Account Status */}

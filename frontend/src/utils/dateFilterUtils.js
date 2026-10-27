@@ -541,68 +541,203 @@ export const filterMatchesDate = (entity, rangeKey, customFields = []) => {
   const ranges = getActiveDateRanges();
   const time = entityDate.getTime();
 
-  // If rangeKey is an object with start and end
-  if (typeof rangeKey === 'object' && rangeKey !== null && (rangeKey.start || rangeKey.end)) {
-    const sStart = rangeKey.start ? getStartOfDay(parseFlexibleDate(rangeKey.start)).getTime() : 0;
-    const sEnd = rangeKey.end ? getEndOfDay(parseFlexibleDate(rangeKey.end)).getTime() : Infinity;
-    return time >= sStart && time <= sEnd;
+  // 1. If rangeKey is an object
+  if (typeof rangeKey === 'object' && rangeKey !== null) {
+    // A. Month & Year filter
+    if (rangeKey.type === 'month' || rangeKey.monthYear || (rangeKey.year !== undefined && rangeKey.month !== undefined)) {
+      let targetYear = rangeKey.year ? parseInt(rangeKey.year, 10) : null;
+      let targetMonth = null;
+      if (rangeKey.monthYear) {
+        const m = String(rangeKey.monthYear).match(/^(\d{4})-(\d{1,2})$/);
+        if (m) {
+          targetYear = parseInt(m[1], 10);
+          targetMonth = parseInt(m[2], 10) - 1; // 0-indexed
+        }
+      } else if (rangeKey.month !== undefined) {
+        const mNum = parseInt(rangeKey.month, 10);
+        targetMonth = rangeKey.isZeroIndexed ? mNum : (mNum > 0 && mNum <= 12 ? mNum - 1 : mNum);
+      }
+      if (targetYear !== null && targetMonth !== null) {
+        return entityDate.getFullYear() === targetYear && entityDate.getMonth() === targetMonth;
+      }
+    }
+
+    // B. Specific single date
+    if (rangeKey.type === 'specific' || rangeKey.date) {
+      const specificDate = parseFlexibleDate(rangeKey.date || rangeKey.value);
+      if (specificDate) {
+        const sStart = getStartOfDay(specificDate).getTime();
+        const sEnd = getEndOfDay(specificDate).getTime();
+        return time >= sStart && time <= sEnd;
+      }
+    }
+
+    // C. Custom date range (start / end, from / to, startDate / endDate)
+    if (rangeKey.type === 'range' || rangeKey.start || rangeKey.end || rangeKey.startDate || rangeKey.endDate || rangeKey.from || rangeKey.to) {
+      const startVal = rangeKey.start || rangeKey.startDate || rangeKey.from;
+      const endVal = rangeKey.end || rangeKey.endDate || rangeKey.to;
+      const sStart = startVal ? getStartOfDay(parseFlexibleDate(startVal)).getTime() : 0;
+      const sEnd = endVal ? getEndOfDay(parseFlexibleDate(endVal)).getTime() : Infinity;
+      return time >= sStart && time <= sEnd;
+    }
+
+    // D. Preset key in object wrapper
+    if (rangeKey.key) {
+      return filterMatchesDate(entity, rangeKey.key, customFields);
+    }
   }
 
-  const normKey = String(rangeKey).toLowerCase().replace(/[\s_-]+/g, '');
+  // 2. If rangeKey is a string
+  if (typeof rangeKey === 'string') {
+    // Check if it's Month format "YYYY-MM" (e.g. "2026-10")
+    const monthMatch = rangeKey.match(/^(\d{4})-(\d{1,2})$/);
+    if (monthMatch) {
+      const y = parseInt(monthMatch[1], 10);
+      const m = parseInt(monthMatch[2], 10) - 1;
+      return entityDate.getFullYear() === y && entityDate.getMonth() === m;
+    }
 
-  if (normKey === 'today') {
-    if (time >= ranges.today.start.getTime() && time <= ranges.today.end.getTime()) return true;
-    const tStart = ranges.today.start;
-    return (
-      entityDate.getFullYear() === tStart.getFullYear() &&
-      entityDate.getMonth() === tStart.getMonth() &&
-      entityDate.getDate() === tStart.getDate()
-    );
-  }
+    const normKey = rangeKey.toLowerCase().replace(/[\s_-]+/g, '');
 
-  if (normKey === 'tomorrow') {
-    if (time >= ranges.tomorrow.start.getTime() && time <= ranges.tomorrow.end.getTime()) return true;
-    const tmStart = ranges.tomorrow.start;
-    return (
-      entityDate.getFullYear() === tmStart.getFullYear() &&
-      entityDate.getMonth() === tmStart.getMonth() &&
-      entityDate.getDate() === tmStart.getDate()
-    );
-  }
+    if (normKey === 'all' || normKey === 'alltime' || normKey === 'alldates') {
+      return true;
+    }
 
-  if (normKey === 'yesterday') {
-    if (time >= ranges.yesterday.start.getTime() && time <= ranges.yesterday.end.getTime()) return true;
-    const yStart = ranges.yesterday.start;
-    return (
-      entityDate.getFullYear() === yStart.getFullYear() &&
-      entityDate.getMonth() === yStart.getMonth() &&
-      entityDate.getDate() === yStart.getDate()
-    );
-  }
+    if (normKey === 'today') {
+      if (time >= ranges.today.start.getTime() && time <= ranges.today.end.getTime()) return true;
+      const tStart = ranges.today.start;
+      return (
+        entityDate.getFullYear() === tStart.getFullYear() &&
+        entityDate.getMonth() === tStart.getMonth() &&
+        entityDate.getDate() === tStart.getDate()
+      );
+    }
 
-  if (normKey === 'thisweek') {
-    return time >= ranges.thisWeek.start.getTime() && time <= ranges.thisWeek.end.getTime();
-  }
+    if (normKey === 'tomorrow') {
+      if (time >= ranges.tomorrow.start.getTime() && time <= ranges.tomorrow.end.getTime()) return true;
+      const tmStart = ranges.tomorrow.start;
+      return (
+        entityDate.getFullYear() === tmStart.getFullYear() &&
+        entityDate.getMonth() === tmStart.getMonth() &&
+        entityDate.getDate() === tmStart.getDate()
+      );
+    }
 
-  if (normKey === 'lastweek' || normKey === 'previousweek' || normKey === 'prevweek') {
-    return time >= ranges.lastWeek.start.getTime() && time <= ranges.lastWeek.end.getTime();
-  }
+    if (normKey === 'yesterday') {
+      if (time >= ranges.yesterday.start.getTime() && time <= ranges.yesterday.end.getTime()) return true;
+      const yStart = ranges.yesterday.start;
+      return (
+        entityDate.getFullYear() === yStart.getFullYear() &&
+        entityDate.getMonth() === yStart.getMonth() &&
+        entityDate.getDate() === yStart.getDate()
+      );
+    }
 
-  if (normKey === '7days' || normKey === 'last7days' || normKey === 'last7' || normKey === '7day') {
-    return time >= ranges.last7Days.start.getTime() && time <= ranges.last7Days.end.getTime();
-  }
+    if (normKey === 'thisweek') {
+      return time >= ranges.thisWeek.start.getTime() && time <= ranges.thisWeek.end.getTime();
+    }
 
-  if (normKey === 'last30' || normKey === 'last30days' || normKey === 'thismonth') {
-    return time >= ranges.last30Days.start.getTime() && time <= ranges.last30Days.end.getTime();
-  }
+    if (normKey === 'lastweek' || normKey === 'previousweek' || normKey === 'prevweek') {
+      return time >= ranges.lastWeek.start.getTime() && time <= ranges.lastWeek.end.getTime();
+    }
 
-  // Exact date match (e.g., "2026-10-24", "24 Oct 2026", "Tuesday, 23 Sep 2026")
-  const specificDate = parseFlexibleDate(rangeKey);
-  if (specificDate) {
-    const sStart = getStartOfDay(specificDate).getTime();
-    const sEnd = getEndOfDay(specificDate).getTime();
-    return time >= sStart && time <= sEnd;
+    if (normKey === '7days' || normKey === 'last7days' || normKey === 'last7' || normKey === '7day') {
+      return time >= ranges.last7Days.start.getTime() && time <= ranges.last7Days.end.getTime();
+    }
+
+    if (normKey === 'last30' || normKey === 'last30days' || normKey === 'thismonth') {
+      return time >= ranges.last30Days.start.getTime() && time <= ranges.last30Days.end.getTime();
+    }
+
+    // Exact specific date match (e.g., "2026-10-24", "24 Oct 2026", "Tuesday, 23 Sep 2026")
+    const specificDate = parseFlexibleDate(rangeKey);
+    if (specificDate) {
+      const sStart = getStartOfDay(specificDate).getTime();
+      const sEnd = getEndOfDay(specificDate).getTime();
+      return time >= sStart && time <= sEnd;
+    }
   }
 
   return true;
+};
+
+/**
+ * Formats the active date filter into a clean, human-readable label
+ */
+export const formatDateFilterLabel = (filter, defaultLabel = 'Select Date Range', prefix = '') => {
+  if (!filter || filter === 'all' || filter === 'all-time') {
+    return defaultLabel;
+  }
+
+  const p = prefix ? `${prefix} ` : '';
+
+  if (typeof filter === 'string') {
+    if (filter === 'today') return `${p}Today`;
+    if (filter === 'yesterday') return `${p}Yesterday`;
+    if (filter === 'last-week') return `${p}Last Week`;
+    if (filter === 'last-30') return `${p}Last 30 Days`;
+
+    // Month "YYYY-MM"
+    const mMatch = filter.match(/^(\d{4})-(\d{1,2})$/);
+    if (mMatch) {
+      const y = parseInt(mMatch[1], 10);
+      const m = parseInt(mMatch[2], 10) - 1;
+      const d = new Date(y, m, 1);
+      const monStr = d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+      return `${p}${monStr}`;
+    }
+
+    // Specific Date
+    const parsed = parseFlexibleDate(filter);
+    if (parsed) {
+      return `${p}${parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+    }
+    return `${p}${filter}`;
+  }
+
+  if (typeof filter === 'object' && filter !== null) {
+    if (filter.type === 'specific' && filter.date) {
+      const parsed = parseFlexibleDate(filter.date);
+      if (parsed) {
+        return `${p}${parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+      }
+      return `${p}${filter.date}`;
+    }
+
+    if (filter.type === 'month' || filter.monthYear || (filter.year && filter.month !== undefined)) {
+      let y = filter.year;
+      let m = filter.month;
+      if (filter.monthYear) {
+        const parts = filter.monthYear.split('-');
+        y = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10);
+      }
+      const mIndex = filter.isZeroIndexed ? parseInt(m, 10) : (parseInt(m, 10) > 0 && parseInt(m, 10) <= 12 ? parseInt(m, 10) - 1 : parseInt(m, 10));
+      const d = new Date(parseInt(y, 10), mIndex, 1);
+      const monStr = d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+      return `${p}${monStr}`;
+    }
+
+    if (filter.type === 'range' || filter.start || filter.end) {
+      const startD = filter.start ? parseFlexibleDate(filter.start) : null;
+      const endD = filter.end ? parseFlexibleDate(filter.end) : null;
+      if (startD && endD) {
+        const sStr = startD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        const eStr = endD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        return `${p}${sStr} – ${eStr}`;
+      } else if (startD) {
+        const sStr = startD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        return `${p}From ${sStr}`;
+      } else if (endD) {
+        const eStr = endD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        return `${p}Until ${eStr}`;
+      }
+    }
+
+    if (filter.key) {
+      return formatDateFilterLabel(filter.key, defaultLabel, prefix);
+    }
+  }
+
+  return defaultLabel;
 };
