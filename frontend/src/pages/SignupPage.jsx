@@ -12,7 +12,8 @@ import {
   ChevronDown,
   Loader2,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  Info
 } from 'lucide-react';
 
 export const SignupPage = () => {
@@ -29,6 +30,7 @@ export const SignupPage = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [infoNotice, setInfoNotice] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
   // If already authenticated as customer, redirect
@@ -107,6 +109,7 @@ export const SignupPage = () => {
 
   const handleGoogleSignUp = async () => {
     setErrorMessage(null);
+    setInfoNotice(null);
     clearError();
     setIsSubmitting(true);
     try {
@@ -126,11 +129,15 @@ export const SignupPage = () => {
   };
 
   const handleAppleSignUp = () => {
-    setErrorMessage('Apple ID authentication is currently supported on iOS devices.');
+    setErrorMessage(null);
+    clearError();
+    setInfoNotice('Apple Sign-Up will be available soon. Please register using Google or your email address.');
   };
 
   const handleFacebookSignUp = () => {
-    setErrorMessage('Facebook authentication will be enabled in the upcoming update.');
+    setErrorMessage(null);
+    clearError();
+    setInfoNotice('Facebook Sign-Up will be available soon. Please register using Google or your email address.');
   };
 
   return (
@@ -211,6 +218,14 @@ export const SignupPage = () => {
               <span className="sep-label">OR</span>
               <span className="sep-line"></span>
             </div>
+
+            {/* Info Notice Banner */}
+            {infoNotice && !errorMessage && !authError && (
+              <div className="auth-alert-message info" role="status">
+                <Info size={15} />
+                <span>{infoNotice}</span>
+              </div>
+            )}
 
             {/* Error or Success Notice */}
             {(errorMessage || authError) && (
@@ -511,6 +526,12 @@ export const SignupPage = () => {
           background: #F0FDF4;
           color: #16A34A;
           border: 1px solid #DCFCE7;
+        }
+
+        .auth-alert-message.info {
+          background: #EFF6FF;
+          color: #1D4ED8;
+          border: 1px solid #BFDBFE;
         }
 
         /* Form Body */

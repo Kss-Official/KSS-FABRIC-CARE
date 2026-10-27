@@ -12,7 +12,8 @@ import {
   ArrowLeft,
   Loader2,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  Info
 } from 'lucide-react';
 
 export const LoginPage = () => {
@@ -26,6 +27,7 @@ export const LoginPage = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [infoNotice, setInfoNotice] = useState(null);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
@@ -41,9 +43,35 @@ export const LoginPage = () => {
     }
   }, [isAuthenticated, userRole, isSubmitting, setIsAdminAuthenticated, setAdminTab, navigateTo]);
 
+  // Lock document scroll on login page on desktop viewports
+  useEffect(() => {
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+
+    const applyScrollLock = () => {
+      if (window.innerWidth > 880 && window.innerHeight >= 550) {
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.documentElement.style.overflow = '';
+        document.body.style.overflow = '';
+      }
+    };
+
+    applyScrollLock();
+    window.addEventListener('resize', applyScrollLock);
+
+    return () => {
+      window.removeEventListener('resize', applyScrollLock);
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
+
   const handleSignIn = async (e) => {
     if (e) e.preventDefault();
     setErrorMessage(null);
+    setInfoNotice(null);
     clearError();
     setIsSubmitting(true);
 
@@ -77,6 +105,7 @@ export const LoginPage = () => {
 
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
+    setInfoNotice(null);
     clearError();
     setIsSubmitting(true);
     try {
@@ -103,11 +132,15 @@ export const LoginPage = () => {
   };
 
   const handleAppleSignIn = () => {
-    setErrorMessage('Apple ID authentication is currently supported on iOS devices.');
+    setErrorMessage(null);
+    clearError();
+    setInfoNotice('Apple Sign-In will be available soon. Please sign in using Google or your email address.');
   };
 
   const handleFacebookSignIn = () => {
-    setErrorMessage('Facebook login will be enabled in the upcoming update.');
+    setErrorMessage(null);
+    clearError();
+    setInfoNotice('Facebook Sign-In will be available soon. Please sign in using Google or your email address.');
   };
 
   const handleSendReset = async (e) => {
@@ -263,6 +296,14 @@ export const LoginPage = () => {
                   <span className="sep-label">OR</span>
                   <span className="sep-line"></span>
                 </div>
+
+                {/* Info Notice Banner */}
+                {infoNotice && !errorMessage && !authError && (
+                  <div className="auth-alert-message info" role="status">
+                    <Info size={15} />
+                    <span>{infoNotice}</span>
+                  </div>
+                )}
 
                 {/* Error Banner */}
                 {(errorMessage || authError) && (
@@ -436,23 +477,25 @@ export const LoginPage = () => {
       {/* Scoped CSS with Exact Matching Colors and Layout */}
       <style>{`
         .auth-page-root {
-          min-height: 100vh;
+          height: 100vh;
+          max-height: 100vh;
           width: 100%;
           display: flex;
           align-items: center;
           justify-content: center;
           background: #F4F6F8;
-          padding: 24px 16px;
+          padding: clamp(8px, 1.8vh, 18px) 16px;
           box-sizing: border-box;
+          overflow: hidden;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         }
 
         .auth-split-layout {
           width: 100%;
-          max-width: 1040px;
-          min-height: 640px;
+          max-width: 960px;
+          max-height: calc(100vh - 24px);
           background: #FFFFFF;
-          border-radius: 28px;
+          border-radius: 24px;
           box-shadow: 0 16px 45px -10px rgba(0, 0, 0, 0.08), 0 2px 10px rgba(0, 0, 0, 0.03);
           display: flex;
           overflow: hidden;
@@ -461,22 +504,29 @@ export const LoginPage = () => {
 
         /* Form Column on Left */
         .auth-form-panel {
-          flex: 0 0 49%;
+          flex: 0 0 50%;
           background: #FFFFFF;
-          padding: 44px 44px;
+          padding: clamp(16px, 2.2vh, 26px) clamp(20px, 2.5vw, 36px);
           display: flex;
           flex-direction: column;
           justify-content: center;
           box-sizing: border-box;
           position: relative;
+          overflow-y: auto;
+          scrollbar-width: none;
+        }
+
+        .auth-form-panel::-webkit-scrollbar {
+          display: none;
         }
 
         /* Artwork Column on Right */
         .auth-artwork-panel.right-side {
-          flex: 0 0 51%;
+          flex: 0 0 50%;
           position: relative;
           background: #E8F4F8;
-          min-height: 600px;
+          height: auto;
+          align-self: stretch;
           cursor: pointer;
           overflow: hidden;
           text-align: right;
@@ -506,30 +556,30 @@ export const LoginPage = () => {
         }
 
         .auth-headline {
-          font-size: 1.875rem;
+          font-size: 1.55rem;
           font-weight: 700;
           color: #0F172A;
-          margin: 0 0 6px 0;
+          margin: 0 0 2px 0;
           letter-spacing: -0.02em;
         }
 
         .auth-subheadline {
-          font-size: 0.875rem;
+          font-size: 0.8125rem;
           color: #64748B;
-          margin: 0 0 24px 0;
+          margin: 0 0 12px 0;
         }
 
         /* Social Row */
         .auth-social-row {
           display: flex;
           align-items: center;
-          gap: 12px;
-          margin-bottom: 20px;
+          gap: 10px;
+          margin-bottom: 10px;
         }
 
         .auth-social-button {
           flex: 1;
-          height: 44px;
+          height: 38px;
           background: #FFFFFF;
           border: 1px solid #E2E8F0;
           border-radius: 8px;
@@ -556,8 +606,8 @@ export const LoginPage = () => {
         .auth-separator {
           display: flex;
           align-items: center;
-          margin: 18px 0 20px 0;
-          gap: 14px;
+          margin: 8px 0 10px 0;
+          gap: 12px;
         }
 
         .sep-line {
@@ -567,7 +617,7 @@ export const LoginPage = () => {
         }
 
         .sep-label {
-          font-size: 0.75rem;
+          font-size: 0.72rem;
           font-weight: 600;
           color: #94A3B8;
           text-transform: uppercase;
@@ -579,10 +629,10 @@ export const LoginPage = () => {
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 10px 14px;
+          padding: 7px 12px;
           border-radius: 8px;
-          font-size: 0.8125rem;
-          margin-bottom: 16px;
+          font-size: 0.775rem;
+          margin-bottom: 10px;
         }
 
         .auth-alert-message.error {
@@ -597,22 +647,28 @@ export const LoginPage = () => {
           border: 1px solid #DCFCE7;
         }
 
+        .auth-alert-message.info {
+          background: #EFF6FF;
+          color: #1D4ED8;
+          border: 1px solid #BFDBFE;
+        }
+
         /* Form Body */
         .auth-form-body {
           display: flex;
           flex-direction: column;
-          gap: 14px;
+          gap: 8px;
           width: 100%;
         }
 
         .auth-field-row {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 3px;
         }
 
         .auth-label {
-          font-size: 0.8125rem;
+          font-size: 0.775rem;
           font-weight: 500;
           color: #1E293B;
           text-align: left;
@@ -623,8 +679,8 @@ export const LoginPage = () => {
           align-items: center;
           border: 1px solid #E2E8F0;
           border-radius: 8px;
-          height: 46px;
-          padding: 0 14px;
+          height: 38px;
+          padding: 0 12px;
           background: #FFFFFF;
           box-sizing: border-box;
           transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -638,7 +694,7 @@ export const LoginPage = () => {
         .auth-field-icon {
           color: #94A3B8;
           flex-shrink: 0;
-          margin-right: 10px;
+          margin-right: 8px;
         }
 
         .auth-input-control {
@@ -646,14 +702,14 @@ export const LoginPage = () => {
           outline: none;
           background: transparent;
           width: 100%;
-          font-size: 0.875rem;
+          font-size: 0.84rem;
           color: #0F172A;
           padding: 0;
         }
 
         .auth-input-control::placeholder {
           color: #94A3B8;
-          font-size: 0.875rem;
+          font-size: 0.84rem;
         }
 
         .auth-input-action-btn {
@@ -678,14 +734,14 @@ export const LoginPage = () => {
           justify-content: flex-end;
           text-align: right;
           margin-top: -2px;
-          margin-bottom: 2px;
+          margin-bottom: 0px;
         }
 
         .auth-forgot-btn {
           background: none;
           border: none;
           color: #017C9E;
-          font-size: 0.8125rem;
+          font-size: 0.775rem;
           font-weight: 500;
           cursor: pointer;
           padding: 0;
@@ -701,15 +757,15 @@ export const LoginPage = () => {
         /* Primary Teal Button matching Reference Image */
         .auth-primary-action-btn {
           width: 100%;
-          height: 46px;
+          height: 38px;
           background: #017C9E;
           color: #FFFFFF;
           border: none;
           border-radius: 8px;
-          font-size: 0.9375rem;
+          font-size: 0.875rem;
           font-weight: 600;
           cursor: pointer;
-          margin-top: 6px;
+          margin-top: 3px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -742,8 +798,8 @@ export const LoginPage = () => {
         /* Switch Prompt */
         .auth-switch-prompt {
           text-align: center;
-          margin-top: 24px;
-          font-size: 0.84375rem;
+          margin-top: 10px;
+          font-size: 0.8rem;
           color: #64748B;
         }
 
@@ -755,7 +811,7 @@ export const LoginPage = () => {
           cursor: pointer;
           padding: 0;
           margin-left: 6px;
-          font-size: 0.84375rem;
+          font-size: 0.8rem;
           transition: color 0.15s ease;
         }
 
@@ -766,38 +822,38 @@ export const LoginPage = () => {
 
         /* Quick Demo Logins Section */
         .auth-quick-demo-container {
-          margin-top: 22px;
-          padding-top: 16px;
+          margin-top: 10px;
+          padding-top: 8px;
           border-top: 1px dashed #E2E8F0;
           text-align: center;
         }
 
         .auth-quick-demo-divider {
-          font-size: 0.72rem;
+          font-size: 0.65rem;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.06em;
           color: #94A3B8;
-          margin-bottom: 10px;
+          margin-bottom: 6px;
         }
 
         .auth-quick-demo-chips {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
+          gap: 6px;
           flex-wrap: wrap;
         }
 
         .auth-demo-chip {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
+          gap: 5px;
           background: #F8FAFC;
           border: 1px solid #E2E8F0;
           border-radius: 9999px;
-          padding: 6px 13px;
-          font-size: 0.8125rem;
+          padding: 4px 10px;
+          font-size: 0.74rem;
           font-weight: 600;
           color: #334155;
           cursor: pointer;
@@ -814,26 +870,36 @@ export const LoginPage = () => {
         }
 
         .demo-chip-icon {
-          font-size: 0.95rem;
+          font-size: 0.9rem;
         }
 
         /* Responsive Breakpoints */
-        @media (max-width: 880px) {
+        @media (max-width: 880px), (max-height: 580px) {
+          .auth-page-root {
+            height: auto !important;
+            min-height: 100vh !important;
+            overflow-y: auto !important;
+            padding: 20px 14px !important;
+          }
+
           .auth-split-layout {
+            max-height: none !important;
+            height: auto !important;
             flex-direction: column-reverse;
             max-width: 480px;
             border-radius: 20px;
           }
 
           .auth-form-panel {
-            padding: 32px 24px;
-            flex: none;
+            flex: 1 1 auto;
+            padding: 28px 20px;
+            overflow-y: visible;
           }
 
           .auth-artwork-panel.right-side {
-            height: 320px;
-            min-height: 320px;
-            max-height: 360px;
+            height: 240px;
+            min-height: 240px;
+            max-height: 280px;
             flex: none;
             width: 100%;
           }
@@ -845,20 +911,20 @@ export const LoginPage = () => {
 
         @media (max-width: 480px) {
           .auth-page-root {
-            padding: 12px;
+            padding: 12px !important;
           }
 
           .auth-artwork-panel.right-side {
-            height: 260px;
-            min-height: 260px;
+            height: 200px;
+            min-height: 200px;
           }
 
           .auth-form-panel {
-            padding: 24px 18px;
+            padding: 20px 16px;
           }
 
           .auth-headline {
-            font-size: 1.625rem;
+            font-size: 1.45rem;
           }
         }
       `}</style>

@@ -45,7 +45,8 @@ export const fetchBackend = async (path, options = {}) => {
                 (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('fabricare_token') : null);
   let savedEmail = '';
   try {
-    const rawUser = typeof localStorage !== 'undefined' ? localStorage.getItem('fabricare_user') : null;
+    const rawUser = (typeof localStorage !== 'undefined' ? localStorage.getItem('fabricare_user') : null) ||
+                    (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('fabricare_user') : null);
     if (rawUser) {
       const u = JSON.parse(rawUser);
       savedEmail = u?.email || '';

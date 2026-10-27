@@ -329,9 +329,9 @@ export const AboutPage = () => {
         </div>
         <div className="container about-cta-container">
           <div className="about-cta-content">
-            <h2 className="about-cta-title">
+            <h1 className="about-cta-title">
               Ready for fresh clothes?
-            </h2>
+            </h1>
             <p className="about-cta-subtitle">
               Experience your first premium laundry order completely hassle-free. Schedule your pickup in under 30 seconds and let our experts handle the rest.
             </p>
@@ -747,24 +747,27 @@ export const AboutPage = () => {
           text-align: center;
         }
 
-        .about-cta-title {
+        .about-cta-title,
+        .about-div-4 h1,
+        .about-div-4 h2 {
           font-family: 'Poppins', sans-serif;
           font-size: 44px;
           font-weight: 800;
-          color: #FFFFFF;
+          color: #000000;
           margin: 0 0 16px;
           line-height: 1.2;
           letter-spacing: -0.02em;
         }
 
-        .about-cta-subtitle {
+        .about-cta-subtitle,
+        .about-div-4 p {
           font-family: 'Inter', sans-serif;
           font-size: 16px;
-          color: rgba(255, 255, 255, 0.94);
+          color: #000000;
           line-height: 1.65;
           margin: 0 auto 34px;
           max-width: 680px;
-          font-weight: 400;
+          font-weight: 500;
         }
 
         .about-cta-button {

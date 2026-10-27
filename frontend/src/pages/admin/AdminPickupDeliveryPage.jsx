@@ -986,18 +986,10 @@ export const AdminPickupDeliveryPage = () => {
         </div>
       </div>
 
-      {/* 4 Pastel Metric Summary Cards */}
+      {/* 4 Pastel Metric Summary Cards (Static Stats) */}
       <div className="pickup-metrics-grid">
         {/* Card 1: Scheduled Pickups */}
-        <div 
-          className={`pickup-metric-card card-blue ${activeTab === 'pickups' ? 'card-active-filter' : ''}`}
-          onClick={() => {
-            setActiveTab(prev => prev === 'pickups' ? 'all' : 'pickups');
-            setCurrentPage(1);
-          }}
-          title="Click to filter by Pickups"
-          style={{ cursor: 'pointer' }}
-        >
+        <div className="pickup-metric-card card-blue">
           <div className="metric-icon-badge badge-blue">
             <Truck size={24} color="#0284C7" strokeWidth={1.8} />
           </div>
@@ -1008,15 +1000,7 @@ export const AdminPickupDeliveryPage = () => {
         </div>
 
         {/* Card 2: Scheduled Deliveries */}
-        <div 
-          className={`pickup-metric-card card-peach ${activeTab === 'deliveries' ? 'card-active-filter' : ''}`}
-          onClick={() => {
-            setActiveTab(prev => prev === 'deliveries' ? 'all' : 'deliveries');
-            setCurrentPage(1);
-          }}
-          title="Click to filter by Deliveries"
-          style={{ cursor: 'pointer' }}
-        >
+        <div className="pickup-metric-card card-peach">
           <div className="metric-icon-badge badge-peach">
             <Truck size={24} color="#EA580C" strokeWidth={1.8} />
           </div>
@@ -1027,15 +1011,7 @@ export const AdminPickupDeliveryPage = () => {
         </div>
 
         {/* Card 3: Total Completed */}
-        <div 
-          className={`pickup-metric-card card-green ${statusFilter === 'completed' ? 'card-active-filter' : ''}`}
-          onClick={() => {
-            setStatusFilter(prev => prev === 'completed' ? 'all' : 'completed');
-            setCurrentPage(1);
-          }}
-          title="Click to filter by Completed"
-          style={{ cursor: 'pointer' }}
-        >
+        <div className="pickup-metric-card card-green">
           <div className="metric-icon-badge badge-green">
             <Check size={24} color="#16A34A" strokeWidth={2.6} />
           </div>
@@ -1046,15 +1022,7 @@ export const AdminPickupDeliveryPage = () => {
         </div>
 
         {/* Card 4: Pending */}
-        <div 
-          className={`pickup-metric-card card-purple ${statusFilter === 'pending' ? 'card-active-filter' : ''}`}
-          onClick={() => {
-            setStatusFilter(prev => prev === 'pending' ? 'all' : 'pending');
-            setCurrentPage(1);
-          }}
-          title="Click to filter by Pending"
-          style={{ cursor: 'pointer' }}
-        >
+        <div className="pickup-metric-card card-purple">
           <div className="metric-icon-badge badge-purple">
             <Clock size={24} color="#9333EA" strokeWidth={1.8} />
           </div>
@@ -1585,18 +1553,8 @@ export const AdminPickupDeliveryPage = () => {
           align-items: center;
           gap: 16px;
           box-sizing: border-box;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .pickup-metric-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 14px -3px rgba(0, 0, 0, 0.05);
-        }
-
-        .pickup-metric-card.card-active-filter {
-          outline: 2px solid #0D7A75;
-          outline-offset: -1px;
-          box-shadow: 0 4px 14px rgba(13, 122, 117, 0.2);
+          cursor: default;
+          user-select: none;
         }
 
         /* Card background tints */

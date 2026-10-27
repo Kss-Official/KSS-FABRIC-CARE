@@ -607,8 +607,8 @@ export const ServicesPage = () => {
         </div>
       </section>
 
-      {/* 7. READY FOR FRESH CLOTHES? (FINAL CTA BANNER) */}
-      <section className="services-final-cta-section">
+      {/* 7. READY FOR FRESH CLOTHES? (FINAL CTA BANNER - DIV 4) */}
+      <section className="services-final-cta-section services-div-4">
         <div className="services-final-cta-bg-wrapper">
           <img
             src="/assets/services-bottom-cta-bg.jpg"
@@ -620,7 +620,7 @@ export const ServicesPage = () => {
 
         <div className="container services-final-cta-container">
           <div className="services-final-cta-content text-center">
-            <h2 className="services-final-cta-title">Ready for fresh clothes?</h2>
+            <h1 className="services-final-cta-title">Ready for fresh clothes?</h1>
             <p className="services-final-cta-sub">
               Experience your first premium laundry order completely hassle-free. Schedule your pickup in under 30 seconds and let our experts handle the rest.
             </p>
@@ -1551,11 +1551,13 @@ export const ServicesPage = () => {
            ========================================================================== */
         .services-final-cta-section {
           position: relative;
-          padding: 105px 0;
+          padding: 115px 0;
           overflow: hidden;
           display: flex;
           align-items: center;
           justify-content: center;
+          background: #05636D url('/assets/services-bottom-cta-bg.jpg') center / cover no-repeat fixed;
+          background-attachment: fixed;
         }
 
         .services-final-cta-bg-wrapper {
@@ -1564,20 +1566,21 @@ export const ServicesPage = () => {
           width: 100%;
           height: 100%;
           z-index: 0;
+          display: none;
         }
 
         .services-final-cta-bg-img {
           width: 100%;
           height: 100%;
           object-fit: cover;
-          object-position: center 38%;
+          object-position: center;
           display: block;
         }
 
         .services-final-cta-overlay {
           position: absolute;
           inset: 0;
-          background: rgba(14, 126, 137, 0.88);
+          background: #05636DD9;
           z-index: 1;
         }
 
@@ -1587,28 +1590,32 @@ export const ServicesPage = () => {
         }
 
         .services-final-cta-content {
-          max-width: 720px;
+          max-width: 740px;
           margin: 0 auto;
           text-align: center;
         }
 
-        .services-final-cta-title {
+        .services-final-cta-title,
+        .services-div-4 h1,
+        .services-div-4 h2 {
           font-family: 'Poppins', sans-serif;
           font-size: 44px;
           font-weight: 800;
-          color: #FFFFFF;
+          color: #000000;
           margin: 0 0 16px;
           line-height: 1.2;
-          letter-spacing: -0.5px;
+          letter-spacing: -0.02em;
         }
 
-        .services-final-cta-sub {
+        .services-final-cta-sub,
+        .services-div-4 p {
           font-family: 'Inter', sans-serif;
-          font-size: 15.5px;
-          color: rgba(255, 255, 255, 0.95);
-          line-height: 1.6;
-          margin: 0 auto 32px;
-          max-width: 660px;
+          font-size: 16px;
+          color: #000000;
+          line-height: 1.65;
+          margin: 0 auto 34px;
+          max-width: 680px;
+          font-weight: 500;
         }
 
         .services-final-cta-btn {

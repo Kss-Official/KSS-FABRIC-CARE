@@ -403,8 +403,8 @@ export const WhyUsPage = () => {
 
 
 
-      {/* 5. CTA BANNER (DIV 10) */}
-      <section className="cta-banner-section">
+      {/* 4. CTA BANNER (DIV 4) */}
+      <section className="cta-banner-section why-us-div-4">
         <div className="cta-banner-bg-wrapper">
           <img
             src="/assets/cta-folded-clothes.jpg"
@@ -415,9 +415,9 @@ export const WhyUsPage = () => {
         </div>
         <div className="container cta-banner-container">
           <div className="cta-banner-content">
-            <h2 className="cta-banner-title">
+            <h1 className="cta-banner-title">
               See the Difference in Your Very First Order
-            </h2>
+            </h1>
             <p className="cta-banner-sub">
               Experience hassle-free laundry with free pickup &amp; delivery on orders above ₹500.
             </p>
@@ -856,21 +856,26 @@ export const WhyUsPage = () => {
           text-align: center;
         }
 
-        .cta-banner-title {
+        .cta-banner-title,
+        .why-us-div-4 h1,
+        .why-us-div-4 h2 {
           font-family: 'Poppins', sans-serif;
           font-size: 2.85rem;
           font-weight: 800;
-          color: #FFFFFF;
+          color: #000000;
           margin: 0 0 16px;
           line-height: 1.2;
         }
 
-        .cta-banner-sub {
+        .cta-banner-sub,
+        .why-us-div-4 p {
+          font-family: 'Inter', sans-serif;
           font-size: 1.05rem;
-          color: rgba(255, 255, 255, 0.95);
+          color: #000000;
           line-height: 1.6;
           margin: 0 auto 30px;
           max-width: 620px;
+          font-weight: 500;
         }
 
         .cta-banner-btn {

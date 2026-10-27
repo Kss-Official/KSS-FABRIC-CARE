@@ -164,8 +164,8 @@ export const PricingPage = () => {
         </div>
       </section>
 
-      {/* 4. CTA BANNER */}
-      <section className="cta-banner-section">
+      {/* 4. CTA BANNER (DIV 4) */}
+      <section className="cta-banner-section pricing-div-4">
         <div className="cta-banner-bg-wrapper">
           <img
             src="/assets/cta-folded-clothes.jpg"
@@ -176,9 +176,9 @@ export const PricingPage = () => {
         </div>
         <div className="container cta-banner-container">
           <div className="cta-banner-content">
-            <h2 className="cta-banner-title">
+            <h1 className="cta-banner-title">
               Ready to Save Time on Laundry?
-            </h2>
+            </h1>
             <p className="cta-banner-sub">
               Enjoy honest pricing, premium cleaning quality, and seamless doorstep delivery across Bangalore.
             </p>
@@ -443,21 +443,26 @@ export const PricingPage = () => {
           text-align: center;
         }
 
-        .cta-banner-title {
+        .cta-banner-title,
+        .pricing-div-4 h1,
+        .pricing-div-4 h2 {
           font-family: 'Poppins', sans-serif;
           font-size: 2.85rem;
           font-weight: 800;
-          color: #FFFFFF;
+          color: #000000;
           margin: 0 0 16px;
           line-height: 1.2;
         }
 
-        .cta-banner-sub {
+        .cta-banner-sub,
+        .pricing-div-4 p {
+          font-family: 'Inter', sans-serif;
           font-size: 1.05rem;
-          color: rgba(255, 255, 255, 0.95);
+          color: #000000;
           line-height: 1.6;
           margin: 0 auto 30px;
           max-width: 620px;
+          font-weight: 500;
         }
 
         .cta-banner-btn {

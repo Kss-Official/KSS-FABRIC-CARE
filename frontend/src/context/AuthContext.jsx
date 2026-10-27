@@ -147,6 +147,69 @@ const tryDjangoAuth = async (email, password) => {
   return null;
 };
 
+export const safeSetUserInStorage = (profile) => {
+  if (!profile || typeof localStorage === 'undefined') return;
+
+  const sanitizeForStorage = (data) => {
+    if (!data) return {};
+    const copy = { ...data };
+    const stripLarge = (val) =>
+      typeof val === 'string' && val.length > 50000 && (val.startsWith('data:') || val.length > 200000) ? '' : val;
+
+    // Keep primary avatarUrl, clear redundant duplicates if they are large data URIs
+    if (typeof copy.avatarUrl === 'string' && copy.avatarUrl.startsWith('data:') && copy.avatarUrl.length > 20000) {
+      copy.avatar_url = '';
+      copy.profilePicture = '';
+      copy.profilePictureUrl = '';
+      copy.avatar = '';
+      copy.photoUrl = '';
+      copy.photoURL = '';
+    }
+    copy.aadhaarDocumentUrl = stripLarge(copy.aadhaarDocumentUrl);
+    copy.aadhaar_document_url = '';
+    copy.panDocumentUrl = stripLarge(copy.panDocumentUrl);
+    copy.pan_document_url = '';
+    return copy;
+  };
+
+  const clean = sanitizeForStorage(profile);
+
+  try {
+    localStorage.setItem('fabricare_user', JSON.stringify(clean));
+  } catch (err) {
+    console.warn('localStorage.setItem fabricare_user quota notice, purging obsolete keys and retrying:', err);
+    try {
+      // Evict large cache / mock / temporary keys from localStorage
+      const keysToPurge = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (
+          k &&
+          (k.startsWith('fabricare_agent_photo_') ||
+            k.startsWith('fabricare_delivery_photo') ||
+            k.startsWith('fabricare_mock_') ||
+            k.startsWith('temp_') ||
+            k.startsWith('fabricare_cached_'))
+        ) {
+          keysToPurge.push(k);
+        }
+      }
+      keysToPurge.forEach((k) => localStorage.removeItem(k));
+
+      // Attempt storing with all large media stripped
+      const minimal = { ...clean };
+      if (typeof minimal.avatarUrl === 'string' && minimal.avatarUrl.startsWith('data:')) {
+        minimal.avatarUrl = '';
+      }
+      localStorage.setItem('fabricare_user', JSON.stringify(minimal));
+    } catch (_) {
+      try {
+        sessionStorage.setItem('fabricare_user', JSON.stringify(clean));
+      } catch (__) {}
+    }
+  }
+};
+
 export const clearCustomerSessionData = () => {
   try {
     localStorage.removeItem('fabricare_user');
@@ -221,7 +284,7 @@ export const AuthProvider = ({ children }) => {
     let isMounted = true;
 
     // Restore cached user for instant rendering
-    const cachedUser = localStorage.getItem('fabricare_user');
+    const cachedUser = localStorage.getItem('fabricare_user') || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('fabricare_user') : null);
     if (cachedUser) {
       try {
         const parsed = JSON.parse(cachedUser);
@@ -403,14 +466,14 @@ export const AuthProvider = ({ children }) => {
           if (isMounted) {
             setCurrentUser(cleanProfile);
             setUserProfile(cleanProfile);
-            localStorage.setItem('fabricare_user', JSON.stringify(cleanProfile));
+            safeSetUserInStorage(cleanProfile);
           }
         } catch (err) {
           console.warn('RTDB auth state resolution notice:', err);
         }
       } else {
         if (isMounted) {
-          const cached = localStorage.getItem('fabricare_user');
+          const cached = localStorage.getItem('fabricare_user') || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('fabricare_user') : null);
           if (!cached) {
             setCurrentUser(null);
             setUserProfile(null);
@@ -585,7 +648,7 @@ export const AuthProvider = ({ children }) => {
 
         setCurrentUser(profileData);
         setUserProfile(profileData);
-        localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+        safeSetUserInStorage(profileData);
         localStorage.setItem('fabricare_token', token);
         setIsAuthModalOpen(false);
         setLoading(false);
@@ -639,7 +702,7 @@ export const AuthProvider = ({ children }) => {
 
         setCurrentUser(profileData);
         setUserProfile(profileData);
-        localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+        safeSetUserInStorage(profileData);
         localStorage.setItem('fabricare_token', token);
         setIsAuthModalOpen(false);
         setLoading(false);
@@ -691,7 +754,7 @@ export const AuthProvider = ({ children }) => {
         };
         setCurrentUser(profileData);
         setUserProfile(profileData);
-        localStorage.setItem('fabricare_user', JSON.stringify(profileData));
+        safeSetUserInStorage(profileData);
         localStorage.setItem('fabricare_token', 'demo-token');
         setIsAuthModalOpen(false);
         setLoading(false);
@@ -761,7 +824,7 @@ export const AuthProvider = ({ children }) => {
 
       setCurrentUser(cleanProfile);
       setUserProfile(cleanProfile);
-      localStorage.setItem('fabricare_user', JSON.stringify(cleanProfile));
+      safeSetUserInStorage(cleanProfile);
       setIsAuthModalOpen(false);
 
       return {
@@ -829,7 +892,7 @@ export const AuthProvider = ({ children }) => {
 
       setCurrentUser(cleanProfile);
       setUserProfile(cleanProfile);
-      localStorage.setItem('fabricare_user', JSON.stringify(cleanProfile));
+      safeSetUserInStorage(cleanProfile);
       setIsAuthModalOpen(false);
       setLoading(false);
 
@@ -840,6 +903,11 @@ export const AuthProvider = ({ children }) => {
         portal: getPortalForRole(role)
       };
     } catch (err) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        setLoading(false);
+        setAuthError(null);
+        return null;
+      }
       console.warn('Google sign-in notice:', err);
       const msg = mapAuthError(err);
       setAuthError(msg);
@@ -980,7 +1048,7 @@ export const AuthProvider = ({ children }) => {
         };
         setCurrentUser(updated);
         setUserProfile(updated);
-        localStorage.setItem('fabricare_user', JSON.stringify(updated));
+        safeSetUserInStorage(updated);
         return updated;
       }
     } catch (err) {
@@ -1079,9 +1147,7 @@ export const AuthProvider = ({ children }) => {
         ...prev,
         ...cleanUpdates
       };
-      try {
-        localStorage.setItem('fabricare_user', JSON.stringify(nextUser));
-      } catch (_) {}
+      safeSetUserInStorage(nextUser);
       return nextUser;
     });
 

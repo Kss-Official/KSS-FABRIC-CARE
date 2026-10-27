@@ -24,6 +24,19 @@ import {
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 
+export const isPermissionError = (err) => {
+  if (!err) return false;
+  const msg = String(err?.message || err || '').toLowerCase();
+  const code = String(err?.code || '').toLowerCase();
+  return (
+    code === 'permission_denied' ||
+    code.includes('permission') ||
+    msg.includes('permission_denied') ||
+    msg.includes('permission denied') ||
+    msg.includes('permission')
+  );
+};
+
 export const syncOrderAssignmentToDjango = async (orderId, driver, options = {}) => {
   const cleanId = String(orderId || '').replace(/^#/, '').trim();
   const rawId = String(orderId || '').trim();
@@ -594,7 +607,9 @@ export const subscribeAdminAllUsers = (onUsersUpdated, onError) => {
     });
     onUsersUpdated(list);
   }, (err) => {
-    console.warn('Admin all users listener warning:', err);
+    if (!isPermissionError(err)) {
+      console.warn('Admin all users listener warning:', err);
+    }
     if (onError) onError(err);
   });
 
@@ -707,7 +722,9 @@ export const subscribeAdminDeletedUsers = (onDeletedUsersUpdated, onError) => {
     const val = snap.val() || {};
     onDeletedUsersUpdated(Object.keys(val));
   }, (err) => {
-    console.warn('Deleted users listener error:', err);
+    if (!isPermissionError(err)) {
+      console.warn('Deleted users listener error:', err);
+    }
     if (onError) onError(err);
   });
 
@@ -1380,7 +1397,9 @@ export const fetchAdminOrdersOnce = async () => {
       list = Object.keys(data).map(k => ({ ...data[k], id: data[k].id || k, rawId: k }));
     }
   } catch (err) {
-    console.warn('RTDB fetchAdminOrdersOnce notice:', err);
+    if (!isPermissionError(err)) {
+      console.warn('RTDB fetchAdminOrdersOnce notice:', err);
+    }
   }
 
 
@@ -1416,7 +1435,9 @@ export const fetchAdminUsersOnce = async () => {
       });
     }
   } catch (err) {
-    console.warn('RTDB fetchAdminUsersOnce notice:', err);
+    if (!isPermissionError(err)) {
+      console.warn('RTDB fetchAdminUsersOnce notice:', err);
+    }
   }
 
 
@@ -1436,7 +1457,9 @@ export const fetchAdminServicesOnce = async () => {
       list = Object.keys(data).map(k => ({ ...data[k], id: data[k].id || k }));
     }
   } catch (err) {
-    console.warn('RTDB fetchAdminServicesOnce notice:', err);
+    if (!isPermissionError(err)) {
+      console.warn('RTDB fetchAdminServicesOnce notice:', err);
+    }
   }
 
 
