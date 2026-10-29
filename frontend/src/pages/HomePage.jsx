@@ -23,7 +23,10 @@ import {
   BadgeCheck,
   WashingMachine,
   Award,
-  CalendarCheck
+  CalendarCheck,
+  CircleDollarSign,
+  Zap,
+  IndianRupee
 } from 'lucide-react';
 
 export const HomePage = () => {
@@ -41,6 +44,35 @@ export const HomePage = () => {
     return () => clearInterval(timer);
   }, [heroImages.length]);
 
+  const [mobileTestimonialIndex, setMobileTestimonialIndex] = useState(0);
+  const mobileTestimonials = [
+    {
+      stars: 5,
+      quote: '"Amazing service! My clothes always come back fresh and neatly packed. Highly recommended!"',
+      name: 'Aarav S.',
+      role: 'Regular Customer'
+    },
+    {
+      stars: 5,
+      quote: '"Absolute game changer. Booking takes 30 seconds and my clothes return smelling amazing and folded better than I can ever do myself."',
+      name: 'Jessica R.',
+      role: 'Busy Professional'
+    },
+    {
+      stars: 5,
+      quote: '"Sending our weekly wash & fold to FabriCare has saved our weekends. Highly reliable and convenient doorstep pickup."',
+      name: 'David K.',
+      role: 'Family of Four'
+    }
+  ];
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setMobileTestimonialIndex((prev) => (prev + 1) % mobileTestimonials.length);
+    }, 5500);
+    return () => clearInterval(timer);
+  }, [mobileTestimonials.length]);
+
   const [contactSubmitted, setContactSubmitted] = useState(false);
   const [contactForm, setContactForm] = useState({
     name: '',
@@ -54,36 +86,42 @@ export const HomePage = () => {
       id: 'wash-fold',
       title: 'Premium Laundry',
       desc: 'Top-quality cleaning for clothes to look and feel fresh.',
+      mobileDesc: 'Everyday clothes, perfectly cleaned and fresh.',
       image: '/assets/service-wash.jpg'
     },
     {
       id: 'dry-cleaning',
       title: 'Dry Cleaning',
       desc: 'Delicate fabrics require special care. We ensure clothes are cleaned to perfection.',
+      mobileDesc: 'Special care for your premium and delicate outfits.',
       image: '/assets/service-dryclean.jpg'
     },
     {
       id: 'wash-iron',
       title: 'Wash and Iron',
       desc: 'Hassle-free solution for clean and pressed clothes.',
+      mobileDesc: 'Clean clothes, neatly ironed.',
       image: '/assets/service-iron.jpg'
     },
     {
       id: 'steam-iron',
       title: 'Steam Ironing',
       desc: 'Quick and effective way to get clothes perfectly pressed.',
+      mobileDesc: 'Remove wrinkles with professional steam care.',
       image: '/assets/service-stain.jpg'
     },
     {
       id: 'shoe-laundry',
       title: 'Shoe Laundry',
       desc: 'Deep cleaning solution to restore the look of shoes.',
+      mobileDesc: 'Keep your shoes fresh and clean.',
       image: '/assets/service-shoe.jpg'
     },
     {
       id: 'home-care',
       title: 'Curtain Cleaning',
       desc: 'Revive your curtains with our professional cleaning service.',
+      mobileDesc: 'Fresh, clean and healthier curtains for your home.',
       image: '/assets/service-curtain.jpg'
     }
   ];
@@ -115,8 +153,8 @@ export const HomePage = () => {
         </div>
 
         <div className="container hero-container">
-          {/* Left Column: Headline, Description, Button Group, Trust Badges */}
-          <div className="hero-content">
+          {/* Desktop Left Column: Headline, Description, Button Group, Trust Badges - 100% untouched on laptop */}
+          <div className="hero-content hero-desktop-view">
             <h1 className="hero-headline">
               Fresh Clothes. <br />
               <span className="highlight-text">Brighter Days.</span>
@@ -178,6 +216,65 @@ export const HomePage = () => {
                 </div>
                 <span className="badge-label">
                   On-Time<br />Delivery
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile Specific Hero UI (Exact Match to User Reference Image) */}
+          <div className="hero-mobile-view">
+            <h1 className="hero-mobile-headline">
+              Fresh Clothes, <br />
+              <span className="hero-mobile-highlight">Brighter Days.</span>
+            </h1>
+
+            <p className="hero-mobile-description">
+              Laundry, dry cleaning and more — all at your door. Freshen up your life with Laundrix.
+            </p>
+
+            <div className="hero-mobile-cta-group">
+              <button
+                type="button"
+                className="btn-coral-mobile-pill"
+                onClick={() => startBooking()}
+              >
+                <span>Book a Pickup</span>
+                <ArrowRight size={18} strokeWidth={2.5} />
+              </button>
+              <button
+                type="button"
+                className="btn-white-mobile-pill"
+                onClick={() => navigateTo('services')}
+              >
+                <span>Explore Services</span>
+              </button>
+            </div>
+
+            <div className="hero-mobile-trust-row">
+              <div className="hero-mobile-trust-item">
+                <div className="hero-mobile-trust-circle">
+                  <Truck size={22} strokeWidth={2.2} />
+                </div>
+                <span className="hero-mobile-trust-text">
+                  Same Day<br />Delivery
+                </span>
+              </div>
+
+              <div className="hero-mobile-trust-item">
+                <div className="hero-mobile-trust-circle">
+                  <ShieldCheck size={22} strokeWidth={2.2} />
+                </div>
+                <span className="hero-mobile-trust-text">
+                  Trusted &amp;<br />Reliable
+                </span>
+              </div>
+
+              <div className="hero-mobile-trust-item">
+                <div className="hero-mobile-trust-circle">
+                  <Leaf size={22} strokeWidth={2.2} />
+                </div>
+                <span className="hero-mobile-trust-text">
+                  Eco Friendly<br />Cleaning
                 </span>
               </div>
             </div>
@@ -276,6 +373,7 @@ export const HomePage = () => {
       {/* 2. ABOUT US: LAUNDRY WALLAH AT YOUR SERVICE */}
       <section className="about-section" id="about-section">
         <div className="container">
+          {/* Desktop Layout - 100% untouched for laptops / wide screens */}
           <div className="about-grid">
             <div className="about-image-col">
               <div className="about-image-frame">
@@ -354,6 +452,76 @@ export const HomePage = () => {
               </button>
             </div>
           </div>
+
+          {/* Mobile Specific UI (Exact match to reference mockup) */}
+          <div className="about-mobile-card-view">
+            <div className="about-mobile-header text-center">
+              <div className="about-eyebrow">
+                <span className="eyebrow-line" />
+                <span>ABOUT US</span>
+                <span className="eyebrow-line" />
+              </div>
+              <h2 className="about-heading-mobile">
+                Laundry Wallah <br />
+                <span className="about-heading-highlight">At Your Service</span>
+              </h2>
+            </div>
+
+            <div className="about-mobile-image-frame">
+              <img
+                src="/assets/about-jeans.jpg"
+                alt="Laundry Wallah - Clean Garments Care"
+                className="about-mobile-img"
+              />
+            </div>
+
+            <p className="about-mobile-desc">
+              We're on a mission to make laundry simple, reliable, and hassle-free. Laundrix brings professional cleaning care to your doorstep so you can look good and feel good — everyday. From everyday wear to delicate fabrics, we handle it all with care.
+            </p>
+
+            <div className="about-mobile-cards-stack">
+              <div className="about-feature-card">
+                <div className="about-feature-icon-circle">
+                  <Clock size={22} strokeWidth={2.2} />
+                </div>
+                <div className="about-feature-info">
+                  <h4 className="about-feature-title">Saves You Time</h4>
+                  <p className="about-feature-sub">Effortless pickup and quick returns</p>
+                </div>
+              </div>
+
+              <div className="about-feature-card">
+                <div className="about-feature-icon-circle">
+                  <ShieldCheck size={22} strokeWidth={2.2} />
+                </div>
+                <div className="about-feature-info">
+                  <h4 className="about-feature-title">Professional Cleaning Care</h4>
+                  <p className="about-feature-sub">Expert fabric handling guaranteed</p>
+                </div>
+              </div>
+
+              <div className="about-feature-card">
+                <div className="about-feature-icon-circle">
+                  <CircleDollarSign size={22} strokeWidth={2.2} />
+                </div>
+                <div className="about-feature-info">
+                  <h4 className="about-feature-title">Affordable Pricing</h4>
+                  <p className="about-feature-sub">Transparent rates with no hidden costs</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="about-mobile-btn-wrap">
+              <button
+                type="button"
+                className="btn-read-more-pill"
+                onClick={() => navigateTo('about')}
+              >
+                <span>Read More</span>
+                <ArrowRight size={18} strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -368,10 +536,13 @@ export const HomePage = () => {
               <span className="eyebrow-line" />
             </div>
             <h2 className="services-title">
-              Professional Care <span className="highlight">for Every Fabric</span>
+              Professional Care <span className="services-title-break"><br /></span><span className="highlight">for Every Fabric</span>
             </h2>
-            <p className="services-sub">
+            <p className="services-sub services-sub-desktop">
               Wide range of cleaning solutions for all your needs, with top-quality service and complete satisfaction guarantee.
+            </p>
+            <p className="services-sub services-sub-mobile">
+              From everyday wear to delicate fabrics, we offer a wide range of services to keep your clothes fresh, clean and new.
             </p>
           </div>
 
@@ -383,7 +554,8 @@ export const HomePage = () => {
                 </div>
                 <div className="service-card-body">
                   <h3 className="service-title-text">{s.title}</h3>
-                  <p className="service-desc-text">{s.desc}</p>
+                  <p className="service-desc-text service-desc-desktop">{s.desc}</p>
+                  <p className="service-desc-text service-desc-mobile">{s.mobileDesc || s.desc}</p>
                   <button
                     type="button"
                     className="service-enquire-btn"
@@ -396,6 +568,15 @@ export const HomePage = () => {
                       <ArrowRight size={14} strokeWidth={2.5} />
                     </span>
                   </button>
+
+                  <button
+                    type="button"
+                    className="service-learn-more-btn"
+                    onClick={() => navigateTo('services', s.id)}
+                  >
+                    <span>Learn More</span>
+                    <ArrowRight size={13} strokeWidth={2.4} />
+                  </button>
                 </div>
               </div>
             ))}
@@ -406,7 +587,8 @@ export const HomePage = () => {
       {/* 4. WHY PEOPLE CHOOSE US (BENTO GRID DESIGN MATCHING REFERENCE) */}
       <section className="why-us-section" id="why-us-section">
         <div className="container">
-          <div className="why-us-bento-container">
+          {/* Desktop Layout - 100% untouched for laptops / wide screens */}
+          <div className="why-us-bento-container why-desktop-view">
             {/* Left Hero Card (Spans full height) */}
             <div className="why-hero-col">
               <div className="why-machine-icon-box">
@@ -515,6 +697,113 @@ export const HomePage = () => {
               </div>
             </div>
           </div>
+
+          {/* Mobile Specific View matching Reference Mockup */}
+          <div className="why-mobile-view">
+            {/* Top Dark Teal Hero Card */}
+            <div className="why-mobile-hero-card">
+              <div className="why-mobile-star-icon-box">
+                <Star size={24} color="#38D9C8" strokeWidth={2} />
+              </div>
+
+              <h3 className="why-mobile-hero-title">
+                WHY PEOPLE<br />CHOOSE US?
+              </h3>
+
+              <div className="why-mobile-checklist">
+                <div className="why-mobile-check-item">
+                  <span className="why-mobile-check-circle">
+                    <Check size={13} strokeWidth={3.5} color="#064E58" />
+                  </span>
+                  <span className="why-mobile-check-label">Quality Cleaning</span>
+                </div>
+
+                <div className="why-mobile-check-item">
+                  <span className="why-mobile-check-circle">
+                    <Check size={13} strokeWidth={3.5} color="#064E58" />
+                  </span>
+                  <span className="why-mobile-check-label">Hassle-free Pickup &amp; Delivery</span>
+                </div>
+
+                <div className="why-mobile-check-item">
+                  <span className="why-mobile-check-circle">
+                    <Check size={13} strokeWidth={3.5} color="#064E58" />
+                  </span>
+                  <span className="why-mobile-check-label">Affordable &amp; Transparent</span>
+                </div>
+
+                <div className="why-mobile-check-item">
+                  <span className="why-mobile-check-circle">
+                    <Check size={13} strokeWidth={3.5} color="#064E58" />
+                  </span>
+                  <span className="why-mobile-check-label">Trusted by 1000+ Customers</span>
+                </div>
+
+                <div className="why-mobile-check-item">
+                  <span className="why-mobile-check-circle">
+                    <Check size={13} strokeWidth={3.5} color="#064E58" />
+                  </span>
+                  <span className="why-mobile-check-label">Eco-friendly Cleaning</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="why-mobile-contact-btn"
+                onClick={() => {
+                  document.getElementById('contact-section')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                <span>Contact Us</span>
+                <ArrowRight size={18} strokeWidth={2.5} />
+              </button>
+            </div>
+
+            {/* 3 Stacked Feature Cards */}
+            <div className="why-mobile-features-stack">
+              {/* Card 1: Same-Day Delivery */}
+              <div className="why-mobile-feature-card why-mobile-card-white">
+                <div className="why-mobile-feature-icon-box icon-box-mint">
+                  <Zap size={22} color="#087F8C" strokeWidth={2.4} fill="#087F8C" fillOpacity={0.15} />
+                </div>
+                <div className="why-mobile-feature-body">
+                  <h4 className="why-mobile-feature-title dark-title">Same-Day Delivery</h4>
+                  <p className="why-mobile-feature-desc dark-desc">
+                    Need your clothes in a hurry? We offer same-day delivery for select services.
+                  </p>
+                </div>
+              </div>
+
+              {/* Card 2: Reasonable Pricing (Deep Teal bg) */}
+              <div className="why-mobile-feature-card why-mobile-card-teal">
+                <div className="why-mobile-feature-icon-box icon-box-teal-dark">
+                  <IndianRupee size={21} color="#38D9C8" strokeWidth={2.6} />
+                </div>
+                <div className="why-mobile-feature-body">
+                  <h4 className="why-mobile-feature-title white-title">Reasonable Pricing</h4>
+                  <p className="why-mobile-feature-desc white-desc">
+                    High-quality service doesn't have to be expensive. We offer fair and transparent pricing.
+                  </p>
+                </div>
+              </div>
+
+              {/* Card 3: Latest Equipment */}
+              <div className="why-mobile-feature-card why-mobile-card-white">
+                <div className="why-mobile-feature-icon-box icon-box-mint">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M7 11h10M7 15h10M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z"/>
+                    <path d="M9 5V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                  </svg>
+                </div>
+                <div className="why-mobile-feature-body">
+                  <h4 className="why-mobile-feature-title dark-title">Latest Equipment</h4>
+                  <p className="why-mobile-feature-desc dark-desc">
+                    We use modern equipment and premium cleaning products to ensure the best care for your fabrics.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -524,85 +813,155 @@ export const HomePage = () => {
       {/* 6. OUR WORKING PROCESS */}
       <section className="process-section" id="process-section">
         <div className="container">
-          <div className="text-center process-head">
-            <div className="process-eyebrow-container">
-              <span className="process-eyebrow-line"></span>
-              <span className="process-eyebrow-badge">SIMPLE 3 STEP PROCESS</span>
-              <span className="process-eyebrow-line"></span>
+          {/* Desktop Process View */}
+          <div className="process-desktop-view">
+            <div className="text-center process-head">
+              <div className="process-eyebrow-container">
+                <span className="process-eyebrow-line"></span>
+                <span className="process-eyebrow-badge">SIMPLE 3 STEP PROCESS</span>
+                <span className="process-eyebrow-line"></span>
+              </div>
+              <h2 className="process-main-title">
+                Our <span className="process-title-highlight">Working Process</span>
+              </h2>
+              <p className="process-subtitle">
+                From pickup to delivery, we make laundry simple, convenient and hassle-free.
+              </p>
             </div>
-            <h2 className="process-main-title">
-              Our <span className="process-title-highlight">Working Process</span>
-            </h2>
-            <p className="process-subtitle">
-              From pickup to delivery, we make laundry simple, convenient and hassle-free.
-            </p>
+
+            <div className="process-steps-wrapper">
+              {/* Connecting dashed wave between cards */}
+              <svg
+                className="process-connecting-curve"
+                viewBox="0 0 1000 100"
+                fill="none"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M 285 50 C 330 72, 370 72, 415 50 M 585 50 C 630 72, 670 72, 715 50"
+                  stroke="#82D6CB"
+                  strokeWidth="2.5"
+                  strokeDasharray="6 6"
+                  strokeLinecap="round"
+                />
+              </svg>
+
+              <div className="process-steps-grid">
+                {/* Step 1 */}
+                <div className="process-step-card">
+                  <div className="process-step-tag">01</div>
+                  <div className="process-card-img-wrap">
+                    <img
+                      src="/assets/process-step-1.png"
+                      alt="Free Pickup (Above ₹500)"
+                      className="process-card-img"
+                    />
+                  </div>
+                  <h3 className="process-step-title">Free Pickup (Above ₹500)</h3>
+                  <p className="process-step-desc">
+                    We pickup the items from your home/office as per scheduled time.
+                  </p>
+                </div>
+
+                {/* Step 2 */}
+                <div className="process-step-card">
+                  <div className="process-step-tag">02</div>
+                  <div className="process-card-img-wrap">
+                    <img
+                      src="/assets/process-step-2.png"
+                      alt="Clean / Wash / Iron"
+                      className="process-card-img"
+                    />
+                  </div>
+                  <h3 className="process-step-title">Clean / Wash / Iron</h3>
+                  <p className="process-step-desc">
+                    The task is carried out by trained professionals with care.
+                  </p>
+                </div>
+
+                {/* Step 3 */}
+                <div className="process-step-card">
+                  <div className="process-step-tag">03</div>
+                  <div className="process-card-img-wrap">
+                    <img
+                      src="/assets/process-step-3.png"
+                      alt="Superfast Delivery"
+                      className="process-card-img"
+                    />
+                  </div>
+                  <h3 className="process-step-title">Superfast Delivery</h3>
+                  <p className="process-step-desc">
+                    We offer same day delivery for faster processing of items.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="process-steps-wrapper">
-            {/* Connecting dashed wave between cards */}
-            <svg
-              className="process-connecting-curve"
-              viewBox="0 0 1000 100"
-              fill="none"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M 285 50 C 330 72, 370 72, 415 50 M 585 50 C 630 72, 670 72, 715 50"
-                stroke="#82D6CB"
-                strokeWidth="2.5"
-                strokeDasharray="6 6"
-                strokeLinecap="round"
-              />
-            </svg>
+          {/* Div 6: Mobile Working Process View */}
+          <div className="process-mobile-view">
+            <div className="mobile-process-header">
+              <div className="mobile-process-eyebrow">
+                <span className="eyebrow-line"></span>
+                <span className="eyebrow-text">HOW IT WORKS</span>
+                <span className="eyebrow-line"></span>
+              </div>
+              <h2 className="mobile-process-title">
+                Our <span className="highlight">Working Process</span>
+              </h2>
+              <p className="mobile-process-sub">
+                Four simple steps to get your laundry picked up, cleaned, and delivered fresh.
+              </p>
+            </div>
 
-            <div className="process-steps-grid">
-              {/* Step 1 */}
-              <div className="process-step-card">
-                <div className="process-step-tag">01</div>
-                <div className="process-card-img-wrap">
-                  <img
-                    src="/assets/process-step-1.png"
-                    alt="Free Pickup (Above ₹500)"
-                    className="process-card-img"
-                  />
+            <div className="mobile-process-cards-stack">
+              {/* Card 1 */}
+              <div className="mobile-process-card">
+                <div className="mobile-process-card-content">
+                  <div className="mobile-process-num-circle">1</div>
+                  <div className="mobile-process-text-group">
+                    <div className="mobile-process-title-row">
+                      <h3 className="mobile-process-card-title">Free Pickup (Above ₹300)</h3>
+                      <span className="mobile-process-icon" role="img" aria-label="Scooter delivery">🛵</span>
+                    </div>
+                    <p className="mobile-process-card-desc">
+                      Schedule a pickup at your convenience. We collect your clothes from your doorstep.
+                    </p>
+                  </div>
                 </div>
-                <h3 className="process-step-title">Free Pickup (Above ₹500)</h3>
-                <p className="process-step-desc">
-                  We pickup the items from your home/office as per scheduled time.
-                </p>
               </div>
 
-              {/* Step 2 */}
-              <div className="process-step-card">
-                <div className="process-step-tag">02</div>
-                <div className="process-card-img-wrap">
-                  <img
-                    src="/assets/process-step-2.png"
-                    alt="Clean / Wash / Iron"
-                    className="process-card-img"
-                  />
+              {/* Card 2 */}
+              <div className="mobile-process-card">
+                <div className="mobile-process-card-content">
+                  <div className="mobile-process-num-circle">2</div>
+                  <div className="mobile-process-text-group">
+                    <div className="mobile-process-title-row">
+                      <h3 className="mobile-process-card-title">Clean / Wash / Iron</h3>
+                      <span className="mobile-process-icon" role="img" aria-label="Washing bubbles">🫧</span>
+                    </div>
+                    <p className="mobile-process-card-desc">
+                      We carefully clean, wash, and iron your clothes using advanced machines and safe products.
+                    </p>
+                  </div>
                 </div>
-                <h3 className="process-step-title">Clean / Wash / Iron</h3>
-                <p className="process-step-desc">
-                  The task is carried out by trained professionals with care.
-                </p>
               </div>
 
-              {/* Step 3 */}
-              <div className="process-step-card">
-                <div className="process-step-tag">03</div>
-                <div className="process-card-img-wrap">
-                  <img
-                    src="/assets/process-step-3.png"
-                    alt="Superfast Delivery"
-                    className="process-card-img"
-                  />
+              {/* Card 3 */}
+              <div className="mobile-process-card">
+                <div className="mobile-process-card-content">
+                  <div className="mobile-process-num-circle">3</div>
+                  <div className="mobile-process-text-group">
+                    <div className="mobile-process-title-row">
+                      <h3 className="mobile-process-card-title">Superfast Delivery</h3>
+                      <span className="mobile-process-icon" role="img" aria-label="Delivery box">📦</span>
+                    </div>
+                    <p className="mobile-process-card-desc">
+                      Your fresh clothes are delivered back to you, on time, every time.
+                    </p>
+                  </div>
                 </div>
-                <h3 className="process-step-title">Superfast Delivery</h3>
-                <p className="process-step-desc">
-                  We offer same day delivery for faster processing of items.
-                </p>
               </div>
             </div>
           </div>
@@ -612,57 +971,111 @@ export const HomePage = () => {
       {/* 7. CUSTOMER TESTIMONIALS */}
       <section className="testimonials-section" id="testimonials-section">
         <div className="container">
-          <div className="text-center testimonials-head">
-            <span className="testimonials-pill">TESTIMONIALS</span>
-            <h2 className="testimonials-title">Loved by Busy People</h2>
-            <p className="testimonials-subtitle">
-              Hear from our community of professionals, busy parents, and luxury wardrobe owners.
-            </p>
+          {/* Desktop Testimonials View - 100% untouched for laptops / desktops */}
+          <div className="testimonials-desktop-view">
+            <div className="text-center testimonials-head">
+              <span className="testimonials-pill">TESTIMONIALS</span>
+              <h2 className="testimonials-title">Loved by Busy People</h2>
+              <p className="testimonials-subtitle">
+                Hear from our community of professionals, busy parents, and luxury wardrobe owners.
+              </p>
+            </div>
+
+            <div className="testimonials-grid">
+              <div className="testimonial-card">
+                <div className="testimonial-stars">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} size={18} strokeWidth={1.8} color="#FF7A60" fill="none" />
+                  ))}
+                </div>
+                <p className="testimonial-quote">
+                  "Absolute game changer. Booking takes 30 seconds and my clothes return smelling amazing and folded better than I can ever do myself."
+                </p>
+                <div className="testimonial-author-block">
+                  <h4 className="testimonial-author-name">Jessica R.</h4>
+                  <p className="testimonial-author-role">Busy Professional</p>
+                </div>
+              </div>
+
+              <div className="testimonial-card">
+                <div className="testimonial-stars">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} size={18} strokeWidth={1.8} color="#FF7A60" fill="none" />
+                  ))}
+                </div>
+                <p className="testimonial-quote">
+                  "I am super picky about my suits. FabriCare dry cleaned my tailored wool pieces perfectly. Crisp pressing and zero odd chemical smells."
+                </p>
+                <div className="testimonial-author-block">
+                  <h4 className="testimonial-author-name">Michael T.</h4>
+                  <p className="testimonial-author-role">Wardrobe Enthusiast</p>
+                </div>
+              </div>
+
+              <div className="testimonial-card">
+                <div className="testimonial-stars">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} size={18} strokeWidth={1.8} color="#FF7A60" fill="none" />
+                  ))}
+                </div>
+                <p className="testimonial-quote">
+                  "With 2 kids, laundry is a full-time job. Sending our weekly wash & fold to FabriCare has saved our weekends. Best money spent."
+                </p>
+                <div className="testimonial-author-block">
+                  <h4 className="testimonial-author-name">David K.</h4>
+                  <p className="testimonial-author-role">Family of Four</p>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="testimonials-grid">
-            <div className="testimonial-card">
-              <div className="testimonial-stars">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} size={18} strokeWidth={1.8} color="#FF7A60" fill="none" />
-                ))}
+          {/* Div 7: Mobile Testimonials View (Exact Match to User Reference Mockup) */}
+          <div className="testimonials-mobile-view">
+            <div className="mobile-testimonials-header">
+              <div className="mobile-testimonials-eyebrow">
+                <span className="eyebrow-line"></span>
+                <span className="eyebrow-text">TESTIMONIALS</span>
+                <span className="eyebrow-line"></span>
               </div>
-              <p className="testimonial-quote">
-                "Absolute game changer. Booking takes 30 seconds and my clothes return smelling amazing and folded better than I can ever do myself."
+              <h2 className="mobile-testimonials-title">
+                Loved by <span className="highlight">Busy People</span>
+              </h2>
+              <p className="mobile-testimonials-sub">
+                Here's what our happy customers have to say about our laundry services.
               </p>
-              <div className="testimonial-author-block">
-                <h4 className="testimonial-author-name">Jessica R.</h4>
-                <p className="testimonial-author-role">Busy Professional</p>
-              </div>
             </div>
 
-            <div className="testimonial-card">
-              <div className="testimonial-stars">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} size={18} strokeWidth={1.8} color="#FF7A60" fill="none" />
-                ))}
+            <div className="mobile-testimonials-card-container">
+              <div className="mobile-testimonial-card">
+                <div className="mobile-testimonial-stars">
+                  {[...Array(mobileTestimonials[mobileTestimonialIndex].stars)].map((_, i) => (
+                    <Star key={i} size={19} fill="#FFA41C" color="#FFA41C" />
+                  ))}
+                </div>
+                <p className="mobile-testimonial-quote">
+                  {mobileTestimonials[mobileTestimonialIndex].quote}
+                </p>
+                <div className="mobile-testimonial-author-block">
+                  <h4 className="mobile-testimonial-author-name">
+                    {mobileTestimonials[mobileTestimonialIndex].name}
+                  </h4>
+                  <p className="mobile-testimonial-author-role">
+                    {mobileTestimonials[mobileTestimonialIndex].role}
+                  </p>
+                </div>
               </div>
-              <p className="testimonial-quote">
-                "I am super picky about my suits. FabriCare dry cleaned my tailored wool pieces perfectly. Crisp pressing and zero odd chemical smells."
-              </p>
-              <div className="testimonial-author-block">
-                <h4 className="testimonial-author-name">Michael T.</h4>
-                <p className="testimonial-author-role">Wardrobe Enthusiast</p>
-              </div>
-            </div>
 
-            <div className="testimonial-card">
-              <div className="testimonial-stars">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} size={18} strokeWidth={1.8} color="#FF7A60" fill="none" />
+              {/* Indicator Dots below Card */}
+              <div className="mobile-testimonials-dots">
+                {mobileTestimonials.map((_, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className={`mobile-testimonial-dot ${mobileTestimonialIndex === idx ? 'active' : ''}`}
+                    onClick={() => setMobileTestimonialIndex(idx)}
+                    aria-label={`Show testimonial ${idx + 1}`}
+                  />
                 ))}
-              </div>
-              <p className="testimonial-quote">
-                "With 2 kids, laundry is a full-time job. Sending our weekly wash & fold to FabriCare has saved our weekends. Best money spent."
-              </p>
-              <div className="testimonial-author-block">
-                <h4 className="testimonial-author-name">David K.</h4>
-                <p className="testimonial-author-role">Family of Four</p>
               </div>
             </div>
           </div>
@@ -675,124 +1088,241 @@ export const HomePage = () => {
       {/* 9. CONTACT & SUPPORT SECTION */}
       <section className="contact-section" id="contact-section">
         <div className="container">
-          <div className="text-center contact-head">
-            <span className="contact-pill">CONTACT US</span>
-            <h2 className="contact-main-title">
-              Get in Touch with FabriCare.
-            </h2>
-            <p className="contact-subtitle">
-              Have special fabric questions or high volume commercial requests? We're here to help.
-            </p>
+          {/* Desktop Contact View - 100% untouched for laptops / desktops */}
+          <div className="contact-desktop-view">
+            <div className="text-center contact-head">
+              <span className="contact-pill">CONTACT US</span>
+              <h2 className="contact-main-title">
+                Get in Touch with FabriCare.
+              </h2>
+              <p className="contact-subtitle">
+                Have special fabric questions or high volume commercial requests? We're here to help.
+              </p>
+            </div>
+
+            <div className="contact-cards-grid">
+              {/* Left Card: We're Locally Owned & Operated */}
+              <div className="contact-info-card">
+                <h3 className="contact-card-title">We're Locally Owned &amp; Operated</h3>
+                <p className="contact-card-desc">
+                  Our head facility operates out of Brooklyn, serving all surrounding boroughs. Reach our responsive customer support team via phone, email, or chat.
+                </p>
+
+                <div className="contact-details-list">
+                  <div className="contact-item">
+                    <div className="contact-icon-squircle">
+                      <Phone size={19} />
+                    </div>
+                    <div className="contact-item-text">
+                      <span className="contact-detail-label">Support Hotline</span>
+                      <span className="contact-detail-value">+91 98765 43211</span>
+                    </div>
+                  </div>
+
+                  <div className="contact-item">
+                    <div className="contact-icon-squircle">
+                      <Mail size={19} />
+                    </div>
+                    <div className="contact-item-text">
+                      <span className="contact-detail-label">Email Address</span>
+                      <span className="contact-detail-value">support@fabricare.premium</span>
+                    </div>
+                  </div>
+
+                  <div className="contact-item">
+                    <div className="contact-icon-squircle">
+                      <MapPin size={19} />
+                    </div>
+                    <div className="contact-item-text">
+                      <span className="contact-detail-label">Service Facility</span>
+                      <span className="contact-detail-value">Bengaluru, Karnataka, India, 560037</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Card: Send a Message */}
+              <div className="contact-form-card">
+                <h3 className="contact-card-title">Send a Message</h3>
+                <p className="contact-form-sub">
+                  Our support team typically responds within 15 minutes.
+                </p>
+
+                {contactSubmitted ? (
+                  <div className="contact-success-msg animate-fade-in">
+                    <CheckCircle2 size={44} color="#087F8C" />
+                    <h4>Thank you for reaching out!</h4>
+                    <p>Our support representative will call you back within 15 minutes.</p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleContactSubmit} className="contact-form">
+                    <div className="contact-form-row">
+                      <div className="contact-field-group">
+                        <label className="contact-field-label">Full Name</label>
+                        <input
+                          type="text"
+                          required
+                          className="contact-field-input"
+                          placeholder="Mahesh"
+                          value={contactForm.name}
+                          onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="contact-field-group">
+                        <label className="contact-field-label">Phone Number</label>
+                        <input
+                          type="tel"
+                          required
+                          className="contact-field-input"
+                          placeholder="+91 98765 43211"
+                          value={contactForm.phone}
+                          onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="contact-field-group">
+                      <label className="contact-field-label">Email Address</label>
+                      <input
+                        type="email"
+                        required
+                        className="contact-field-input"
+                        placeholder="mahesh@example.com"
+                        value={contactForm.email}
+                        onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="contact-field-group">
+                      <label className="contact-field-label">Your Message</label>
+                      <textarea
+                        rows="4"
+                        required
+                        className="contact-field-textarea"
+                        placeholder="Ask about delicate dry clean, blanket packages, custom starching preferences..."
+                        value={contactForm.message}
+                        onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                      />
+                    </div>
+
+                    <button type="submit" className="contact-submit-btn">
+                      Submit Inquiry
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="contact-cards-grid">
-            {/* Left Card: We're Locally Owned & Operated */}
-            <div className="contact-info-card">
-              <h3 className="contact-card-title">We're Locally Owned &amp; Operated</h3>
-              <p className="contact-card-desc">
-                Our head facility operates out of Brooklyn, serving all surrounding boroughs. Reach our responsive customer support team via phone, email, or chat.
+          {/* Div 9: Mobile Contact View (Exact Match to User Reference Mockup) */}
+          <div className="contact-mobile-view">
+            <div className="mobile-contact-header">
+              <div className="mobile-contact-eyebrow">
+                <span className="eyebrow-line"></span>
+                <span className="eyebrow-text">CONTACT US</span>
+                <span className="eyebrow-line"></span>
+              </div>
+              <h2 className="mobile-contact-title">
+                Get in Touch with <span className="highlight">Laundrix.</span>
+              </h2>
+              <p className="mobile-contact-sub">
+                We'd love to hear from you. Whether it's a query, feedback, or a special request — we're here to help.
+              </p>
+            </div>
+
+            <div className="mobile-contact-info-block">
+              <h3 className="mobile-contact-info-title">We're Locally Owned &amp; Operated</h3>
+              <p className="mobile-contact-info-desc">
+                Our team is based in your city and dedicated to providing reliable, high-quality laundry services.
               </p>
 
-              <div className="contact-details-list">
-                <div className="contact-item">
-                  <div className="contact-icon-squircle">
-                    <Phone size={19} />
+              <div className="mobile-contact-items-list">
+                <div className="mobile-contact-item">
+                  <div className="mobile-contact-icon-box">
+                    <Phone size={19} strokeWidth={2.2} />
                   </div>
-                  <div className="contact-item-text">
-                    <span className="contact-detail-label">Support Hotline</span>
-                    <span className="contact-detail-value">+91 98765 43211</span>
-                  </div>
-                </div>
-
-                <div className="contact-item">
-                  <div className="contact-icon-squircle">
-                    <Mail size={19} />
-                  </div>
-                  <div className="contact-item-text">
-                    <span className="contact-detail-label">Email Address</span>
-                    <span className="contact-detail-value">support@fabricare.premium</span>
+                  <div className="mobile-contact-item-info">
+                    <h4 className="mobile-contact-item-main">+91 98765 43210</h4>
+                    <p className="mobile-contact-item-sub">Call us anytime</p>
                   </div>
                 </div>
 
-                <div className="contact-item">
-                  <div className="contact-icon-squircle">
-                    <MapPin size={19} />
+                <div className="mobile-contact-item">
+                  <div className="mobile-contact-icon-box">
+                    <Mail size={19} strokeWidth={2.2} />
                   </div>
-                  <div className="contact-item-text">
-                    <span className="contact-detail-label">Service Facility</span>
-                    <span className="contact-detail-value">Bengaluru, Karnataka, India, 560037</span>
+                  <div className="mobile-contact-item-info">
+                    <h4 className="mobile-contact-item-main">support@laundrix.premium</h4>
+                    <p className="mobile-contact-item-sub">Drop us an email</p>
+                  </div>
+                </div>
+
+                <div className="mobile-contact-item">
+                  <div className="mobile-contact-icon-box">
+                    <MapPin size={19} strokeWidth={2.2} />
+                  </div>
+                  <div className="mobile-contact-item-info">
+                    <h4 className="mobile-contact-item-main">123, MG Road, Bangalore, KA 560001</h4>
+                    <p className="mobile-contact-item-sub">Visit our store</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Right Card: Send a Message */}
-            <div className="contact-form-card">
-              <h3 className="contact-card-title">Send a Message</h3>
-              <p className="contact-form-sub">
-                Our support team typically responds within 15 minutes.
-              </p>
+            {/* Mobile Contact Form Card */}
+            <div className="mobile-contact-card">
+              <h3 className="mobile-form-title">Send us a Message</h3>
 
               {contactSubmitted ? (
                 <div className="contact-success-msg animate-fade-in">
-                  <CheckCircle2 size={44} color="#087F8C" />
+                  <CheckCircle2 size={40} color="#087F8C" />
                   <h4>Thank you for reaching out!</h4>
-                  <p>Our support representative will call you back within 15 minutes.</p>
+                  <p>Our support representative will contact you shortly.</p>
                 </div>
               ) : (
-                <form onSubmit={handleContactSubmit} className="contact-form">
-                  <div className="contact-form-row">
-                    <div className="contact-field-group">
-                      <label className="contact-field-label">Full Name</label>
-                      <input
-                        type="text"
-                        required
-                        className="contact-field-input"
-                        placeholder="Mahesh"
-                        value={contactForm.name}
-                        onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="contact-field-group">
-                      <label className="contact-field-label">Phone Number</label>
-                      <input
-                        type="tel"
-                        required
-                        className="contact-field-input"
-                        placeholder="+91 98765 43211"
-                        value={contactForm.phone}
-                        onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="contact-field-group">
-                    <label className="contact-field-label">Email Address</label>
+                <form onSubmit={handleContactSubmit} className="mobile-contact-form">
+                  <div className="mobile-form-row-2col">
+                    <input
+                      type="text"
+                      required
+                      maxLength={20}
+                      placeholder="Name (max 20)"
+                      className="mobile-form-input"
+                      value={contactForm.name}
+                      onChange={(e) => setContactForm({ ...contactForm, name: e.target.value.slice(0, 20) })}
+                    />
                     <input
                       type="email"
                       required
-                      className="contact-field-input"
-                      placeholder="mahesh@example.com"
+                      placeholder="Email"
+                      className="mobile-form-input"
                       value={contactForm.email}
                       onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
                     />
                   </div>
 
-                  <div className="contact-field-group">
-                    <label className="contact-field-label">Your Message</label>
-                    <textarea
-                      rows="4"
-                      required
-                      className="contact-field-textarea"
-                      placeholder="Ask about delicate dry clean, blanket packages, custom starching preferences..."
-                      value={contactForm.message}
-                      onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
-                    />
-                  </div>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="Phone Number"
+                    className="mobile-form-input mobile-form-input-full"
+                    value={contactForm.phone}
+                    onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                  />
 
-                  <button type="submit" className="contact-submit-btn">
-                    Submit Inquiry
+                  <textarea
+                    rows="3"
+                    required
+                    placeholder="Message"
+                    className="mobile-form-textarea"
+                    value={contactForm.message}
+                    onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                  />
+
+                  <button type="submit" className="mobile-form-submit-btn">
+                    <span>Send Message</span>
+                    <ArrowRight size={18} strokeWidth={2.5} />
                   </button>
                 </form>
               )}
@@ -934,6 +1464,10 @@ export const HomePage = () => {
 
         .hero-content {
           max-width: 620px;
+        }
+
+        .hero-mobile-view {
+          display: none;
         }
 
         .hero-headline {
@@ -1298,6 +1832,10 @@ export const HomePage = () => {
           box-shadow: 0 14px 28px rgba(255, 107, 84, 0.45);
         }
 
+        .about-mobile-card-view {
+          display: none;
+        }
+
         /* SERVICES SECTION (EXACT REFERENCE DESIGN) */
         .services-section {
           padding: 100px 0;
@@ -1338,6 +1876,10 @@ export const HomePage = () => {
           line-height: 1.15;
         }
 
+        .services-title-break {
+          display: none;
+        }
+
         .services-title .highlight {
           color: #087F8C;
         }
@@ -1349,6 +1891,26 @@ export const HomePage = () => {
           line-height: 1.6;
           max-width: 600px;
           margin: 0 auto;
+        }
+
+        .services-sub-desktop {
+          display: block;
+        }
+
+        .services-sub-mobile {
+          display: none;
+        }
+
+        .service-desc-desktop {
+          display: block;
+        }
+
+        .service-desc-mobile {
+          display: none;
+        }
+
+        .service-learn-more-btn {
+          display: none;
         }
 
         .services-cards-grid {
@@ -1464,7 +2026,7 @@ export const HomePage = () => {
         /* WHY CHOOSE US (EXACT REFERENCE BENTO DESIGN) */
         .why-us-section {
           padding: 100px 0;
-          background: #FFFFFF;
+          background: #EEF2F2;
         }
 
         .why-us-bento-container {
@@ -1474,6 +2036,14 @@ export const HomePage = () => {
           overflow: hidden;
           box-shadow: 0 20px 48px rgba(18, 38, 58, 0.08);
           border: 1px solid rgba(226, 232, 240, 0.6);
+        }
+
+        .why-desktop-view {
+          display: grid;
+        }
+
+        .why-mobile-view {
+          display: none;
         }
 
         /* Left Hero Column */
@@ -1811,11 +2381,27 @@ export const HomePage = () => {
           max-width: 290px;
         }
 
+        .process-desktop-view {
+          display: block;
+        }
+
+        .process-mobile-view {
+          display: none;
+        }
+
         /* TESTIMONIALS */
         /* TESTIMONIALS - DIV 7 */
         .testimonials-section {
           padding: 96px 0 108px;
           background: #FFFFFF;
+        }
+
+        .testimonials-desktop-view {
+          display: block;
+        }
+
+        .testimonials-mobile-view {
+          display: none;
         }
 
         .testimonials-head {
@@ -1919,6 +2505,14 @@ export const HomePage = () => {
           background: #F8FAF8;
         }
 
+        .contact-desktop-view {
+          display: block;
+        }
+
+        .contact-mobile-view {
+          display: none;
+        }
+
         .contact-head {
           margin-bottom: 52px;
         }
@@ -1968,27 +2562,29 @@ export const HomePage = () => {
         .contact-form-card {
           background: #FFFFFF;
           border: 1.5px solid #E1E8E6;
-          border-radius: 24px;
+          border-radius: 28px;
           padding: 44px 40px;
           box-shadow: 0 8px 30px rgba(18, 38, 58, 0.03);
           display: flex;
           flex-direction: column;
+          height: 100%;
+          box-sizing: border-box;
         }
 
         .contact-card-title {
           font-family: 'Poppins', sans-serif;
-          font-size: 1.5rem;
+          font-size: 1.55rem;
           font-weight: 800;
           color: #12263A;
           margin: 0 0 16px;
-          line-height: 1.3;
+          line-height: 1.25;
         }
 
         .contact-card-desc {
           font-family: 'Inter', sans-serif;
           font-size: 0.95rem;
           color: #5A6E85;
-          line-height: 1.65;
+          line-height: 1.6;
           margin: 0 0 36px;
         }
 
@@ -2002,8 +2598,7 @@ export const HomePage = () => {
         .contact-details-list {
           display: flex;
           flex-direction: column;
-          gap: 24px;
-          margin-top: auto;
+          gap: 22px;
         }
 
         .contact-item {
@@ -2013,10 +2608,10 @@ export const HomePage = () => {
         }
 
         .contact-icon-squircle {
-          width: 44px;
-          height: 44px;
-          border-radius: 12px;
-          background: #DDF5F2;
+          width: 46px;
+          height: 46px;
+          border-radius: 13px;
+          background: #E8F8F6;
           color: #087F8C;
           display: flex;
           align-items: center;
@@ -2032,8 +2627,9 @@ export const HomePage = () => {
 
         .contact-detail-label {
           font-family: 'Inter', sans-serif;
-          font-size: 0.8rem;
+          font-size: 0.82rem;
           color: #7B8E9D;
+          font-weight: 500;
           line-height: 1.2;
         }
 
@@ -2042,6 +2638,7 @@ export const HomePage = () => {
           font-size: 0.98rem;
           font-weight: 700;
           color: #12263A;
+          line-height: 1.3;
         }
 
         .contact-form {
@@ -2158,6 +2755,8 @@ export const HomePage = () => {
           display: flex;
           align-items: center;
           justify-content: center;
+          background: #05636D url('/assets/cta-folded-clothes.jpg') center 38% / cover no-repeat fixed;
+          background-attachment: fixed;
         }
 
         .cta-banner-bg-wrapper {
@@ -2166,6 +2765,7 @@ export const HomePage = () => {
           width: 100%;
           height: 100%;
           z-index: 0;
+          display: none;
         }
 
         .cta-banner-bg-img {
@@ -2194,19 +2794,22 @@ export const HomePage = () => {
           text-align: center;
         }
 
-        .cta-banner-title {
+        .cta-banner-title,
+        .cta-banner-section h1,
+        .cta-banner-section h2 {
           font-family: 'Poppins', sans-serif;
           font-size: 2.85rem;
           font-weight: 800;
-          color: #FFFFFF;
+          color: #000000;
           margin: 0 0 16px;
           line-height: 1.2;
         }
 
-        .cta-banner-sub {
+        .cta-banner-sub,
+        .cta-banner-section p {
           font-family: 'Inter', sans-serif;
           font-size: 1.05rem;
-          color: rgba(255, 255, 255, 0.95);
+          color: #000000;
           line-height: 1.6;
           margin: 0 auto 30px;
           max-width: 620px;
@@ -2342,16 +2945,6 @@ export const HomePage = () => {
           .why-contact-btn {
             width: 100%;
           }
-          .services-title {
-            font-size: 30px;
-          }
-          .services-cards-grid {
-            grid-template-columns: 1fr;
-            gap: 20px;
-          }
-          .service-image-box {
-            height: 200px;
-          }
           .hero-headline {
             font-size: 38px;
             line-height: 40px;
@@ -2385,6 +2978,1160 @@ export const HomePage = () => {
           .cta-banner-btn {
             width: 100%;
             padding: 14px 20px;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .hero-section {
+            min-height: auto;
+            padding: 44px 0 48px;
+            position: relative;
+            display: flex;
+            align-items: center;
+          }
+          .hero-subtle-overlay {
+            background: linear-gradient(
+              180deg, 
+              rgba(255, 255, 255, 0.76) 0%, 
+              rgba(255, 255, 255, 0.62) 50%, 
+              rgba(255, 255, 255, 0.80) 100%
+            );
+          }
+          .hero-container {
+            display: block !important;
+            width: 100% !important;
+            padding: 0 20px !important;
+          }
+          .hero-desktop-view,
+          .hero-glass-cards-col,
+          .hero-slide-indicators {
+            display: none !important;
+          }
+          .hero-mobile-view {
+            display: block !important;
+            width: 100%;
+            max-width: 420px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 5;
+          }
+          .hero-mobile-headline {
+            font-family: 'Poppins', sans-serif;
+            font-size: 38px;
+            font-weight: 800;
+            line-height: 1.12;
+            color: #12263A;
+            letter-spacing: -1px;
+            margin: 0 0 16px;
+            text-align: left;
+          }
+          .hero-mobile-headline .hero-mobile-highlight {
+            color: #087F8C;
+            display: block;
+          }
+          .hero-mobile-description {
+            font-family: 'Inter', sans-serif;
+            font-size: 15px;
+            color: #4A5568;
+            line-height: 1.55;
+            margin: 0 0 26px;
+            text-align: left;
+            max-width: 360px;
+          }
+          .hero-mobile-cta-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+            margin-bottom: 34px;
+          }
+          .btn-coral-mobile-pill {
+            height: 52px;
+            width: 100%;
+            border-radius: 9999px;
+            background: #FF6046;
+            color: #FFFFFF;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 700;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 10px 24px rgba(255, 96, 70, 0.4);
+            transition: transform 0.15s ease, background 0.15s ease;
+          }
+          .btn-coral-mobile-pill:active {
+            transform: scale(0.98);
+          }
+          .btn-white-mobile-pill {
+            height: 52px;
+            width: 100%;
+            border-radius: 9999px;
+            background: #FFFFFF;
+            color: #12263A;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 700;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+            transition: transform 0.15s ease, background 0.15s ease;
+          }
+          .btn-white-mobile-pill:active {
+            transform: scale(0.98);
+          }
+          .hero-mobile-trust-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            width: 100%;
+            padding: 0 4px;
+          }
+          .hero-mobile-trust-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 8px;
+            flex: 1;
+          }
+          .hero-mobile-trust-circle {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: #D4F4F0;
+            color: #087F8C;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(8, 127, 140, 0.12);
+          }
+          .hero-mobile-trust-text {
+            font-family: 'Poppins', sans-serif;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #12263A;
+            line-height: 1.25;
+            text-align: center;
+          }
+          .about-section {
+            padding: 44px 0 54px;
+          }
+          .about-grid {
+            display: none !important;
+          }
+          .about-mobile-card-view {
+            display: block !important;
+            max-width: 440px;
+            margin: 0 auto;
+            padding: 0 4px;
+          }
+          .about-mobile-header {
+            text-align: center;
+            margin-bottom: 20px;
+          }
+          .about-heading-mobile {
+            font-family: 'Poppins', sans-serif;
+            font-size: 30px;
+            font-weight: 800;
+            line-height: 1.2;
+            color: #12263A;
+            margin: 8px 0 0;
+            letter-spacing: -0.5px;
+          }
+          .about-heading-mobile .about-heading-highlight {
+            color: #087F8C;
+            display: block;
+          }
+          .about-mobile-image-frame {
+            width: 100%;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 10px 28px rgba(18, 38, 58, 0.08);
+            margin-bottom: 22px;
+            background: #F8FAFC;
+          }
+          .about-mobile-img {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 4 / 3;
+            object-fit: cover;
+            display: block;
+          }
+          .about-mobile-desc {
+            font-family: 'Inter', sans-serif;
+            font-size: 14.5px;
+            color: #4B5563;
+            line-height: 1.6;
+            margin: 0 0 24px;
+            text-align: left;
+          }
+          .about-mobile-cards-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 28px;
+          }
+          .about-feature-card {
+            background: #F0FAF9;
+            border: 1.5px solid #D1F2EE;
+            border-radius: 20px;
+            padding: 15px 18px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 2px 8px rgba(8, 127, 140, 0.04);
+          }
+          .about-feature-icon-circle {
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            background: #D5F4F0;
+            color: #087F8C;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+          }
+          .about-feature-info {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+          }
+          .about-feature-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            color: #12263A;
+            margin: 0 0 3px;
+            line-height: 1.25;
+          }
+          .about-feature-sub {
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            color: #64748B;
+            margin: 0;
+            line-height: 1.35;
+          }
+          .about-mobile-btn-wrap {
+            display: flex;
+            justify-content: center;
+          }
+          .btn-read-more-pill {
+            background: linear-gradient(135deg, #FF6B54 0%, #FF5639 100%);
+            color: #FFFFFF;
+            font-family: 'Poppins', sans-serif;
+            font-size: 15.5px;
+            font-weight: 600;
+            padding: 13px 42px;
+            border-radius: 9999px;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 8px 24px rgba(255, 96, 70, 0.38);
+            transition: all 0.2s ease;
+          }
+          .btn-read-more-pill:active {
+            transform: scale(0.98);
+          }
+
+          /* Div 3: OUR SERVICES Mobile UI (Exact reference mockup match) */
+          .services-section {
+            padding: 44px 0 54px !important;
+            background: #EBF7F6 !important;
+          }
+          .services-head {
+            margin-bottom: 26px !important;
+            padding: 0 4px !important;
+          }
+          .services-eyebrow {
+            margin-bottom: 10px !important;
+            font-size: 12.5px !important;
+            gap: 10px !important;
+          }
+          .services-eyebrow .eyebrow-line {
+            width: 24px !important;
+            height: 2px !important;
+          }
+          .services-title {
+            font-size: 28px !important;
+            line-height: 1.18 !important;
+            margin: 0 0 10px !important;
+            letter-spacing: -0.6px !important;
+            font-weight: 800 !important;
+          }
+          .services-title-break {
+            display: block !important;
+          }
+          .services-title .highlight {
+            color: #087F8C !important;
+          }
+          .services-sub-desktop {
+            display: none !important;
+          }
+          .services-sub-mobile {
+            display: block !important;
+            font-family: 'Inter', sans-serif !important;
+            font-size: 13.5px !important;
+            color: #556980 !important;
+            line-height: 1.55 !important;
+            max-width: 330px !important;
+            margin: 0 auto !important;
+          }
+          .services-cards-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 12px !important;
+            max-width: 440px !important;
+            margin: 0 auto !important;
+            padding: 0 4px !important;
+          }
+          .service-card-item {
+            background: #FFFFFF !important;
+            border-radius: 20px !important;
+            padding: 10px 10px 14px !important;
+            border: 1.5px solid #D8F1EE !important;
+            box-shadow: 0 4px 14px rgba(8, 127, 140, 0.05) !important;
+            display: flex !important;
+            flex-direction: column !important;
+            height: 100% !important;
+            box-sizing: border-box !important;
+          }
+          .service-image-box {
+            width: 100% !important;
+            height: auto !important;
+            aspect-ratio: 1 / 0.82 !important;
+            border-radius: 14px !important;
+            overflow: hidden !important;
+            margin-bottom: 10px !important;
+            background: #F1F5F9 !important;
+          }
+          .service-card-img {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            border-radius: 14px !important;
+            display: block !important;
+          }
+          .service-card-body {
+            padding: 0 2px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            flex: 1 !important;
+          }
+          .service-title-text {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            margin: 0 0 4px !important;
+            line-height: 1.25 !important;
+          }
+          .service-desc-desktop {
+            display: none !important;
+          }
+          .service-desc-mobile {
+            display: block !important;
+            font-family: 'Inter', sans-serif !important;
+            font-size: 11.5px !important;
+            line-height: 1.35 !important;
+            color: #64748B !important;
+            margin: 0 0 10px !important;
+            flex: 1 !important;
+          }
+          .service-enquire-btn {
+            display: none !important;
+          }
+          .service-learn-more-btn {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 4px !important;
+            color: #087F8C !important;
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            background: none !important;
+            border: none !important;
+            padding: 0 !important;
+            cursor: pointer !important;
+            margin-top: auto !important;
+            transition: color 0.15s ease !important;
+          }
+          .service-learn-more-btn:active {
+            color: #055C65 !important;
+          }
+
+          /* Div 4: WHY PEOPLE CHOOSE US Mobile UI (Exact reference mockup match) */
+          .why-us-section {
+            padding: 44px 0 54px !important;
+            background: #EEF6F5 !important;
+          }
+          .why-desktop-view {
+            display: none !important;
+          }
+          .why-mobile-view {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 14px !important;
+            max-width: 440px !important;
+            margin: 0 auto !important;
+            padding: 0 4px !important;
+          }
+          .why-mobile-hero-card {
+            background: #00525C !important;
+            border-radius: 26px !important;
+            padding: 28px 20px 24px !important;
+            color: #FFFFFF !important;
+            box-shadow: 0 10px 28px rgba(0, 82, 92, 0.18) !important;
+            display: flex !important;
+            flex-direction: column !important;
+            box-sizing: border-box !important;
+          }
+          .why-mobile-star-icon-box {
+            width: 48px !important;
+            height: 48px !important;
+            border-radius: 12px !important;
+            border: 1.5px solid rgba(255, 255, 255, 0.22) !important;
+            background: rgba(255, 255, 255, 0.08) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            margin-bottom: 22px !important;
+          }
+          .why-mobile-hero-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 28px !important;
+            font-weight: 800 !important;
+            color: #FFFFFF !important;
+            line-height: 1.15 !important;
+            letter-spacing: -0.5px !important;
+            margin: 0 0 24px !important;
+            text-transform: uppercase !important;
+          }
+          .why-mobile-checklist {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 15px !important;
+            margin-bottom: 24px !important;
+          }
+          .why-mobile-check-item {
+            display: flex !important;
+            align-items: center !important;
+            gap: 13px !important;
+          }
+          .why-mobile-check-circle {
+            width: 24px !important;
+            height: 24px !important;
+            border-radius: 50% !important;
+            background: #00C9B7 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+          }
+          .why-mobile-check-label {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 15px !important;
+            font-weight: 600 !important;
+            color: #FFFFFF !important;
+            line-height: 1.3 !important;
+          }
+          .why-mobile-contact-btn {
+            height: 52px !important;
+            width: 100% !important;
+            border-radius: 9999px !important;
+            background: #FF6046 !important;
+            color: #FFFFFF !important;
+            font-family: 'Poppins', sans-serif !important;
+            font-weight: 700 !important;
+            font-size: 16px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            border: none !important;
+            cursor: pointer !important;
+            box-shadow: 0 8px 22px rgba(255, 96, 70, 0.35) !important;
+            transition: transform 0.15s ease, background 0.15s ease !important;
+          }
+          .why-mobile-contact-btn:active {
+            transform: scale(0.98) !important;
+          }
+          .why-mobile-features-stack {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 12px !important;
+          }
+          .why-mobile-feature-card {
+            border-radius: 20px !important;
+            padding: 16px 18px !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 16px !important;
+            box-shadow: 0 4px 14px rgba(18, 38, 58, 0.04) !important;
+            box-sizing: border-box !important;
+          }
+          .why-mobile-card-white {
+            background: #FFFFFF !important;
+            border: 1px solid rgba(226, 232, 240, 0.8) !important;
+          }
+          .why-mobile-card-teal {
+            background: #00525C !important;
+            border: none !important;
+            box-shadow: 0 8px 24px rgba(0, 82, 92, 0.16) !important;
+          }
+          .why-mobile-feature-icon-box {
+            width: 46px !important;
+            height: 46px !important;
+            border-radius: 14px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+          }
+          .icon-box-mint {
+            background: #E0F7F6 !important;
+            color: #087F8C !important;
+          }
+          .icon-box-teal-dark {
+            background: rgba(255, 255, 255, 0.12) !important;
+            color: #38D9C8 !important;
+          }
+          .why-mobile-feature-body {
+            display: flex !important;
+            flex-direction: column !important;
+            text-align: left !important;
+          }
+          .why-mobile-feature-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            margin: 0 0 3px !important;
+            line-height: 1.25 !important;
+          }
+          .why-mobile-feature-title.dark-title {
+            color: #12263A !important;
+          }
+          .why-mobile-feature-title.white-title {
+            color: #FFFFFF !important;
+          }
+          .why-mobile-feature-desc {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 12.5px !important;
+            line-height: 1.4 !important;
+            margin: 0 !important;
+          }
+          .why-mobile-feature-desc.dark-desc {
+            color: #64748B !important;
+          }
+          .why-mobile-feature-desc.white-desc {
+            color: #D2F2EF !important;
+          }
+
+          /* Div 6: Mobile Working Process View */
+          .process-section {
+            padding: 48px 0 56px !important;
+            background: #F0F9F8 !important;
+          }
+          .process-desktop-view {
+            display: none !important;
+          }
+          .process-mobile-view {
+            display: block !important;
+            max-width: 440px !important;
+            margin: 0 auto !important;
+            padding: 0 4px !important;
+          }
+          .mobile-process-header {
+            text-align: center !important;
+            margin-bottom: 28px !important;
+          }
+          .mobile-process-eyebrow {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            margin-bottom: 12px !important;
+          }
+          .mobile-process-eyebrow .eyebrow-line {
+            width: 18px !important;
+            height: 2px !important;
+            background-color: #087F8C !important;
+            border-radius: 2px !important;
+          }
+          .mobile-process-eyebrow .eyebrow-text {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            letter-spacing: 1.5px !important;
+            color: #087F8C !important;
+            text-transform: uppercase !important;
+          }
+          .mobile-process-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 29px !important;
+            font-weight: 800 !important;
+            color: #12263A !important;
+            line-height: 1.18 !important;
+            letter-spacing: -0.5px !important;
+            margin: 0 0 12px !important;
+          }
+          .mobile-process-title .highlight {
+            color: #087F8C !important;
+          }
+          .mobile-process-sub {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 14px !important;
+            color: #556980 !important;
+            line-height: 1.5 !important;
+            max-width: 330px !important;
+            margin: 0 auto !important;
+          }
+          .mobile-process-cards-stack {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 16px !important;
+          }
+          .mobile-process-card {
+            background: #FFFFFF !important;
+            border-radius: 24px !important;
+            padding: 22px 22px !important;
+            border: 1px solid rgba(8, 127, 140, 0.05) !important;
+            box-shadow: 0 4px 20px rgba(18, 38, 58, 0.04), 0 1px 3px rgba(18, 38, 58, 0.02) !important;
+            box-sizing: border-box !important;
+          }
+          .mobile-process-card-content {
+            display: flex !important;
+            align-items: flex-start !important;
+            gap: 16px !important;
+          }
+          .mobile-process-num-circle {
+            width: 40px !important;
+            height: 40px !important;
+            border-radius: 50% !important;
+            background: #D8F5F2 !important;
+            color: #087F8C !important;
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 16.5px !important;
+            font-weight: 800 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+            margin-top: 1px !important;
+          }
+          .mobile-process-text-group {
+            flex: 1 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-width: 0 !important;
+          }
+          .mobile-process-title-row {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 10px !important;
+            margin-bottom: 6px !important;
+          }
+          .mobile-process-card-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 16px !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            margin: 0 !important;
+            line-height: 1.25 !important;
+          }
+          .mobile-process-icon {
+            font-size: 26px !important;
+            line-height: 1 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+            font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif !important;
+          }
+          .mobile-process-card-desc {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 13.5px !important;
+            color: #64748B !important;
+            line-height: 1.48 !important;
+            margin: 0 !important;
+          }
+
+          /* Div 7: Mobile Testimonials View (Matches User Mockup) */
+          .testimonials-section {
+            padding: 50px 0 58px !important;
+            background: #FFFFFF !important;
+          }
+          .testimonials-desktop-view {
+            display: none !important;
+          }
+          .testimonials-mobile-view {
+            display: block !important;
+            max-width: 440px !important;
+            margin: 0 auto !important;
+            padding: 0 4px !important;
+          }
+          .mobile-testimonials-header {
+            text-align: center !important;
+            margin-bottom: 24px !important;
+          }
+          .mobile-testimonials-eyebrow {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            margin-bottom: 12px !important;
+          }
+          .mobile-testimonials-eyebrow .eyebrow-line {
+            width: 18px !important;
+            height: 2px !important;
+            background-color: #087F8C !important;
+            border-radius: 2px !important;
+          }
+          .mobile-testimonials-eyebrow .eyebrow-text {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            letter-spacing: 1.5px !important;
+            color: #087F8C !important;
+            text-transform: uppercase !important;
+          }
+          .mobile-testimonials-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 29px !important;
+            font-weight: 800 !important;
+            color: #12263A !important;
+            line-height: 1.18 !important;
+            letter-spacing: -0.5px !important;
+            margin: 0 0 12px !important;
+          }
+          .mobile-testimonials-title .highlight {
+            color: #087F8C !important;
+          }
+          .mobile-testimonials-sub {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 14px !important;
+            color: #556980 !important;
+            line-height: 1.5 !important;
+            max-width: 330px !important;
+            margin: 0 auto !important;
+          }
+          .mobile-testimonials-card-container {
+            margin-top: 24px !important;
+          }
+          .mobile-testimonial-card {
+            background: #FFFFFF !important;
+            border-radius: 26px !important;
+            padding: 26px 24px 26px !important;
+            border: 1.5px solid #E6F5F3 !important;
+            box-shadow: 0 6px 24px rgba(8, 127, 140, 0.05) !important;
+            box-sizing: border-box !important;
+            text-align: left !important;
+            transition: all 0.3s ease !important;
+          }
+          .mobile-testimonial-stars {
+            display: flex !important;
+            align-items: center !important;
+            gap: 5px !important;
+            margin-bottom: 16px !important;
+          }
+          .mobile-testimonial-quote {
+            font-family: 'Inter', sans-serif !important;
+            font-style: italic !important;
+            font-size: 15px !important;
+            line-height: 1.6 !important;
+            color: #334155 !important;
+            margin: 0 0 20px 0 !important;
+          }
+          .mobile-testimonial-author-name {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 15.5px !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            margin: 0 0 3px 0 !important;
+            line-height: 1.25 !important;
+          }
+          .mobile-testimonial-author-role {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 13px !important;
+            color: #8295A8 !important;
+            margin: 0 !important;
+          }
+          .mobile-testimonials-dots {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            margin-top: 22px !important;
+          }
+          .mobile-testimonial-dot {
+            width: 7px !important;
+            height: 7px !important;
+            border-radius: 50% !important;
+            background: #CBD5E1 !important;
+            border: none !important;
+            padding: 0 !important;
+            cursor: pointer !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          }
+          .mobile-testimonial-dot.active {
+            width: 26px !important;
+            height: 6px !important;
+            border-radius: 999px !important;
+            background: #087F8C !important;
+          }
+
+          /* Div 9: Mobile Contact View (Exact Reference Mockup Match) */
+          .contact-section {
+            padding: 50px 0 60px !important;
+            background: #FFFFFF !important;
+          }
+          .contact-desktop-view {
+            display: none !important;
+          }
+          .contact-mobile-view {
+            display: block !important;
+            max-width: 440px !important;
+            margin: 0 auto !important;
+            padding: 0 4px !important;
+          }
+          .mobile-contact-header {
+            text-align: center !important;
+            margin-bottom: 28px !important;
+          }
+          .mobile-contact-eyebrow {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            margin-bottom: 12px !important;
+          }
+          .mobile-contact-eyebrow .eyebrow-line {
+            width: 18px !important;
+            height: 2px !important;
+            background-color: #087F8C !important;
+            border-radius: 2px !important;
+          }
+          .mobile-contact-eyebrow .eyebrow-text {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            letter-spacing: 1.5px !important;
+            color: #087F8C !important;
+            text-transform: uppercase !important;
+          }
+          .mobile-contact-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 29px !important;
+            font-weight: 800 !important;
+            color: #12263A !important;
+            line-height: 1.18 !important;
+            letter-spacing: -0.5px !important;
+            margin: 0 0 12px !important;
+          }
+          .mobile-contact-title .highlight {
+            color: #087F8C !important;
+          }
+          .mobile-contact-sub {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 14px !important;
+            color: #556980 !important;
+            line-height: 1.5 !important;
+            max-width: 330px !important;
+            margin: 0 auto !important;
+          }
+          .mobile-contact-info-block {
+            margin-bottom: 28px !important;
+            text-align: left !important;
+          }
+          .mobile-contact-info-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 16.5px !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            margin: 0 0 6px 0 !important;
+            line-height: 1.3 !important;
+          }
+          .mobile-contact-info-desc {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 13.5px !important;
+            color: #64748B !important;
+            line-height: 1.5 !important;
+            margin: 0 0 20px 0 !important;
+          }
+          .mobile-contact-items-list {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 16px !important;
+          }
+          .mobile-contact-item {
+            display: flex !important;
+            align-items: center !important;
+            gap: 14px !important;
+          }
+          .mobile-contact-icon-box {
+            width: 44px !important;
+            height: 44px !important;
+            border-radius: 12px !important;
+            background: #E0F7F6 !important;
+            color: #087F8C !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+          }
+          .mobile-contact-item-info {
+            display: flex !important;
+            flex-direction: column !important;
+            text-align: left !important;
+          }
+          .mobile-contact-item-main {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            margin: 0 0 2px 0 !important;
+            line-height: 1.25 !important;
+          }
+          .mobile-contact-item-sub {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 12.5px !important;
+            color: #8295A8 !important;
+            margin: 0 !important;
+          }
+          .mobile-contact-card {
+            background: #FFFFFF !important;
+            border-radius: 24px !important;
+            padding: 24px 20px !important;
+            border: 1.5px solid #E6F5F3 !important;
+            box-shadow: 0 8px 24px rgba(8, 127, 140, 0.04) !important;
+            box-sizing: border-box !important;
+            text-align: left !important;
+          }
+          .mobile-form-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 16.5px !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            margin: 0 0 16px 0 !important;
+          }
+          .mobile-contact-form {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 12px !important;
+          }
+          .mobile-form-row-2col {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 10px !important;
+          }
+          .mobile-form-input {
+            width: 100% !important;
+            background: #FFFFFF !important;
+            border: 1.5px solid #E6EFF0 !important;
+            border-radius: 14px !important;
+            padding: 12px 14px !important;
+            font-family: 'Inter', sans-serif !important;
+            font-size: 14px !important;
+            color: #12263A !important;
+            box-sizing: border-box !important;
+            outline: none !important;
+            transition: border-color 0.2s ease !important;
+          }
+          .mobile-form-input:focus,
+          .mobile-form-textarea:focus {
+            border-color: #087F8C !important;
+          }
+          .mobile-form-input::placeholder,
+          .mobile-form-textarea::placeholder {
+            color: #94A3B8 !important;
+            font-family: 'Inter', sans-serif !important;
+          }
+          .mobile-form-textarea {
+            width: 100% !important;
+            background: #FFFFFF !important;
+            border: 1.5px solid #E6EFF0 !important;
+            border-radius: 14px !important;
+            padding: 12px 14px !important;
+            font-family: 'Inter', sans-serif !important;
+            font-size: 14px !important;
+            color: #12263A !important;
+            box-sizing: border-box !important;
+            outline: none !important;
+            resize: vertical !important;
+            min-height: 96px !important;
+          }
+          .mobile-form-submit-btn {
+            width: 100% !important;
+            height: 48px !important;
+            border-radius: 12px !important;
+            background: #087F8C !important;
+            color: #FFFFFF !important;
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            border: none !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            cursor: pointer !important;
+            transition: background 0.2s ease, transform 0.15s ease !important;
+            margin-top: 4px !important;
+          }
+          .mobile-form-submit-btn:active {
+            transform: scale(0.98) !important;
+          }
+
+          /* Div 10: CTA Banner Mobile */
+          .cta-banner-section {
+            padding: 56px 16px 60px !important;
+            background-attachment: scroll !important;
+          }
+          .cta-banner-title {
+            font-size: 28px !important;
+            line-height: 1.2 !important;
+            margin-bottom: 12px !important;
+          }
+          .cta-banner-sub {
+            font-size: 14px !important;
+            line-height: 1.55 !important;
+            max-width: 340px !important;
+            margin: 0 auto 24px !important;
+          }
+          .cta-banner-btn {
+            width: 100% !important;
+            max-width: 320px !important;
+            height: 48px !important;
+            font-size: 15px !important;
+            border-radius: 12px !important;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .hero-mobile-headline {
+            font-size: 32px;
+          }
+          .hero-mobile-trust-circle {
+            width: 46px;
+            height: 46px;
+          }
+          .hero-mobile-trust-text {
+            font-size: 11.5px;
+          }
+          .about-heading-mobile {
+            font-size: 27px;
+          }
+          .about-mobile-desc {
+            font-size: 13.5px;
+          }
+          .about-feature-card {
+            padding: 12px 14px;
+            gap: 12px;
+          }
+          .about-feature-icon-circle {
+            width: 42px;
+            height: 42px;
+          }
+          .about-feature-title {
+            font-size: 14px;
+          }
+          .about-feature-sub {
+            font-size: 12px;
+          }
+          .services-title {
+            font-size: 25px !important;
+          }
+          .services-sub-mobile {
+            font-size: 12.5px !important;
+            max-width: 290px !important;
+          }
+          .services-cards-grid {
+            gap: 10px !important;
+          }
+          .service-card-item {
+            padding: 8px 8px 12px !important;
+            border-radius: 18px !important;
+          }
+          .service-image-box {
+            border-radius: 12px !important;
+            margin-bottom: 8px !important;
+          }
+          .service-title-text {
+            font-size: 14px !important;
+          }
+          .service-desc-mobile {
+            font-size: 11px !important;
+            line-height: 1.3 !important;
+          }
+          .service-learn-more-btn {
+            font-size: 12px !important;
+          }
+          .why-mobile-hero-title {
+            font-size: 25px !important;
+          }
+          .why-mobile-check-label {
+            font-size: 14px !important;
+          }
+          .why-mobile-feature-card {
+            padding: 14px 14px !important;
+            gap: 12px !important;
+          }
+          .why-mobile-feature-icon-box {
+            width: 42px !important;
+            height: 42px !important;
+          }
+          .why-mobile-feature-title {
+            font-size: 14px !important;
+          }
+          .why-mobile-feature-desc {
+            font-size: 12px !important;
+          }
+          .mobile-process-title {
+            font-size: 27px !important;
+          }
+          .mobile-process-card {
+            padding: 18px 18px !important;
+            border-radius: 20px !important;
+          }
+          .mobile-process-card-title {
+            font-size: 15px !important;
+          }
+          .mobile-process-card-desc {
+            font-size: 12.5px !important;
+          }
+          .mobile-testimonials-title {
+            font-size: 27px !important;
+          }
+          .mobile-testimonial-card {
+            padding: 22px 18px 22px !important;
+            border-radius: 22px !important;
+          }
+          .mobile-testimonial-quote {
+            font-size: 14px !important;
+          }
+          .mobile-contact-title {
+            font-size: 27px !important;
+          }
+          .mobile-contact-card {
+            padding: 20px 16px !important;
+            border-radius: 20px !important;
+          }
+          .mobile-form-row-2col {
+            gap: 8px !important;
+          }
+          .mobile-form-input {
+            padding: 11px 12px !important;
+            font-size: 13.5px !important;
           }
         }
       `}</style>

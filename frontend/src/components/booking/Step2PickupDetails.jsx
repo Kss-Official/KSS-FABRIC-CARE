@@ -10,7 +10,8 @@ import {
   Clock, 
   ChevronLeft, 
   ChevronRight, 
-  ArrowRight 
+  ArrowRight,
+  User 
 } from 'lucide-react';
 
 export const Step2PickupDetails = () => {
@@ -21,6 +22,35 @@ export const Step2PickupDetails = () => {
   } = useBooking();
 
   const [showLandmark, setShowLandmark] = useState(Boolean(pickupDetails.landmark));
+  const [phoneError, setPhoneError] = useState('');
+
+  // Validate Indian mobile: exactly 10 digits, starts with 6-9
+  const validatePhone = (digits) => {
+    if (!digits) return 'Mobile number is required.';
+    if (!/^[6-9]/.test(digits)) return 'Number must start with 6, 7, 8, or 9.';
+    if (digits.length < 10) return `Enter ${10 - digits.length} more digit${10 - digits.length > 1 ? 's' : ''}.`;
+    return '';
+  };
+
+  // Strip +91 prefix and non-digits, keep max 10 digits
+  const handleMobileChange = (e) => {
+    let raw = e.target.value;
+    // Remove leading +91 or 91 if user typed them
+    raw = raw.replace(/^\+?91/, '');
+    // Keep only digits, max 10
+    const digits = raw.replace(/\D/g, '').slice(0, 10);
+    setPickupDetails({ ...pickupDetails, mobile: digits });
+    setPhoneError(validatePhone(digits));
+  };
+
+  const handleMobileBlur = () => {
+    const digits = (pickupDetails.mobile || '').replace(/\D/g, '');
+    setPhoneError(validatePhone(digits));
+  };
+
+  const phoneDigits = (pickupDetails.mobile || '').replace(/\D/g, '');
+  const isPhoneValid = phoneDigits.length === 10 && /^[6-9]/.test(phoneDigits);
+  const canProceed = isPhoneValid && !!pickupDetails.address;
 
   const handleToggleDeliveryAddress = () => {
     setPickupDetails(prev => ({
@@ -48,22 +78,52 @@ export const Step2PickupDetails = () => {
           </div>
 
           <div className="form-fields-container">
-            {/* Mobile Number Field */}
-            <div className="form-group">
-              <label className="form-label">Mobile Number</label>
+            {/* Full Name Field (Desktop only) */}
+            <div className="form-group desktop-only-field">
+              <label className="form-label">Full Name</label>
               <div className="input-with-icon">
                 <span className="input-icon left-icon">
-                  <Phone size={18} strokeWidth={1.8} />
+                  <User size={18} strokeWidth={1.8} />
                 </span>
                 <input
-                  type="tel"
+                  type="text"
+                  maxLength={20}
                   className="form-input"
-                  value={pickupDetails.mobile || ''}
-                  onChange={(e) => setPickupDetails({ ...pickupDetails, mobile: e.target.value })}
-                  placeholder="+91 98765 43210"
+                  value={pickupDetails.name || ''}
+                  onChange={(e) => setPickupDetails(prev => ({ ...prev, name: e.target.value.slice(0, 20) }))}
+                  placeholder="Enter full name (max 20 characters)"
                 />
               </div>
-              <p className="input-helper-text">We'll use this to share pickup updates</p>
+              <p className="input-helper-text">Name for order contact and delivery (max 20 characters)</p>
+            </div>
+
+            {/* Mobile Number Field */}
+            <div className="form-group mt-3">
+              <label className="form-label">Mobile Number</label>
+              <div className="phone-input-wrapper" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                {/* Phone icon */}
+                <span className="input-icon left-icon" style={{ left: '14px', zIndex: 2 }}>
+                  <Phone size={18} strokeWidth={1.8} />
+                </span>
+                {/* +91 prefix badge */}
+                <span className="phone-prefix-badge">+91</span>
+                <input
+                  id="mobile-input"
+                  type="tel"
+                  inputMode="numeric"
+                  className={`form-input phone-input${phoneError ? ' input-error' : ''}`}
+                  value={phoneDigits}
+                  onChange={handleMobileChange}
+                  onBlur={handleMobileBlur}
+                  placeholder="98765 43210"
+                  maxLength={10}
+                  autoComplete="tel-national"
+                />
+              </div>
+              {phoneError
+                ? <p className="input-error-text">⚠ {phoneError}</p>
+                : <p className="input-helper-text">We'll use this to share pickup updates</p>
+              }
             </div>
 
             {/* Pickup Address Field */}
@@ -77,8 +137,8 @@ export const Step2PickupDetails = () => {
                   type="text"
                   className="form-input with-right-action"
                   value={pickupDetails.address || ''}
-                  onChange={(e) => setPickupDetails({ ...pickupDetails, address: e.target.value })}
-                  placeholder="Banaswadi, Bengaluru - 560043"
+                  onChange={(e) => setPickupDetails(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder="Banaswadi, Bengaluru – 560043"
                 />
                 <button
                   type="button"
@@ -143,8 +203,8 @@ export const Step2PickupDetails = () => {
             </div>
           </div>
 
-          {/* Carousel / Pagination Row inside parent card */}
-          <div className="card-pagination-row">
+          {/* Desktop Carousel / Pagination Row inside parent card */}
+          <div className="card-pagination-row desktop-only-pagination">
             <button
               className="pagination-circle-btn"
               onClick={() => setCurrentStep(1)}
@@ -164,9 +224,48 @@ export const Step2PickupDetails = () => {
               className="pagination-circle-btn"
               onClick={() => setCurrentStep(3)}
               aria-label="Next step"
-              disabled={!pickupDetails.mobile || !pickupDetails.address}
+              disabled={!canProceed}
             >
               <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* Mobile Step 2 Bottom Navigation */}
+          <div className="mobile-step2-bottom-bar mobile-only-bar">
+            <div className="card-pagination-row">
+              <button
+                className="pagination-circle-btn"
+                onClick={() => setCurrentStep(1)}
+                aria-label="Previous step"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              <div className="pagination-dots">
+                <span className="dot" onClick={() => setCurrentStep(1)}></span>
+                <span className="dot active"></span>
+                <span className="dot" onClick={() => canProceed && setCurrentStep(3)}></span>
+                <span className="dot" onClick={() => canProceed && setCurrentStep(4)}></span>
+              </div>
+
+              <button
+                className="pagination-circle-btn"
+                onClick={() => canProceed && setCurrentStep(3)}
+                aria-label="Next step"
+                disabled={!canProceed}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="mobile-full-next-btn"
+              onClick={() => canProceed && setCurrentStep(3)}
+              disabled={!canProceed}
+            >
+              <span>Next</span>
+              <ArrowRight size={18} />
             </button>
           </div>
         </div>
@@ -206,7 +305,7 @@ export const Step2PickupDetails = () => {
         <button
           className="btn-next-action"
           onClick={() => setCurrentStep(3)}
-          disabled={!pickupDetails.mobile || !pickupDetails.address}
+          disabled={!canProceed}
         >
           <span>Next</span>
           <ArrowRight size={17} />
@@ -315,6 +414,39 @@ export const Step2PickupDetails = () => {
           box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.1);
         }
 
+        /* Phone number field */
+        .phone-input {
+          padding-left: 96px !important;
+          letter-spacing: 0.03em;
+        }
+
+        .phone-prefix-badge {
+          position: absolute;
+          left: 42px;
+          font-size: 0.9375rem;
+          font-weight: 600;
+          color: #0D7A75;
+          pointer-events: none;
+          user-select: none;
+          z-index: 2;
+          background: transparent;
+          border-right: 1.5px solid #E2E8F0;
+          padding-right: 10px;
+          line-height: 1;
+        }
+
+        .form-input.input-error {
+          border-color: #EF4444;
+          box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        }
+
+        .input-error-text {
+          font-size: 0.775rem;
+          color: #EF4444;
+          font-weight: 500;
+          margin-top: 4px;
+        }
+
         .gps-target-btn {
           position: absolute;
           right: 12px;
@@ -337,6 +469,7 @@ export const Step2PickupDetails = () => {
           font-size: 0.775rem;
           color: #64748B;
           margin-top: 4px;
+          min-height: 1.2em;
         }
 
         .landmark-toggle-row {
@@ -612,12 +745,254 @@ export const Step2PickupDetails = () => {
           cursor: not-allowed;
         }
 
+        .mobile-only-bar {
+          display: none;
+        }
+
         @media (max-width: 960px) {
           .booking-layout-grid {
             grid-template-columns: 1fr;
           }
           .trust-side-card {
             padding: 24px;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .trust-side-card,
+          .desktop-only-field,
+          .desktop-only-pagination {
+            display: none !important;
+          }
+
+          .pickup-parent-card {
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+          }
+
+          .step-header {
+            margin-bottom: 22px;
+            text-align: left;
+          }
+
+          .step-count {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #8492A6;
+            margin-bottom: 6px;
+            display: inline-block;
+          }
+
+          .step-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 1.65rem;
+            font-weight: 800;
+            color: #12263A;
+            margin: 0 0 6px 0;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+          }
+
+          .step-subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            color: #718096;
+            margin: 0 0 20px 0;
+          }
+
+          .form-label {
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #12263A;
+            margin-bottom: 8px;
+            display: block;
+          }
+
+          .form-input {
+            height: 48px;
+            border-radius: 14px;
+            border: 1.5px solid #E2E8F0;
+            font-size: 0.95rem;
+            color: #12263A;
+            font-weight: 500;
+            padding-left: 44px;
+          }
+
+          .form-input.phone-input {
+            padding-left: 78px;
+          }
+
+          .phone-prefix-badge {
+            position: absolute;
+            left: 42px;
+            font-weight: 600;
+            color: #12263A;
+            font-size: 0.95rem;
+            z-index: 2;
+          }
+
+          .input-helper-text {
+            font-size: 0.78rem;
+            color: #718096;
+            margin-top: 6px;
+          }
+
+          .add-landmark-link {
+            color: #087F8C;
+            font-size: 0.875rem;
+            font-weight: 600;
+            background: none;
+            border: none;
+            padding: 8px 0;
+            cursor: pointer;
+            margin-top: 4px;
+            display: inline-block;
+          }
+
+          .same-address-card {
+            background: #EAF8F7;
+            border: 1.5px solid #D4F0EE;
+            border-radius: 18px;
+            padding: 16px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 20px;
+          }
+
+          .home-icon-box {
+            background: #FFFFFF;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #087F8C;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(8, 127, 140, 0.08);
+          }
+
+          .same-address-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #12263A;
+            margin: 0 0 3px 0;
+          }
+
+          .same-address-sub {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            color: #556980;
+            margin: 0;
+            line-height: 1.35;
+          }
+
+          .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 26px;
+            flex-shrink: 0;
+          }
+
+          .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #CBD5E1;
+            transition: 0.3s;
+            border-radius: 34px;
+          }
+
+          .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+          }
+
+          input:checked + .toggle-slider {
+            background-color: #087F8C;
+          }
+
+          input:checked + .toggle-slider:before {
+            transform: translateX(22px);
+          }
+
+          .mobile-step2-bottom-bar.mobile-only-bar {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 18px !important;
+            margin-top: 24px !important;
+            width: 100% !important;
+          }
+
+          .mobile-step2-bottom-bar .card-pagination-row {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 16px !important;
+            width: 100% !important;
+          }
+
+          .mobile-step2-bottom-bar .pagination-dots {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+          }
+
+          .mobile-step2-bottom-bar .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #CBD5E1;
+            transition: all 0.2s;
+            cursor: pointer;
+          }
+
+          .mobile-step2-bottom-bar .dot.active {
+            background: #087F8C;
+            width: 9px;
+            height: 9px;
+          }
+
+          .mobile-full-next-btn {
+            width: 100% !important;
+            height: 48px !important;
+            background: #087F8C !important;
+            color: #FFFFFF !important;
+            border-radius: 999px !important;
+            font-size: 1rem !important;
+            font-weight: 700 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            border: none !important;
+            box-shadow: 0 4px 14px rgba(8, 127, 140, 0.25) !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+          }
+
+          .mobile-full-next-btn:disabled {
+            opacity: 0.5 !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
           }
         }
       `}</style>

@@ -2,7 +2,8 @@ from django.contrib import admin
 from .models import (
     ServiceCategory, Service, Order, OrderItem,
     PickupRecord, LaundryHandoverRecord, LaundryStageLog, DeliveryRecord,
-    Invoice, Notification, SupportTicket, ContentFAQ, ContentPolicy
+    Invoice, Notification, SupportTicket, ContentFAQ, ContentPolicy,
+    ComplaintReport
 )
 
 class OrderItemInline(admin.TabularInline):
@@ -64,3 +65,11 @@ class ContentFAQAdmin(admin.ModelAdmin):
 @admin.register(ContentPolicy)
 class ContentPolicyAdmin(admin.ModelAdmin):
     list_display = ('title', 'slug', 'updated_at')
+
+
+@admin.register(ComplaintReport)
+class ComplaintReportAdmin(admin.ModelAdmin):
+    list_display = ('order_id_display', 'customer_name', 'failure_reason', 'reported_by_name', 'report_date', 'rescheduled_date', 'status')
+    list_filter = ('status', 'failure_reason', 'report_date')
+    search_fields = ('order_id_display', 'customer_name', 'failure_reason', 'reported_by_name')
+

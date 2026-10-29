@@ -11,13 +11,17 @@ import {
   ChevronLeft, 
   ArrowRight, 
   Loader2, 
-  AlertCircle 
+  AlertCircle,
+  User,
+  Zap
 } from 'lucide-react';
 
 export const Step4ReviewConfirm = () => {
   const { 
     allServices, 
-    selectedServices, 
+    selectedServices,
+    selectedItemsList = [],
+    totalItemsCount = 0,
     pickupDetails, 
     pickupSchedule, 
     specialInstructions, 
@@ -25,11 +29,48 @@ export const Step4ReviewConfirm = () => {
     setCurrentStep, 
     confirmOrder, 
     calculateTotal, 
+    calculateDuplicateWashSavings = () => 0,
+    getItemPricing = (it) => ({ effectiveUnitPrice: it.unitPrice, lineTotal: it.unitPrice * it.quantity, hasIroningDiscount: false }),
+    isExpressDelivery,
     isSubmittingOrder, 
     orderError 
   } = useBooking();
 
   const [isEditingInstructions, setIsEditingInstructions] = useState(false);
+
+  const SERVICE_DESCRIPTIONS = {
+    'wash-fold': { name: 'Wash & Fold', subtitle: 'Everyday essentials' },
+    'wash-iron': { name: 'Wash & Iron', subtitle: 'Clean clothes, ready to wear.' },
+    'dry-cleaning': { name: 'Dry Cleaning', subtitle: 'For your delicate and premium wear.' },
+    'steam-iron': { name: 'Steam Iron', subtitle: 'Crisp and perfectly pressed.' },
+    'shoe-laundry': { name: 'Shoe Laundry', subtitle: 'Clean shoes, step brighter.' },
+    'home-care': { name: 'Home Care', subtitle: 'Curtains, bed sheets and more.' },
+    'express-laundry': { name: 'Express Laundry', subtitle: 'Superfast 24-hour priority turnaround.' }
+  };
+
+  const activeServiceIds = [
+    ...new Set([
+      ...selectedServices,
+      ...selectedItemsList.map(it => it.categoryId)
+    ])
+  ].filter(Boolean);
+
+  const activeServicesList = (activeServiceIds.length > 0 ? activeServiceIds : ['wash-fold', 'dry-cleaning']).map(id => {
+    const meta = SERVICE_DESCRIPTIONS[id] || { name: id, subtitle: 'Standard laundry care' };
+    return {
+      id,
+      name: meta.name,
+      subtitle: meta.subtitle
+    };
+  });
+
+  const isExpressBooking = Boolean(isExpressDelivery) || 
+    (selectedServices && selectedServices.some(s => s === 'express-laundry' || String(s).toLowerCase().includes('express'))) ||
+    (selectedItemsList && selectedItemsList.some(it => it.categoryId === 'express-laundry' || String(it.categoryName || '').toLowerCase().includes('express')));
+
+  const primaryCategoryId = isExpressBooking 
+    ? 'express-laundry' 
+    : (selectedItemsList[0]?.categoryId || selectedServices[0] || 'wash-fold');
 
   const selectedItemsData = allServices.filter(s => selectedServices.includes(s.id));
   const estimatedTotal = calculateTotal() || 300;
@@ -38,45 +79,47 @@ export const Step4ReviewConfirm = () => {
     switch (id) {
       case 'wash-fold':
         return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z" />
           </svg>
         );
       case 'wash-iron':
         return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="2.2" strokeLinecap="round">
             <path d="M7 6.5h10" /><path d="M5 10.5h14" /><path d="M5 14.5h14" /><path d="M7 18.5h10" />
           </svg>
         );
       case 'dry-cleaning':
         return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 3a2.5 2.5 0 0 0-2.5 2.5c0 1 .6 1.8 1.5 2.2V9L3.5 15.2A2 2 0 0 0 4.7 18.5H19.3a2 2 0 0 0 1.2-3.3L13 9V7.7a2.5 2.5 0 0 0 1.5-2.2A2.5 2.5 0 0 0 12 3z" />
             <path d="M7.5 15.5h9" />
           </svg>
         );
       case 'steam-iron':
         return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 17h16a1 1 0 0 0 1-1c0-4-3-6-7-6H9a5 5 0 0 0-5 5v2z" /><path d="M9 10V6h7v4" />
           </svg>
         );
+      case 'express-laundry':
+        return <Zap size={20} color="#087F8C" strokeWidth={2.2} />;
       case 'shoe-laundry':
         return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3.5 15.5h17a1 1 0 0 1 1 1v1a1.5 1.5 0 0 1-1.5 1.5h-16A1.5 1.5 0 0 1 2.5 17.5v-1a1 1 0 0 1 1-1z" />
             <path d="M5 15.5c.5-2.5 2-4.5 5-5.5l4 .5 4 3 3 2" /><path d="M10 10.5 8 9" />
           </svg>
         );
       case 'home-care':
         return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <rect x="4" y="5" width="16" height="3" rx="1.5" /><rect x="4" y="10.5" width="16" height="3" rx="1.5" /><rect x="4" y="16" width="16" height="3" rx="1.5" />
           </svg>
         );
       default:
         return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#087F8C" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z" />
           </svg>
         );
@@ -95,14 +138,18 @@ export const Step4ReviewConfirm = () => {
           </div>
 
           <div className="review-grid-2x2">
-            {/* Card 1: Selected Services */}
+            {/* Card 1: Selected Clothing Items & Services */}
             <div className="review-inner-card">
               <div className="inner-card-header">
                 <div className="inner-header-left">
                   <div className="icon-square">
-                    {renderServiceIcon('wash-fold')}
+                    {renderServiceIcon(primaryCategoryId)}
                   </div>
-                  <h3 className="inner-card-title">Selected Services</h3>
+                  <h3 className="inner-card-title">
+                    {selectedItemsList.length > 0 
+                      ? `Selected Clothing Items (${totalItemsCount})` 
+                      : 'Selected Services'}
+                  </h3>
                 </div>
                 <button 
                   type="button" 
@@ -115,17 +162,86 @@ export const Step4ReviewConfirm = () => {
               </div>
 
               <div className="inner-card-body">
-                {selectedItemsData.map(s => (
-                  <div key={s.id} className="service-item-row">
-                    <span className="item-service-icon">
-                      {renderServiceIcon(s.id)}
-                    </span>
-                    <div className="item-text-wrap">
-                      <div className="item-main-title">{s.name}</div>
-                      <div className="item-sub-title">{s.subtitle}</div>
+                {/* Desktop: detailed clothing items stack */}
+                <div className="desktop-only-review-items">
+                  {selectedItemsList.length > 0 ? (
+                    <div className="review-items-stack">
+                      {selectedItemsList.map(item => {
+                        const pricing = getItemPricing(item);
+                        return (
+                          <div key={item.key} className="service-item-row">
+                            <span className="item-service-icon">
+                              {renderServiceIcon(item.categoryId)}
+                            </span>
+                            <div className="item-text-wrap" style={{ flex: 1 }}>
+                              <div className="item-main-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span>{item.name}</span>
+                                  {pricing.hasIroningDiscount && (
+                                    <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#0D7A75', background: '#E6F8F6', border: '1px solid #BCEAE6', padding: '1px 6px', borderRadius: '999px' }}>
+                                      Ironing only
+                                    </span>
+                                  )}
+                                </div>
+                                <span style={{ fontWeight: 700, color: '#087F8C', fontSize: '0.875rem' }}>
+                                  ₹{pricing.lineTotal}
+                                </span>
+                              </div>
+                              <div className="item-sub-title">
+                                {item.categoryName} • Qty: {item.quantity} (
+                                  {item.isPriceEnabled ? (
+                                    pricing.hasIroningDiscount ? (
+                                      <>
+                                        <span style={{ textDecoration: 'line-through', color: '#94A3B8' }}>₹{item.unitPrice}</span>{' '}
+                                        <span style={{ color: '#0D7A75', fontWeight: 600 }}>₹{pricing.effectiveUnitPrice} each</span>
+                                      </>
+                                    ) : (
+                                      `₹${item.unitPrice} each`
+                                    )
+                                  ) : (
+                                    `Standard Care`
+                                  )}
+                                )
+                                {pricing.hasIroningDiscount && (
+                                  <span style={{ display: 'block', fontSize: '0.7rem', color: '#0D7A75', marginTop: '2px' }}>
+                                    ✓ Wash fee waived (included in Wash & Fold)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  </div>
-                ))}
+                  ) : (
+                    selectedItemsData.map(s => (
+                      <div key={s.id} className="service-item-row">
+                        <span className="item-service-icon">
+                          {renderServiceIcon(s.id)}
+                        </span>
+                        <div className="item-text-wrap">
+                          <div className="item-main-title">{s.name}</div>
+                          <div className="item-sub-title">{s.subtitle}</div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Mobile: clean list of selected services matching Screenshot 4 */}
+                <div className="mobile-only-review-items">
+                  {activeServicesList.map(s => (
+                    <div key={s.id} className="service-item-row">
+                      <span className="item-service-icon">
+                        {renderServiceIcon(s.id)}
+                      </span>
+                      <div className="item-text-wrap">
+                        <div className="item-main-title">{s.name}</div>
+                        <div className="item-sub-title">{s.subtitle}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -149,6 +265,12 @@ export const Step4ReviewConfirm = () => {
               </div>
 
               <div className="inner-card-body">
+                <div className="detail-item-row mb-2 desktop-only-name-row">
+                  <User size={16} className="detail-icon" />
+                  <span className="detail-text bold" style={{ color: '#0F172A', fontSize: '0.95rem' }}>
+                    {pickupDetails.name || 'Customer'}
+                  </span>
+                </div>
                 <div className="detail-item-row">
                   <Phone size={16} className="detail-icon" />
                   <span className="detail-text bold">{pickupDetails.mobile || '+91 98765 43210'}</span>
@@ -265,15 +387,59 @@ export const Step4ReviewConfirm = () => {
               <h3 className="sidebar-main-title">Estimated Summary</h3>
             </div>
 
-            {/* Services breakdown table */}
+            {/* Services & clothing items breakdown table */}
             <div className="summary-items-list">
-              {selectedItemsData.map(s => (
-                <div key={s.id} className="summary-item-row">
-                  <span className="item-name">{s.name}</span>
-                  <span className="item-qty">1</span>
-                  <span className="item-price">₹{s.price || 120}</span>
+              {calculateDuplicateWashSavings() > 0 && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#E6F8F6',
+                  border: '1px solid #BCEAE6',
+                  color: '#0D7A75',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  fontSize: '0.725rem',
+                  marginBottom: '10px'
+                }}>
+                  <span>🎉</span>
+                  <span><strong>₹{calculateDuplicateWashSavings()} saved</strong> — duplicate wash charge waived</span>
                 </div>
-              ))}
+              )}
+              {selectedItemsList.length > 0 ? (
+                selectedItemsList.map(it => {
+                  const pricing = getItemPricing(it);
+                  return (
+                    <div key={it.key} className="summary-item-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className="item-name" style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {it.name}
+                          </span>
+                          {pricing.hasIroningDiscount && (
+                            <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#0D7A75', background: '#E6F8F6', border: '1px solid #BCEAE6', padding: '1px 5px', borderRadius: '4px' }}>
+                              Ironing
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#087F8C', fontWeight: 600 }}>
+                          {it.categoryName}
+                        </span>
+                      </div>
+                      <span className="item-qty" style={{ fontWeight: 600, color: '#64748B' }}>×{it.quantity}</span>
+                      <span className="item-price" style={{ fontWeight: 700, color: '#111827' }}>₹{pricing.lineTotal}</span>
+                    </div>
+                  );
+                })
+              ) : (
+                selectedItemsData.map(s => (
+                  <div key={s.id} className="summary-item-row">
+                    <span className="item-name">{s.name}</span>
+                    <span className="item-qty">1</span>
+                    <span className="item-price">₹{s.price || 120}</span>
+                  </div>
+                ))
+              )}
             </div>
 
             {/* Estimated Total */}
@@ -801,12 +967,287 @@ export const Step4ReviewConfirm = () => {
           cursor: not-allowed;
         }
 
+        .mobile-only-review-items {
+          display: none;
+        }
+
         @media (max-width: 960px) {
           .booking-layout-grid {
             grid-template-columns: 1fr;
           }
           .review-grid-2x2 {
             grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .desktop-only-review-items,
+          .desktop-only-name-row,
+          .pagination-spacer {
+            display: none !important;
+          }
+
+          .mobile-only-review-items {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 12px !important;
+          }
+
+          .review-parent-card {
+            background: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+          }
+
+          .step-header {
+            margin-bottom: 22px;
+            text-align: left;
+          }
+
+          .step-count {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #8492A6;
+            margin-bottom: 6px;
+            display: inline-block;
+          }
+
+          .step-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 1.65rem;
+            font-weight: 800;
+            color: #12263A;
+            margin: 0 0 6px 0;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+          }
+
+          .step-subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            color: #718096;
+            margin: 0 0 20px 0;
+          }
+
+          .review-grid-2x2 {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 12px !important;
+            margin-bottom: 16px !important;
+          }
+
+          .review-inner-card {
+            background: #FFFFFF !important;
+            border: 1.5px solid #E2E8F0 !important;
+            border-radius: 18px !important;
+            padding: 16px 14px !important;
+            box-shadow: none !important;
+          }
+
+          .inner-card-header {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            margin-bottom: 12px !important;
+          }
+
+          .inner-header-left {
+            display: flex !important;
+            align-items: center !important;
+            gap: 10px !important;
+          }
+
+          .icon-square {
+            width: 34px !important;
+            height: 34px !important;
+            border-radius: 50% !important;
+            background: #EAF8F7 !important;
+            color: #087F8C !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+          }
+
+          .inner-card-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 0.95rem !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            margin: 0 !important;
+          }
+
+          .card-edit-btn {
+            background: none !important;
+            border: none !important;
+            color: #087F8C !important;
+            font-size: 0.85rem !important;
+            font-weight: 600 !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 4px !important;
+            cursor: pointer !important;
+            padding: 0 !important;
+          }
+
+          .card-pagination-row {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            gap: 14px !important;
+            margin: 18px 0 24px !important;
+            width: 100% !important;
+          }
+
+          .card-pagination-row .pagination-dots {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+          }
+
+          .card-pagination-row .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #CBD5E1;
+            transition: all 0.2s;
+            cursor: pointer;
+          }
+
+          .card-pagination-row .dot.active {
+            background: #087F8C;
+            width: 9px;
+            height: 9px;
+          }
+
+          .estimated-summary-sidebar {
+            width: 100% !important;
+            margin-top: 0 !important;
+          }
+
+          .estimated-summary-sidebar .sidebar-card {
+            background: #EAF8F7 !important;
+            border: 1.5px solid #D4F0EE !important;
+            border-radius: 20px !important;
+            padding: 18px 16px !important;
+            box-shadow: none !important;
+          }
+
+          .sidebar-header-row {
+            display: flex !important;
+            align-items: center !important;
+            gap: 10px !important;
+            margin-bottom: 16px !important;
+          }
+
+          .sidebar-header-icon-box {
+            width: 34px !important;
+            height: 34px !important;
+            border-radius: 50% !important;
+            background: #FFFFFF !important;
+            color: #087F8C !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+            box-shadow: 0 2px 6px rgba(8, 127, 140, 0.08) !important;
+          }
+
+          .sidebar-main-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 0.95rem !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            margin: 0 !important;
+          }
+
+          .summary-items-list {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 10px !important;
+            margin-bottom: 16px !important;
+          }
+
+          .summary-item-row {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            font-size: 0.85rem !important;
+            color: #12263A !important;
+          }
+
+          .summary-total-container {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            padding-top: 14px !important;
+            border-top: 1px solid #D4F0EE !important;
+            margin-bottom: 16px !important;
+          }
+
+          .total-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 1rem !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+          }
+
+          .total-amount {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 1.6rem !important;
+            font-weight: 800 !important;
+            color: #12263A !important;
+          }
+
+          .pricing-notice-box {
+            background: #DDF3F1 !important;
+            border-radius: 12px !important;
+            padding: 10px 12px !important;
+            display: flex !important;
+            align-items: flex-start !important;
+            gap: 8px !important;
+            margin-bottom: 18px !important;
+            border: none !important;
+          }
+
+          .pricing-notice-box .notice-icon {
+            color: #087F8C !important;
+          }
+
+          .pricing-notice-box .notice-text {
+            font-size: 0.76rem !important;
+            color: #087F8C !important;
+            font-weight: 500 !important;
+            line-height: 1.4 !important;
+            margin: 0 !important;
+          }
+
+          .confirm-pickup-full-btn {
+            width: 100% !important;
+            height: 48px !important;
+            background: #087F8C !important;
+            color: #FFFFFF !important;
+            border-radius: 999px !important;
+            font-size: 1rem !important;
+            font-weight: 700 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            border: none !important;
+            box-shadow: 0 4px 14px rgba(8, 127, 140, 0.25) !important;
+            cursor: pointer !important;
+          }
+
+          .secure-badge-row {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 6px !important;
+            font-size: 0.78rem !important;
+            color: #718096 !important;
+            margin-top: 14px !important;
           }
         }
       `}</style>

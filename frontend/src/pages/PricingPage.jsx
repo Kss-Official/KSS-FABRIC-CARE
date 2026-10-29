@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { PageHeroBanner } from '../components/hero/PageHeroBanner';
 import { PricingCalculator } from '../components/common/PricingCalculator';
@@ -29,8 +29,33 @@ const HangerIcon = ({ size = 20, color = '#087F8C' }) => (
 );
 
 export const PricingPage = () => {
-  const { startBooking, navigateTo } = useBooking();
+  const bookingCtx = useBooking() || {};
+  const startBooking = bookingCtx.startBooking || (() => {
+    if (typeof window !== 'undefined') window.location.hash = 'booking';
+  });
+  const navigateTo = bookingCtx.navigateTo || ((page) => {
+    if (typeof window !== 'undefined') window.location.hash = page;
+  });
   const [openFaq, setOpenFaq] = useState(0);
+  const faqListRef = useRef(null);
+
+  useEffect(() => {
+    if (openFaq === null) return;
+
+    const handleClickOutside = (event) => {
+      if (faqListRef.current && !faqListRef.current.contains(event.target)) {
+        setOpenFaq(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [openFaq]);
 
   const faqItems = [
     {
@@ -76,6 +101,7 @@ export const PricingPage = () => {
       {/* 1. HERO BANNER WITH WHITE FADE OVERLAY & HEADINGS */}
       <PageHeroBanner
         bgImage="/assets/pricing-hero.png"
+        eyebrow="OUR PRICING"
         heading="Pricing Plans"
         subtitle="Transparent, Simple & Affordable Per-Piece Rates"
         altText="FabriCare Transparent Pricing"
@@ -102,7 +128,7 @@ export const PricingPage = () => {
             </p>
           </div>
 
-          <div className="faq-accordion-list">
+          <div className="faq-accordion-list" ref={faqListRef}>
             {faqItems.map((item, index) => {
               const isOpen = openFaq === index;
               return (
@@ -138,8 +164,8 @@ export const PricingPage = () => {
         </div>
       </section>
 
-      {/* 4. CTA BANNER */}
-      <section className="cta-banner-section">
+      {/* 4. CTA BANNER (DIV 4) */}
+      <section className="cta-banner-section pricing-div-4">
         <div className="cta-banner-bg-wrapper">
           <img
             src="/assets/cta-folded-clothes.jpg"
@@ -150,9 +176,9 @@ export const PricingPage = () => {
         </div>
         <div className="container cta-banner-container">
           <div className="cta-banner-content">
-            <h2 className="cta-banner-title">
+            <h1 className="cta-banner-title">
               Ready to Save Time on Laundry?
-            </h2>
+            </h1>
             <p className="cta-banner-sub">
               Enjoy honest pricing, premium cleaning quality, and seamless doorstep delivery across Bangalore.
             </p>
@@ -169,7 +195,10 @@ export const PricingPage = () => {
       <style>{`
         .pricing-page-wrapper {
           background-color: #FAFCFC;
-          min-height: 100vh;
+          width: 100%;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
 
         /* ==========================================================================
@@ -375,6 +404,8 @@ export const PricingPage = () => {
           display: flex;
           align-items: center;
           justify-content: center;
+          background: #05636D url('/assets/cta-folded-clothes.jpg') center 38% / cover no-repeat fixed;
+          background-attachment: fixed;
         }
 
         .cta-banner-bg-wrapper {
@@ -383,6 +414,7 @@ export const PricingPage = () => {
           width: 100%;
           height: 100%;
           z-index: 0;
+          display: none;
         }
 
         .cta-banner-bg-img {
@@ -411,21 +443,26 @@ export const PricingPage = () => {
           text-align: center;
         }
 
-        .cta-banner-title {
+        .cta-banner-title,
+        .pricing-div-4 h1,
+        .pricing-div-4 h2 {
           font-family: 'Poppins', sans-serif;
           font-size: 2.85rem;
           font-weight: 800;
-          color: #FFFFFF;
+          color: #000000;
           margin: 0 0 16px;
           line-height: 1.2;
         }
 
-        .cta-banner-sub {
+        .cta-banner-sub,
+        .pricing-div-4 p {
+          font-family: 'Inter', sans-serif;
           font-size: 1.05rem;
-          color: rgba(255, 255, 255, 0.95);
+          color: #000000;
           line-height: 1.6;
           margin: 0 auto 30px;
           max-width: 620px;
+          font-weight: 500;
         }
 
         .cta-banner-btn {
@@ -451,10 +488,6 @@ export const PricingPage = () => {
         }
 
         @media (max-width: 640px) {
-          .pricing-hero-pure-img {
-            max-height: 280px;
-            object-position: top center;
-          }
           .faq-question-btn {
             padding: 16px 18px;
           }

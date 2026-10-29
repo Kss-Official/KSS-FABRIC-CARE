@@ -1,0 +1,1007 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { useAdmin } from '../../context/AdminContext';
+import { 
+  Tag, 
+  Clock, 
+  Hourglass, 
+  CheckCircle2, 
+  ChevronDown, 
+  Calendar, 
+  MoreVertical, 
+  Eye, 
+  RefreshCw,
+  FileText,
+  Search
+} from 'lucide-react';
+import { SupportTicketDrawer } from '../../components/admin/SupportTicketDrawer';
+import { filterMatchesDate, formatDisplayDate } from '../../utils/dateFilterUtils';
+import { rtdb } from '../../config/firebase';
+import { ref, onValue } from 'firebase/database';
+
+export const AdminHelpSupportPage = () => {
+  const { 
+    supportTickets = [], 
+    supportSummary = { total_tickets: 0, open: 0, in_progress: 0, resolved: 0 }, 
+    supportLoading = false, 
+    fetchSupportTickets = () => {},
+    openSupportDrawer = () => {} 
+  } = useAdmin() || {};
+
+  // 1. Initial mount fetch from backend
+  useEffect(() => {
+    fetchSupportTickets();
+  }, [fetchSupportTickets]);
+
+  // 2. Real-time background sync every 5 seconds while page is open
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchSupportTickets(true);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [fetchSupportTickets]);
+
+  // 3. Immediate cross-tab, RTDB, and in-window synchronization
+  useEffect(() => {
+    const handleImmediateSync = () => {
+      fetchSupportTickets(true);
+    };
+
+    window.addEventListener('fabricare_support_ticket_created', handleImmediateSync);
+    window.addEventListener('fabricare_support_ticket_updated', handleImmediateSync);
+    window.addEventListener('storage', handleImmediateSync);
+
+    let bc = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        bc = new BroadcastChannel('fabricare_support_channel');
+        bc.onmessage = (msg) => {
+          if (msg.data?.type === 'TICKET_CREATED' || msg.data?.type === 'TICKET_UPDATED') {
+            fetchSupportTickets(true);
+          }
+        };
+      } catch (_) {}
+    }
+
+    return () => {
+      window.removeEventListener('fabricare_support_ticket_created', handleImmediateSync);
+      window.removeEventListener('fabricare_support_ticket_updated', handleImmediateSync);
+      window.removeEventListener('storage', handleImmediateSync);
+      if (bc) bc.close();
+    };
+  }, [fetchSupportTickets]);
+
+  // 4. Real-time Firebase RTDB listener on support_tickets
+  useEffect(() => {
+    let unsub = null;
+    try {
+      if (rtdb) {
+        const supportRef = ref(rtdb, 'support_tickets');
+        unsub = onValue(supportRef, () => {
+          fetchSupportTickets(true);
+        }, (err) => {
+          console.warn('Realtime support listener notice:', err);
+        });
+      }
+    } catch (_) {}
+
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [fetchSupportTickets]);
+
+  // Filters and search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [dateRangeFilter, setDateRangeFilter] = useState('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+
+  // Priority Badge Renderer matching Reference Image 4
+  const getPriorityBadge = (priority) => {
+    const p = String(priority || '').toUpperCase();
+    if (p === 'HIGH') {
+      return <span className="hs-badge hs-badge-p-high">High</span>;
+    }
+    if (p === 'MEDIUM') {
+      return <span className="hs-badge hs-badge-p-medium">Medium</span>;
+    }
+    return <span className="hs-badge hs-badge-p-low">Low</span>;
+  };
+
+  // Status Badge Renderer matching Reference Image 4
+  const getStatusBadge = (status) => {
+    const s = String(status || '').toUpperCase().replace(/\s+/g, '_');
+    switch (s) {
+      case 'OPEN':
+        return <span className="hs-badge hs-badge-open">Open</span>;
+      case 'IN_PROGRESS':
+        return <span className="hs-badge hs-badge-progress">In Progress</span>;
+      case 'RESOLVED':
+        return <span className="hs-badge hs-badge-resolved">Resolved</span>;
+      case 'CLOSED':
+        return <span className="hs-badge hs-badge-resolved">Resolved</span>;
+      default:
+        return <span className="hs-badge hs-badge-open">{status}</span>;
+    }
+  };
+
+  // Filtered tickets
+  const filteredTickets = useMemo(() => {
+    return (supportTickets || []).filter((item) => {
+      // Search query filter (matches ticket_number, customer, subject, message)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesId = String(item.ticket_number || item.id || '').toLowerCase().includes(q);
+        const matchesCustomer = String(item.customer_name || item.customer || '').toLowerCase().includes(q);
+        const matchesSubject = String(item.subject || item.issue_subject || '').toLowerCase().includes(q);
+        const matchesMessage = String(item.message || item.description || '').toLowerCase().includes(q);
+        if (!matchesId && !matchesCustomer && !matchesSubject && !matchesMessage) {
+          return false;
+        }
+      }
+
+      // Priority filter
+      if (priorityFilter !== 'ALL') {
+        const itemP = String(item.priority || '').toUpperCase();
+        if (itemP !== priorityFilter) return false;
+      }
+
+      // Status filter (Resolved includes both RESOLVED and CLOSED tickets)
+      if (statusFilter !== 'ALL') {
+        const itemS = String(item.status || '').toUpperCase().replace(/\s+/g, '_');
+        if (statusFilter === 'RESOLVED' || statusFilter === 'CLOSED') {
+          if (!['RESOLVED', 'CLOSED'].includes(itemS)) return false;
+        } else if (statusFilter === 'IN_PROGRESS') {
+          if (!['IN_PROGRESS', 'PROGRESS'].includes(itemS)) return false;
+        } else if (statusFilter === 'OPEN') {
+          if (itemS !== 'OPEN') return false;
+        } else if (itemS !== statusFilter) {
+          return false;
+        }
+      }
+
+      // Date Range Filter (filters strictly by ticket submission / creation date matching the table column)
+      if (!filterMatchesDate(item, dateRangeFilter, ['created_at', 'createdAt', 'formatted_created_at', 'submitted_at', 'submitted_date', 'submittedDate', 'date', 'report_date'])) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [supportTickets, searchQuery, priorityFilter, statusFilter, dateRangeFilter]);
+
+  // Pagination calculation
+  const totalItems = filteredTickets.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentTickets = filteredTickets.slice(startIndex, startIndex + itemsPerPage);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  // Dynamic Real-time Summary Cards
+  // Calculated directly from the real tickets and active date range filter
+  const dateFilteredTickets = useMemo(() => {
+    return (supportTickets || []).filter((item) => {
+      return filterMatchesDate(item, dateRangeFilter, ['created_at', 'createdAt', 'formatted_created_at', 'submitted_at', 'submitted_date', 'submittedDate', 'date', 'report_date']);
+    });
+  }, [supportTickets, dateRangeFilter]);
+
+  const liveStats = useMemo(() => {
+    const list = dateFilteredTickets;
+    const total = list.length;
+    const openCount = list.filter(t => String(t.status || '').toUpperCase() === 'OPEN').length;
+    const inProgressCount = list.filter(t => String(t.status || '').toUpperCase() === 'IN_PROGRESS').length;
+    const resolvedCount = list.filter(t => ['RESOLVED', 'CLOSED'].includes(String(t.status || '').toUpperCase())).length;
+
+    let trendContext = 'total';
+    if (dateRangeFilter === 'TODAY') {
+      trendContext = 'today';
+    } else if (dateRangeFilter === 'YESTERDAY') {
+      trendContext = 'yesterday';
+    } else if (dateRangeFilter === 'LAST_WEEK') {
+      trendContext = 'last week';
+    } else {
+      trendContext = 'all-time';
+    }
+
+    return {
+      total,
+      open: openCount,
+      inProgress: inProgressCount,
+      resolved: resolvedCount,
+      trendLabel: trendContext,
+      totalTrend: `${total} tickets`,
+      totalArrow: '•',
+      openTrend: `${openCount} open`,
+      openArrow: '•',
+      inProgressTrend: `${inProgressCount} active`,
+      inProgressArrow: '•',
+      resolvedTrend: `${resolvedCount} resolved`,
+      resolvedArrow: '•'
+    };
+  }, [dateFilteredTickets, dateRangeFilter]);
+
+  return (
+    <div className="hs-page-container animate-fade-in">
+      {/* 1. Header matching Reference Image 4 */}
+      <div className="hs-header-block">
+        <h1 className="hs-page-title">Help &amp; Support</h1>
+        <p className="hs-page-subtitle">
+          Manage customer questions and support requests
+        </p>
+      </div>
+
+      {/* 2. Four Summary Stat Cards matching Reference Image 4 with Live Dynamic Numbers */}
+      <div className="hs-summary-grid">
+        {/* Card 1: Total Tickets */}
+        <div 
+          className={`hs-stat-card ${statusFilter === 'ALL' ? 'hs-stat-card-active' : ''}`}
+          onClick={() => { setStatusFilter('ALL'); setCurrentPage(1); }}
+          title="Click to view all tickets"
+        >
+          <div className="stat-card-left">
+            <div className="stat-icon-circle hs-icon-teal">
+              <Tag size={20} className="text-[#0D7A75]" />
+            </div>
+            <div className="stat-text-stack">
+              <span className="stat-label">Total Tickets</span>
+              <span className="stat-number">{liveStats.total}</span>
+              <div className="stat-trend trend-up">
+                <span className="trend-arrow">{liveStats.totalArrow}</span>
+                <span>{liveStats.totalTrend}</span>
+                <span className="trend-context">{liveStats.trendLabel}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Open */}
+        <div 
+          className={`hs-stat-card ${statusFilter === 'OPEN' ? 'hs-stat-card-active' : ''}`}
+          onClick={() => { setStatusFilter('OPEN'); setCurrentPage(1); }}
+          title="Click to filter open tickets"
+        >
+          <div className="stat-card-left">
+            <div className="stat-icon-circle hs-icon-orange">
+              <Clock size={20} className="text-[#EA580C]" />
+            </div>
+            <div className="stat-text-stack">
+              <span className="stat-label">Open</span>
+              <span className="stat-number">{liveStats.open}</span>
+              <div className="stat-trend trend-up">
+                <span className="trend-arrow">{liveStats.openArrow}</span>
+                <span>{liveStats.openTrend}</span>
+                <span className="trend-context">{liveStats.trendLabel}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: In Progress */}
+        <div 
+          className={`hs-stat-card ${statusFilter === 'IN_PROGRESS' ? 'hs-stat-card-active' : ''}`}
+          onClick={() => { setStatusFilter('IN_PROGRESS'); setCurrentPage(1); }}
+          title="Click to filter in-progress tickets"
+        >
+          <div className="stat-card-left">
+            <div className="stat-icon-circle hs-icon-blue">
+              <Hourglass size={20} className="text-[#2563EB]" />
+            </div>
+            <div className="stat-text-stack">
+              <span className="stat-label">In Progress</span>
+              <span className="stat-number">{liveStats.inProgress}</span>
+              <div className="stat-trend trend-up">
+                <span className="trend-arrow">{liveStats.inProgressArrow}</span>
+                <span>{liveStats.inProgressTrend}</span>
+                <span className="trend-context">{liveStats.trendLabel}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4: Resolved */}
+        <div 
+          className={`hs-stat-card ${statusFilter === 'RESOLVED' || statusFilter === 'CLOSED' ? 'hs-stat-card-active' : ''}`}
+          onClick={() => { setStatusFilter('RESOLVED'); setCurrentPage(1); }}
+          title="Click to filter resolved tickets"
+        >
+          <div className="stat-card-left">
+            <div className="stat-icon-circle hs-icon-green">
+              <CheckCircle2 size={20} className="text-[#16A34A]" />
+            </div>
+            <div className="stat-text-stack">
+              <span className="stat-label">Resolved</span>
+              <span className="stat-number">{liveStats.resolved}</span>
+              <div className="stat-trend trend-up">
+                <span className="trend-arrow">{liveStats.resolvedArrow}</span>
+                <span>{liveStats.resolvedTrend}</span>
+                <span className="trend-context">{liveStats.trendLabel}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Filter Bar with Search on Left and Filter Controls on Right */}
+      <div className="hs-filter-card">
+        <div className="hs-filter-row">
+          {/* Search Bar on Left matching portal design */}
+          <div className="hs-search-box">
+            <Search size={16} className="hs-search-icon" />
+            <input
+              type="text"
+              placeholder="Search tickets by ID, customer, or subject..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="hs-search-input"
+            />
+          </div>
+
+          {/* Filter Controls Group Shifted to Right */}
+          <div className="hs-filter-actions-group">
+            {/* Priority Select */}
+            <div className="hs-select-wrapper">
+              <select
+                value={priorityFilter}
+                onChange={(e) => {
+                  setPriorityFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="hs-filter-select"
+              >
+                <option value="ALL">All Priority</option>
+                <option value="HIGH">High</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="LOW">Low</option>
+              </select>
+              <ChevronDown size={14} className="hs-select-chevron" />
+            </div>
+
+            {/* Status Select */}
+            <div className="hs-select-wrapper">
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="hs-filter-select"
+              >
+                <option value="ALL">All Status</option>
+                <option value="OPEN">Open</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="RESOLVED">Resolved</option>
+                <option value="CLOSED">Closed</option>
+              </select>
+              <ChevronDown size={14} className="hs-select-chevron" />
+            </div>
+
+            {/* Date Range Select */}
+            <div className="hs-select-wrapper">
+              <Calendar size={14} className="hs-select-lead-icon" />
+              <select
+                value={dateRangeFilter}
+                onChange={(e) => {
+                  setDateRangeFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="hs-filter-select pl-8"
+              >
+                <option value="ALL">Select Date Range</option>
+                <option value="TODAY">Today</option>
+                <option value="YESTERDAY">Yesterday</option>
+                <option value="LAST_WEEK">Last Week</option>
+              </select>
+              <ChevronDown size={14} className="hs-select-chevron" />
+            </div>
+
+            <button
+              type="button"
+              className="hs-refresh-btn"
+              onClick={() => fetchSupportTickets()}
+              title="Refresh tickets"
+            >
+              <RefreshCw size={14} />
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Support Tickets Table matching Reference Image 4 */}
+      <div className="hs-table-card">
+        <div className="hs-table-responsive">
+          <table className="hs-table">
+            <thead>
+              <tr>
+                <th>Ticket ID</th>
+                <th>Customer</th>
+                <th>Issue Subject</th>
+                <th>Priority</th>
+                <th>Submitted Date</th>
+                <th>Status</th>
+                <th className="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {supportLoading ? (
+                <tr>
+                  <td colSpan="7" className="hs-table-loading">
+                    <RefreshCw size={22} className="animate-spin text-[#0D7A75]" />
+                    <span>Loading tickets...</span>
+                  </td>
+                </tr>
+              ) : currentTickets.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="hs-table-empty">
+                    <FileText size={32} className="text-slate-300 mb-2" />
+                    <p className="text-slate-600 font-medium">
+                      {dateRangeFilter === 'TODAY' 
+                        ? 'No support tickets submitted today' 
+                        : (dateRangeFilter === 'YESTERDAY' 
+                            ? 'No support tickets submitted yesterday' 
+                            : 'No tickets found')}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {dateRangeFilter === 'TODAY'
+                        ? 'New tickets submitted by customers will appear here in real-time.'
+                        : (dateRangeFilter === 'YESTERDAY'
+                            ? 'Tickets submitted yesterday will appear here in real-time.'
+                            : 'Try adjusting your filters or search query.')}
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                currentTickets.map((ticket) => {
+                  const ticketCode = ticket.ticket_id_display || ticket.ticket_number || `#SUP-${1040 + ticket.id}`;
+
+                  return (
+                    <tr key={ticket.id} className="hs-table-row">
+                      {/* Ticket ID */}
+                      <td className="hs-cell-ticket-id">
+                        <span className="ticket-id-bold font-semibold text-slate-900">
+                          {ticketCode}
+                        </span>
+                      </td>
+
+                      {/* Customer Name */}
+                      <td className="hs-cell-customer">
+                        <span className="customer-name-text text-slate-700 font-medium">
+                          {ticket.customer_name || 'Customer'}
+                        </span>
+                      </td>
+
+                      {/* Issue Subject */}
+                      <td className="hs-cell-subject">
+                        <span className="subject-text text-slate-600">
+                          {ticket.subject || 'Support Request'}
+                        </span>
+                      </td>
+
+                      {/* Priority */}
+                      <td className="hs-cell-priority">
+                        {getPriorityBadge(ticket.priority)}
+                      </td>
+
+                      {/* Submitted Date */}
+                      <td className="hs-cell-date">
+                        <span className="date-text text-slate-700">
+                          {ticket.formatted_created_at || (ticket.created_at ? formatDisplayDate(ticket.created_at) : (ticket.createdAt ? formatDisplayDate(ticket.createdAt) : '—'))}
+                        </span>
+                      </td>
+
+                      {/* Status */}
+                      <td className="hs-cell-status">
+                        {getStatusBadge(ticket.status)}
+                      </td>
+
+                      {/* Action */}
+                      <td className="hs-cell-action">
+                        <div className="hs-actions-cluster justify-end">
+                          <button
+                            type="button"
+                            className="btn-view-ticket"
+                            onClick={() => openSupportDrawer(ticket)}
+                          >
+                            View
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn-ticket-kebab"
+                            onClick={() => openSupportDrawer(ticket)}
+                            title="More options"
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 5. Pagination Bar matching Reference Image 4 */}
+        <div className="hs-pagination-bar">
+          <div className="pagination-count-label">
+            Showing {totalItems === 0 ? 0 : startIndex + 1}–{Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems} tickets
+          </div>
+
+          <div className="pagination-controls">
+            <button
+              type="button"
+              className="page-nav-btn"
+              disabled={currentPage === 1}
+              onClick={() => handlePageChange(currentPage - 1)}
+              aria-label="Previous Page"
+            >
+              &lt;
+            </button>
+
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+              <button
+                key={pageNum}
+                type="button"
+                className={`page-num-btn ${currentPage === pageNum ? 'active' : ''}`}
+                onClick={() => handlePageChange(pageNum)}
+              >
+                {pageNum}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              className="page-nav-btn"
+              disabled={currentPage === totalPages || totalPages === 0}
+              onClick={() => handlePageChange(currentPage + 1)}
+              aria-label="Next Page"
+            >
+              &gt;
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. Right-Side Support Ticket Drawer rendered globally by AdminPortal */}
+
+      {/* Scoped CSS Styles matching Reference Image 4 */}
+      <style>{`
+        .hs-page-container {
+          padding: 0 0 40px 0;
+          width: 100%;
+          box-sizing: border-box;
+          margin: 0;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .hs-breadcrumb {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: #64748B;
+          margin-bottom: 8px;
+        }
+        .hs-breadcrumb-parent {
+          color: #64748B;
+          font-weight: 500;
+        }
+        .hs-breadcrumb-sep {
+          color: #94A3B8;
+        }
+        .hs-breadcrumb-current {
+          color: #0F172A;
+          font-weight: 600;
+        }
+
+        .hs-page-title {
+          font-size: 26px;
+          font-weight: 700;
+          color: #0F172A;
+          margin: 0 0 4px;
+        }
+        .hs-page-subtitle {
+          font-size: 14px;
+          color: #64748B;
+          margin: 0 0 24px;
+        }
+
+        /* 4 SUMMARY STAT CARDS */
+        .hs-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 20px;
+          margin-bottom: 24px;
+        }
+        .hs-stat-card {
+          background: #FFFFFF;
+          border: 1px solid #F1F5F9;
+          border-radius: 14px;
+          padding: 20px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .hs-stat-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+        }
+        .stat-card-left {
+          display: flex;
+          align-items: flex-start;
+          gap: 16px;
+        }
+        .stat-icon-circle {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .hs-icon-teal { background: #E0F2FE; }
+        .hs-icon-orange { background: #FFEDD5; }
+        .hs-icon-blue { background: #DBEAFE; }
+        .hs-icon-green { background: #DCFCE7; }
+
+        .stat-text-stack {
+          display: flex;
+          flex-direction: column;
+        }
+        .stat-label {
+          font-size: 13px;
+          color: #64748B;
+          font-weight: 500;
+          margin-bottom: 4px;
+        }
+        .stat-number {
+          font-size: 28px;
+          font-weight: 800;
+          color: #0F172A;
+          line-height: 1.1;
+          margin-bottom: 6px;
+        }
+        .stat-trend {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .trend-up {
+          color: #16A34A;
+        }
+        .trend-context {
+          font-weight: 400;
+          color: #94A3B8;
+          margin-left: 2px;
+        }
+
+        /* FILTER CARD */
+        .hs-filter-card {
+          background: #FFFFFF;
+          border: 1px solid #F1F5F9;
+          border-radius: 12px;
+          padding: 14px 20px;
+          margin-bottom: 20px;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+        }
+        .hs-filter-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        .hs-search-box {
+          position: relative;
+          flex: 1;
+          min-width: 240px;
+          max-width: 380px;
+        }
+        .hs-search-icon {
+          position: absolute;
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #94A3B8;
+          pointer-events: none;
+        }
+        .hs-search-input {
+          width: 100%;
+          height: 38px;
+          padding: 0 14px 0 36px;
+          border: 1.5px solid #E2E8F0;
+          border-radius: 8px;
+          font-size: 13px;
+          color: #1E293B;
+          background: #FFFFFF;
+          outline: none;
+          box-sizing: border-box;
+          transition: border-color 0.15s ease;
+        }
+        .hs-search-input::placeholder {
+          color: #94A3B8;
+        }
+        .hs-search-input:focus {
+          border-color: #0D7A75;
+        }
+        .hs-filter-actions-group {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-left: auto;
+        }
+        .hs-select-wrapper {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+        }
+        .hs-filter-select {
+          appearance: none;
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 8px;
+          padding: 9px 36px 9px 14px;
+          font-size: 13px;
+          font-weight: 500;
+          color: #334155;
+          cursor: pointer;
+          outline: none;
+          transition: border-color 0.15s;
+        }
+        .hs-filter-select:hover, .hs-filter-select:focus {
+          border-color: #0D7A75;
+        }
+        .hs-filter-select.pl-8 {
+          padding-left: 32px;
+        }
+        .hs-select-chevron {
+          position: absolute;
+          right: 12px;
+          pointer-events: none;
+          color: #94A3B8;
+        }
+        .hs-select-lead-icon {
+          position: absolute;
+          left: 12px;
+          pointer-events: none;
+          color: #64748B;
+        }
+        .hs-refresh-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+          color: #475569;
+          border-radius: 8px;
+          padding: 8px 14px;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .hs-refresh-btn:hover {
+          border-color: #0D7A75;
+          color: #0D7A75;
+        }
+
+        /* TABLE */
+        .hs-table-card {
+          background: #FFFFFF;
+          border: 1px solid #F1F5F9;
+          border-radius: 14px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+          overflow: hidden;
+        }
+        .hs-table-responsive {
+          width: 100%;
+          overflow-x: auto;
+        }
+        .hs-table {
+          width: 100%;
+          border-collapse: collapse;
+          text-align: left;
+        }
+        .hs-table th {
+          background: #FFFFFF;
+          padding: 16px 20px;
+          font-size: 12px;
+          font-weight: 600;
+          color: #64748B;
+          border-bottom: 1px solid #F1F5F9;
+          white-space: nowrap;
+        }
+        .hs-table td {
+          padding: 18px 20px;
+          font-size: 13px;
+          color: #1E293B;
+          border-bottom: 1px solid #F8FAFC;
+          vertical-align: middle;
+        }
+        .hs-table-row:hover {
+          background-color: #F8FAFC;
+        }
+        .ticket-id-bold {
+          font-weight: 700;
+          color: #0F172A;
+        }
+        .hs-table-loading, .hs-table-empty {
+          text-align: center;
+          padding: 48px !important;
+          color: #64748B;
+        }
+
+        /* BADGES */
+        .hs-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 4px 12px;
+          border-radius: 16px;
+          font-size: 12px;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+        .hs-badge-p-high {
+          background: #FEE2E2;
+          color: #DC2626;
+        }
+        .hs-badge-p-medium {
+          background: #FEF3C7;
+          color: #D97706;
+        }
+        .hs-badge-p-low {
+          background: #DCFCE7;
+          color: #16A34A;
+        }
+
+        .hs-badge-open {
+          background: #FFEDD5;
+          color: #EA580C;
+        }
+        .hs-badge-progress {
+          background: #DBEAFE;
+          color: #2563EB;
+        }
+        .hs-badge-resolved {
+          background: #DCFCE7;
+          color: #16A34A;
+        }
+        .hs-badge-closed {
+          background: #F1F5F9;
+          color: #64748B;
+        }
+
+        /* ACTIONS */
+        .hs-actions-cluster {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .btn-view-ticket {
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+          border-radius: 8px;
+          padding: 6px 16px;
+          font-size: 12px;
+          font-weight: 600;
+          color: #0D7A75;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .btn-view-ticket:hover {
+          background: #E6F4F3;
+          border-color: #0D7A75;
+        }
+        .btn-ticket-kebab {
+          background: transparent;
+          border: none;
+          padding: 6px;
+          color: #94A3B8;
+          cursor: pointer;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .btn-ticket-kebab:hover {
+          background: #F1F5F9;
+          color: #334155;
+        }
+
+        /* PAGINATION */
+        .hs-pagination-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 16px 24px;
+          border-top: 1px solid #F1F5F9;
+          background: #FFFFFF;
+        }
+        .pagination-count-label {
+          font-size: 13px;
+          color: #64748B;
+        }
+        .pagination-controls {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .page-num-btn, .page-nav-btn {
+          min-width: 32px;
+          height: 32px;
+          padding: 0 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 600;
+          border: 1px solid #E2E8F0;
+          background: #FFFFFF;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .page-num-btn:hover, .page-nav-btn:hover:not(:disabled) {
+          border-color: #0D7A75;
+          color: #0D7A75;
+        }
+        .page-num-btn.active {
+          background: #0D7A75;
+          border-color: #0D7A75;
+          color: #FFFFFF;
+        }
+        .page-nav-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+
+        @media (max-width: 1024px) {
+          .hs-summary-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+        @media (max-width: 640px) {
+          .hs-page-container {
+            padding: 0 0 24px 0;
+          }
+          .hs-summary-grid {
+            grid-template-columns: 1fr;
+          }
+          .hs-search-box {
+            max-width: 100%;
+            width: 100%;
+          }
+          .hs-filter-actions-group {
+            flex-direction: column;
+            width: 100%;
+            margin-left: 0;
+          }
+          .hs-select-wrapper {
+            width: 100%;
+          }
+          .hs-filter-select {
+            width: 100%;
+          }
+          .hs-refresh-btn {
+            width: 100%;
+            justify-content: center;
+          }
+        }
+      `}</style>
+    </div>
+  );
+};

@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
+import { useAuth } from '../context/AuthContext';
 import { ordersApi } from '../api/apiClient';
+import { subscribeOrderById } from '../services/firestoreService';
+import { subscribeCustomerOrders } from '../services/customerDataService';
 import { 
   Package, 
   Clock, 
@@ -19,43 +22,175 @@ import {
   ClipboardList,
   WashingMachine,
   IndianRupee,
-  Shirt
+  Shirt,
+  Sparkles,
+  Home
 } from 'lucide-react';
+import { formatOrderId } from '../utils/helpers';
 
 export const TrackOrder = () => {
-  const { activeTrackingOrderId, navigateTo, startBooking } = useBooking();
+  const { activeTrackingOrderId, setActiveTrackingOrderId, navigateTo, startBooking } = useBooking();
+  const { currentUser } = useAuth();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchOrderDetails = async () => {
+  const effectiveTrackingId = activeTrackingOrderId || (typeof window !== 'undefined' ? sessionStorage.getItem('fabricare_active_tracking_id') : null);
+
+  const isOrderOwnedByCurrentCustomer = useCallback((o) => {
+    if (!o) return false;
+    const myId = String(currentUser?.uid || currentUser?.id || '').toLowerCase().trim();
+    const myEmail = (currentUser?.email || '').toLowerCase().trim();
+    if (!myId && !myEmail) return false;
+    const cId = String(o.customerId || o.customer_id || o.userId || '').toLowerCase().trim();
+    const cEmail = String(o.customerEmail || o.customer_email || o.customer?.email || '').toLowerCase().trim();
+    if (myId && cId && cId === myId) return true;
+    if (myEmail && cEmail && cEmail === myEmail) return true;
+    return false;
+  }, [currentUser]);
+
+  const fetchOrderDetails = useCallback(async () => {
+    const myId = currentUser?.uid || currentUser?.id;
+    const myEmail = currentUser?.email;
+    if (!myId && !myEmail) {
+      setOrder(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      if (activeTrackingOrderId) {
-        const res = await ordersApi.getOrderById(activeTrackingOrderId);
-        setOrder(res.data);
-      } else {
-        const res = await ordersApi.getOrders();
-        const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-        if (list.length > 0) {
-          const active = list.find(o => o.status !== 'DELIVERED' && o.status !== 'CANCELLED') || list[0];
-          setOrder(active);
-        } else {
-          setOrder(null);
+      if (effectiveTrackingId) {
+        const res = await ordersApi.getOrderById(effectiveTrackingId);
+        if (res?.data && isOrderOwnedByCurrentCustomer(res.data)) {
+          setOrder(res.data);
+          setLoading(false);
+          return;
+        } else if (res?.data && !isOrderOwnedByCurrentCustomer(res.data)) {
+          // If the tracking ID belonged to a previous customer, clear it
+          if (setActiveTrackingOrderId) setActiveTrackingOrderId(null);
+          try {
+            sessionStorage.removeItem('fabricare_active_tracking_id');
+          } catch (_) {}
         }
       }
-    } catch (err) {
-      console.error('Failed to load tracking details:', err);
-      setError('Could not retrieve order details.');
+
+      const res = await ordersApi.getOrders();
+      const list = Array.isArray(res?.data) ? res.data : (res?.data?.items || res?.data?.results || []);
+      const userList = list.filter(isOrderOwnedByCurrentCustomer);
+
+      if (userList.length > 0) {
+        if (effectiveTrackingId) {
+          const cleanTarget = String(effectiveTrackingId).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const targetDigits = cleanTarget.replace(/\D/g, '');
+          const matchedOrder = userList.find(o => {
+            const cCode = String(o.code || o.order_number || o.order_id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const cId = String(o.id || o.docId || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            if (cCode === cleanTarget || cId === cleanTarget) return true;
+            if (targetDigits && (cCode.includes(targetDigits) || cId.includes(targetDigits))) return true;
+            return false;
+          });
+          if (matchedOrder) {
+            setOrder(matchedOrder);
+            setLoading(false);
+            return;
+          }
+        }
+
+        const act = userList.find(o => {
+          const s = String(o.status || '').toUpperCase();
+          return s !== 'DELIVERED' && s !== 'COMPLETED' && s !== 'CANCELLED';
+        }) || userList[0] || null;
+        setOrder(act);
+      } else {
+        setOrder(null);
+      }
+    } catch (e) {
+      console.warn('Fetch order details error:', e);
+      setError('Unable to refresh order details');
+      setOrder(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [effectiveTrackingId, currentUser, isOrderOwnedByCurrentCustomer, setActiveTrackingOrderId]);
 
   useEffect(() => {
-    fetchOrderDetails();
-  }, [activeTrackingOrderId]);
+    let isSubscribed = true;
+    const myId = currentUser?.uid || currentUser?.id;
+    const myEmail = currentUser?.email;
+
+    if (!myId && !myEmail) {
+      setOrder(null);
+      setLoading(false);
+      return;
+    }
+
+    setOrder(null);
+    setLoading(true);
+    setError(null);
+
+    let unsubscribe = () => {};
+
+    if (effectiveTrackingId) {
+      unsubscribe = subscribeOrderById(
+        effectiveTrackingId,
+        (fireOrder) => {
+          if (!isSubscribed) return;
+          if (fireOrder && isOrderOwnedByCurrentCustomer(fireOrder)) {
+            setOrder(fireOrder);
+            setLoading(false);
+          } else {
+            // Try API fallback
+            ordersApi.getOrderById(effectiveTrackingId)
+              .then(res => {
+                if (isSubscribed && res?.data && isOrderOwnedByCurrentCustomer(res.data)) {
+                  setOrder(res.data);
+                  setLoading(false);
+                } else {
+                  // Not owned by this customer or doesn't exist, search within customer's own orders
+                  fetchOrderDetails();
+                }
+              })
+              .catch(() => {
+                if (isSubscribed) fetchOrderDetails();
+              });
+          }
+        },
+        () => {
+          if (isSubscribed) fetchOrderDetails();
+        }
+      );
+    } else {
+      unsubscribe = subscribeCustomerOrders(
+        myId,
+        (userOrders) => {
+          if (!isSubscribed) return;
+          if (Array.isArray(userOrders) && userOrders.length > 0) {
+            const owned = userOrders.filter(isOrderOwnedByCurrentCustomer);
+            const active = owned.find(o => {
+              const s = String(o.status || '').toUpperCase();
+              return s !== 'COMPLETED' && s !== 'DELIVERED' && s !== 'CANCELLED';
+            }) || owned[0] || null;
+            setOrder(active);
+          } else {
+            setOrder(null);
+          }
+          setLoading(false);
+        },
+        (err) => {
+          console.warn('Customer tracking orders subscribe note:', err);
+          fetchOrderDetails();
+        },
+        myEmail
+      );
+    }
+
+    return () => {
+      isSubscribed = false;
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [effectiveTrackingId, currentUser?.uid, currentUser?.email, fetchOrderDetails, isOrderOwnedByCurrentCustomer]);
 
   if (loading) {
     return (
@@ -95,33 +230,348 @@ export const TrackOrder = () => {
     );
   }
 
-  // Format pickup date
-  const formatPickupDate = (dateStr) => {
-    if (!dateStr) return '12 Oct 2026';
+  // Helper to parse any date value (Timestamp, milliseconds, ISO string, YYYY-MM-DD)
+  const parseAnyDate = (val) => {
+    if (!val) return null;
     try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    } catch {
-      return dateStr;
-    }
+      if (typeof val?.toDate === 'function') return val.toDate();
+      if (typeof val === 'number') return new Date(val);
+      if (typeof val === 'string') {
+        const tr = val.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(tr)) {
+          const [y, m, d] = tr.split('-').map(Number);
+          return new Date(y, m - 1, d);
+        }
+        if (/^\d+$/.test(tr)) return new Date(Number(tr));
+        const parsed = new Date(tr);
+        if (!isNaN(parsed.getTime())) return parsed;
+      }
+    } catch (_) {}
+    return null;
   };
 
-  const formattedPickupDate = formatPickupDate(order.pickup_date);
-  const orderNumberDisplay = order.order_number ? `#${order.order_number.replace(/^#/, '')}` : '#FC8F71E';
+  // Format date cleanly e.g. "19 Oct 2026"
+  const formatDisplayDate = (dateVal, fallback = '') => {
+    if (!dateVal || dateVal === 'Today' || dateVal === 'Scheduled') {
+      return fallback;
+    }
+    const d = parseAnyDate(dateVal);
+    if (d && !isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    return String(dateVal);
+  };
+
+  // Format 12-hour time
+  const formatTime12h = (t) => {
+    if (!t) return '';
+    const s = String(t).trim();
+    if (/am|pm/i.test(s)) return s;
+    const parts = s.split(':');
+    if (parts.length >= 2) {
+      let h = parseInt(parts[0], 10);
+      const m = parts[1].slice(0, 2);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${m} ${ampm}`;
+    }
+    return s;
+  };
+
+  // Format time slot string cleanly
+  const formatSlot = (from, to, rawSlot, fallback = '11:00 AM – 1:00 PM') => {
+    if (rawSlot && rawSlot !== 'Standard Slot') {
+      const parts = rawSlot.split(/[–-]/).map(s => s.trim());
+      if (parts.length === 2) {
+        return `${formatTime12h(parts[0])} – ${formatTime12h(parts[1])}`;
+      }
+      return rawSlot;
+    }
+    if (from && to) {
+      return `${formatTime12h(from)} – ${formatTime12h(to)}`;
+    }
+    return fallback;
+  };
+
+  // 1. Raw Pickup Date & Formatted Pickup Date
+  const rawPickupDate = 
+    (order.pickup && typeof order.pickup === 'object' && order.pickup.date) ||
+    (order.pickup_date && order.pickup_date !== 'Today' && order.pickup_date !== 'Scheduled' && order.pickup_date) ||
+    order.pickupDate ||
+    (order.date && order.date !== 'Today' && order.date) ||
+    (order.dateText && order.dateText !== 'Today' && order.dateText) ||
+    order.placedAt ||
+    order.createdAt ||
+    order.created_at;
+
+  const formattedPickupDate = formatDisplayDate(rawPickupDate, '19 Oct 2026');
+
+  // 2. Pickup Time Slot
+  const resolvedPickupSlot = formatSlot(
+    order.pickup?.from,
+    order.pickup?.to,
+    order.pickup_time_slot || order.time_slot || order.timeText,
+    '11:00 AM – 1:00 PM'
+  );
+
+  // 3. Raw Delivery Date & Formatted Delivery Date
+  let rawDeliveryDate = 
+    (order.delivery && typeof order.delivery === 'object' && order.delivery.date) ||
+    (order.delivery_date && order.delivery_date !== '14 Oct 2026' && order.delivery_date) ||
+    order.deliveryDate ||
+    order.estimated_delivery ||
+    order.dueBy;
+
+  if (!rawDeliveryDate) {
+    const pickupParsed = parseAnyDate(rawPickupDate);
+    if (pickupParsed && !isNaN(pickupParsed.getTime())) {
+      const calcDelivery = new Date(pickupParsed);
+      calcDelivery.setDate(calcDelivery.getDate() + (order.isExpress ? 1 : 2));
+      rawDeliveryDate = calcDelivery;
+    }
+  }
+
+  const deliveryDateFormatted = formatDisplayDate(rawDeliveryDate, '21 Oct 2026');
+
+  // 4. Delivery Time Slot
+  const resolvedDeliverySlot = formatSlot(
+    order.delivery?.from,
+    order.delivery?.to,
+    order.delivery_time_slot || order.deliveryTimeSlot,
+    '02:00 PM – 05:00 PM'
+  );
+
+  const rawOrderNum = order.code || order.order_number || order.orderNumber || order.id || 'FC-75668';
+  const orderNumberDisplay = formatOrderId(rawOrderNum) || `#${String(rawOrderNum).replace(/^#/, '')}`;
   const orderPlacedTime = `${formattedPickupDate} · 08:45 AM`;
   const pickedUpTime = `${formattedPickupDate} · 10:15 AM`;
   const facilityTime = `${formattedPickupDate} · 11:30 AM`;
   const cleaningEstTime = `${formattedPickupDate} · 02:00 PM (est.)`;
-  const estimatedDeliveryDate = '14 Oct 2026';
 
-  const orderItems = order.items && order.items.length > 0 
+  const isRescheduled = Boolean(order.delivery_date && (order.status === 'READY_FOR_DELIVERY' || order.status === 'FAILED_DELIVERY' || order.delivery_time_slot));
+
+  // Dynamic day & month helpers for stepper fallbacks
+  const getDayMonth = (dateVal, fallback) => {
+    const parsed = parseAnyDate(dateVal);
+    if (parsed && !isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    }
+    return fallback;
+  };
+
+  const placedDayMonth = getDayMonth(order.placedAt || order.createdAt || order.created_at || rawPickupDate, '18 Oct');
+  const pickupDayMonth = getDayMonth(rawPickupDate, '19 Oct');
+  const deliveryDayMonth = getDayMonth(rawDeliveryDate, '21 Oct');
+
+  const formatStepTimestamp = (timestamp, fallbackDayMonth, fallbackTime) => {
+    if (timestamp) {
+      try {
+        const d = parseAnyDate(timestamp);
+        if (d && !isNaN(d.getTime())) {
+          const dayMonth = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          return `${dayMonth}, ${time}`;
+        }
+      } catch {
+        // fallback
+      }
+    }
+    const baseDayMonth = fallbackDayMonth || pickupDayMonth || '19 Oct';
+    return `${baseDayMonth}, ${fallbackTime}`;
+  };
+
+  const getActiveStepIndex = (status, stage) => {
+    if (!status && !stage) return 0;
+    const clean = String(status || '')
+      .toUpperCase()
+      .replace(/[^A-Z]/g, '');
+    const cleanStage = String(stage || '')
+      .toUpperCase()
+      .replace(/[^A-Z]/g, '');
+
+    // Step 6: Delivered / Completed
+    if (clean.includes('DELIVERED') || clean.includes('COMPLETED') || cleanStage.includes('DELIVERED') || cleanStage.includes('COMPLETED')) return 6;
+
+    // Step 5: Out for delivery / Ready for delivery (dispatched to delivery portal) / In transit / Dispatched / Driver assigned
+    if (
+      clean.includes('OUTFORDELIVERY') ||
+      clean.includes('INTRANSIT') ||
+      clean.includes('DISPATCHED') ||
+      clean.includes('NEARBY') ||
+      clean.includes('ONTHEWAY') ||
+      clean.includes('READYFORDELIVERY') ||
+      clean.includes('DELIVERYASSIGNED') ||
+      clean === 'READY' ||
+      clean === 'PACKED' ||
+      cleanStage === 'OUTFORDELIVERY' ||
+      cleanStage.includes('INTRANSIT') ||
+      cleanStage === 'DELIVERY' ||
+      cleanStage === 'READY' ||
+      cleanStage === 'PACKED' ||
+      cleanStage.includes('READYFORDELIVERY')
+    ) return 5;
+
+    // Step 4: Ready (Final preparation / Packing clothes)
+    if (
+      clean.includes('PACKING') ||
+      cleanStage === 'PACKING'
+    ) return 4;
+
+    // Step 3: In cleaning / Washing / Drying / Ironing / Quality check / Processing
+    if (
+      clean.includes('CLEANING') ||
+      clean.includes('PROCESS') ||
+      clean.includes('WASH') ||
+      clean.includes('DRYING') ||
+      (clean.includes('DRY') && !clean.includes('LAUNDRY')) ||
+      clean.includes('IRON') ||
+      clean.includes('FOLD') ||
+      clean.includes('INSPECT') ||
+      clean.includes('QUALITY') ||
+      clean.includes('STEAM') ||
+      clean.includes('PRESS') ||
+      cleanStage === 'WASHING' ||
+      cleanStage === 'DRYING' ||
+      cleanStage === 'IRONING' ||
+      cleanStage === 'STEAMING' ||
+      cleanStage === 'PRESSING' ||
+      cleanStage === 'DRY_CLEANING' ||
+      cleanStage === 'PROCESSING' ||
+      cleanStage.includes('CLEAN')
+    ) return 3;
+
+    // Step 2: At facility / Hub / Received / Dropped off
+    if (
+      clean.includes('ATLAUNDRY') ||
+      clean.includes('ATFACILITY') ||
+      clean.includes('DROPPEDOFF') ||
+      clean.includes('RECEIVED') ||
+      cleanStage === 'ATFACILITY' ||
+      cleanStage === 'RECEIVED' ||
+      cleanStage.includes('LAUNDRY')
+    ) return 2;
+
+    // Step 1: Picked up / Arrived / Pickup in progress
+    if (
+      clean.includes('PICKEDUP') ||
+      clean.includes('PICKUPINPROGRESS') ||
+      clean.includes('ARRIVED') ||
+      cleanStage === 'PICKEDUP'
+    ) return 1;
+
+    // Step 0: Pending Pickup / Scheduled / Order Placed / Accepted
+    if (
+      clean.includes('PENDING') ||
+      clean.includes('SCHEDULED') ||
+      clean.includes('ACCEPTED') ||
+      clean.includes('PLACED') ||
+      clean.includes('INCOMING') ||
+      cleanStage === 'INCOMING'
+    ) return 0;
+
+    return 0;
+  };
+
+  const isDelivered = String(order.status || '').toUpperCase().includes('DELIVERED') || String(order.status || '').toUpperCase().includes('COMPLETED');
+  const activeStepIndex = isDelivered ? 6 : getActiveStepIndex(
+    order.raw_status || order.orderStatus || order.status || order.status_display,
+    order.stage || order.processing_stage || order.currentLaundryStep
+  );
+
+  const verticalMilestones = [
+    {
+      id: 'placed',
+      title: 'Order placed',
+      desc: 'We received your order',
+      icon: ClipboardList
+    },
+    {
+      id: 'picked',
+      title: 'Picked up',
+      desc: order.driver && order.driver !== 'Not Assigned'
+        ? `Collected by ${order.driver}`
+        : (order.assigned_delivery_staff_name ? `Collected by ${order.assigned_delivery_staff_name}` : 'Collected by your delivery partner'),
+      icon: Truck
+    },
+    {
+      id: 'facility',
+      title: 'At the facility',
+      desc: 'Items weighed and quality checked',
+      icon: WashingMachine
+    },
+    {
+      id: 'cleaning',
+      title: 'Cleaning in progress',
+      desc: order.stage ? `Current stage: ${order.stage}` : 'Washing, drying and ironing',
+      icon: Sparkles
+    },
+    {
+      id: 'ready',
+      title: 'Ready for delivery',
+      desc: 'Items inspected, folded and packaged',
+      icon: Package
+    },
+    {
+      id: 'delivery',
+      title: 'Out for delivery',
+      desc: order.driver && order.driver !== 'Not Assigned'
+        ? `${order.driver} is on the way to your address`
+        : 'Delivering safely to your doorstep',
+      icon: Truck
+    },
+    {
+      id: 'delivered',
+      title: 'Delivered',
+      desc: 'Order completed and handed over safely',
+      icon: Home
+    }
+  ];
+
+  const trackingSteps = [
+    {
+      id: 'placed',
+      title: 'Order placed',
+      icon: ClipboardList
+    },
+    {
+      id: 'picked',
+      title: 'Picked up',
+      icon: Truck
+    },
+    {
+      id: 'laundry',
+      title: 'At laundry',
+      icon: WashingMachine
+    },
+    {
+      id: 'processing',
+      title: 'Processing',
+      icon: Sparkles
+    },
+    {
+      id: 'ready',
+      title: 'Ready',
+      icon: Package
+    },
+    {
+      id: 'delivery',
+      title: 'Out for delivery',
+      icon: Truck
+    },
+    {
+      id: 'delivered',
+      title: 'Delivered',
+      icon: Home
+    }
+  ];
+
+  const orderItems = Array.isArray(order.items) && order.items.length > 0 
     ? order.items.map(it => ({
-        name: it.item_name || 'Fabric Care',
-        subtitle: it.service_category || 'Premium Wash & Care',
-        quantity: it.quantity || 1,
-        rate: it.unit_price || 120,
-        total: it.total_price || 120
+        name: it?.item_name || it?.name || 'Fabric Care',
+        subtitle: it?.service_category || it?.category || 'Premium Wash & Care',
+        quantity: Number(it?.quantity) || 1,
+        rate: Number(it?.unit_price || it?.rate || 120),
+        total: Number(it?.total_price || it?.total || 120)
       }))
     : [
         {
@@ -183,9 +633,9 @@ export const TrackOrder = () => {
             <span className="metric-label">Order Number</span>
             <div className="metric-value-row">
               <span className="metric-value-bold">{orderNumberDisplay}</span>
-              <span className="status-pill in-progress">
+              <span className={`status-pill ${isDelivered ? 'completed' : 'in-progress'}`}>
                 <span className="pill-dot"></span>
-                <span>{order.status === 'DELIVERED' ? 'Delivered' : 'In Progress'}</span>
+                <span>{order.status_display || order.status || (isDelivered ? 'Delivered' : 'Live Tracking')}</span>
               </span>
             </div>
           </div>
@@ -200,7 +650,7 @@ export const TrackOrder = () => {
           <div className="metric-text-stack">
             <span className="metric-label">Pickup Date & Time</span>
             <span className="metric-value-text">
-              {formattedPickupDate} · {order.pickup_time_slot || '9:00 AM – 11:00 AM'}
+              {formattedPickupDate} · {resolvedPickupSlot}
             </span>
           </div>
         </div>
@@ -213,7 +663,7 @@ export const TrackOrder = () => {
           </div>
           <div className="metric-text-stack">
             <span className="metric-label">Estimated Total</span>
-            <span className="metric-value-bold">₹{parseFloat(order.total_amount || order.estimated_amount || 120).toFixed(2)}</span>
+            <span className="metric-value-bold">₹{(parseFloat(order.total_amount ?? order.estimated_amount ?? order.amount ?? 120) || 120).toFixed(2)}</span>
           </div>
         </div>
 
@@ -229,89 +679,65 @@ export const TrackOrder = () => {
         </div>
       </div>
 
-      {/* 3. Horizontal Step Progression Card */}
+      {/* 3. Horizontal Step Progression Card (Matches Reference Image 1) */}
       <div className="content-card tracking-progress-card mb-6">
-        <div className="horizontal-stepper">
-          {/* Step 1: Order Placed */}
-          <div className="horizontal-step-item completed">
-            <div className="step-circle-badge">
-              <div className="circle-check-bubble">
-                <Check size={11} strokeWidth={3} />
-              </div>
-              <div className="circle-icon-inner">
-                <ClipboardList size={20} />
-              </div>
-            </div>
-            <div className="step-label-group">
-              <h4 className="step-label-title">Order Placed</h4>
-              <span className="step-label-completed">Completed</span>
-            </div>
+        <div className="tracker-card-header">
+          <div className="tracker-header-left">
+            <span className="tracker-title-tag">ORDER PROGRESS</span>
+            <span className="tracker-live-badge">
+              <span className="tracker-live-dot"></span>
+              <span>{isDelivered ? 'Completed' : 'Live'}</span>
+            </span>
           </div>
-
-          <div className="stepper-connecting-line completed"></div>
-
-          {/* Step 2: Picked Up */}
-          <div className="horizontal-step-item completed">
-            <div className="step-circle-badge">
-              <div className="circle-check-bubble">
-                <Check size={11} strokeWidth={3} />
-              </div>
-              <div className="circle-icon-inner">
-                <Truck size={20} />
-              </div>
-            </div>
-            <div className="step-label-group">
-              <h4 className="step-label-title">Picked Up</h4>
-              <span className="step-label-completed">Completed</span>
-            </div>
+          <div className="tracker-step-counter">
+            Step {isDelivered ? 7 : Math.min(activeStepIndex + 1, 7)} of 7
           </div>
+        </div>
 
-          <div className="stepper-connecting-line completed"></div>
+        <div className="horizontal-stepper-scroll-container">
+          <div className="horizontal-stepper">
+            {trackingSteps.map((step, idx) => {
+              const isCompleted = isDelivered || idx < activeStepIndex;
+              const isActive = !isDelivered && idx === activeStepIndex;
+              const isPending = !isDelivered && idx > activeStepIndex;
+              const IconComp = step.icon;
 
-          {/* Step 3: Cleaning & Care (Active Highlight) */}
-          <div className="horizontal-step-item active">
-            <div className="step-circle-badge active-glow">
-              <div className="circle-icon-inner">
-                <WashingMachine size={22} />
-              </div>
-            </div>
-            <div className="step-label-group active-group">
-              <h4 className="step-label-title active-title">Cleaning & Care</h4>
-              <span className="active-tag-badge">In Progress</span>
-              <p className="step-active-desc">
-                Your clothes are being washed, dried and ironed with care.
-              </p>
-            </div>
-          </div>
+              return (
+                <React.Fragment key={step.id}>
+                  <div className={`horizontal-step-item ${isCompleted ? 'completed' : isActive ? 'active' : 'pending'}`}>
+                    <div className={`step-node-bubble ${isCompleted ? 'completed' : isActive ? 'active' : 'pending'}`}>
+                      {isActive && <div className="step-active-outer-halo" />}
+                      <div className="step-node-inner">
+                        {isCompleted ? (
+                          <Check size={18} strokeWidth={2.6} className="text-white" />
+                        ) : (
+                          <IconComp size={18} strokeWidth={1.8} />
+                        )}
+                      </div>
+                    </div>
+                    <div className="step-label-group">
+                      <h4 className={`step-label-title ${isActive ? 'active-title' : isPending ? 'pending-title' : ''}`}>
+                        {step.title}
+                      </h4>
+                    </div>
+                  </div>
 
-          <div className="stepper-connecting-line pending"></div>
-
-          {/* Step 4: Ready for Delivery */}
-          <div className="horizontal-step-item pending">
-            <div className="step-circle-badge pending-circle">
-              <div className="circle-icon-inner">
-                <Package size={20} />
-              </div>
-            </div>
-            <div className="step-label-group">
-              <h4 className="step-label-title pending-title">Ready for Delivery</h4>
-              <span className="step-label-pending">Pending</span>
-            </div>
-          </div>
-
-          <div className="stepper-connecting-line pending"></div>
-
-          {/* Step 5: Delivery */}
-          <div className="horizontal-step-item pending">
-            <div className="step-circle-badge pending-circle">
-              <div className="circle-icon-inner">
-                <Truck size={20} />
-              </div>
-            </div>
-            <div className="step-label-group">
-              <h4 className="step-label-title pending-title">Delivery</h4>
-              <span className="step-label-pending">Pending</span>
-            </div>
+                  {idx < trackingSteps.length - 1 && (
+                    <div 
+                      className={`stepper-connecting-line ${
+                        isDelivered || idx < activeStepIndex - 1
+                          ? 'completed'
+                          : idx === activeStepIndex - 1
+                            ? 'completed'
+                            : idx === activeStepIndex
+                              ? 'half-active'
+                              : 'pending'
+                      }`} 
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -326,89 +752,42 @@ export const TrackOrder = () => {
           </div>
 
           <div className="vertical-journey-timeline">
-            {/* Event 1 */}
-            <div className="journey-event-item">
-              <div className="event-node-col">
-                <div className="event-node-bubble checked">
-                  <Check size={11} strokeWidth={3} />
-                </div>
-                <div className="event-timeline-line"></div>
-              </div>
-              <div className="event-info-col">
-                <div className="event-title-time">
-                  <h5 className="event-title">Order placed</h5>
-                  <span className="event-status-tag completed">Completed</span>
-                </div>
-                <p className="event-desc">We received your order</p>
-              </div>
-            </div>
+            {verticalMilestones.map((m, idx) => {
+              const isEventCompleted = isDelivered || idx < activeStepIndex;
+              const isEventActive = !isDelivered && idx === activeStepIndex;
+              const isEventPending = !isDelivered && idx > activeStepIndex;
+              const IconComponent = m.icon;
 
-            {/* Event 2 */}
-            <div className="journey-event-item">
-              <div className="event-node-col">
-                <div className="event-node-bubble checked">
-                  <Check size={11} strokeWidth={3} />
+              return (
+                <div key={m.id} className="journey-event-item">
+                  <div className="event-node-col">
+                    <div className={`event-node-bubble ${isEventCompleted ? 'checked' : isEventActive ? 'active-icon-node' : 'concentric-node'}`}>
+                      {isEventCompleted ? (
+                        <Check size={11} strokeWidth={3} />
+                      ) : isEventActive ? (
+                        <IconComponent size={12} />
+                      ) : (
+                        <span className="concentric-dot"></span>
+                      )}
+                    </div>
+                    {idx < verticalMilestones.length - 1 && (
+                      <div className={`event-timeline-line ${isEventCompleted ? '' : 'pending-timeline-line'}`}></div>
+                    )}
+                  </div>
+                  <div className="event-info-col">
+                    <div className="event-title-time">
+                      <h5 className={`event-title ${isEventActive ? 'active-teal' : isEventPending ? 'pending-title' : ''}`}>
+                        {m.title}
+                      </h5>
+                      <span className={`event-status-tag ${isEventCompleted ? 'completed' : isEventActive ? 'in-progress' : 'pending'}`}>
+                        {isEventCompleted ? 'Completed' : isEventActive ? 'In Progress' : 'Pending'}
+                      </span>
+                    </div>
+                    <p className="event-desc">{m.desc}</p>
+                  </div>
                 </div>
-                <div className="event-timeline-line"></div>
-              </div>
-              <div className="event-info-col">
-                <div className="event-title-time">
-                  <h5 className="event-title">Picked up</h5>
-                  <span className="event-status-tag completed">Completed</span>
-                </div>
-                <p className="event-desc">Collected by your delivery partner</p>
-              </div>
-            </div>
-
-            {/* Event 3 */}
-            <div className="journey-event-item">
-              <div className="event-node-col">
-                <div className="event-node-bubble checked">
-                  <Check size={11} strokeWidth={3} />
-                </div>
-                <div className="event-timeline-line"></div>
-              </div>
-              <div className="event-info-col">
-                <div className="event-title-time">
-                  <h5 className="event-title">At the facility</h5>
-                  <span className="event-status-tag completed">Completed</span>
-                </div>
-                <p className="event-desc">Items weighed and quality checked</p>
-              </div>
-            </div>
-
-            {/* Event 4 */}
-            <div className="journey-event-item">
-              <div className="event-node-col">
-                <div className="event-node-bubble active-icon-node">
-                  <WashingMachine size={12} />
-                </div>
-                <div className="event-timeline-line pending-timeline-line"></div>
-              </div>
-              <div className="event-info-col">
-                <div className="event-title-time">
-                  <h5 className="event-title active-teal">Cleaning in progress</h5>
-                  <span className="event-status-tag in-progress">In Progress</span>
-                </div>
-                <p className="event-desc">Washing, drying and ironing</p>
-              </div>
-            </div>
-
-            {/* Event 5: Delivery */}
-            <div className="journey-event-item">
-              <div className="event-node-col">
-                <div className="event-node-bubble concentric-node">
-                  <span className="concentric-dot"></span>
-                </div>
-              </div>
-              <div className="event-info-col">
-                <div className="event-title-time">
-                  <h5 className="event-title pending-title">Delivery</h5>
-                  <span className="event-status-tag pending">Pending</span>
-                </div>
-                <p className="event-desc">Delivered safely to your doorstep</p>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
 
@@ -445,24 +824,38 @@ export const TrackOrder = () => {
                 <div className="detail-text-stack">
                   <span className="detail-box-label">Pickup Partner</span>
                   <span className="detail-box-value">
-                    {order.assigned_delivery_staff_name || 'Awaiting assignment'}
+                    {order.driver && order.driver !== 'Not Assigned'
+                      ? order.driver
+                      : (order.assigned_delivery_staff_name || 'Awaiting assignment')}
                   </span>
                 </div>
               </div>
               <span className="text-slate-300 font-bold">—</span>
             </div>
 
-            {/* Estimated Delivery */}
+            {/* Estimated / Rescheduled Delivery */}
             <div className="delivery-detail-box">
               <div className="detail-box-left">
-                <div className="detail-icon-circle">
+                <div className={`detail-icon-circle ${isRescheduled ? 'bg-amber-50 text-amber-600' : ''}`}>
                   <Calendar size={17} />
                 </div>
                 <div className="detail-text-stack">
-                  <span className="detail-box-label">Estimated Delivery</span>
+                  <div className="flex items-center gap-2">
+                    <span className="detail-box-label">
+                      {isRescheduled ? 'Rescheduled Delivery' : 'Estimated Delivery'}
+                    </span>
+                    {isRescheduled && (
+                      <span className="badge badge-warning text-[10px] px-1.5 py-0.5 rounded">Rescheduled</span>
+                    )}
+                  </div>
                   <span className="detail-box-value bold">
-                    {estimatedDeliveryDate}
+                    {deliveryDateFormatted}
                   </span>
+                  {resolvedDeliverySlot && (
+                    <span className="text-xs text-slate-500 font-medium">
+                      Slot: {resolvedDeliverySlot}
+                    </span>
+                  )}
                 </div>
               </div>
               <span className="text-slate-300 font-bold">—</span>
@@ -505,15 +898,15 @@ export const TrackOrder = () => {
                       </div>
                     </td>
                     <td className="td-qty">{item.quantity}</td>
-                    <td className="td-rate">₹{parseFloat(item.rate).toFixed(2)}</td>
-                    <td className="td-total bold">₹{parseFloat(item.total).toFixed(2)}</td>
+                    <td className="td-rate">₹{(parseFloat(item.rate) || 0).toFixed(2)}</td>
+                    <td className="td-total bold">₹{(parseFloat(item.total) || 0).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="grand-total-row">
                   <td colSpan={3} className="grand-total-label">Grand Total</td>
-                  <td className="grand-total-val">₹{parseFloat(order.total_amount || order.estimated_amount || 120).toFixed(2)}</td>
+                  <td className="grand-total-val">₹{(parseFloat(order.total_amount ?? order.estimated_amount ?? order.amount ?? 120) || 120).toFixed(2)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -783,12 +1176,69 @@ export const TrackOrder = () => {
           background: #F4FBFA;
         }
 
-        /* 3. Horizontal Progression Card */
+        /* 3. Horizontal Progression Card (Matches Reference Image 1) */
         .tracking-progress-card {
           background: #ffffff;
           border: 1.5px solid #E2E8F0;
           border-radius: 20px;
-          padding: 32px 36px 28px;
+          padding: 24px 32px 28px;
+        }
+
+        .tracker-card-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 24px;
+        }
+
+        .tracker-header-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .tracker-title-tag {
+          font-size: 0.82rem;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          color: #0E4B56;
+          text-transform: uppercase;
+        }
+
+        .tracker-live-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #E6F7F0;
+          color: #0E4B56;
+          font-size: 0.76rem;
+          font-weight: 700;
+          padding: 3px 10px;
+          border-radius: 9999px;
+        }
+
+        .tracker-live-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #10B981;
+          display: inline-block;
+        }
+
+        .tracker-step-counter {
+          font-size: 0.84rem;
+          font-weight: 600;
+          color: #475569;
+        }
+
+        .horizontal-stepper-scroll-container {
+          width: 100%;
+          overflow-x: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .horizontal-stepper-scroll-container::-webkit-scrollbar {
+          display: none;
         }
 
         .horizontal-stepper {
@@ -797,6 +1247,7 @@ export const TrackOrder = () => {
           justify-content: space-between;
           position: relative;
           width: 100%;
+          min-width: 680px;
         }
 
         .horizontal-step-item {
@@ -806,128 +1257,135 @@ export const TrackOrder = () => {
           text-align: center;
           position: relative;
           z-index: 2;
-          flex: 1;
+          flex: 0 0 auto;
+          width: 90px;
         }
 
-        .step-circle-badge {
-          width: 48px;
-          height: 48px;
-          border-radius: 14px;
-          background: #E8FAF6;
-          border: 1.5px solid #BCEAE6;
-          color: #0D7A75;
+        .step-node-bubble {
+          position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
-          position: relative;
+          width: 44px;
+          height: 44px;
           margin-bottom: 12px;
-          transition: all 0.2s;
         }
 
-        .circle-check-bubble {
-          position: absolute;
-          top: -6px;
-          left: -6px;
-          width: 18px;
-          height: 18px;
+        .step-node-bubble.completed .step-node-inner {
+          width: 42px;
+          height: 42px;
           border-radius: 50%;
-          background: #0D7A75;
+          background: #0E4B56;
           color: #ffffff;
           display: flex;
           align-items: center;
           justify-content: center;
+          box-shadow: 0 2px 4px rgba(14, 75, 86, 0.12);
         }
 
-        .circle-icon-inner {
+        .step-node-bubble.active {
+          width: 52px;
+          height: 52px;
+          margin-top: -4px;
+          margin-bottom: 8px;
+        }
+
+        .step-active-outer-halo {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          background: #D8F3ED;
+          z-index: 1;
+        }
+
+        .step-node-bubble.active .step-node-inner {
+          position: relative;
+          z-index: 2;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: #ffffff;
+          border: 2px solid #0E4B56;
+          color: #0E4B56;
           display: flex;
           align-items: center;
           justify-content: center;
         }
 
-        .step-circle-badge.active-glow {
-          width: 56px;
-          height: 56px;
+        .step-node-bubble.pending .step-node-inner {
+          width: 42px;
+          height: 42px;
           border-radius: 50%;
-          background: #E8FAF6;
-          border: 3px solid #0D7A75;
-          box-shadow: 0 0 0 6px rgba(13, 122, 117, 0.12);
-          color: #0D7A75;
-        }
-
-        .step-circle-badge.pending-circle {
-          background: #F8FAFC;
+          background: #F0F4F8;
           border: 1.5px solid #E2E8F0;
-          color: #94A3B8;
+          color: #8EA4B8;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .step-label-group {
           display: flex;
           flex-direction: column;
           align-items: center;
+          width: 100%;
         }
 
         .step-label-title {
-          font-size: 0.9375rem;
+          font-size: 0.88rem;
           font-weight: 700;
           color: #0F172A;
           margin: 0;
-        }
-
-        .step-label-time {
-          font-size: 0.75rem;
-          color: #64748B;
-          margin-top: 3px;
-        }
-
-        .step-label-completed {
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: #0D7A75;
-          margin-top: 3px;
+          white-space: nowrap;
         }
 
         .step-label-title.active-title {
-          color: #0D7A75;
-          font-size: 1rem;
-        }
-
-        .active-tag-badge {
-          display: inline-block;
-          font-size: 0.72rem;
-          font-weight: 700;
-          color: #0D7A75;
-          margin-top: 2px;
-        }
-
-        .step-active-desc {
-          font-size: 0.75rem;
-          color: #64748B;
-          max-width: 200px;
-          line-height: 1.35;
-          margin-top: 4px;
+          font-weight: 800;
+          color: #0F172A;
         }
 
         .step-label-title.pending-title {
-          color: #64748B;
           font-weight: 600;
+          color: #8EA4B8;
         }
 
-        .step-label-pending {
-          font-size: 0.75rem;
-          color: #94A3B8;
-          margin-top: 3px;
+        .step-label-subtitle {
+          font-size: 0.74rem;
+          margin-top: 4px;
+          white-space: nowrap;
+        }
+
+        .step-label-subtitle.time-sub {
+          color: #64748B;
+          font-weight: 500;
+        }
+
+        .step-label-subtitle.active-sub {
+          color: #0E4B56;
+          font-weight: 700;
+        }
+
+        .step-label-subtitle.pending-sub {
+          color: #8EA4B8;
+          font-weight: 500;
         }
 
         .stepper-connecting-line {
           flex: 1;
-          height: 3px;
-          margin: 24px 8px 0;
+          height: 2.5px;
+          margin: 21px 2px 0;
           position: relative;
           z-index: 1;
+          min-width: 12px;
+          border-radius: 2px;
         }
 
         .stepper-connecting-line.completed {
-          background: #0D7A75;
+          background: #0E4B56;
+        }
+
+        .stepper-connecting-line.half-active {
+          background: linear-gradient(to right, #0E4B56 50%, #E2E8F0 50%);
         }
 
         .stepper-connecting-line.pending {
@@ -1401,38 +1859,56 @@ export const TrackOrder = () => {
           .summary-metric-divider {
             display: none;
           }
+          .tracking-progress-card {
+            padding: 20px 16px 24px;
+          }
+          .horizontal-stepper-scroll-container {
+            overflow-x: auto;
+            padding-bottom: 8px;
+            -webkit-overflow-scrolling: touch;
+          }
           .horizontal-stepper {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 18px;
-          }
-          .horizontal-step-item {
-            flex-direction: row;
-            align-items: center;
-            text-align: left;
-            gap: 16px;
-            width: 100%;
-          }
-          .step-circle-badge {
-            margin-bottom: 0;
-            flex-shrink: 0;
-          }
-          .step-label-group {
-            align-items: flex-start;
-            text-align: left;
-          }
-          .step-active-desc {
-            max-width: 100%;
-          }
-          .stepper-connecting-line {
-            width: 2px;
-            height: 18px;
-            margin: 0 0 0 24px;
-            align-self: flex-start;
+            min-width: 680px;
           }
           .help-towels-img {
             max-width: 275px;
             max-height: 185px;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .track-order-portal {
+            padding: 8px 0 16px 0 !important;
+          }
+
+          .track-main-title {
+            font-size: 1.45rem !important;
+          }
+
+          .track-main-subtitle {
+            font-size: 0.8125rem !important;
+          }
+
+          .tracking-summary-card,
+          .tracking-progress-card,
+          .tracking-items-card,
+          .tracking-help-card {
+            padding: 16px 14px !important;
+            border-radius: 16px !important;
+          }
+
+          .horizontal-stepper-scroll-container {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            padding-bottom: 10px !important;
+          }
+
+          .horizontal-stepper {
+            min-width: 620px !important;
+          }
+
+          .header-right-illustration {
+            display: none !important;
           }
         }
 
@@ -1441,16 +1917,12 @@ export const TrackOrder = () => {
             flex-direction: column;
             align-items: flex-start;
           }
-          .header-right-illustration {
-            width: 100%;
-            justify-content: center;
-          }
           .tracking-items-table {
             font-size: 0.8125rem;
           }
           .help-towels-img {
-            max-width: 230px;
-            max-height: 160px;
+            max-width: 200px;
+            max-height: 140px;
           }
         }
       `}</style>

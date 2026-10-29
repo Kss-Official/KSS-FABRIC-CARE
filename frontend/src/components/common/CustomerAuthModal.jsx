@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useBooking } from '../../context/BookingContext';
 import { X, Mail, Lock, User, Phone, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const CustomerAuthModal = () => {
+  const { navigateTo } = useBooking();
   const {
     isAuthModalOpen,
     closeAuthModal,
@@ -23,6 +25,24 @@ export const CustomerAuthModal = () => {
   const [resetSuccess, setResetSuccess] = useState(false);
   const [localError, setLocalError] = useState(null);
 
+  // Lock background scroll when auth modal is open
+  React.useEffect(() => {
+    if (isAuthModalOpen) {
+      const origHtml = document.documentElement.style.overflow;
+      const origBody = document.body.style.overflow;
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      document.documentElement.classList.add('modal-open');
+      document.body.classList.add('modal-open');
+      return () => {
+        document.documentElement.style.overflow = origHtml || '';
+        document.body.style.overflow = origBody || '';
+        document.documentElement.classList.remove('modal-open');
+        document.body.classList.remove('modal-open');
+      };
+    }
+  }, [isAuthModalOpen]);
+
   if (!isAuthModalOpen) return null;
 
   const handleSubmit = async (e) => {
@@ -35,10 +55,14 @@ export const CustomerAuthModal = () => {
       if (authModalMode === 'login') {
         await login(email, password);
       } else if (authModalMode === 'register') {
-        if (password.length < 6) {
-          throw new Error('Password must be at least 6 characters long.');
+        const cleanPhone = (phone || '').replace(/\D/g, '');
+        if (cleanPhone && cleanPhone.length !== 10) {
+          throw new Error('Please enter a valid 10-digit mobile number.');
         }
-        await register({ email, password, fullName, phone });
+        if (fullName && fullName.trim().length > 20) {
+          throw new Error('Name cannot exceed 20 characters.');
+        }
+        await register({ email, password, fullName: (fullName || '').trim().slice(0, 20), phone: cleanPhone ? `+91 ${cleanPhone}` : '' });
       } else if (authModalMode === 'forgot') {
         await sendPasswordReset(email);
         setResetSuccess(true);
@@ -61,7 +85,7 @@ export const CustomerAuthModal = () => {
 
         <div className="auth-modal-header">
           <div className="auth-modal-logo">
-            <span className="logo-text">Laund<span className="logo-accent">rix</span></span>
+            <span className="logo-text">Fabri<span className="logo-accent">Care</span></span>
           </div>
           <h3 className="auth-modal-title">
             {authModalMode === 'login' && 'Welcome Back'}
@@ -106,10 +130,11 @@ export const CustomerAuthModal = () => {
                     <input 
                       type="text" 
                       required 
+                      maxLength={20}
                       className="form-input" 
-                      placeholder="e.g. Rohan Mehta"
+                      placeholder="e.g. Rohan Mehta (max 20)"
                       value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
+                      onChange={(e) => setFullName(e.target.value.slice(0, 20))}
                     />
                   </div>
                 </div>
@@ -120,11 +145,13 @@ export const CustomerAuthModal = () => {
                     <Phone size={16} className="input-icon" />
                     <input 
                       type="tel" 
+                      inputMode="numeric"
                       required 
                       className="form-input" 
-                      placeholder="+91 98765 43210"
+                      placeholder="Enter 10-digit mobile number"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      maxLength={10}
+                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     />
                   </div>
                 </div>
@@ -193,7 +220,14 @@ export const CustomerAuthModal = () => {
               {authModalMode === 'login' ? (
                 <p>
                   Don't have an account?{' '}
-                  <button type="button" className="auth-switch-link" onClick={() => setAuthModalMode('register')}>
+                  <button 
+                    type="button" 
+                    className="auth-switch-link" 
+                    onClick={() => {
+                      closeAuthModal();
+                      navigateTo('signup');
+                    }}
+                  >
                     Sign Up
                   </button>
                 </p>
@@ -224,6 +258,8 @@ export const CustomerAuthModal = () => {
           left: 0;
           right: 0;
           bottom: 0;
+          width: 100%;
+          height: 100%;
           background: rgba(15, 23, 42, 0.6);
           backdrop-filter: blur(4px);
           display: flex;
@@ -231,6 +267,8 @@ export const CustomerAuthModal = () => {
           justify-content: center;
           z-index: 9999;
           padding: 20px;
+          overscroll-behavior: contain;
+          box-sizing: border-box;
         }
 
         .auth-modal-content {
@@ -238,9 +276,14 @@ export const CustomerAuthModal = () => {
           border-radius: 24px;
           max-width: 440px;
           width: 100%;
+          max-height: calc(100vh - 40px);
+          max-height: calc(100dvh - 40px);
+          overflow-y: auto;
+          overscroll-behavior: contain;
           padding: 36px;
           position: relative;
           box-shadow: 0 24px 48px rgba(0, 0, 0, 0.15);
+          box-sizing: border-box;
         }
 
         .auth-modal-close {

@@ -82,16 +82,39 @@ html {
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  touch-action: manipulation;
+  min-height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
 }
 
 body {
+  min-height: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   line-height: 1.5;
-  overflow-x: clip;
-  touch-action: manipulation;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  background-color: #FAFCFC;
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  margin: 0;
+  padding: 0;
 }
 
 a {
@@ -300,26 +323,97 @@ img {
    ============================================================ */
 .app-layout {
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+  margin: 0;
+  padding: 0;
+  flex: 1 0 auto;
 }
 .main-content {
-  flex: 1;
+  flex: 1 0 auto;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+.main-content > * {
+  margin-top: 0;
 }
 
-/* Full-screen portal container (delivery / laundry portals) */
+/* Full-screen & Customer Portal container */
 .portal-container {
-  min-height: 100vh;
+  flex: 1;
+  width: 100%;
   background: #F8FAFC;
   padding: 28px 32px;
   max-width: 1400px;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
   .portal-container {
     padding: 16px;
   }
+}
+
+/* Modal and Drawer Nested Scroll Containment */
+.modal-backdrop-overlay,
+.manage-modal-backdrop,
+.add-service-backdrop,
+.assign-order-modal-backdrop,
+.assign-order-backdrop,
+.ac-modal-backdrop,
+.modal-backdrop,
+.auth-modal-overlay,
+.drawer-overlay,
+.express-modal-overlay {
+  overscroll-behavior: contain !important;
+  touch-action: pan-y !important;
+}
+
+.modal-box-card,
+.manage-modal-card,
+.add-service-modal-card,
+.assign-order-modal-card,
+.ac-modal-container,
+.modal-container,
+.auth-modal-content,
+.drawer-panel,
+.drawer-body,
+.ac-form-body,
+.manage-services-list-body,
+.express-modal-card {
+  overscroll-behavior: contain !important;
+}
+
+/* Prevent background page from scrolling when modals are open */
+html.modal-open,
+body.modal-open {
+  overflow: hidden !important;
+}
+
+/* Fixed background image utilities */
+.bg-fixed {
+  background-attachment: fixed !important;
+}
+
+.fixed-bg-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background-attachment: fixed;
+  background-position: center top;
+  background-size: cover;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }
 
 /* ============================================================
@@ -374,8 +468,14 @@ img {
    ============================================================ */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .stat-card {
@@ -476,6 +576,310 @@ img {
 }
 
 /* ============================================================
+   TOOLBAR CONTROLS GROUP & PILL BUTTONS (Image 1 Style)
+   ============================================================ */
+.toolbar-controls-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-magnifier-icon {
+  position: absolute;
+  left: 12px;
+  color: #94A3B8;
+  pointer-events: none;
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #94A3B8;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.search-clear-btn:hover {
+  color: #475569;
+}
+
+.search-box-field {
+  height: 34px;
+  width: 250px;
+  background: #FAFCFC;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 999px;
+  padding: 0 28px 0 34px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #0F172A;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-box-field::placeholder {
+  color: #94A3B8;
+  font-weight: 400;
+}
+
+.search-box-field:focus {
+  background: #FFFFFF;
+  border-color: #0D7A75;
+  box-shadow: 0 0 0 3px rgba(13, 122, 117, 0.12);
+}
+
+.toolbar-dropdown-wrapper {
+  position: relative;
+}
+
+.toolbar-pill-btn {
+  height: 34px;
+  padding: 0 14px;
+  background: #FFFFFF;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.toolbar-pill-btn:hover {
+  background: #F8FAFC;
+  color: #0D7A75;
+  border-color: #0D7A75;
+}
+
+.toolbar-pill-btn.has-filter {
+  border-color: #0D7A75;
+  color: #0D7A75;
+  background: #F0FDF4;
+}
+
+.toolbar-pill-icon {
+  color: #475569;
+}
+
+.toolbar-pill-btn:hover .toolbar-pill-icon,
+.toolbar-pill-btn.has-filter .toolbar-pill-icon {
+  color: #0D7A75;
+}
+
+.toolbar-pill-chevron {
+  color: #64748B;
+  transition: transform 0.2s ease;
+}
+
+/* ============================================================
+   UNIVERSAL COUNT BADGE PILL & REFRESH BUTTON (Image 1 Style)
+   ============================================================ */
+.reports-count-pill,
+.orders-count-pill,
+.section-count-pill {
+  display: inline-flex;
+  align-items: center;
+  background: #E8FAF6;
+  color: #0D7A75;
+  border: 1px solid #BCEAE6;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  line-height: 1.4;
+  height: 34px;
+  box-sizing: border-box;
+}
+
+.refresh-reports-btn,
+.refresh-orders-btn,
+.section-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1.5px solid #CBD5E1;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.refresh-reports-btn:hover:not(:disabled),
+.refresh-orders-btn:hover:not(:disabled),
+.section-refresh-btn:hover:not(:disabled) {
+  background: #F8FAFC;
+  color: #0D7A75;
+  border-color: #0D7A75;
+}
+
+.refresh-reports-btn:disabled,
+.refresh-orders-btn:disabled,
+.section-refresh-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.refresh-reports-btn.loading,
+.refresh-orders-btn.loading,
+.section-refresh-btn.loading {
+  border-color: #0D7A75;
+  background: #F4FBFA;
+  color: #0D7A75;
+}
+
+.refresh-reports-btn.success,
+.refresh-orders-btn.success,
+.section-refresh-btn.success {
+  border-color: #16A34A;
+  background: #F0FDF4;
+  color: #16A34A;
+}
+
+/* ============================================================
+   UNIVERSAL ACTION PILL BUTTON (View Report, View Invoice, Track)
+   ============================================================ */
+.btn-view-report-action,
+.btn-view-invoice-action,
+.btn-view-order-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1.5px solid #0D7A75;
+  background: #ffffff;
+  color: #0D7A75;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.btn-view-report-action:hover,
+.btn-view-invoice-action:hover,
+.btn-view-order-action:hover {
+  background: #0D7A75;
+  color: #ffffff;
+}
+
+.btn-cancel-order-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1.5px solid #FCA5A5;
+  background: #ffffff;
+  color: #DC2626;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.btn-cancel-order-action:hover:not(:disabled) {
+  background: #FEF2F2;
+  border-color: #DC2626;
+}
+
+.btn-cancel-order-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dropdown-popover-card {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+  z-index: 50;
+  min-width: 190px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.popover-header {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #94A3B8;
+  padding: 4px 8px;
+  letter-spacing: 0.05em;
+}
+
+.popover-option {
+  background: none;
+  border: none;
+  padding: 7px 10px;
+  text-align: left;
+  font-size: 0.8125rem;
+  color: #334155;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.popover-option:hover,
+.popover-option.selected {
+  background: #F1F5F9;
+  color: #0D7A75;
+  font-weight: 600;
+}
+
+.popover-reset-btn {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: #FEF2F2;
+  border: none;
+  border-radius: 6px;
+  color: #DC2626;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s;
+}
+.popover-reset-btn:hover {
+  background: #FEE2E2;
+}
+
+/* ============================================================
    FORM CONTROLS
    ============================================================ */
 .form-label {
@@ -486,7 +890,7 @@ img {
   margin-bottom: 6px;
 }
 
-.form-input, .form-select, .form-textarea {
+.form-input, .form-control, .form-select, .form-textarea {
   width: 100%;
   padding: 10px 14px;
   border: 1.5px solid #CBD5E1;
@@ -497,11 +901,13 @@ img {
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.form-input:focus, .form-select:focus, .form-textarea:focus {
+.form-input:focus, .form-control:focus, .form-select:focus, .form-textarea:focus {
   border-color: #0D7A75;
   box-shadow: 0 0 0 3px rgba(13,122,117,.12);
 }
 .form-textarea { resize: vertical; min-height: 80px; }
+
+.btn-xs { padding: 4px 10px; font-size: 0.75rem; border-radius: 6px; }
 
 /* ============================================================
    UTILITY CLASSES (replaces Tailwind)
@@ -585,9 +991,14 @@ img {
 .pt-4 { padding-top: 16px; }
 .pl-9 { padding-left: 36px; }
 .w-full { width: 100%; }
-.max-w-sm { max-width: 384px; }
 .max-w-xs { max-width: 320px; }
+.max-w-sm { max-width: 384px; }
 .max-w-md { max-width: 448px; }
+.max-w-lg { max-width: 540px; }
+.max-w-xl { max-width: 600px; }
+.max-w-2xl { max-width: 672px; }
+.max-w-3xl { max-width: 768px; }
+.max-w-4xl { max-width: 896px; }
 
 /* Colors & Typography */
 .text-navy { color: #0F172A; }
@@ -694,6 +1105,10 @@ img {
 .left-3 { left: 12px; }
 .top-3 { top: 12px; }
 .z-50 { z-index: 50; }
+.z-100 { z-index: 100; }
+.z-500 { z-index: 500; }
+.z-1000 { z-index: 1000; }
+.z-9999 { z-index: 9999; }
 .hidden { display: none; }
 .block { display: block; }
 .inline-flex { display: inline-flex; }
@@ -716,12 +1131,12 @@ img {
    ANIMATIONS
    ============================================================ */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.92); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes spinAnim {
   to { transform: rotate(360deg); }
@@ -731,8 +1146,8 @@ img {
   50% { opacity: 1; }
 }
 
-.animate-fade-in { animation: fadeIn 0.35s ease-out forwards; }
-.animate-scale-in { animation: scaleIn 0.25s ease-out forwards; }
+.animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
+.animate-scale-in { animation: scaleIn 0.2s ease-out forwards; }
 .animate-spin { animation: spinAnim 0.8s linear infinite; }
 .animate-pulse { animation: pulseGlow 2s ease-in-out infinite; }
 
@@ -741,4 +1156,204 @@ img {
 
 /* Background opacity */
 .bg-black\/50 { background: rgba(0,0,0,.5); }
+.bg-black\/60 { background: rgba(0,0,0,.6); }
+.bg-black\/70 { background: rgba(0,0,0,.7); }
+.bg-black\/75 { background: rgba(0,0,0,.75); }
+.bg-black\/80 { background: rgba(0,0,0,.8); }
+
+/* Admin modal scroll lock - strictly scoped to admin main wrapper */
+.admin-main-wrapper.admin-scroll-locked {
+  overflow: hidden !important;
+}
+
+/* Admin Portal root isolation - guarantee zero window scrollbar appearance */
+html:has(.admin-root-layout),
+body:has(.admin-root-layout) {
+  overflow: hidden !important;
+  height: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* ==========================================================================
+   MOBILE RESPONSIVENESS OVERLAYS & SAFE ENHANCEMENTS
+   Strictly scoped to screens <= 768px and <= 480px so desktop/laptop view
+   (> 768px / >= 1024px) remains 100% UNTOUCHED and identical to designer specs.
+   ========================================================================== */
+
+@media screen and (max-width: 768px) {
+  /* Prevent window horizontal overflow on mobile */
+  html, body {
+    overflow-x: hidden !important;
+    max-width: 100vw;
+  }
+
+  #root {
+    overflow-x: hidden !important;
+    max-width: 100vw;
+  }
+
+  .container {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Public Website & Hero */
+  .hero-headline {
+    font-size: clamp(2rem, 7.5vw, 2.75rem) !important;
+    line-height: 1.15 !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  .hero-description {
+    font-size: 1rem !important;
+    line-height: 1.5 !important;
+    margin-bottom: 24px !important;
+  }
+
+  .hero-cta-group {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 12px !important;
+    margin-bottom: 32px !important;
+  }
+
+  .btn-coral-pill,
+  .btn-white-pill {
+    width: 100% !important;
+    justify-content: center !important;
+    height: 48px !important;
+  }
+
+  .hero-container {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+  }
+
+  /* Content Grids (services-cards-grid controlled by HomePage for 2-column mobile layout) */
+  .why-grid-cards,
+  .testimonials-grid,
+  .process-steps-grid,
+  .contact-cards-grid,
+  .contact-form-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .service-card,
+  .testimonial-card,
+  .why-card-cell,
+  .contact-info-card,
+  .contact-form-card {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Customer Portal & Toolbar */
+  .customer-account-banner {
+    padding: 24px 0 18px !important;
+  }
+
+  .customer-account-banner h1 {
+    font-size: 1.35rem !important;
+  }
+
+  .customer-account-wrapper > div:last-child {
+    padding: 0 14px !important;
+    margin-top: 18px !important;
+  }
+
+  .order-item-card {
+    padding: 16px !important;
+    border-radius: 14px !important;
+  }
+
+  .toolbar-controls-group {
+    width: 100% !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .search-input-wrapper {
+    width: 100% !important;
+  }
+
+  .search-box-field {
+    width: 100% !important;
+    height: 38px !important;
+    font-size: 14px !important;
+  }
+
+  .toolbar-dropdown-wrapper {
+    width: 100% !important;
+  }
+
+  .toolbar-pill-btn {
+    width: 100% !important;
+    justify-content: space-between !important;
+    height: 38px !important;
+  }
+
+  .orders-count-pill {
+    align-self: auto !important;
+  }
+
+  /* Booking Wizard */
+  .wizard-main-card {
+    padding: 20px 14px !important;
+    border-radius: 18px !important;
+  }
+
+  /* Smooth touch scrolling */
+  .overflow-x-auto,
+  .timeline-horizontal-scroll {
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Dialogs and Modals sizing */
+  .modal-dialog,
+  .dialog-content,
+  .animate-scale-in {
+    max-width: calc(100vw - 24px) !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .hero-headline {
+    font-size: 1.95rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .hero-trust-badges {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .cta-banner-section {
+    padding: 48px 16px !important;
+  }
+
+  .cta-banner-title {
+    font-size: 1.65rem !important;
+  }
+
+  .cta-banner-btn {
+    width: 100% !important;
+  }
+
+  .footer-inner-container {
+    padding: 40px 16px 20px !important;
+  }
+
+  .footer-logo-title {
+    font-size: 26px !important;
+  }
+}
+
+
 

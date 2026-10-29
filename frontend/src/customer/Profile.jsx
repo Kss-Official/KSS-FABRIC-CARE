@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { addressApi } from '../api/apiClient';
 import { 
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const Profile = () => {
-  const { currentUser, logout, userRole } = useAuth();
+  const { currentUser, userProfile, logout, userRole, refreshProfile, updateCurrentUserProfile } = useAuth();
   const [addresses, setAddresses] = useState([]);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -29,15 +29,28 @@ export const Profile = () => {
     is_default: false
   });
   const [saving, setSaving] = useState(false);
+  const modalRef = useRef(null);
+
+  // Edit Profile Modal State
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    phone: '',
+    city: ''
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const editProfileModalRef = useRef(null);
 
   const fetchAddresses = async () => {
     setLoadingAddresses(true);
     try {
       const res = await addressApi.getAddresses();
-      const list = Array.isArray(res.data) ? res.data : res.data?.results || [];
+      const raw = res?.data ?? res;
+      const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.results) ? raw.results : (Array.isArray(raw?.data) ? raw.data : []));
       setAddresses(list);
     } catch (err) {
       console.warn('Failed to load addresses:', err);
+      setAddresses([]);
     } finally {
       setLoadingAddresses(false);
     }
@@ -45,6 +58,9 @@ export const Profile = () => {
 
   useEffect(() => {
     fetchAddresses();
+    if (typeof refreshProfile === 'function') {
+      refreshProfile();
+    }
   }, []);
 
   const handleOpenAddModal = () => {
@@ -93,7 +109,10 @@ export const Profile = () => {
         pincode: '560043',
         is_default: false
       });
-      fetchAddresses();
+      await fetchAddresses();
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile();
+      }
     } catch (err) {
       alert(err.response?.data?.error || `Failed to ${editingAddressId ? 'update' : 'save'} address`);
     } finally {
@@ -105,34 +124,78 @@ export const Profile = () => {
     if (!window.confirm('Delete this saved address?')) return;
     try {
       await addressApi.deleteAddress(id);
-      fetchAddresses();
+      await fetchAddresses();
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile();
+      }
     } catch (err) {
       alert('Failed to delete address');
     }
   };
 
-  const avatarInitial = currentUser?.avatar || 
-    (currentUser?.full_name ? currentUser.full_name[0] : 
-      (currentUser?.first_name ? currentUser.first_name[0] : 
-        (currentUser?.username ? currentUser.username.substring(0, 2).toUpperCase() : 'RO')));
+  const profileUser = currentUser || userProfile;
+  const fullName = profileUser?.full_name || profileUser?.name || profileUser?.displayName || profileUser?.fullName || userProfile?.full_name || userProfile?.displayName || userProfile?.name || '';
+  const firstName = profileUser?.first_name || (fullName ? fullName.split(' ')[0] : '');
+  const email = profileUser?.email || userProfile?.email || '';
+  const phone = profileUser?.phone || profileUser?.phoneNumber || userProfile?.phone || '';
+  const username = profileUser?.username || (email ? email.split('@')[0] : (fullName ? fullName.toLowerCase().replace(/\s+/g, '') : 'customer'));
+  const avatarInitial = 
+    (fullName ? fullName[0].toUpperCase() : 
+      (firstName ? firstName[0].toUpperCase() : 
+        (username ? username[0].toUpperCase() : 'C')));
+
+  const handleOpenEditProfileModal = () => {
+    setProfileForm({
+      name: fullName || '',
+      phone: phone || '',
+      city: profileUser?.city || (addresses.find(a => a.is_default) || addresses[0])?.city || 'Bengaluru'
+    });
+    setShowEditProfileModal(true);
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    if (!profileForm.name?.trim()) {
+      alert('Please enter your full name.');
+      return;
+    }
+    if (profileForm.name.trim().length > 20) {
+      alert('Customer name cannot exceed 20 characters.');
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      if (typeof updateCurrentUserProfile === 'function') {
+        await updateCurrentUserProfile(profileForm);
+      }
+      if (typeof refreshProfile === 'function') {
+        await refreshProfile();
+      }
+      setShowEditProfileModal(false);
+    } catch (err) {
+      alert(err.message || 'Failed to update profile');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   return (
-    <div className="portal-container">
+    <div className="portal-container customer-profile-portal">
       {/* Header */}
-      <div className="mb-6">
-        <div className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Account & Security</div>
-        <h1 className="text-2xl font-bold text-navy">Customer Profile</h1>
+      <div className="profile-page-header-row mb-6">
+        <div className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Account &amp; Security</div>
+        <h1 className="profile-page-main-title text-2xl font-bold text-navy">Customer Profile</h1>
         <p className="text-sm text-muted">Manage your personal credentials and contact settings</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Avatar & Summary */}
-        <div className="content-card text-center self-start">
+        <div className="content-card profile-avatar-card text-center self-start">
           <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 text-white font-black text-3xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-purple-500/20">
             {avatarInitial}
           </div>
-          <h2 className="text-xl font-bold text-navy">{currentUser?.full_name || currentUser?.first_name || 'Customer'}</h2>
-          <p className="text-sm text-muted mb-3">@{currentUser?.username || 'rohan'}</p>
+          <h2 className="text-xl font-bold text-navy">{fullName || firstName || 'Customer'}</h2>
+          <p className="text-sm text-muted mb-3">@{username}</p>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-teal-50 text-primary text-xs font-bold rounded-full mb-6 border border-teal-100">
             <ShieldCheck size={14} />
             <span>Role: {userRole || 'customer'}</span>
@@ -153,35 +216,50 @@ export const Profile = () => {
         <div className="lg:col-span-2 content-card">
           {/* Section: Profile Details */}
           <div>
-            <h3 className="font-bold text-navy text-base mb-4 flex items-center gap-2">
-              <User size={18} className="text-primary" />
-              <span>Profile Details</span>
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-navy text-base flex items-center gap-2">
+                <User size={18} className="text-primary" />
+                <span>Profile Details</span>
+              </h3>
+              <button
+                type="button"
+                onClick={handleOpenEditProfileModal}
+                className="btn btn-outline-secondary btn-sm flex items-center gap-1.5 text-xs py-1 px-3"
+              >
+                <Edit3 size={14} />
+                <span>Edit Profile</span>
+              </button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-xs text-muted block mb-1">Full Name</span>
-                <div className="font-semibold text-navy">{currentUser?.full_name || currentUser?.first_name || 'Not provided'}</div>
+                <div className="font-semibold text-navy">{fullName || 'Not provided'}</div>
               </div>
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-xs text-muted block mb-1">Email Address</span>
-                <div className="font-semibold text-navy">{currentUser?.email || 'rohan.mehta@gmail.com'}</div>
+                <div className="font-semibold text-navy">{email || 'Not provided'}</div>
               </div>
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-xs text-muted block mb-1">Phone Number</span>
-                <div className="font-semibold text-navy">{currentUser?.phone || '+91 98765 43210'}</div>
+                <div className="font-semibold text-navy">{phone || 'Not provided'}</div>
               </div>
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-xs text-muted block mb-1">City</span>
-                <div className="font-semibold text-navy">{currentUser?.city || 'Bengaluru'}</div>
+                <div className="font-semibold text-navy">{profileUser?.city || (addresses.find(a => a.is_default) || addresses[0])?.city || 'Bengaluru'}</div>
               </div>
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 md:col-span-2">
                 <span className="text-xs text-muted block mb-1">Registered Address</span>
-                <div className="font-semibold text-navy">{currentUser?.address || 'Banaswadi, Bengaluru - 560043'}</div>
+                <div className="font-semibold text-navy">
+                  {profileUser?.address || (() => {
+                    const def = addresses.find(a => a.is_default) || addresses[0];
+                    return def ? `${def.address_line}${def.landmark ? ', ' + def.landmark : ''}, ${def.city} - ${def.pincode}` : 'No address saved yet';
+                  })()}
+                </div>
               </div>
             </div>
           </div>
@@ -287,8 +365,15 @@ export const Profile = () => {
 
       {/* Add Address Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in">
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div 
+            ref={modalRef}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-bold text-navy mb-4">
               {editingAddressId ? 'Edit Pickup Address' : 'Add Pickup Address'}
             </h3>
@@ -385,6 +470,105 @@ export const Profile = () => {
           </div>
         </div>
       )}
+
+      {/* Edit Profile Modal */}
+      {showEditProfileModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowEditProfileModal(false)}
+        >
+          <div 
+            ref={editProfileModalRef}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-navy mb-4">
+              Edit Profile Details
+            </h3>
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              <div>
+                <label className="form-label">Full Name *</label>
+                <input 
+                  type="text"
+                  required
+                  maxLength={20}
+                  value={profileForm.name}
+                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value.slice(0, 20) })}
+                  placeholder="Enter your full name (max 20 characters)"
+                  className="form-input"
+                />
+              </div>
+
+              <div>
+                <label className="form-label">Phone Number</label>
+                <input 
+                  type="tel"
+                  value={profileForm.phone}
+                  onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                  placeholder="Enter phone number"
+                  className="form-input"
+                />
+              </div>
+
+              <div>
+                <label className="form-label">City</label>
+                <input 
+                  type="text"
+                  value={profileForm.city}
+                  onChange={(e) => setProfileForm({ ...profileForm, city: e.target.value })}
+                  placeholder="Enter city"
+                  className="form-input"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowEditProfileModal(false)}
+                  className="btn btn-outline-secondary btn-sm"
+                  disabled={savingProfile}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-sm flex items-center gap-2"
+                  disabled={savingProfile}
+                >
+                  {savingProfile ? <RefreshCw size={14} className="animate-spin" /> : null}
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Responsive Styles */}
+      <style>{`
+        @media (max-width: 768px) {
+          .customer-profile-portal .profile-page-main-title {
+            font-size: 1.4rem !important;
+          }
+
+          .customer-profile-portal .content-card {
+            padding: 16px 14px !important;
+            border-radius: 16px !important;
+          }
+
+          .profile-avatar-card {
+            padding: 20px 16px !important;
+          }
+
+          .animate-scale-in {
+            max-width: calc(100vw - 24px) !important;
+            max-height: 90vh !important;
+            overflow-y: auto !important;
+            padding: 18px 16px !important;
+            border-radius: 16px !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };

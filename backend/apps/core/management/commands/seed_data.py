@@ -84,17 +84,25 @@ class Command(BaseCommand):
             name='Wash & Fold',
             defaults={'slug': 'wash-fold', 'description': 'Everyday laundry washed, dried and folded.', 'display_order': 1}
         )
+        cat_wash_iron, _ = ServiceCategory.objects.get_or_create(
+            name='Wash & Iron',
+            defaults={'slug': 'wash-iron', 'description': 'Clean clothes washed, dried, and crisply pressed.', 'display_order': 2}
+        )
         cat_dry, _ = ServiceCategory.objects.get_or_create(
             name='Dry Cleaning',
-            defaults={'slug': 'dry-cleaning', 'description': 'Gentle eco-solvent cleaning for premium and delicate fabrics.', 'display_order': 2}
+            defaults={'slug': 'dry-cleaning', 'description': 'Gentle eco-solvent cleaning for premium and delicate fabrics.', 'display_order': 3}
         )
         cat_iron, _ = ServiceCategory.objects.get_or_create(
             name='Steam Ironing',
-            defaults={'slug': 'steam-ironing', 'description': 'Crisp steam press and hanger packaging.', 'display_order': 3}
+            defaults={'slug': 'steam-ironing', 'description': 'Crisp steam press and hanger packaging.', 'display_order': 4}
         )
-        cat_special, _ = ServiceCategory.objects.get_or_create(
-            name='Special Care',
-            defaults={'slug': 'special-care', 'description': 'Curtains, shoes, blankets and deep care.', 'display_order': 4}
+        cat_household, _ = ServiceCategory.objects.get_or_create(
+            name='Household',
+            defaults={'slug': 'household', 'description': 'Bedsheets, blankets, curtains, and linens.', 'display_order': 5}
+        )
+        cat_express, _ = ServiceCategory.objects.get_or_create(
+            name='Express Laundry',
+            defaults={'slug': 'express-laundry', 'description': 'Superfast 24-hour priority laundry across all services.', 'display_order': 6}
         )
 
         # 3. Create Services
@@ -104,9 +112,10 @@ class Command(BaseCommand):
             {'name': 'T-Shirt (Wash & Fold)', 'category': cat_wash, 'price': 70.00, 'unit': 'per piece', 'description': 'Gentle wash and crisp fold', 'icon': 'Shirt', 'image_url': '/assets/service-wash.jpg'},
             {'name': 'Formal Suit (2-Piece)', 'category': cat_dry, 'price': 250.00, 'unit': 'per piece', 'description': 'Professional eco dry cleaning and contour pressing', 'icon': 'Sparkles', 'image_url': '/assets/service-dryclean.jpg'},
             {'name': 'Silk Saree / Lehenga', 'category': cat_dry, 'price': 220.00, 'unit': 'per piece', 'description': 'Delicate fabric care with organic solvents', 'icon': 'Sparkles', 'image_url': '/assets/service-dryclean.jpg'},
-            {'name': 'Bedsheet (Single / Double)', 'category': cat_iron, 'price': 90.00, 'unit': 'per item', 'description': 'Sanitized wash, dry and steam iron', 'icon': 'Flame', 'image_url': '/assets/service-iron.jpg'},
-            {'name': 'Blanket / Heavy Quilt', 'category': cat_special, 'price': 300.00, 'unit': 'per item', 'description': 'Deep sanitization and anti-allergen treatment', 'icon': 'BedDouble', 'image_url': '/assets/service-curtain.jpg'},
-            {'name': 'Shoe Laundry', 'category': cat_special, 'price': 250.00, 'unit': 'per pair', 'description': 'Deep sole cleaning, deodorizing and protection', 'icon': 'Footprints', 'image_url': '/assets/service-shoe.jpg'},
+            {'name': 'Bedsheet (Single / Double)', 'category': cat_household, 'price': 90.00, 'unit': 'per item', 'description': 'Sanitized wash, dry and steam iron', 'icon': 'Flame', 'image_url': '/assets/service-iron.jpg'},
+            {'name': 'Blanket / Heavy Quilt', 'category': cat_household, 'price': 300.00, 'unit': 'per item', 'description': 'Deep sanitization and anti-allergen treatment', 'icon': 'BedDouble', 'image_url': '/assets/service-curtain.jpg'},
+            {'name': 'Curtain (Per Piece)', 'category': cat_household, 'price': 180.00, 'unit': 'per item', 'description': 'Dry cleaning and freshening', 'icon': 'Layers', 'image_url': '/assets/service-curtain.jpg'},
+            {'name': 'Shoe Laundry', 'category': cat_wash, 'price': 250.00, 'unit': 'per pair', 'description': 'Deep sole cleaning, deodorizing and protection', 'icon': 'Footprints', 'image_url': '/assets/service-shoe.jpg'},
         ]
 
         for s_data in services_data:
@@ -164,53 +173,6 @@ class Command(BaseCommand):
             )
             OrderItem.objects.create(order=o2, service_name='Silk Saree / Lehenga', category_name='Dry Cleaning', quantity=2, unit_price=220.00, total_price=440.00)
             Invoice.objects.create(order=o2, subtotal=440.00, total_payable=440.00, payment_status=Order.PaymentStatus.PAID, payment_method=Order.PaymentMethod.CARD)
-
-            # Order 3: Laundry Processing
-            o3 = Order.objects.create(
-                order_id='#FC10286',
-                customer=customer_user,
-                pickup_full_name='Arjun Nair',
-                pickup_phone='+91 91234 56789',
-                pickup_address='Whitefield, Bengaluru - 560066',
-                pickup_city='Bengaluru',
-                pickup_pincode='560066',
-                pickup_date=today,
-                pickup_time_slot='11:00 AM – 01:00 PM',
-                status=Order.Status.WASHING,
-                assigned_pickup_driver=delivery_user,
-                assigned_laundry_staff=laundry_user,
-                subtotal=520.00,
-                total_amount=520.00,
-                payment_status=Order.PaymentStatus.PAID,
-                payment_method=Order.PaymentMethod.UPI
-            )
-            OrderItem.objects.create(order=o3, service_name='Jeans (Wash & Fold)', category_name='Wash & Fold', quantity=3, unit_price=120.00, total_price=360.00)
-            OrderItem.objects.create(order=o3, service_name='Bedsheet (Single / Double)', category_name='Steam Ironing', quantity=1, unit_price=90.00, total_price=90.00)
-            OrderItem.objects.create(order=o3, service_name='T-Shirt (Wash & Fold)', category_name='Wash & Fold', quantity=1, unit_price=70.00, total_price=70.00)
-            Invoice.objects.create(order=o3, subtotal=520.00, total_payable=520.00, payment_status=Order.PaymentStatus.PAID, payment_method=Order.PaymentMethod.UPI)
-
-            # Order 4: Ready for Delivery
-            o4 = Order.objects.create(
-                order_id='#FC10287',
-                customer=customer_user,
-                pickup_full_name='Sneha Reddy',
-                pickup_phone='+91 99887 66554',
-                pickup_address='Koramangala, Bengaluru - 560034',
-                pickup_city='Bengaluru',
-                pickup_pincode='560034',
-                pickup_date=today,
-                pickup_time_slot='02:00 PM – 04:00 PM',
-                status=Order.Status.READY_FOR_DELIVERY,
-                assigned_pickup_driver=delivery_user,
-                assigned_delivery_driver=delivery_user,
-                assigned_laundry_staff=laundry_user,
-                subtotal=600.00,
-                total_amount=600.00,
-                payment_status=Order.PaymentStatus.PAID,
-                payment_method=Order.PaymentMethod.CASH_ON_DELIVERY
-            )
-            OrderItem.objects.create(order=o4, service_name='Blanket / Heavy Quilt', category_name='Special Care', quantity=2, unit_price=300.00, total_price=600.00)
-            Invoice.objects.create(order=o4, subtotal=600.00, total_payable=600.00, payment_status=Order.PaymentStatus.PENDING, payment_method=Order.PaymentMethod.CASH_ON_DELIVERY)
 
             self.stdout.write(self.style.SUCCESS('Sample workflow orders initialized.'))
 

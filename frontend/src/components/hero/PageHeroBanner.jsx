@@ -7,12 +7,19 @@ import React, { useState } from 'react';
  */
 export const PageHeroBanner = ({
   bgImage,
+  eyebrow,
   heading,
   subtitle,
   paragraph,
   ctaText,
   onCtaClick,
-  altText
+  altText,
+  aspectRatio,
+  maxHeight,
+  containerStyle,
+  imgStyle,
+  hideBlur = false,
+  fadeOpacity
 }) => {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -22,17 +29,32 @@ export const PageHeroBanner = ({
   return (
     <section
       aria-label={heading || 'Hero Banner'}
-      className="page-hero-banner-container"
+      className={`page-hero-banner-container ${aspectRatio ? 'custom-aspect-ratio' : ''}`}
+      style={{
+        ...(aspectRatio ? { aspectRatio } : {}),
+        ...(maxHeight ? { maxHeight } : {}),
+        ...containerStyle
+      }}
     >
-      {/* 1. Background Image */}
+      {/* 1. Background Image (Scrolls naturally with page content so image moves synchronously with text) */}
       {bgImage && bgImage.trim() !== '' && !imgError && (
-        <img
-          src={bgImage}
-          alt={altText || heading || 'FabriCare Garment Care'}
-          className={`page-hero-img ${imgLoaded ? 'loaded' : ''}`}
-          onLoad={() => setImgLoaded(true)}
-          onError={() => setImgError(true)}
-        />
+        <div
+          className={`page-hero-bg-layer ${imgLoaded ? 'loaded' : ''}`}
+          style={{
+            backgroundImage: `url(${bgImage})`,
+            ...imgStyle
+          }}
+          aria-hidden="true"
+        >
+          <img
+            src={bgImage}
+            alt={altText || heading || 'FabriCare Garment Care'}
+            className="preload-hero-img"
+            style={{ display: 'none' }}
+            onLoad={() => setImgLoaded(true)}
+            onError={() => setImgError(true)}
+          />
+        </div>
       )}
 
       {/* 2. Fallback Placeholder if image fails to load */}
@@ -57,11 +79,23 @@ export const PageHeroBanner = ({
       )}
 
       {/* 3. Dual White Fade Overlay Layers (Desktop & Mobile) */}
-      <div className="page-hero-fade-overlay" aria-hidden="true" />
-      <div className="page-hero-blur-overlay" aria-hidden="true" />
+      <div
+        className="page-hero-fade-overlay"
+        aria-hidden="true"
+        style={fadeOpacity !== undefined ? { opacity: fadeOpacity } : undefined}
+      />
+      {!hideBlur && <div className="page-hero-blur-overlay" aria-hidden="true" />}
 
       {/* 4. Text Block (Right-aligned container on desktop, centered column) */}
       <div className="page-hero-text-block absolute right-[6%] top-1/2 -translate-y-1/2 flex flex-col items-center text-center w-fit max-w-[46%]">
+        {eyebrow && (
+          <div className="page-hero-eyebrow">
+            <span className="hero-eyebrow-line" />
+            <span className="hero-eyebrow-text">{eyebrow}</span>
+            <span className="hero-eyebrow-line" />
+          </div>
+        )}
+
         <h1 className="page-hero-heading text-center mx-auto">
           {heading}
         </h1>
@@ -97,15 +131,36 @@ export const PageHeroBanner = ({
         .page-hero-banner-container {
           position: relative;
           width: 100%;
+          max-width: 1920px;
+          margin: 0 auto;
           overflow: hidden;
           aspect-ratio: 5120 / 1920;
-          max-height: 520px;
-          min-height: 280px;
           background-color: #FAFCFC;
           touch-action: manipulation;
         }
 
-        /* 1. Background image */
+        /* 1. Background image (Scrolls naturally with text, matching Home page Div 1 hero) */
+        .page-hero-bg-layer {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          background-attachment: scroll;
+          background-position: center top;
+          background-size: cover;
+          background-repeat: no-repeat;
+          opacity: 0;
+          transition: opacity 0.7s ease-out;
+          display: block;
+          image-rendering: -webkit-optimize-contrast;
+          image-rendering: high-quality;
+          z-index: 1;
+        }
+
+        .page-hero-bg-layer.loaded {
+          opacity: 1;
+        }
+
         .page-hero-img {
           position: absolute;
           inset: 0;
@@ -116,6 +171,10 @@ export const PageHeroBanner = ({
           opacity: 0;
           transition: opacity 0.7s ease-out;
           display: block;
+          image-rendering: -webkit-optimize-contrast;
+          image-rendering: high-quality;
+          transform: translateZ(0);
+          backface-visibility: hidden;
         }
 
         .page-hero-img.loaded {
@@ -275,20 +334,58 @@ export const PageHeroBanner = ({
           margin-right: auto;
         }
 
+        .page-hero-eyebrow {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+
+        .hero-eyebrow-line {
+          width: 20px;
+          height: 2px;
+          background: #087F8C;
+          border-radius: 2px;
+        }
+
+        .hero-eyebrow-text {
+          font-family: 'Poppins', sans-serif;
+          font-size: 13px;
+          font-weight: 700;
+          color: #087F8C;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+        }
+
         /* Responsive Breakpoints */
-        @media (max-width: 1023px) {
+        .page-hero-banner-container.custom-aspect-ratio {
+          min-height: unset;
+        }
+
+        @media (max-width: 1023px) and (min-width: 769px) {
           .page-hero-text-block {
             max-width: 48%;
             min-width: unset;
           }
         }
 
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
           .page-hero-banner-container {
-            aspect-ratio: auto;
-            height: 280px;
-            max-height: 280px;
-            min-height: 280px;
+            aspect-ratio: auto !important;
+            height: 290px !important;
+            max-height: 290px !important;
+            min-height: 290px !important;
+          }
+
+          .page-hero-bg-layer {
+            background-attachment: scroll !important;
+            background-position: center 25% !important;
+          }
+
+          .page-hero-banner-container.custom-aspect-ratio {
+            height: auto;
+            max-height: none;
+            min-height: 220px;
           }
 
           .page-hero-img {
@@ -296,58 +393,102 @@ export const PageHeroBanner = ({
           }
 
           .page-hero-fade-overlay {
-            background: linear-gradient(to top,
-              rgba(255, 255, 255, 0.88) 0%,
-              rgba(255, 255, 255, 0.62) 45%,
-              rgba(255, 255, 255, 0) 75%);
+            opacity: 1 !important;
+            background: linear-gradient(180deg,
+              rgba(255, 255, 255, 0.05) 0%,
+              rgba(255, 255, 255, 0.42) 32%,
+              rgba(255, 255, 255, 0.88) 68%,
+              rgba(255, 255, 255, 0.98) 100%) !important;
           }
 
           .page-hero-blur-overlay {
-            mask-image: linear-gradient(to top, black 50%, transparent 100%);
-            -webkit-mask-image: linear-gradient(to top, black 50%, transparent 100%);
+            backdrop-filter: blur(2px) !important;
+            -webkit-backdrop-filter: blur(2px) !important;
+            mask-image: linear-gradient(to top, black 55%, transparent 100%) !important;
+            -webkit-mask-image: linear-gradient(to top, black 55%, transparent 100%) !important;
           }
 
           .page-hero-text-block {
-            right: auto;
-            left: 50%;
-            top: auto;
-            bottom: 20px;
-            transform: translateX(-50%);
-            width: 92%;
-            max-width: 92%;
-            min-width: unset;
-            text-align: center;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            right: auto !important;
+            left: 50% !important;
+            top: auto !important;
+            bottom: 22px !important;
+            transform: translateX(-50%) !important;
+            width: 90% !important;
+            max-width: 420px !important;
+            min-width: unset !important;
+            text-align: center !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            z-index: 3 !important;
+          }
+
+          .page-hero-eyebrow {
+            gap: 8px !important;
+            margin-bottom: 6px !important;
+          }
+
+          .hero-eyebrow-line {
+            width: 16px !important;
+            height: 2px !important;
+          }
+
+          .hero-eyebrow-text {
+            font-size: 11.5px !important;
+            letter-spacing: 1.5px !important;
           }
 
           .page-hero-heading {
-            font-size: clamp(26px, 7vw, 34px);
-            text-align: center;
-            margin-left: auto;
-            margin-right: auto;
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 32px !important;
+            font-weight: 800 !important;
+            color: #12263A !important;
+            line-height: 1.15 !important;
+            letter-spacing: -0.5px !important;
+            margin: 0 !important;
+            text-align: center !important;
+            text-shadow: none !important;
           }
 
           .page-hero-subtitle {
-            font-size: 13px;
-            margin: 6px 0 0;
-            line-height: 1.3;
-            text-align: center;
-            margin-left: auto;
-            margin-right: auto;
+            font-family: 'Inter', sans-serif !important;
+            font-size: 13.5px !important;
+            font-weight: 500 !important;
+            color: #556980 !important;
+            line-height: 1.42 !important;
+            margin: 6px auto 0 !important;
+            text-align: center !important;
+            max-width: 320px !important;
+            text-shadow: none !important;
           }
 
           .page-hero-paragraph {
-            font-size: 12px;
-            margin: 6px auto 0;
-            text-align: center;
+            font-size: 12.5px !important;
+            margin: 6px auto 0 !important;
+            text-align: center !important;
+            color: #64748B !important;
           }
 
           .page-hero-cta-btn {
-            font-size: 13px;
-            padding: 8px 20px;
-            margin: 12px auto 0;
+            font-size: 13.5px !important;
+            padding: 9px 22px !important;
+            margin: 12px auto 0 !important;
+            border-radius: 9999px !important;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .page-hero-banner-container {
+            height: 275px !important;
+            min-height: 275px !important;
+          }
+          .page-hero-heading {
+            font-size: 28px !important;
+          }
+          .page-hero-subtitle {
+            font-size: 12.5px !important;
+            max-width: 290px !important;
           }
         }
       `}</style>

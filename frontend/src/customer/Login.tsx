@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useAuth, getPortalForRole } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
+import { getPortalForRole } from '../utils/roleUtils';
 import { useBooking } from '../context/BookingContext';
 import { Lock, Mail, User, Phone, ArrowRight, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 
@@ -18,6 +19,7 @@ export const Login = () => {
     clearError();
     try {
       const res = await login(username, password);
+      const role = res?.role || 'customer';
       const intended = sessionStorage.getItem('fabricare_intended_destination');
       if (role === 'customer' && intended) {
         sessionStorage.removeItem('fabricare_intended_destination');

@@ -19,6 +19,10 @@ build/
 .DS_Store
 Thumbs.db
 
+# Media & Uploads
+media/
+backend/media/
+backend/media/*
 # Scratch & Temporary
 scratch/
 *.log

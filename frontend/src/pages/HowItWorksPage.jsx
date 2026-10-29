@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { PageHeroBanner } from '../components/hero/PageHeroBanner';
 import {
@@ -37,6 +37,25 @@ const HangerIcon = ({ size = 20, color = '#087F8C' }) => (
 export const HowItWorksPage = () => {
   const { startBooking, navigateTo } = useBooking();
   const [openFaq, setOpenFaq] = useState(0);
+  const faqListRef = useRef(null);
+
+  useEffect(() => {
+    if (openFaq === null) return;
+
+    const handleClickOutside = (event) => {
+      if (faqListRef.current && !faqListRef.current.contains(event.target)) {
+        setOpenFaq(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [openFaq]);
 
   const faqItems = [
     {
@@ -82,93 +101,176 @@ export const HowItWorksPage = () => {
       {/* 1. HERO BANNER WITH WHITE FADE OVERLAY & HEADINGS */}
       <PageHeroBanner
         bgImage="/assets/how-it-works-hero.png"
+        eyebrow="HOW IT WORKS"
         heading="How It Works"
         subtitle="Effortless 3-Step Pickup, Clean & Doorstep Delivery"
         altText="How FabriCare Works - Modern Laundry Facility"
       />
 
-      {/* 2. SIGNATURE 3-STEP WORKING PROCESS (Div 6) */}
+      {/* 2. SIGNATURE 3-STEP WORKING PROCESS */}
       <section className="process-section" id="process-section">
         <div className="container">
-          <div className="text-center process-head">
-            <div className="process-eyebrow-container">
-              <span className="process-eyebrow-line"></span>
-              <span className="process-eyebrow-badge">SIMPLE 3 STEP PROCESS</span>
-              <span className="process-eyebrow-line"></span>
+          {/* DESKTOP VIEW - 100% UNTOUCHED */}
+          <div className="process-desktop-view">
+            <div className="text-center process-head">
+              <div className="process-eyebrow-container">
+                <span className="process-eyebrow-line"></span>
+                <span className="process-eyebrow-badge">SIMPLE 3 STEP PROCESS</span>
+                <span className="process-eyebrow-line"></span>
+              </div>
+              <h2 className="process-main-title">
+                Our <span className="process-title-highlight">Working Process</span>
+              </h2>
+              <p className="process-subtitle">
+                From pickup to delivery, we make laundry simple, convenient and hassle-free.
+              </p>
             </div>
-            <h2 className="process-main-title">
-              Our <span className="process-title-highlight">Working Process</span>
-            </h2>
-            <p className="process-subtitle">
-              From pickup to delivery, we make laundry simple, convenient and hassle-free.
-            </p>
+
+            <div className="process-steps-wrapper">
+              {/* Connecting dashed wave between cards */}
+              <svg
+                className="process-connecting-curve"
+                viewBox="0 0 1000 100"
+                fill="none"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M 285 50 C 330 72, 370 72, 415 50 M 585 50 C 630 72, 670 72, 715 50"
+                  stroke="#82D6CB"
+                  strokeWidth="2.5"
+                  strokeDasharray="6 6"
+                  strokeLinecap="round"
+                />
+              </svg>
+
+              <div className="process-steps-grid">
+                {/* Step 1 */}
+                <div className="process-step-card">
+                  <div className="process-step-tag">01</div>
+                  <div className="process-card-img-wrap">
+                    <img
+                      src="/assets/process-step-1.png"
+                      alt="Free Pickup (Above ₹500)"
+                      className="process-card-img"
+                    />
+                  </div>
+                  <h3 className="process-step-title">Free Pickup (Above ₹500)</h3>
+                  <p className="process-step-desc">
+                    We pickup the items from your home/office as per scheduled time.
+                  </p>
+                </div>
+
+                {/* Step 2 */}
+                <div className="process-step-card">
+                  <div className="process-step-tag">02</div>
+                  <div className="process-card-img-wrap">
+                    <img
+                      src="/assets/process-step-2.png"
+                      alt="Clean / Wash / Iron"
+                      className="process-card-img"
+                    />
+                  </div>
+                  <h3 className="process-step-title">Clean / Wash / Iron</h3>
+                  <p className="process-step-desc">
+                    The task is carried out by trained professionals with care.
+                  </p>
+                </div>
+
+                {/* Step 3 */}
+                <div className="process-step-card">
+                  <div className="process-step-tag">03</div>
+                  <div className="process-card-img-wrap">
+                    <img
+                      src="/assets/process-step-3.png"
+                      alt="Superfast Delivery"
+                      className="process-card-img"
+                    />
+                  </div>
+                  <h3 className="process-step-title">Superfast Delivery</h3>
+                  <p className="process-step-desc">
+                    We offer same day delivery for faster processing of items.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="process-steps-wrapper">
-            {/* Connecting dashed wave between cards */}
-            <svg
-              className="process-connecting-curve"
-              viewBox="0 0 1000 100"
-              fill="none"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M 285 50 C 330 72, 370 72, 415 50 M 585 50 C 630 72, 670 72, 715 50"
-                stroke="#82D6CB"
-                strokeWidth="2.5"
-                strokeDasharray="6 6"
-                strokeLinecap="round"
-              />
-            </svg>
+          {/* MOBILE VIEW - EXACT MATCH TO USER'S MOCKUP */}
+          <div className="process-mobile-view">
+            <div className="hiw-mobile-head">
+              <div className="hiw-mobile-eyebrow">
+                <span className="hiw-mobile-dash">—</span>
+                <span>HOW IT WORKS</span>
+                <span className="hiw-mobile-dash">—</span>
+              </div>
+              <h2 className="hiw-mobile-title">
+                Our <span className="hiw-mobile-title-highlight">Working Process</span>
+              </h2>
+              <p className="hiw-mobile-sub">
+                Four simple steps to get your laundry picked up, cleaned, and delivered fresh.
+              </p>
+            </div>
 
-            <div className="process-steps-grid">
-              {/* Step 1 */}
-              <div className="process-step-card">
-                <div className="process-step-tag">01</div>
-                <div className="process-card-img-wrap">
-                  <img
-                    src="/assets/process-step-1.png"
-                    alt="Free Pickup (Above ₹500)"
-                    className="process-card-img"
-                  />
+            <div className="hiw-mobile-cards-stack">
+              {/* Card 1 */}
+              <div className="hiw-mobile-card">
+                <div className="hiw-mobile-card-left">
+                  <div className="hiw-mobile-num-circle">1</div>
                 </div>
-                <h3 className="process-step-title">Free Pickup (Above ₹500)</h3>
-                <p className="process-step-desc">
-                  We pickup the items from your home/office as per scheduled time.
-                </p>
+                <div className="hiw-mobile-card-body">
+                  <div className="hiw-mobile-card-title-row">
+                    <h3 className="hiw-mobile-card-title">Free Pickup (Above ₹300)</h3>
+                    <img
+                      src="/assets/hiw-scooter.png"
+                      alt="Free Pickup Scooter"
+                      className="hiw-mobile-corner-icon"
+                    />
+                  </div>
+                  <p className="hiw-mobile-card-desc">
+                    Schedule a pickup at your convenience. We collect your clothes from your doorstep.
+                  </p>
+                </div>
               </div>
 
-              {/* Step 2 */}
-              <div className="process-step-card">
-                <div className="process-step-tag">02</div>
-                <div className="process-card-img-wrap">
-                  <img
-                    src="/assets/process-step-2.png"
-                    alt="Clean / Wash / Iron"
-                    className="process-card-img"
-                  />
+              {/* Card 2 */}
+              <div className="hiw-mobile-card">
+                <div className="hiw-mobile-card-left">
+                  <div className="hiw-mobile-num-circle">2</div>
                 </div>
-                <h3 className="process-step-title">Clean / Wash / Iron</h3>
-                <p className="process-step-desc">
-                  The task is carried out by trained professionals with care.
-                </p>
+                <div className="hiw-mobile-card-body">
+                  <div className="hiw-mobile-card-title-row">
+                    <h3 className="hiw-mobile-card-title">Clean / Wash / Iron</h3>
+                    <img
+                      src="/assets/hiw-bubbles.png"
+                      alt="Clean Wash Iron Bubbles"
+                      className="hiw-mobile-corner-icon"
+                    />
+                  </div>
+                  <p className="hiw-mobile-card-desc">
+                    We carefully clean, wash, and iron your clothes using advanced machines and safe products.
+                  </p>
+                </div>
               </div>
 
-              {/* Step 3 */}
-              <div className="process-step-card">
-                <div className="process-step-tag">03</div>
-                <div className="process-card-img-wrap">
-                  <img
-                    src="/assets/process-step-3.png"
-                    alt="Superfast Delivery"
-                    className="process-card-img"
-                  />
+              {/* Card 3 */}
+              <div className="hiw-mobile-card">
+                <div className="hiw-mobile-card-left">
+                  <div className="hiw-mobile-num-circle">3</div>
                 </div>
-                <h3 className="process-step-title">Superfast Delivery</h3>
-                <p className="process-step-desc">
-                  We offer same day delivery for faster processing of items.
-                </p>
+                <div className="hiw-mobile-card-body">
+                  <div className="hiw-mobile-card-title-row">
+                    <h3 className="hiw-mobile-card-title">Superfast Delivery</h3>
+                    <img
+                      src="/assets/hiw-box.png"
+                      alt="Superfast Delivery Box"
+                      className="hiw-mobile-corner-icon"
+                    />
+                  </div>
+                  <p className="hiw-mobile-card-desc">
+                    Your fresh clothes are delivered back to you, on time, every time.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -191,7 +293,7 @@ export const HowItWorksPage = () => {
             </p>
           </div>
 
-          <div className="faq-accordion-list">
+          <div className="faq-accordion-list" ref={faqListRef}>
             {faqItems.map((item, index) => {
               const isOpen = openFaq === index;
               return (
@@ -227,8 +329,8 @@ export const HowItWorksPage = () => {
         </div>
       </section>
 
-      {/* 4. CTA BANNER (DIV 10) */}
-      <section className="cta-banner-section">
+      {/* 4. CTA BANNER (DIV 4) */}
+      <section className="cta-banner-section how-it-works-div-4">
         <div className="cta-banner-bg-wrapper">
           <img
             src="/assets/cta-folded-clothes.jpg"
@@ -239,9 +341,9 @@ export const HowItWorksPage = () => {
         </div>
         <div className="container cta-banner-container">
           <div className="cta-banner-content">
-            <h2 className="cta-banner-title">
+            <h1 className="cta-banner-title">
               Ready to Free Up Your Weekends?
-            </h2>
+            </h1>
             <p className="cta-banner-sub">
               Experience the premier laundry service in Bangalore with convenient doorstep pickup &amp; delivery.
             </p>
@@ -258,27 +360,12 @@ export const HowItWorksPage = () => {
       <style>{`
         .how-it-works-page-wrapper {
           background-color: #FAFCFC;
-          min-height: 100vh;
+          width: 100%;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
 
-        /* ==========================================================================
-           DIV 1: HERO BANNER (PURE IMAGE)
-           ========================================================================== */
-        .how-it-works-div-1 {
-          width: 100%;
-          line-height: 0;
-          overflow: hidden;
-          background-color: #FAFCFC;
-        }
-
-        .how-hero-pure-img {
-          width: 100%;
-          height: auto;
-          max-height: 520px;
-          object-fit: cover;
-          object-position: top center;
-          display: block;
-        }
 
         /* 3-STEP PROCESS (DIV 6) */
         .process-section {
@@ -593,6 +680,8 @@ export const HowItWorksPage = () => {
           display: flex;
           align-items: center;
           justify-content: center;
+          background: #05636D url('/assets/cta-folded-clothes.jpg') center 38% / cover no-repeat fixed;
+          background-attachment: fixed;
         }
 
         .cta-banner-bg-wrapper {
@@ -601,6 +690,7 @@ export const HowItWorksPage = () => {
           width: 100%;
           height: 100%;
           z-index: 0;
+          display: none;
         }
 
         .cta-banner-bg-img {
@@ -629,21 +719,26 @@ export const HowItWorksPage = () => {
           text-align: center;
         }
 
-        .cta-banner-title {
+        .cta-banner-title,
+        .how-it-works-div-4 h1,
+        .how-it-works-div-4 h2 {
           font-family: 'Poppins', sans-serif;
           font-size: 2.85rem;
           font-weight: 800;
-          color: #FFFFFF;
+          color: #000000;
           margin: 0 0 16px;
           line-height: 1.2;
         }
 
-        .cta-banner-sub {
+        .cta-banner-sub,
+        .how-it-works-div-4 p {
+          font-family: 'Inter', sans-serif;
           font-size: 1.05rem;
-          color: rgba(255, 255, 255, 0.95);
+          color: #000000;
           line-height: 1.6;
           margin: 0 auto 30px;
           max-width: 620px;
+          font-weight: 500;
         }
 
         .cta-banner-btn {
@@ -668,7 +763,16 @@ export const HowItWorksPage = () => {
           transform: translateY(-2px);
         }
 
-        @media (max-width: 992px) {
+        /* DESKTOP / MOBILE SWITCHING FOR PROCESS SECTION */
+        .process-desktop-view {
+          display: block;
+        }
+
+        .process-mobile-view {
+          display: none;
+        }
+
+        @media (max-width: 992px) and (min-width: 769px) {
           .process-steps-grid {
             grid-template-columns: 1fr;
           }
@@ -677,11 +781,176 @@ export const HowItWorksPage = () => {
           }
         }
 
-        @media (max-width: 640px) {
-          .how-hero-pure-img {
-            max-height: 280px;
-            object-position: top center;
+        @media (max-width: 768px) {
+          .process-desktop-view {
+            display: none !important;
           }
+
+          .process-mobile-view {
+            display: block !important;
+          }
+
+          .process-section {
+            background-color: #F4F8F8 !important;
+            padding: 44px 16px 54px !important;
+          }
+
+          /* Header */
+          .hiw-mobile-head {
+            text-align: center;
+            margin-bottom: 28px;
+          }
+
+          .hiw-mobile-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            color: #087F8C;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+          }
+
+          .hiw-mobile-dash {
+            font-weight: 700;
+            color: #087F8C;
+          }
+
+          .hiw-mobile-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 32px;
+            font-weight: 800;
+            color: #12263A;
+            line-height: 1.2;
+            letter-spacing: -0.6px;
+            margin: 0 0 12px;
+          }
+
+          .hiw-mobile-title-highlight {
+            color: #087F8C;
+          }
+
+          .hiw-mobile-sub {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            color: #5E7285;
+            line-height: 1.55;
+            max-width: 320px;
+            margin: 0 auto;
+          }
+
+          /* Cards Stack */
+          .hiw-mobile-cards-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 100%;
+            max-width: 440px;
+            margin: 0 auto;
+          }
+
+          .hiw-mobile-card {
+            background: #FFFFFF;
+            border-radius: 24px;
+            padding: 24px 20px 22px;
+            box-shadow: 0 4px 20px rgba(8, 127, 140, 0.04);
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            border: 1px solid rgba(220, 238, 236, 0.6);
+            box-sizing: border-box;
+          }
+
+          .hiw-mobile-card-left {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: -2px;
+          }
+
+          .hiw-mobile-num-circle {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: #E0F7F6;
+            color: #087F8C;
+            font-family: 'Poppins', sans-serif;
+            font-size: 18px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .hiw-mobile-card-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+          }
+
+          .hiw-mobile-card-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+            min-height: 38px;
+          }
+
+          .hiw-mobile-card-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 16.5px;
+            font-weight: 800;
+            color: #12263A;
+            margin: 0;
+            line-height: 1.28;
+          }
+
+          .hiw-mobile-corner-icon {
+            width: 34px;
+            height: 34px;
+            object-fit: contain;
+            flex-shrink: 0;
+          }
+
+          .hiw-mobile-card-desc {
+            font-family: 'Inter', sans-serif;
+            font-size: 13.5px;
+            color: #556980;
+            line-height: 1.55;
+            margin: 0;
+          }
+        }
+
+        @media (max-width: 400px) {
+          .hiw-mobile-title {
+            font-size: 28px;
+          }
+          .hiw-mobile-card {
+            padding: 20px 16px 18px;
+            gap: 12px;
+            border-radius: 20px;
+          }
+          .hiw-mobile-num-circle {
+            width: 38px;
+            height: 38px;
+            font-size: 16px;
+          }
+          .hiw-mobile-card-title {
+            font-size: 15px;
+          }
+          .hiw-mobile-card-desc {
+            font-size: 12.5px;
+          }
+        }
+
+        @media (max-width: 640px) {
           .faq-question-btn {
             padding: 16px 18px;
           }

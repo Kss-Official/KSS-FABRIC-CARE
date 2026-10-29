@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { AboutHeroBanner } from '../components/hero/AboutHeroBanner';
 import {
@@ -13,7 +13,8 @@ import {
   IndianRupee,
   MessageSquare,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  CircleDollarSign
 } from 'lucide-react';
 
 const HangerIcon = ({ size = 20, color = '#087F8C' }) => (
@@ -34,8 +35,26 @@ const HangerIcon = ({ size = 20, color = '#087F8C' }) => (
 
 export const AboutPage = () => {
   const { startBooking, navigateTo } = useBooking();
-  // Card 1 open by default as shown in the reference image
   const [openFaq, setOpenFaq] = useState(0);
+  const faqListRef = useRef(null);
+
+  useEffect(() => {
+    if (openFaq === null) return;
+
+    const handleClickOutside = (event) => {
+      if (faqListRef.current && !faqListRef.current.contains(event.target)) {
+        setOpenFaq(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [openFaq]);
 
   const faqItems = [
     {
@@ -88,79 +107,154 @@ export const AboutPage = () => {
           ========================================================================= */}
       <div className="about-div-2 about-wallah-section">
         <div className="container">
-          <div className="about-wallah-grid">
-            <div className="about-wallah-image-col">
-              <div className="about-wallah-frame">
-                <img
-                  src="/assets/about-jeans.jpg"
-                  alt="FabriCare Laundry Wallah - Clean Garments Care"
-                  className="about-wallah-img"
-                />
+          {/* Desktop View - 100% untouched for laptops / desktops */}
+          <div className="about-wallah-desktop-view">
+            <div className="about-wallah-grid">
+              <div className="about-wallah-image-col">
+                <div className="about-wallah-frame">
+                  <img
+                    src="/assets/about-jeans.jpg"
+                    alt="FabriCare Laundry Wallah - Clean Garments Care"
+                    className="about-wallah-img"
+                  />
+                </div>
+              </div>
+
+              <div className="about-wallah-content-col">
+                <div className="about-eyebrow">
+                  <span className="eyebrow-line" />
+                  <span>ABOUT US</span>
+                  <span className="eyebrow-line" />
+                </div>
+
+                <h2 className="about-heading">
+                  Laundry Wallah
+                  <span className="about-heading-highlight">At Your Service</span>
+                </h2>
+
+                <p className="about-text-p">
+                  Welcome to our premier online laundry service, where affordability meets exceptional quality. Our commitment to providing top-notch service is unmatched, and we pride ourselves on delivering convenience right to your doorstep. Our experienced team is dedicated to making your laundry experience hassle-free, ensuring your complete satisfaction every step of the way.
+                </p>
+
+                <p className="about-text-p">
+                  Our mission is simple — to make laundry a stress-free experience for all. Let us show you why we're the best in the business.
+                </p>
+
+                <div className="about-perks-row">
+                  <div className="about-perk-item">
+                    <div className="perk-icon-circle">
+                      <Truck size={20} strokeWidth={2.2} />
+                    </div>
+                    <div className="perk-text">
+                      <span className="perk-title">Same-Day</span>
+                      <span className="perk-sub">Delivery</span>
+                    </div>
+                  </div>
+
+                  <div className="perk-divider" />
+
+                  <div className="about-perk-item">
+                    <div className="perk-icon-circle">
+                      <MapPin size={20} strokeWidth={2.2} />
+                    </div>
+                    <div className="perk-text">
+                      <span className="perk-title">Free Pickup &amp;</span>
+                      <span className="perk-sub">Drop (Above ₹500)</span>
+                    </div>
+                  </div>
+
+                  <div className="perk-divider" />
+
+                  <div className="about-perk-item">
+                    <div className="perk-icon-circle">
+                      <BadgeCheck size={20} strokeWidth={2.2} />
+                    </div>
+                    <div className="perk-text">
+                      <span className="perk-title">Affordable</span>
+                      <span className="perk-sub">Price</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  className="btn-enquire-now"
+                  onClick={() => startBooking()}
+                >
+                  <span>Book a Pickup</span>
+                  <ArrowRight size={18} />
+                </button>
               </div>
             </div>
+          </div>
 
-            <div className="about-wallah-content-col">
+          {/* Div 2: Mobile Specific View (Exact match to user reference screenshot) */}
+          <div className="about-wallah-mobile-view">
+            <div className="about-mobile-header text-center">
               <div className="about-eyebrow">
                 <span className="eyebrow-line" />
                 <span>ABOUT US</span>
                 <span className="eyebrow-line" />
               </div>
-
-              <h2 className="about-heading">
-                Laundry Wallah
+              <h2 className="about-heading-mobile">
+                Laundry Wallah <br />
                 <span className="about-heading-highlight">At Your Service</span>
               </h2>
+            </div>
 
-              <p className="about-text-p">
-                Welcome to our premier online laundry service, where affordability meets exceptional quality. Our commitment to providing top-notch service is unmatched, and we pride ourselves on delivering convenience right to your doorstep. Our experienced team is dedicated to making your laundry experience hassle-free, ensuring your complete satisfaction every step of the way.
-              </p>
+            <div className="about-mobile-image-frame">
+              <img
+                src="/assets/about-jeans.jpg"
+                alt="Laundry Wallah - Clean Garments Care"
+                className="about-mobile-img"
+              />
+            </div>
 
-              <p className="about-text-p">
-                Our mission is simple — to make laundry a stress-free experience for all. Let us show you why we're the best in the business.
-              </p>
+            <p className="about-mobile-desc">
+              We're on a mission to make laundry simple, reliable, and hassle-free. Laundrix brings professional cleaning care to your doorstep so you can look good and feel good — everyday. From everyday wear to delicate fabrics, we handle it all with care.
+            </p>
 
-              <div className="about-perks-row">
-                <div className="about-perk-item">
-                  <div className="perk-icon-circle">
-                    <Truck size={20} strokeWidth={2.2} />
-                  </div>
-                  <div className="perk-text">
-                    <span className="perk-title">Same-Day</span>
-                    <span className="perk-sub">Delivery</span>
-                  </div>
+            <div className="about-mobile-cards-stack">
+              <div className="about-feature-card">
+                <div className="about-feature-icon-circle">
+                  <Clock size={22} strokeWidth={2.2} />
                 </div>
-
-                <div className="perk-divider" />
-
-                <div className="about-perk-item">
-                  <div className="perk-icon-circle">
-                    <MapPin size={20} strokeWidth={2.2} />
-                  </div>
-                  <div className="perk-text">
-                    <span className="perk-title">Free Pickup &amp;</span>
-                    <span className="perk-sub">Drop (Above ₹500)</span>
-                  </div>
-                </div>
-
-                <div className="perk-divider" />
-
-                <div className="about-perk-item">
-                  <div className="perk-icon-circle">
-                    <BadgeCheck size={20} strokeWidth={2.2} />
-                  </div>
-                  <div className="perk-text">
-                    <span className="perk-title">Affordable</span>
-                    <span className="perk-sub">Price</span>
-                  </div>
+                <div className="about-feature-info">
+                  <h4 className="about-feature-title">Saves You Time</h4>
+                  <p className="about-feature-sub">Effortless pickup and quick returns</p>
                 </div>
               </div>
 
+              <div className="about-feature-card">
+                <div className="about-feature-icon-circle">
+                  <ShieldCheck size={22} strokeWidth={2.2} />
+                </div>
+                <div className="about-feature-info">
+                  <h4 className="about-feature-title">Professional Cleaning Care</h4>
+                  <p className="about-feature-sub">Expert fabric handling guaranteed</p>
+                </div>
+              </div>
+
+              <div className="about-feature-card">
+                <div className="about-feature-icon-circle">
+                  <CircleDollarSign size={22} strokeWidth={2.2} />
+                </div>
+                <div className="about-feature-info">
+                  <h4 className="about-feature-title">Affordable Pricing</h4>
+                  <p className="about-feature-sub">Transparent rates with no hidden costs</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="about-mobile-btn-wrap">
               <button
-                className="btn-enquire-now"
-                onClick={() => startBooking()}
+                type="button"
+                className="btn-read-more-pill"
+                onClick={() => {
+                  document.querySelector('.about-div-3')?.scrollIntoView({ behavior: 'smooth' });
+                }}
               >
-                <span>Book a Pickup</span>
-                <ArrowRight size={18} />
+                <span>Read More</span>
+                <ArrowRight size={18} strokeWidth={2.5} />
               </button>
             </div>
           </div>
@@ -185,7 +279,7 @@ export const AboutPage = () => {
             </p>
           </div>
 
-          <div className="faq-accordion-list">
+          <div className="faq-accordion-list" ref={faqListRef}>
             {faqItems.map((item, index) => {
               const isOpen = openFaq === index;
               return (
@@ -235,9 +329,9 @@ export const AboutPage = () => {
         </div>
         <div className="container about-cta-container">
           <div className="about-cta-content">
-            <h2 className="about-cta-title">
+            <h1 className="about-cta-title">
               Ready for fresh clothes?
-            </h2>
+            </h1>
             <p className="about-cta-subtitle">
               Experience your first premium laundry order completely hassle-free. Schedule your pickup in under 30 seconds and let our experts handle the rest.
             </p>
@@ -254,7 +348,10 @@ export const AboutPage = () => {
       <style>{`
         .about-page-wrapper {
           background-color: #FAFCFC;
-          min-height: 100vh;
+          width: 100%;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
 
         /* ==========================================================================
@@ -282,6 +379,14 @@ export const AboutPage = () => {
         .about-div-2 {
           padding: 100px 0;
           background: #FFFFFF;
+        }
+
+        .about-wallah-desktop-view {
+          display: block;
+        }
+
+        .about-wallah-mobile-view {
+          display: none;
         }
 
         .about-wallah-grid {
@@ -603,6 +708,8 @@ export const AboutPage = () => {
           display: flex;
           align-items: center;
           justify-content: center;
+          background: #05636D url('/assets/about-cta-stack.jpg') center / cover no-repeat fixed;
+          background-attachment: fixed;
         }
 
         .about-cta-bg-wrapper {
@@ -611,6 +718,7 @@ export const AboutPage = () => {
           width: 100%;
           height: 100%;
           z-index: 0;
+          display: none;
         }
 
         .about-cta-bg-img {
@@ -639,24 +747,27 @@ export const AboutPage = () => {
           text-align: center;
         }
 
-        .about-cta-title {
+        .about-cta-title,
+        .about-div-4 h1,
+        .about-div-4 h2 {
           font-family: 'Poppins', sans-serif;
           font-size: 44px;
           font-weight: 800;
-          color: #FFFFFF;
+          color: #000000;
           margin: 0 0 16px;
           line-height: 1.2;
           letter-spacing: -0.02em;
         }
 
-        .about-cta-subtitle {
+        .about-cta-subtitle,
+        .about-div-4 p {
           font-family: 'Inter', sans-serif;
           font-size: 16px;
-          color: rgba(255, 255, 255, 0.94);
+          color: #000000;
           line-height: 1.65;
           margin: 0 auto 34px;
           max-width: 680px;
-          font-weight: 400;
+          font-weight: 500;
         }
 
         .about-cta-button {
@@ -700,6 +811,131 @@ export const AboutPage = () => {
           }
         }
 
+        @media (max-width: 768px) {
+          .about-wallah-desktop-view {
+            display: none !important;
+          }
+          .about-wallah-mobile-view {
+            display: block !important;
+            max-width: 440px !important;
+            margin: 0 auto !important;
+            padding: 0 4px !important;
+          }
+          .about-div-2 {
+            padding: 44px 0 54px !important;
+          }
+          .about-mobile-header {
+            text-align: center !important;
+            margin-bottom: 22px !important;
+          }
+          .about-heading-mobile {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 30px !important;
+            font-weight: 800 !important;
+            line-height: 1.2 !important;
+            color: #12263A !important;
+            margin: 8px 0 0 !important;
+            letter-spacing: -0.5px !important;
+          }
+          .about-heading-mobile .about-heading-highlight {
+            color: #087F8C !important;
+            display: block !important;
+          }
+          .about-mobile-image-frame {
+            width: 100% !important;
+            border-radius: 24px !important;
+            overflow: hidden !important;
+            box-shadow: 0 10px 28px rgba(18, 38, 58, 0.08) !important;
+            margin-bottom: 22px !important;
+            background: #F8FAFC !important;
+          }
+          .about-mobile-img {
+            width: 100% !important;
+            height: auto !important;
+            aspect-ratio: 4 / 3 !important;
+            object-fit: cover !important;
+            display: block !important;
+          }
+          .about-mobile-desc {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 14.5px !important;
+            color: #4B5563 !important;
+            line-height: 1.6 !important;
+            margin: 0 0 24px !important;
+            text-align: left !important;
+          }
+          .about-mobile-cards-stack {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 12px !important;
+            margin-bottom: 28px !important;
+          }
+          .about-feature-card {
+            background: #F0FAF9 !important;
+            border: 1.5px solid #D1F2EE !important;
+            border-radius: 20px !important;
+            padding: 15px 18px !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 16px !important;
+            box-shadow: 0 2px 8px rgba(8, 127, 140, 0.04) !important;
+          }
+          .about-feature-icon-circle {
+            width: 46px !important;
+            height: 46px !important;
+            border-radius: 50% !important;
+            background: #D5F4F0 !important;
+            color: #087F8C !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+          }
+          .about-feature-info {
+            display: flex !important;
+            flex-direction: column !important;
+            text-align: left !important;
+          }
+          .about-feature-title {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            color: #12263A !important;
+            margin: 0 0 3px !important;
+            line-height: 1.25 !important;
+          }
+          .about-feature-sub {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 13px !important;
+            color: #64748B !important;
+            margin: 0 !important;
+            line-height: 1.35 !important;
+          }
+          .about-mobile-btn-wrap {
+            display: flex !important;
+            justify-content: center !important;
+          }
+          .btn-read-more-pill {
+            background: linear-gradient(135deg, #FF6B54 0%, #FF5639 100%) !important;
+            color: #FFFFFF !important;
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 15.5px !important;
+            font-weight: 600 !important;
+            padding: 13px 42px !important;
+            border-radius: 9999px !important;
+            border: none !important;
+            cursor: pointer !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+            box-shadow: 0 8px 24px rgba(255, 96, 70, 0.38) !important;
+            transition: all 0.2s ease !important;
+          }
+          .btn-read-more-pill:active {
+            transform: scale(0.98) !important;
+          }
+        }
+
         @media (max-width: 640px) {
           .about-hero-img-clean {
             max-height: 280px;
@@ -714,6 +950,29 @@ export const AboutPage = () => {
           }
           .faq-q-title {
             font-size: 14.5px;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .about-heading-mobile {
+            font-size: 27px !important;
+          }
+          .about-mobile-desc {
+            font-size: 13.5px !important;
+          }
+          .about-feature-card {
+            padding: 12px 14px !important;
+            gap: 12px !important;
+          }
+          .about-feature-icon-circle {
+            width: 42px !important;
+            height: 42px !important;
+          }
+          .about-feature-title {
+            font-size: 14px !important;
+          }
+          .about-feature-sub {
+            font-size: 12px !important;
           }
         }
       `}</style>

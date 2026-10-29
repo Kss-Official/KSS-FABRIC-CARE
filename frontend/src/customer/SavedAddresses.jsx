@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { addressApi } from '../api/apiClient';
 import { 
   MapPin, 
@@ -25,12 +25,43 @@ export const SavedAddresses = () => {
     is_default: false
   });
   const [saving, setSaving] = useState(false);
+  const modalRef = useRef(null);
+
+  useEffect(() => {
+    if (!showAddModal) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleClickOutside = (e) => {
+      if (modalRef.current && !modalRef.current.contains(e.target)) {
+        setShowAddModal(false);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowAddModal(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow || '';
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showAddModal]);
 
   const fetchAddresses = async () => {
     setLoading(true);
     try {
       const res = await addressApi.getAddresses();
-      const list = Array.isArray(res.data) ? res.data : res.data?.results || [];
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : res?.data?.results || []);
       setAddresses(list);
     } catch (err) {
       console.error('Failed to load addresses:', err);
@@ -71,14 +102,30 @@ export const SavedAddresses = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!newAddress.address_line) return;
+    if (!newAddress.address_line || !newAddress.address_line.trim()) {
+      alert('Please enter a full address');
+      return;
+    }
     setSaving(true);
     try {
+      let savedRes = null;
       if (editingAddressId) {
-        await addressApi.updateAddress(editingAddressId, newAddress);
+        savedRes = await addressApi.updateAddress(editingAddressId, newAddress);
       } else {
-        await addressApi.createAddress(newAddress);
+        savedRes = await addressApi.createAddress(newAddress);
       }
+      
+      const savedItem = savedRes?.data;
+      if (savedItem) {
+        setAddresses(prev => {
+          const filtered = prev.filter(a => String(a.id) !== String(savedItem.id));
+          if (savedItem.is_default) {
+            filtered.forEach(a => { a.is_default = false; });
+          }
+          return [savedItem, ...filtered];
+        });
+      }
+
       setShowAddModal(false);
       setEditingAddressId(null);
       setNewAddress({
@@ -89,9 +136,10 @@ export const SavedAddresses = () => {
         pincode: '560043',
         is_default: false
       });
-      fetchAddresses();
+      await fetchAddresses();
     } catch (err) {
-      alert(err.response?.data?.error || `Failed to ${editingAddressId ? 'update' : 'save'} address`);
+      console.error('Save address error:', err);
+      alert(err.response?.data?.error || err.message || `Failed to ${editingAddressId ? 'update' : 'save'} address`);
     } finally {
       setSaving(false);
     }
@@ -99,11 +147,14 @@ export const SavedAddresses = () => {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this saved address?')) return;
+    setAddresses(prev => prev.filter(a => String(a.id) !== String(id)));
     try {
       await addressApi.deleteAddress(id);
-      fetchAddresses();
+      await fetchAddresses();
     } catch (err) {
+      console.error('Delete address error:', err);
       alert('Failed to delete address');
+      await fetchAddresses();
     }
   };
 
@@ -196,8 +247,15 @@ export const SavedAddresses = () => {
 
       {/* Add Address Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in">
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div 
+            ref={modalRef}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-bold text-navy mb-4">
               {editingAddressId ? 'Edit Pickup Address' : 'Add Pickup Address'}
             </h3>
